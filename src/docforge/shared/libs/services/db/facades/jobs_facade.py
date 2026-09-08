@@ -342,7 +342,7 @@ class JobsFacade(LoggerClass):
             doc_status (DocumentStatus): The document's terminal status to mirror.
             reason (str): The human-readable reason recorded on the job + its open stage row.
             error_type (str | None): The structured failure cause stamped on the job (the reaper's
-                ``worker_killed`` / ``budget_exceeded``); None for a plain cancel (no attribution).
+                ``worker_killed`` / ``job_timeout_exceeded``); None for a plain cancel (no attribution).
 
         Returns:
             Job | None: The terminated job, or None when the id is unknown.
@@ -408,7 +408,7 @@ class JobsFacade(LoggerClass):
         manual cancel-force uses. Crucially, ``list_stale`` vetoes any job whose worker heartbeat is
         still fresh, so a HEALTHY job running one long silent stage on a live worker is never reaped
         here — only jobs on a dead/absent worker qualify (a live-worker wedge is the sibling
-        ``reap_over_budget`` path). Idempotent under concurrency: a row already reaped no longer matches
+        ``reap_over_job_timeout`` path). Idempotent under concurrency: a row already reaped no longer matches
         ``status == RUNNING``, so a second pass — or a second worker — is a harmless no-op.
 
         Attribution: because a dead heartbeat means the worker PROCESS is gone, this stamps
@@ -455,51 +455,51 @@ class JobsFacade(LoggerClass):
             self.logger.warning(f"Reaped {len(reaped)} killed-worker job(s): {error}")
         return reaped
 
-    async def reap_over_budget(
+    async def reap_over_job_timeout(
         self,
-        default_budget_seconds: float,
+        default_job_timeout_seconds: float,
         grace_seconds: float,
         heartbeat_stale_seconds: float,
     ) -> list[uuid.UUID]:
         """
-        Fail every RUNNING job on a LIVE worker whose age blew past its own budget — the job watchdog.
+        Fail every RUNNING job on a LIVE worker whose age blew past its own job timeout — the watchdog.
 
         The second reap condition, independent of the worker heartbeat, that closes ``reap_stale``'s
         blind spot: a worker can be ALIVE (its arq loop heartbeats) while ONE job is dead-wedged (an
         OOM-killed parse thread, a hung native call arq's async cancel cannot kill). Its fresh
         heartbeat VETOes ``reap_stale``, so without this the slot stays wedged until arq's uniform outer
-        cap — potentially hours for a small-budget collection. This lists such jobs (age past the
-        per-collection effective budget + grace, on a fresh-heartbeat worker) and fails each with
-        ``error_type = "budget_exceeded"`` and a stage-named reason, flagging its document FAILED
+        cap — potentially hours for a short-job-timeout collection. This lists such jobs (age past the
+        per-collection effective job timeout + grace, on a fresh-heartbeat worker) and fails each with
+        ``error_type = "job_timeout_exceeded"`` and a stage-named reason, flagging its document FAILED
         (re-ingestable) through the SAME ``_terminate`` path.
 
-        The budget is the job's REAL per-collection budget (``list_over_budget`` reads it), and the
-        grace keeps the watchdog conservative — a genuinely long docling parse WITHIN its budget is
-        never falsely reaped. Terminal, never auto-retried (a wedged stage would just wedge again);
-        the operator re-ingests once they have addressed the hang (raise the budget, simplify the
-        pipeline, or use the light preset). Idempotent: a reaped row no longer matches RUNNING.
+        The job timeout is the job's REAL per-collection job timeout (``list_over_job_timeout`` reads
+        it), and the grace keeps the watchdog conservative — a genuinely long docling parse WITHIN its
+        job timeout is never falsely reaped. Terminal, never auto-retried (a wedged stage would just
+        wedge again); the operator re-ingests once they have addressed the hang (raise the job timeout,
+        simplify the pipeline, or use the light preset). Idempotent: a reaped row no longer matches RUNNING.
 
         Args:
-            default_budget_seconds (float): The global default for a collection with no per-collection
+            default_job_timeout_seconds (float): The global default for a collection with no per-collection
                 ``job_timeout_seconds`` (WORKER_JOB_TIMEOUT_SECONDS).
-            grace_seconds (float): Margin added on top of the effective budget before reaping, so the
-                engine's own cancel at the budget always gets first chance (WORKER_OVER_BUDGET_GRACE_SECONDS).
+            grace_seconds (float): Margin added on top of the effective job timeout before reaping, so the
+                engine's own cancel at the job timeout always gets first chance (WORKER_OVER_JOB_TIMEOUT_GRACE_SECONDS).
             heartbeat_stale_seconds (float): The SAME cutoff ``reap_stale`` uses — a heartbeat within
                 it is FRESH (the live worker this path targets), which keeps the two paths disjoint.
 
         Returns:
-            list[uuid.UUID]: The reaped job ids (empty when nothing is over budget).
+            list[uuid.UUID]: The reaped job ids (empty when nothing is over its job timeout).
         """
         reaped: list[uuid.UUID] = []
         async with self._postgres.session() as session:
-            for job, budget in await JobApi.list_over_budget(
-                session, default_budget_seconds, grace_seconds, heartbeat_stale_seconds
+            for job, job_timeout in await JobApi.list_over_job_timeout(
+                session, default_job_timeout_seconds, grace_seconds, heartbeat_stale_seconds
             ):
                 stage = job.current_stage or "current stage"
                 # FAILED terminal status → the reason must read like a failure, never a "cancelled:"
                 # prefix (that belongs to the CANCELLED cancel path).
                 error = (
-                    f"reaped: this document's '{stage}' stage exceeded its {int(budget)}s time budget "
+                    f"reaped: this document's '{stage}' stage exceeded its {int(job_timeout)}s job timeout "
                     f"on a live worker (a hung or runaway stage the engine could not cancel). "
                     f"Re-ingest to retry; if it recurs, raise the collection's job_timeout_seconds, "
                     f"use the light preset, or simplify the pipeline."
@@ -510,11 +510,11 @@ class JobsFacade(LoggerClass):
                     job_status=JobStatus.FAILED,
                     doc_status=DocumentStatus.FAILED,
                     reason=error,
-                    error_type="budget_exceeded",
+                    error_type="job_timeout_exceeded",
                 )
                 reaped.append(job.id)
         if reaped:
-            self.logger.warning(f"Reaped {len(reaped)} over-budget job(s) on live workers.")
+            self.logger.warning(f"Reaped {len(reaped)} over-job-timeout job(s) on live workers.")
         return reaped
 
     async def reclaim_worker_jobs(self, worker_id: str) -> list[uuid.UUID]:

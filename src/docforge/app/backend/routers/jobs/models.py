@@ -108,8 +108,8 @@ class JobStatus(BaseModel):
         description=(
             "Structured cause of the failure. Usually the raising exception's class name (e.g. "
             "'TimeoutError'); the reaper also attributes 'worker_killed' (the worker process was "
-            "lost — crash/OOM-kill) and 'budget_exceeded' (a stage wedged past the job's time budget "
-            "on a live worker). Set only on a failed job."
+            "lost — crash/OOM-kill) and 'job_timeout_exceeded' (a stage wedged past the job's "
+            "timeout on a live worker). Set only on a failed job."
         ),
     )
 

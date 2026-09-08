@@ -38,7 +38,7 @@ export interface Collection {
   /** Free-form labels for grouping/filtering collections in the UI (`[]` = untagged). */
   tags: string[];
   max_file_size_bytes: number;
-  /** Whole-ingest-job wall-clock budget override, in seconds; `null` inherits the worker's global default. */
+  /** Whole-ingest-job wall-clock job timeout override, in seconds; `null` inherits the worker's global default. */
   job_timeout_seconds: number | null;
   needs_reindex: boolean;
   created_at: string | null;

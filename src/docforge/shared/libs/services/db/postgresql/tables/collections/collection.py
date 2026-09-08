@@ -27,7 +27,7 @@ class Collection(Base, UUIDPrimaryKey, TimestampedMixin):
         ARRAY(String), nullable=False, server_default=text("'{}'::varchar[]"), default=list
     )
     max_file_size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
-    # Per-collection override of the whole-ingest-job wall-clock budget, in seconds. NULL = fall back
+    # Per-collection override of the whole-ingest-job wall-clock job timeout, in seconds. NULL = fall back
     # to the worker's global WORKER_JOB_TIMEOUT_SECONDS; a set value caps this collection's jobs.
     job_timeout_seconds: Mapped[float | None] = mapped_column(
         Float, nullable=True, server_default=None

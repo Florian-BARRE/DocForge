@@ -40,37 +40,37 @@ from .progress import JobProgressRecorder
 from .stage_plan import StagePlanHelpers
 
 
-def _resolve_run_budget(
-    collection_budget: float | None,
-    default_budget: float,
-    max_budget: float,
+def _resolve_run_job_timeout(
+    collection_job_timeout: float | None,
+    default_job_timeout: float,
+    max_job_timeout: float,
 ) -> float:
-    """Resolve the run's wall-clock budget, failing fast on a budget above the hard ceiling.
+    """Resolve the run's wall-clock job timeout, failing fast on a value above the hard ceiling.
 
-    The engine's per-run budget must stay authoritative — it fires BEFORE arq's outer job_timeout
-    (which is ``max_budget`` + grace). A per-collection budget above the ceiling would be silently
-    truncated by arq's cap, so it is surfaced here BY NAME as a configuration error rather than
-    applied partially — the operator raises the ceiling or lowers the collection's budget.
+    The engine's per-run job timeout must stay authoritative — it fires BEFORE arq's outer job_timeout
+    (which is ``max_job_timeout`` + grace). A per-collection job timeout above the ceiling would be
+    silently truncated by arq's cap, so it is surfaced here BY NAME as a configuration error rather than
+    applied partially — the operator raises the ceiling or lowers the collection's job timeout.
 
     Args:
-        collection_budget (float | None): The collection's per-run override (None → the default).
-        default_budget (float): The worker's global default budget.
-        max_budget (float): The hard ceiling any single run may request.
+        collection_job_timeout (float | None): The collection's per-run override (None → the default).
+        default_job_timeout (float): The worker's global default job timeout.
+        max_job_timeout (float): The hard ceiling any single run may request.
 
     Returns:
-        float: The wall-clock budget to hand the engine.
+        float: The wall-clock job timeout to hand the engine.
 
     Raises:
-        ValueError: The requested per-collection budget exceeds the hard ceiling.
+        ValueError: The requested per-collection job timeout exceeds the hard ceiling.
     """
-    budget = collection_budget or default_budget
-    if budget > max_budget:
+    job_timeout = collection_job_timeout or default_job_timeout
+    if job_timeout > max_job_timeout:
         raise ValueError(
-            f"collection job_timeout_seconds={collection_budget}s exceeds the worker's hard "
-            f"ceiling WORKER_JOB_TIMEOUT_MAX_SECONDS={max_budget}s — raise the ceiling or lower "
-            f"the per-collection budget (the engine budget must stay under arq's outer cap)"
+            f"collection job_timeout_seconds={collection_job_timeout}s exceeds the worker's hard "
+            f"ceiling WORKER_JOB_TIMEOUT_MAX_SECONDS={max_job_timeout}s — raise the ceiling or lower "
+            f"the per-collection job timeout (the engine job timeout must stay under arq's outer cap)"
         )
-    return budget
+    return job_timeout
 
 
 def _resolve_trace_level(collection_verbosity: str | None, ceiling: str) -> TraceLevel:
@@ -130,7 +130,7 @@ async def _commit_terminal_cancel_write(
         await database.ingestion.mark_failed(doc_uuid)
         await database.jobs.mark_failed(
             job_uuid,
-            error="cancelled or timed out (worker shutdown / job budget) — re-ingest to retry",
+            error="cancelled or timed out (worker shutdown / job timeout) — re-ingest to retry",
             finished_at=datetime.now(UTC),
             error_type="CancelledError",
         )
@@ -274,10 +274,10 @@ async def ingest_document(
         # root-stage boundary, raising JobCancelledError to stop the run between nodes when requested.
         guarded_progress = CancellationGuard(job_uuid, root_ids, on_progress)
 
-        # 3. Run (fresh input inside), then translate the delivery. The wall-clock budget is the
+        # 3. Run (fresh input inside), then translate the delivery. The wall-clock job timeout is the
         #    collection's per-collection override when set, else the worker's global default (NULL) —
         #    fail-fast (before any spend) if the override exceeds arq's hard ceiling, never truncated.
-        run_budget = _resolve_run_budget(
+        run_job_timeout = _resolve_run_job_timeout(
             collection.job_timeout_seconds,
             CONTEXT.job_timeout_seconds,
             CONTEXT.RUNTIME_CONFIG.WORKER_JOB_TIMEOUT_MAX_SECONDS,
@@ -300,7 +300,7 @@ async def ingest_document(
             blob,
             source,
             contract,
-            timeout_seconds=run_budget,
+            timeout_seconds=run_job_timeout,
             progress_callback=guarded_progress,
             preflight_enabled=CONTEXT.RUNTIME_CONFIG.WORKER_PREFLIGHT_ENABLED,
             egress_policy=ProviderEgressPolicy.from_spec(

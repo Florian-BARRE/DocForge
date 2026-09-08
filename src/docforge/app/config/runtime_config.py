@@ -277,7 +277,7 @@ class RUNTIME_CONFIG(EnvConfigLoader):
     WORKER_PRUNE_STALE_SECONDS: int = env("WORKER_PRUNE_STALE_SECONDS", cast=int, default=180)
 
     # ───── Queue (enqueue only — the worker executes) ─────
-    # The message carries IDS ONLY; the per-collection run budget is applied by the WORKER (it reads
+    # The message carries IDS ONLY; the per-collection job timeout is applied by the WORKER (it reads
     # collection.job_timeout_seconds and hands it to the engine). arq has no per-message timeout, so
     # the app never threads a timeout onto the enqueue — WORKER_JOB_TIMEOUT_GRACE_SECONDS lives in the
     # worker config alone (its WorkerSettings backstop), not here.

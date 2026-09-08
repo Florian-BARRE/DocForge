@@ -42,7 +42,8 @@ class JobStatus(BaseModel):
         failed_item_index (int | None): The fan-out item index the failure sits in (None outside one).
         error_type (str | None): Structured cause of the failure — usually the raising exception's
             class name (e.g. "TimeoutError"), plus the reaper's attributed "worker_killed" (process
-            lost — crash/OOM) and "budget_exceeded" (a stage wedged past the budget on a live worker).
+            lost — crash/OOM) and "job_timeout_exceeded" (a stage wedged past the job timeout on a
+            live worker).
     """
 
     job_id: str = Field(description="The job row's UUID.")
@@ -107,8 +108,8 @@ class JobStatus(BaseModel):
         description=(
             "Structured cause of the failure. Usually the raising exception's class name (e.g. "
             "'TimeoutError'); the reaper also attributes 'worker_killed' (the worker process was "
-            "lost — crash/OOM-kill) and 'budget_exceeded' (a stage wedged past the job's time budget "
-            "on a live worker). Set only on a failed job."
+            "lost — crash/OOM-kill) and 'job_timeout_exceeded' (a stage wedged past the job's "
+            "timeout on a live worker). Set only on a failed job."
         ),
     )
 

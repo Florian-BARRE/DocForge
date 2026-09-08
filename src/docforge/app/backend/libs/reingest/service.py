@@ -1,7 +1,7 @@
 # ====== Code Summary ======
 # BulkReingestService — the fan-out heart of a mass re-ingestion: given already-resolved target
 # documents, it creates a FRESH ingestion job per document (document reset to PENDING) and enqueues
-# each with the collection's wall-clock budget, returning one handle per job. It performs NO target
+# each with the collection's wall-clock job timeout, returning one handle per job. It performs NO target
 # resolution or validation (the router owns the fail-fast contract) and NO persistence beyond the
 # per-document reingest admission — the worker does the actual full-pipeline run.
 
@@ -72,7 +72,7 @@ class BulkReingestService(LoggerClass):
         the full ``matched`` count.
 
         Args:
-            collection (Collection): The target collection (its job budget caps arq's outer timeout).
+            collection (Collection): The target collection (its job timeout caps arq's outer timeout).
             matched_ids (Sequence[uuid.UUID]): The resolved, already-authorised target ids.
             ceiling (int): The per-call fan-out ceiling.
             force (bool): When True, each run bypasses the stage cache (full recompute).
@@ -113,14 +113,14 @@ class BulkReingestService(LoggerClass):
         deleted-by-document before upsert), so re-running the same corpus never accumulates.
 
         Args:
-            collection (Collection): The target collection (its job budget caps arq's outer timeout).
+            collection (Collection): The target collection (its job timeout caps arq's outer timeout).
             documents (Sequence[Document]): The already-resolved, already-authorised targets.
             force (bool): When True, each run bypasses the stage cache (full recompute).
 
         Returns:
             list[ReingestJobHandle]: One handle (document id + job id) per enqueued run.
         """
-        # 1. Per document: fresh job (doc → PENDING), then enqueue with the collection budget.
+        # 1. Per document: fresh job (doc → PENDING), then enqueue with the collection job timeout.
         handles: list[ReingestJobHandle] = []
         for document in documents:
             result = await self._database.ingestion.reingest(document.id)

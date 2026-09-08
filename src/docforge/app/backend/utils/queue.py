@@ -65,12 +65,12 @@ class QueueClient(LoggerClass):
         """
         Enqueue one ingestion — the message carries IDS ONLY (retry-safe, light).
 
-        The per-collection wall-clock budget is NOT an enqueue concern. arq has no per-message job
+        The per-collection wall-clock job timeout is NOT an enqueue concern. arq has no per-message job
         timeout (``enqueue_job`` only accepts ``_job_id``/``_queue_name``/``_defer_*``/``_expires``),
         so the worker reads ``collection.job_timeout_seconds`` itself and hands it to the engine as
         the run's clean internal timeout; arq's uniform worker-level ``job_timeout`` (derived from
         the worker's WORKER_JOB_TIMEOUT_MAX_SECONDS hard ceiling) is the outer backstop. A
-        per-collection budget up to that ceiling is authoritative; one ABOVE it fails fast on the
+        per-collection job timeout up to that ceiling is authoritative; one ABOVE it fails fast on the
         worker (named), never silently truncated — raise WORKER_JOB_TIMEOUT_MAX_SECONDS for bigger.
 
         Args:

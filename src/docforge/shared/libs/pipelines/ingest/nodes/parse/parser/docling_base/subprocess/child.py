@@ -25,14 +25,14 @@ def _truncate(text: str) -> str:
 def _apply_memory_cap(memory_mb: int) -> None:
     """Cap this child's address space (RLIMIT_AS) so a runaway parse dies CLEAN, before the cgroup.
 
-    A positive cap makes an over-budget allocation fail with a Python ``MemoryError`` the serve loop
+    A positive cap makes an over-cap allocation fail with a Python ``MemoryError`` the serve loop
     reports as an attributed error — BEFORE the container's cgroup OOM-killer would reap a process
     (possibly the worker itself). 0 disables it: the time cap + kill-on-death still bound the run, and
     a forked child inherits the parent's virtual footprint, so a too-low cap can be un-settable — in
     that case the guard is skipped rather than crashing the child.
 
     Args:
-        memory_mb (int): The address-space budget in MiB (0 disables the cap).
+        memory_mb (int): The address-space cap in MiB (0 disables the cap).
     """
     if memory_mb <= 0:
         return

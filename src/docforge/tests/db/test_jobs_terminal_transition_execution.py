@@ -2,7 +2,7 @@
 the JobsFacade._terminate document mirror) against a real Postgres — the concurrency fix from
 worker-robustness wave A that a shape-only unit test can never prove.
 
-Wave A added a live-worker watchdog (``reap_over_budget``) that terminates a RUNNING job while its
+Wave A added a live-worker watchdog (``reap_over_job_timeout``) that terminates a RUNNING job while its
 worker races to finish the SAME job. The three terminal helpers were load-then-mutate guarded only by
 an in-Python status check, which (a) could overwrite a committed outcome and (b) read a STALE row from
 the reaper's own identity map. They are now DB-level CONDITIONAL UPDATEs guarded on the committed
@@ -152,9 +152,9 @@ async def test_mark_terminal_transitions_a_running_job_and_returns_it(
         session,
         job_id,
         status=JobStatus.FAILED,
-        reason="reaped: over budget",
+        reason="reaped: over job timeout",
         finished_at=datetime.now(UTC),
-        error_type="budget_exceeded",
+        error_type="job_timeout_exceeded",
     )
 
     assert returned is not None
@@ -190,9 +190,9 @@ async def test_mark_terminal_is_a_noop_on_an_already_done_job(session: AsyncSess
         session,
         job_id,
         status=JobStatus.FAILED,
-        reason="reaped: over budget",
+        reason="reaped: over job timeout",
         finished_at=datetime.now(UTC),
-        error_type="budget_exceeded",
+        error_type="job_timeout_exceeded",
     )
 
     assert returned is None
@@ -204,7 +204,7 @@ async def test_terminate_does_not_flip_a_fully_ingested_document(
 ) -> None:
     """The user-visible incident: the live-worker watchdog reaping a job the worker JUST finished must
     NOT flip the fully-ingested document (chunks already in Qdrant + Postgres) to FAILED with a scary
-    budget message. Because mark_terminal now returns None on the already-DONE job, _terminate skips
+    job timeout message. Because mark_terminal now returns None on the already-DONE job, _terminate skips
     the document mirror entirely — the document stays DONE."""
     job_id, doc_id = await _seed_job(
         session, job_status=JobStatus.DONE, doc_status=DocumentStatus.DONE
@@ -218,8 +218,8 @@ async def test_terminate_does_not_flip_a_fully_ingested_document(
             job_id,
             job_status=JobStatus.FAILED,
             doc_status=DocumentStatus.FAILED,
-            reason="reaped: over budget",
-            error_type="budget_exceeded",
+            reason="reaped: over job timeout",
+            error_type="job_timeout_exceeded",
         )
     finally:
         await client.dispose()

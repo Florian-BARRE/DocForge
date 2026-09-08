@@ -462,7 +462,7 @@ async def reingest_collection(
         BulkReingestAccepted: matched / enqueued / capped + one job handle per enqueued run (202);
             404 when the collection is unknown, 422 on a stale/broken pipeline or a bad document subset.
     """
-    # 1. The collection must exist — its budget + pipeline drive every run.
+    # 1. The collection must exist — its job timeout + pipeline drive every run.
     collection = await CONTEXT.database.collections.get(collection_id)
     if collection is None:
         raise HTTPException(status_code=404, detail=f"Collection {collection_id} not found.")

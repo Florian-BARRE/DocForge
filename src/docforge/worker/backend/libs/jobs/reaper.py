@@ -1,8 +1,9 @@
 # ====== Code Summary ======
 # reap_stuck_jobs — the arq cron that clears orphaned/wedged ingestion jobs. Two disjoint conditions:
 # a DEAD-WORKER orphan (heartbeat stale/absent → worker_killed) recovered by reap_stale, and a
-# LIVE-WORKER wedge (a job past its own budget while the worker keeps heartbeating → budget_exceeded)
-# recovered by reap_over_budget — the job-level watchdog that closes the heartbeat veto's blind spot
+# LIVE-WORKER wedge (a job past its own job timeout while the worker keeps heartbeating →
+# job_timeout_exceeded) recovered by reap_over_job_timeout — the job-level watchdog that closes the
+# heartbeat veto's blind spot
 # (an alive worker can hold a dead-wedged slot forever). Each fails the job FAILED with an attributed
 # error_type + reason and releases its document to FAILED via the JobsFacade. It ALSO prunes crashed
 # workers' stale heartbeats — a
@@ -39,9 +40,9 @@ async def reap_stuck_jobs(ctx: dict[str, Any]) -> list[str]:
     # 1. DEAD-WORKER orphan (reap_stale → worker_killed): a job silent past WORKER_REAP_STALE_SECONDS
     #    whose worker heartbeat is stale/absent — the process is gone (crash / SIGKILL / OOM). A FRESH
     #    heartbeat vetoes this, so a long silent stage on a live worker is never reaped here.
-    # 2. OVER-BUDGET wedge (reap_over_budget → budget_exceeded): a job on a LIVE worker (fresh
-    #    heartbeat) whose total age blew past its per-collection effective budget + grace — a hung /
-    #    runaway native stage arq's async cancel cannot kill. This is the job-LEVEL watchdog that
+    # 2. OVER-JOB-TIMEOUT wedge (reap_over_job_timeout → job_timeout_exceeded): a job on a LIVE worker
+    #    (fresh heartbeat) whose total age blew past its per-collection effective job timeout + grace —
+    #    a hung / runaway native stage arq's async cancel cannot kill. This is the job-LEVEL watchdog that
     #    closes the heartbeat veto's blind spot (an alive worker holding a dead-wedged slot forever).
     reaped: list[uuid.UUID] = await CONTEXT.database.jobs.reap_stale(
         config.WORKER_REAP_STALE_SECONDS, config.WORKER_PRUNE_STALE_SECONDS
@@ -53,17 +54,17 @@ async def reap_stuck_jobs(ctx: dict[str, Any]) -> list[str]:
             f"(worker_killed): {[str(job_id) for job_id in reaped]}"
         )
 
-    over_budget: list[uuid.UUID] = await CONTEXT.database.jobs.reap_over_budget(
+    over_job_timeout: list[uuid.UUID] = await CONTEXT.database.jobs.reap_over_job_timeout(
         config.WORKER_JOB_TIMEOUT_SECONDS,
-        config.WORKER_OVER_BUDGET_GRACE_SECONDS,
+        config.WORKER_OVER_JOB_TIMEOUT_GRACE_SECONDS,
         config.WORKER_PRUNE_STALE_SECONDS,
     )
-    if over_budget:
+    if over_job_timeout:
         CONTEXT.logger.warning(
-            f"Reaped {len(over_budget)} over-budget job(s) wedged on a live worker "
-            f"(budget_exceeded): {[str(job_id) for job_id in over_budget]}"
+            f"Reaped {len(over_job_timeout)} over-job-timeout job(s) wedged on a live worker "
+            f"(job_timeout_exceeded): {[str(job_id) for job_id in over_job_timeout]}"
         )
-    reaped = reaped + over_budget
+    reaped = reaped + over_job_timeout
 
     # Prune crashed workers' stale heartbeats here (moved off the GET /jobs/workers/live read path, so
     # a poll never triggers a fleet-wide DELETE). A cleanly-stopped worker already de-registered

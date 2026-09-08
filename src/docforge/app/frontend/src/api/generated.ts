@@ -2502,7 +2502,7 @@ export interface components {
             id: string;
             /**
              * Job Timeout Seconds
-             * @description Per-collection whole-ingest-job wall-clock budget, seconds. None = inherit the worker's global WORKER_JOB_TIMEOUT_SECONDS default.
+             * @description Per-collection whole-ingest-job wall-clock job timeout, seconds. None = inherit the worker's global WORKER_JOB_TIMEOUT_SECONDS default.
              */
             job_timeout_seconds?: number | null;
             /**
@@ -2594,7 +2594,7 @@ export interface components {
             id: string;
             /**
              * Job Timeout Seconds
-             * @description Per-collection whole-ingest-job wall-clock budget, seconds. None = inherit the worker's global WORKER_JOB_TIMEOUT_SECONDS default.
+             * @description Per-collection whole-ingest-job wall-clock job timeout, seconds. None = inherit the worker's global WORKER_JOB_TIMEOUT_SECONDS default.
              */
             job_timeout_seconds?: number | null;
             /**
@@ -2774,7 +2774,7 @@ export interface components {
             fields?: components["schemas"]["FieldSpecModel"][];
             /**
              * Job Timeout Seconds
-             * @description Per-collection whole-ingest-job wall-clock budget, seconds. None (default) = inherit the worker's global WORKER_JOB_TIMEOUT_SECONDS.
+             * @description Per-collection whole-ingest-job wall-clock job timeout, seconds. None (default) = inherit the worker's global WORKER_JOB_TIMEOUT_SECONDS.
              */
             job_timeout_seconds?: number | null;
             /**
@@ -6338,7 +6338,7 @@ export interface components {
             fields?: components["schemas"]["FieldSpecModel"][] | null;
             /**
              * Job Timeout Seconds
-             * @description New per-collection whole-ingest-job wall-clock budget, seconds. Omitted = leave the current value unchanged; a set value overrides the global WORKER_JOB_TIMEOUT_SECONDS.
+             * @description New per-collection whole-ingest-job wall-clock job timeout, seconds. Omitted = leave the current value unchanged; a set value overrides the global WORKER_JOB_TIMEOUT_SECONDS.
              */
             job_timeout_seconds?: number | null;
             /**

@@ -317,7 +317,7 @@ async def test_claim_transitions_the_document_to_processing(jobs_core, monkeypat
     database.jobs.mark_done.assert_awaited_once()
 
 
-async def test_run_budget_falls_back_to_the_global_default_when_collection_is_null(
+async def test_run_job_timeout_falls_back_to_the_global_default_when_collection_is_null(
     jobs_core, monkeypatch
 ) -> None:
     """collection.job_timeout_seconds is NULL → the run is bounded by the worker's global default
@@ -332,7 +332,9 @@ async def test_run_budget_falls_back_to_the_global_default_when_collection_is_nu
     assert context.runner.run.await_args.kwargs["timeout_seconds"] == 30.0
 
 
-async def test_run_budget_uses_the_collection_override_when_set(jobs_core, monkeypatch) -> None:
+async def test_run_job_timeout_uses_the_collection_override_when_set(
+    jobs_core, monkeypatch
+) -> None:
     """A per-collection override caps the run's wall-clock, taking precedence over the global."""
     database = _fake_database()
     document_id, context = _wire(
@@ -344,10 +346,10 @@ async def test_run_budget_uses_the_collection_override_when_set(jobs_core, monke
     assert context.runner.run.await_args.kwargs["timeout_seconds"] == 99.0
 
 
-async def test_run_budget_above_the_hard_ceiling_fails_fast_before_any_spend(
+async def test_run_job_timeout_above_the_hard_ceiling_fails_fast_before_any_spend(
     jobs_core, monkeypatch
 ) -> None:
-    """A per-collection budget above WORKER_JOB_TIMEOUT_MAX_SECONDS is a config error surfaced by
+    """A per-collection job timeout above WORKER_JOB_TIMEOUT_MAX_SECONDS is a config error surfaced by
     name — the job fails BEFORE the pipeline runs (never silently truncated by arq's outer cap).
     It re-raises through the generic handler (arq accounts the attempt) after marking both truths."""
     import pytest  # noqa: PLC0415
@@ -368,14 +370,14 @@ async def test_run_budget_above_the_hard_ceiling_fails_fast_before_any_spend(
     assert "WORKER_JOB_TIMEOUT_MAX_SECONDS" in error
 
 
-def test_resolve_run_budget_prefers_collection_then_default_then_rejects_over_ceiling(
+def test_resolve_run_job_timeout_prefers_collection_then_default_then_rejects_over_ceiling(
     jobs_core,
 ) -> None:
-    """The pure budget resolver: collection override wins, else the default; above the hard
+    """The pure job timeout resolver: collection override wins, else the default; above the hard
     ceiling it raises a named ValueError (never returns a truncated value)."""
     import pytest  # noqa: PLC0415
 
-    resolve = jobs_core._resolve_run_budget
+    resolve = jobs_core._resolve_run_job_timeout
     assert resolve(99.0, 30.0, 7200.0) == 99.0
     assert resolve(None, 30.0, 7200.0) == 30.0
     assert resolve(7200.0, 30.0, 7200.0) == 7200.0  # exactly the ceiling is allowed

@@ -86,7 +86,7 @@ export function OverviewStatStrip({ collection, docs, fields, health, jobs, coll
           the strip above for attention. Still a click-through to where it's edited. */}
       <button
         onClick={() => onNavigate({ name: "collection-edit", collectionId })}
-        title="Whole-ingest-job wall-clock budget"
+        title="Whole-ingest-job wall-clock job timeout"
         style={{
           display: "inline-flex", alignItems: "baseline", gap: t.space.xs, marginBottom: t.space.xl,
           background: "none", border: "none", padding: 0, cursor: "pointer",

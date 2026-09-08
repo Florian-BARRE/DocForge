@@ -205,7 +205,7 @@ async def upload_document(
     created, job = admission.document, admission.job
 
     # 9. Hand over to the worker — the queue message carries IDS ONLY. The worker reads the
-    #    collection's per-collection budget itself and applies it as the engine's run timeout. A
+    #    collection's per-collection job timeout itself and applies it as the engine's run timeout. A
     #    queue failure marks the just-committed job FAILED (never an orphan PENDING the reaper cannot
     #    see) and surfaces as a 503 so the caller knows the run was not queued — re-ingest to retry.
     enqueued = await IngestEnqueuer.enqueue(
@@ -314,7 +314,7 @@ async def reingest_document(
         )
 
     # 3. Hand over to the worker — it refetches the original by source_hash and re-runs the pipeline,
-    #    reading the collection's per-collection job budget itself for the engine's run timeout. A
+    #    reading the collection's per-collection job timeout itself for the engine's run timeout. A
     #    queue failure marks the fresh job FAILED (never an orphan PENDING) and surfaces as a 503.
     document, job = result.document, result.job
     enqueued = await IngestEnqueuer.enqueue(

@@ -64,7 +64,7 @@ class CollectionModel(BaseModel):
         default=None,
         gt=0,
         description=(
-            "Per-collection whole-ingest-job wall-clock budget, seconds. None = inherit the "
+            "Per-collection whole-ingest-job wall-clock job timeout, seconds. None = inherit the "
             "worker's global WORKER_JOB_TIMEOUT_SECONDS default."
         ),
     )
@@ -127,7 +127,7 @@ class CollectionContractModel(BaseModel):
         default=None,
         gt=0,
         description=(
-            "Per-collection whole-ingest-job wall-clock budget, seconds. None (default) = inherit "
+            "Per-collection whole-ingest-job wall-clock job timeout, seconds. None (default) = inherit "
             "the worker's global WORKER_JOB_TIMEOUT_SECONDS."
         ),
     )
@@ -190,7 +190,7 @@ class UpdateCollectionRequest(BaseModel):
         default=None,
         gt=0,
         description=(
-            "New per-collection whole-ingest-job wall-clock budget, seconds. Omitted = leave the "
+            "New per-collection whole-ingest-job wall-clock job timeout, seconds. Omitted = leave the "
             "current value unchanged; a set value overrides the global WORKER_JOB_TIMEOUT_SECONDS."
         ),
     )

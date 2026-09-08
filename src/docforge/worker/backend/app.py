@@ -138,9 +138,9 @@ def create_worker_settings() -> type:
         # guard remain as defense-in-depth for any manual re-enqueue.
         retry_jobs = False
         # arq's UNIFORM worker-level cap = the HARD ceiling + grace, a backstop ABOVE the engine's
-        # per-collection timeout (which fires first for any budget up to the ceiling, keeping the
+        # per-collection timeout (which fires first for any job timeout up to the ceiling, keeping the
         # engine authoritative). arq has no per-message timeout, so this one cap applies to every
-        # job; a per-collection budget ABOVE the ceiling is rejected fail-fast (never truncated here).
+        # job; a per-collection job timeout ABOVE the ceiling is rejected fail-fast (never truncated here).
         job_timeout = (
             RUNTIME_CONFIG.WORKER_JOB_TIMEOUT_MAX_SECONDS
             + RUNTIME_CONFIG.WORKER_JOB_TIMEOUT_GRACE_SECONDS

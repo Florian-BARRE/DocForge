@@ -157,15 +157,15 @@ class RUNTIME_CONFIG(EnvConfigLoader):
     WORKER_JOB_TIMEOUT_SECONDS = env("WORKER_JOB_TIMEOUT_SECONDS", cast=float, default=1800.0)
     # The HARD ceiling any single run may request: a per-collection job_timeout_seconds is honoured
     # up to this bound and REJECTED (fail-fast, named) above it — never silently truncated. arq's
-    # outer job_timeout is derived from THIS value (+ grace), so the engine's per-run budget always
-    # fires FIRST for any valid budget (the engine stays authoritative), while a single run can never
-    # exceed max + grace. Raise this to allow bigger per-collection budgets. See PROD-HARDENING.md.
+    # outer job_timeout is derived from THIS value (+ grace), so the engine's per-run job timeout always
+    # fires FIRST for any valid job timeout (the engine stays authoritative), while a single run can never
+    # exceed max + grace. Raise this to allow bigger per-collection job timeouts. See PROD-HARDENING.md.
     WORKER_JOB_TIMEOUT_MAX_SECONDS = env(
         "WORKER_JOB_TIMEOUT_MAX_SECONDS", cast=float, default=7200.0
     )
-    # arq's outer per-job cap must stay ABOVE the engine's run budget (the engine cancels first), so
-    # arq only kills a genuinely-wedged run. Derived from the MAX budget (not the default) so a
-    # per-collection budget up to the ceiling is authoritative; the app enqueue side carries no
+    # arq's outer per-job cap must stay ABOVE the engine's run job timeout (the engine cancels first), so
+    # arq only kills a genuinely-wedged run. Derived from the MAX job timeout (not the default) so a
+    # per-collection job timeout up to the ceiling is authoritative; the app enqueue side carries no
     # timeout (arq has no per-message cap), so this WorkerSettings backstop is the sole outer bound.
     WORKER_JOB_TIMEOUT_GRACE_SECONDS = env(
         "WORKER_JOB_TIMEOUT_GRACE_SECONDS", cast=float, default=60.0
@@ -234,15 +234,16 @@ class RUNTIME_CONFIG(EnvConfigLoader):
     WORKER_REAP_ENABLED = env("WORKER_REAP_ENABLED", cast=bool, default=True)
     WORKER_REAP_STALE_SECONDS = env("WORKER_REAP_STALE_SECONDS", cast=int, default=1200)
     # The JOB-LEVEL watchdog grace (seconds). The reaper's SECOND, heartbeat-independent condition
-    # fails a RUNNING job on a LIVE worker whose total age exceeds its EFFECTIVE budget (the
+    # fails a RUNNING job on a LIVE worker whose total age exceeds its EFFECTIVE job timeout (the
     # per-collection job_timeout_seconds, else WORKER_JOB_TIMEOUT_SECONDS) PLUS this grace — the
     # backstop for a wedged native stage arq's async cancel cannot kill (an alive worker holding a
-    # dead-wedged slot the heartbeat veto would otherwise protect forever). Attributed budget_exceeded.
-    # Generous by default so a job the engine is about to cancel cleanly AT its budget is never falsely
-    # reaped; only a job that blew past budget + grace (the engine's own cancel demonstrably failed) is
-    # caught. Raise it to be even more conservative on a slow host; it never shortens a job's real budget.
-    WORKER_OVER_BUDGET_GRACE_SECONDS = env(
-        "WORKER_OVER_BUDGET_GRACE_SECONDS", cast=float, default=300.0
+    # dead-wedged slot the heartbeat veto would otherwise protect forever). Attributed
+    # job_timeout_exceeded. Generous by default so a job the engine is about to cancel cleanly AT its
+    # job timeout is never falsely reaped; only a job that blew past job timeout + grace (the engine's
+    # own cancel demonstrably failed) is caught. Raise it to be even more conservative on a slow host;
+    # it never shortens a job's real job timeout.
+    WORKER_OVER_JOB_TIMEOUT_GRACE_SECONDS = env(
+        "WORKER_OVER_JOB_TIMEOUT_GRACE_SECONDS", cast=float, default=300.0
     )
     # A worker heartbeat frozen past this cutoff is PRUNED by the reaper cron (crashed workers that
     # never de-registered). This ran on the read path (GET /jobs/workers/live) before — a fleet-wide
@@ -287,7 +288,7 @@ if RUNTIME_CONFIG.WORKER_REAP_STALE_SECONDS < 60:
         f"(got {RUNTIME_CONFIG.WORKER_REAP_STALE_SECONDS})."
     )
 
-# ─── The global default budget must fit under the hard ceiling (arq's cap is derived from MAX) ───
+# ─── The global default job timeout must fit under the hard ceiling (arq's cap is derived from MAX) ───
 if RUNTIME_CONFIG.WORKER_JOB_TIMEOUT_SECONDS > RUNTIME_CONFIG.WORKER_JOB_TIMEOUT_MAX_SECONDS:
     raise ValueError(
         "WORKER_JOB_TIMEOUT_SECONDS must be <= WORKER_JOB_TIMEOUT_MAX_SECONDS "

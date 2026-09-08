@@ -281,7 +281,7 @@ with Client("http://localhost:10040", api_token="df_...") as client:
 ```
 
 Key `CreateCollectionRequest` fields beyond the schema: `max_file_size_bytes` (bytes) and
-`job_timeout_seconds` (`float | None`, seconds) — the whole-ingest-job wall-clock budget for that
+`job_timeout_seconds` (`float | None`, seconds) — the whole-ingest-job wall-clock job timeout for that
 collection; `None` (the default) inherits the worker's global job-timeout default. Same field, same
 semantics on `CollectionModel` (read) and `UpdateCollectionRequest` (write; there, omitting it
 leaves the current value unchanged, a set value overrides it).

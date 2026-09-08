@@ -230,7 +230,7 @@ class JobApi:
         Complete the job successfully — only while it is still RUNNING (a race-safe transition).
 
         Expressed as a DB-level CONDITIONAL UPDATE (``WHERE id = :id AND status = 'running'``) rather
-        than a load-then-mutate: the live-worker watchdog (``reap_over_budget``) can terminate the SAME
+        than a load-then-mutate: the live-worker watchdog (``reap_over_job_timeout``) can terminate the SAME
         job in the same millisecond, so the two writers must serialize on the row lock — whoever commits
         first wins, and the loser's ``WHERE`` matches nothing (a clean no-op). This also removes the
         identity-map staleness a Python status guard could never fix: the reaper's own session may still
@@ -356,10 +356,10 @@ class JobApi:
 
         Expressed as a DB-level CONDITIONAL UPDATE guarded on the job still being LIVE
         (``status IN ('pending', 'running')``) with ``RETURNING``, NOT a load-then-mutate: the live-
-        worker watchdog (``reap_over_budget``) targets a job while its worker races to finish it, so the
+        worker watchdog (``reap_over_job_timeout``) targets a job while its worker races to finish it, so the
         two writers MUST serialize on the row lock. The guard is the ONLY concurrency-safe transition —
         an in-Python ``if terminal: return`` check would read a STALE row: the reaper's own session
-        cached the RUNNING job in its identity map when ``list_over_budget`` selected it, so a later
+        cached the RUNNING job in its identity map when ``list_over_job_timeout`` selected it, so a later
         ``session.get`` never re-reads the worker's committed DONE. Only ``RETURNING`` on a committed-
         data ``WHERE`` re-evaluates the real status. The guard admits ``pending`` too so a QUEUED job
         can still be force-cancelled before it ever ran; it excludes the terminal states, so terminating
@@ -374,7 +374,7 @@ class JobApi:
             finished_at (datetime): When the job was terminated.
             error_type (str | None): The structured cause stamped on ``error_type`` when the
                 terminate is an ATTRIBUTED failure (the reaper's ``worker_killed`` /
-                ``budget_exceeded``); None leaves the column untouched (a plain cancel carries no
+                ``job_timeout_exceeded``); None leaves the column untouched (a plain cancel carries no
                 exception-class attribution).
 
         Returns:
@@ -1018,7 +1018,7 @@ class JobApi:
         excluded. This heartbeat veto is why the fixed global ``older_than_seconds`` need not be scaled
         to each collection's ``job_timeout_seconds``: a live worker vetoes the reap regardless of how
         long its stage runs, and a genuinely-wedged-but-heartbeating worker is caught by arq's outer
-        ``job_timeout`` (max budget + grace), not by this silence sweep.
+        ``job_timeout`` (max job timeout + grace), not by this silence sweep.
 
         Args:
             session (AsyncSession): The active DB session.
@@ -1049,14 +1049,14 @@ class JobApi:
         return list(result.scalars().all())
 
     @staticmethod
-    async def list_over_budget(
+    async def list_over_job_timeout(
         session: AsyncSession,
-        default_budget_seconds: float,
+        default_job_timeout_seconds: float,
         grace_seconds: float,
         heartbeat_stale_seconds: float,
     ) -> list[tuple[Job, float]]:
         """
-        Return RUNNING jobs on a LIVE worker whose total age blew past their own budget — the watchdog.
+        Return RUNNING jobs on a LIVE worker whose total age blew past their own job timeout — the watchdog.
 
         The JOB-LEVEL liveness backstop that closes the heartbeat veto's blind spot: a worker can be
         ALIVE (its arq event loop heartbeats every ~10s) while ONE of its jobs is dead-wedged — an OOM
@@ -1066,39 +1066,42 @@ class JobApi:
         at the JOB level instead.
 
         A job qualifies when its total wall-clock age (``now() - started_at``) exceeds its EFFECTIVE
-        budget — the per-collection ``job_timeout_seconds`` when set, else the worker's global
-        ``default_budget_seconds`` — PLUS ``grace_seconds``. The grace keeps the watchdog conservative:
-        the engine's own per-run budget fires AT the effective budget, so a job the engine is about to
-        cancel cleanly is never falsely reaped — only a job that blew past budget + grace (the engine's
-        cancel demonstrably failed) is caught. The budget is the job's REAL per-collection budget, so a
-        genuinely long docling parse WITHIN its collection's budget is never touched.
+        job timeout — the per-collection ``job_timeout_seconds`` when set, else the worker's global
+        ``default_job_timeout_seconds`` — PLUS ``grace_seconds``. The grace keeps the watchdog conservative:
+        the engine's own per-run job timeout fires AT the effective job timeout, so a job the engine is
+        about to cancel cleanly is never falsely reaped — only a job that blew past job timeout + grace
+        (the engine's cancel demonstrably failed) is caught. The job timeout is the job's REAL
+        per-collection job timeout, so a genuinely long docling parse WITHIN its collection's job timeout
+        is never touched.
 
         Mutually exclusive with ``list_stale`` by heartbeat freshness on the SAME cutoff: this path
         requires a FRESH heartbeat (an inner join + ``last_seen`` within ``heartbeat_stale_seconds``),
         while ``list_stale`` requires an absent/stale one. A job therefore lands in exactly one path —
-        a live-worker wedge here (``budget_exceeded``) or a dead-worker orphan there
+        a live-worker wedge here (``job_timeout_exceeded``) or a dead-worker orphan there
         (``worker_killed``) — never both, so there is no double reap and the attribution is unambiguous.
 
         Args:
             session (AsyncSession): The active DB session.
-            default_budget_seconds (float): The worker's global default budget for a collection that
-                sets no per-collection ``job_timeout_seconds`` (WORKER_JOB_TIMEOUT_SECONDS).
-            grace_seconds (float): Extra margin added on top of the effective budget before a job is
-                reaped, so a run the engine is about to cancel at its budget is never falsely caught.
+            default_job_timeout_seconds (float): The worker's global default job timeout for a collection
+                that sets no per-collection ``job_timeout_seconds`` (WORKER_JOB_TIMEOUT_SECONDS).
+            grace_seconds (float): Extra margin added on top of the effective job timeout before a job is
+                reaped, so a run the engine is about to cancel at its job timeout is never falsely caught.
             heartbeat_stale_seconds (float): The SAME cutoff ``list_stale`` uses — a heartbeat within
                 it is FRESH (a live worker), which is exactly what this path targets.
 
         Returns:
-            list[tuple[Job, float]]: Each over-budget job paired with its effective budget in seconds
-                (the per-collection value or the default, WITHOUT the grace) so the caller can name the
-                exceeded budget in the failure reason. Oldest ``started_at`` first.
+            list[tuple[Job, float]]: Each over-job-timeout job paired with its effective job timeout in
+                seconds (the per-collection value or the default, WITHOUT the grace) so the caller can name
+                the exceeded job timeout in the failure reason. Oldest ``started_at`` first.
         """
-        # The effective budget is a per-row expression (the collection's override or the global
-        # default); make_interval turns budget + grace into the DB-clock cutoff so a worker/DB skew can
+        # The effective job timeout is a per-row expression (the collection's override or the global
+        # default); make_interval turns job timeout + grace into the DB-clock cutoff so a worker/DB skew can
         # never mis-classify, exactly like list_stale's cutoffs.
-        effective_budget = func.coalesce(Collection.job_timeout_seconds, default_budget_seconds)
+        effective_job_timeout = func.coalesce(
+            Collection.job_timeout_seconds, default_job_timeout_seconds
+        )
         result = await session.execute(
-            select(Job, effective_budget)
+            select(Job, effective_job_timeout)
             .join(Collection, Collection.id == Job.collection_id)
             .join(WorkerHeartbeat, WorkerHeartbeat.worker_id == Job.worker_id)
             .where(
@@ -1106,7 +1109,7 @@ class JobApi:
                 Job.started_at.is_not(None),
                 Job.started_at
                 < func.now()
-                - func.make_interval(0, 0, 0, 0, 0, 0, effective_budget + grace_seconds),
+                - func.make_interval(0, 0, 0, 0, 0, 0, effective_job_timeout + grace_seconds),
                 # FRESH heartbeat only: a live worker. The inner join already requires a heartbeat row;
                 # this keeps only a heartbeat within the stale cutoff — a stale one is the worker_killed
                 # path (list_stale), so the two paths never overlap.
@@ -1115,7 +1118,7 @@ class JobApi:
             )
             .order_by(Job.started_at.asc())
         )
-        return [(job, float(budget)) for job, budget in result.all()]
+        return [(job, float(job_timeout)) for job, job_timeout in result.all()]
 
     @staticmethod
     async def list_running_for_worker(session: AsyncSession, worker_id: str) -> list[Job]:

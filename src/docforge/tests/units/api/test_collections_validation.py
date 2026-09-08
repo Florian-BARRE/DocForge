@@ -72,7 +72,7 @@ def test_create_collection_wrong_type_for_max_file_size_bytes_is_422(client) -> 
 
 
 def test_create_collection_non_positive_job_timeout_is_422(client) -> None:
-    """job_timeout_seconds is a wall-clock budget — a zero/negative value is nonsense (gt=0)."""
+    """job_timeout_seconds is a wall-clock job timeout — a zero/negative value is nonsense (gt=0)."""
     response = client.post(
         "/api/v1/collections",
         json={

@@ -1,8 +1,8 @@
 # ====== Code Summary ======
 # DoclingSubprocessPool — the PARENT side of the killable parse. It keeps one WARM, respawnable child
-# process per (node class, memory budget) so the heavy docling/granite models load once and amortise
+# process per (node class, memory cap) so the heavy docling/granite models load once and amortise
 # across documents, and it turns the two failure modes a worker THREAD could never survive into clean,
-# attributed job failures: a parse past its TIME budget is SIGKILLed and respawned; a child that OOMs
+# attributed job failures: a parse past its TIME limit is SIGKILLed and respawned; a child that OOMs
 # or crashes is detected (broken pipe) and respawned. One request per child at a time (an asyncio.Lock
 # per key) preserves the old process-wide convert serialisation, now as a process boundary that CAN be
 # killed — so one pathological document can never wedge the worker or deadlock a shared convert lock.
@@ -41,11 +41,11 @@ class _ParseChild:
 
 
 class DoclingSubprocessPool(LoggerClass):
-    """Process-wide manager of warm, killable parse children (one per node class + memory budget).
+    """Process-wide manager of warm, killable parse children (one per node class + memory cap).
 
     A single shared instance (``instance()``) is used by every Docling-family parser node. It is the
     ONLY place that knows a parse runs out-of-process: the node hands it the class + config + bytes and
-    gets the mapped IR back, or a typed failure when the isolated child blew its budget or died.
+    gets the mapped IR back, or a typed failure when the isolated child blew its limit or died.
     """
 
     _instance: "DoclingSubprocessPool | None" = None
@@ -116,8 +116,8 @@ class DoclingSubprocessPool(LoggerClass):
         or ``err`` (a genuine convert failure — the warm child survives for the next document).
         """
         child = self.__ensure_child(key, memory_mb)
-        # 1. Send the request, then wait UP TO the time budget for a reply. A child that hangs past the
-        #    budget is SIGKILLed here — a thread never could be — so the worker slot is freed.
+        # 1. Send the request, then wait UP TO the time limit for a reply. A child that hangs past the
+        #    limit is SIGKILLed here — a thread never could be — so the worker slot is freed.
         try:
             child.conn.send(request)
             if not child.conn.poll(timeout):
@@ -167,7 +167,7 @@ class DoclingSubprocessPool(LoggerClass):
             DocumentIR: The parsed IR.
 
         Raises:
-            ParseSubprocessError: The parse exceeded its time/memory budget or its subprocess died.
+            ParseSubprocessError: The parse exceeded its time limit or memory cap or its subprocess died.
             RuntimeError: A genuine convert failure (its chained docling cause preserved in the message).
         """
         key = (f"{node_class.__module__}.{node_class.__qualname__}", int(memory_mb))
@@ -189,24 +189,26 @@ class DoclingSubprocessPool(LoggerClass):
         if outcome == "ok":
             return DocumentIR.model_validate_json(payload)
         if outcome == "timeout":
-            raise ParseSubprocessError(self.__budget_reason("time", timeout_seconds, memory_mb))
+            raise ParseSubprocessError(
+                self.__job_timeout_reason("time", timeout_seconds, memory_mb)
+            )
         if outcome == "memory":
-            reason = self.__budget_reason("memory", timeout_seconds, memory_mb)
+            reason = self.__job_timeout_reason("memory", timeout_seconds, memory_mb)
             raise ParseSubprocessError(f"{reason} (child: {payload})")
         if outcome == "dead":
             raise ParseSubprocessError(self.__crash_reason(timeout_seconds, memory_mb))
         # A genuine convert failure — re-raise as a plain RuntimeError so its chained cause still names
-        # the real error (e.g. a corrupt PDF), never masked as a budget failure.
+        # the real error (e.g. a corrupt PDF), never masked as a limit failure.
         _err_type, message = payload
         raise RuntimeError(message)
 
     @staticmethod
-    def __budget_reason(kind: str, timeout_seconds: float, memory_mb: int) -> str:
-        """The attributed, actionable reason a parse blew its time/memory budget."""
+    def __job_timeout_reason(kind: str, timeout_seconds: float, memory_mb: int) -> str:
+        """The attributed, actionable reason a parse blew its time limit or memory cap."""
         cap = f"{timeout_seconds}s time" if kind == "time" else f"{memory_mb}MB memory"
         return (
-            f"parse exceeded its {cap} budget in an isolated subprocess — this document is too heavy "
-            f"for docling at this budget; try a lighter parse (do_ocr / do_table_structure off), raise "
+            f"parse exceeded its {cap} limit in an isolated subprocess — this document is too heavy "
+            f"for docling at this limit; try a lighter parse (do_ocr / do_table_structure off), raise "
             f"parse_timeout_seconds / parse_memory_mb, or lower worker concurrency"
         )
 
@@ -215,7 +217,7 @@ class DoclingSubprocessPool(LoggerClass):
         """The attributed reason the isolated parse subprocess died (crash or OOM-kill)."""
         return (
             f"the parse subprocess died (a crash or out-of-memory kill) at a {timeout_seconds}s / "
-            f"{memory_mb}MB budget — this document is likely too heavy for docling; try a lighter parse, "
+            f"{memory_mb}MB cap — this document is likely too heavy for docling; try a lighter parse, "
             f"raise parse_memory_mb / parse_timeout_seconds, or lower worker concurrency"
         )
 

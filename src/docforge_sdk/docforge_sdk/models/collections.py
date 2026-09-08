@@ -59,7 +59,7 @@ class CollectionModel(BaseModel):
         name (str): Unique human name.
         supported_formats (list[str]): Accepted upload extensions (e.g. pdf).
         max_file_size_bytes (int): Upload size ceiling, bytes.
-        job_timeout_seconds (float | None): Per-collection whole-ingest-job wall-clock budget,
+        job_timeout_seconds (float | None): Per-collection whole-ingest-job wall-clock job timeout,
             seconds. None = inherit the worker's global WORKER_JOB_TIMEOUT_SECONDS default.
         needs_reindex (bool): True when a config change requires reindexing.
         created_at (datetime | None): Creation timestamp.
@@ -82,7 +82,7 @@ class CollectionModel(BaseModel):
         default=None,
         gt=0,
         description=(
-            "Per-collection whole-ingest-job wall-clock budget, seconds. None = inherit the "
+            "Per-collection whole-ingest-job wall-clock job timeout, seconds. None = inherit the "
             "worker's global WORKER_JOB_TIMEOUT_SECONDS default."
         ),
     )
@@ -132,7 +132,7 @@ class CreateCollectionRequest(BaseModel):
         name (str): Unique human name.
         supported_formats (list[str]): Accepted upload extensions (e.g. pdf).
         max_file_size_bytes (int): Upload size ceiling, bytes.
-        job_timeout_seconds (float | None): Per-collection whole-ingest-job wall-clock budget,
+        job_timeout_seconds (float | None): Per-collection whole-ingest-job wall-clock job timeout,
             seconds. None = inherit the worker's global WORKER_JOB_TIMEOUT_SECONDS default.
         fields (list[FieldSpec]): The FULL schema, declared up front (vector space is fixed).
         pipeline (dict[str, Any] | None): The pipeline blob; omitted → the product default.
@@ -149,7 +149,7 @@ class CreateCollectionRequest(BaseModel):
         default=None,
         gt=0,
         description=(
-            "Per-collection whole-ingest-job wall-clock budget, seconds. None = inherit the "
+            "Per-collection whole-ingest-job wall-clock job timeout, seconds. None = inherit the "
             "worker's global WORKER_JOB_TIMEOUT_SECONDS default."
         ),
     )
@@ -186,7 +186,7 @@ class UpdateCollectionRequest(BaseModel):
         supported_formats (list[str] | None): New accepted upload extensions.
         max_file_size_bytes (int | None): New size ceiling, bytes.
         job_timeout_seconds (float | None): New per-collection whole-ingest-job wall-clock
-            budget, seconds. Omitted = leave the current value unchanged.
+            job timeout, seconds. Omitted = leave the current value unchanged.
         fields (list[FieldSpec] | None): The TARGET schema (diffed by field name).
         pipeline (dict[str, Any] | None): New pipeline blob (validated before storage).
         search (dict[str, Any] | None): New search graph blob ({} = stock default).
@@ -210,7 +210,7 @@ class UpdateCollectionRequest(BaseModel):
         default=None,
         gt=0,
         description=(
-            "New per-collection whole-ingest-job wall-clock budget, seconds. Omitted = leave the "
+            "New per-collection whole-ingest-job wall-clock job timeout, seconds. Omitted = leave the "
             "current value unchanged; a set value overrides the global WORKER_JOB_TIMEOUT_SECONDS."
         ),
     )
