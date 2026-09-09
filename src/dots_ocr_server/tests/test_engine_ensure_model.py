@@ -10,6 +10,7 @@ transformers/torch are imported lazily INSIDE _ensure_model, so the tests inject
 and never touch a real model or a GPU.
 """
 
+import os
 import sys
 import types
 
@@ -19,9 +20,15 @@ from libs.dots_ocr.engine import DotsOcrEngine
 
 
 def _engine() -> DotsOcrEngine:
-    """A cheap engine instance (the constructor stores args only — no model is loaded)."""
-    return DotsOcrEngine(
+    """A cheap engine instance (the constructor stores args only — no model is loaded).
+
+    Pre-sets ``_local_model_dir`` so ``_ensure_model`` skips the real weight resolution/download — these
+    tests exercise the atomic model+processor load, not the dot-free-dir materialisation (covered
+    separately below).
+    """
+    engine = DotsOcrEngine(
         model_path="fake/dots.ocr",
+        model_cache_home="/tmp/dots-cache",
         render_dpi=100,
         max_pages=0,
         max_tokens=16,
@@ -29,6 +36,8 @@ def _engine() -> DotsOcrEngine:
         min_pixels=3136,
         max_pixels=11289600,
     )
+    engine._local_model_dir = "/fake/DotsOCR"
+    return engine
 
 
 def _install_fakes(
@@ -116,3 +125,58 @@ def test_ensure_model_is_idempotent_once_warm(monkeypatch: pytest.MonkeyPatch) -
     monkeypatch.setattr(sys.modules["transformers"].AutoProcessor, "from_pretrained", _boom)
     engine._ensure_model()  # no exception → the guard short-circuited
     assert engine.warmed is True
+
+
+# ── _resolve_local_model_dir — the dot-free-dir workaround for dots.ocr's dotted repo id ─────────────
+
+
+def _fresh_engine(model_path: str, cache_home: str) -> DotsOcrEngine:
+    """An engine WITHOUT the _local_model_dir bypass, to exercise the real resolution."""
+    return DotsOcrEngine(
+        model_path=model_path,
+        model_cache_home=cache_home,
+        render_dpi=100,
+        max_pages=0,
+        max_tokens=16,
+        image_factor=28,
+        min_pixels=3136,
+        max_pixels=11289600,
+    )
+
+
+def test_resolve_passes_through_a_dotfree_local_dir(tmp_path) -> None:
+    """A local dir whose leaf has no '.' is safe as-is — used verbatim, no download."""
+    model_dir = tmp_path / "DotsOCR"
+    model_dir.mkdir()
+    engine = _fresh_engine(str(model_dir), str(tmp_path / "cache"))
+
+    assert engine._resolve_local_model_dir() == str(model_dir)
+
+
+def test_resolve_downloads_a_dotted_hub_id_to_a_dotfree_dir(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The dots.ocr case: a dotted hub id is snapshot-downloaded into a dot-free local dir, and THAT
+    (no '.' in its leaf) is what gets loaded — the fix for the transformers_modules import break."""
+    calls: dict[str, object] = {}
+
+    def _fake_snapshot_download(*, repo_id: str, local_dir: str) -> str:
+        calls["repo_id"] = repo_id
+        calls["local_dir"] = local_dir
+        return local_dir
+
+    fake_hub = types.SimpleNamespace(snapshot_download=_fake_snapshot_download)
+    monkeypatch.setitem(sys.modules, "huggingface_hub", fake_hub)
+
+    cache = tmp_path / "cache"
+    engine = _fresh_engine("rednote-hilab/dots.ocr", str(cache))
+    resolved = engine._resolve_local_model_dir()
+
+    assert calls["repo_id"] == "rednote-hilab/dots.ocr"
+    # Materialised under the cache, with the '.' sanitised out of the leaf.
+    assert resolved == str(cache / "local_models" / "dots_ocr")
+    assert "." not in os.path.basename(resolved)
+    # Cached: a second call returns the same path without re-downloading.
+    calls.clear()
+    assert engine._resolve_local_model_dir() == resolved
+    assert calls == {}

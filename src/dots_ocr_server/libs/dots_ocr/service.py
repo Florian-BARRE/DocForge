@@ -42,6 +42,7 @@ class DotsOcrService(LoggerClass):
     def __init__(
         self,
         model_path: str,
+        model_cache_home: str,
         render_dpi: int,
         max_pages: int,
         max_tokens: int,
@@ -53,6 +54,9 @@ class DotsOcrService(LoggerClass):
         """
         Args:
             model_path (str): The dots.ocr model id/path forwarded to the engine.
+            model_cache_home (str): Root under which the engine materialises the weights as a dot-free
+                local dir (dots.ocr's repo id contains a '.', which breaks transformers' remote-code
+                import) — forwarded to the engine.
             render_dpi (int): DPI each PDF page is rasterised to before the smart-resize.
             max_pages (int): Hard ceiling on pages parsed from one PDF (0 = no cap).
             max_tokens (int): Max new tokens the VLM may emit per page.
@@ -65,6 +69,7 @@ class DotsOcrService(LoggerClass):
         LoggerClass.__init__(self)
         self._engine = DotsOcrEngine(
             model_path=model_path,
+            model_cache_home=model_cache_home,
             render_dpi=render_dpi,
             max_pages=max_pages,
             max_tokens=max_tokens,

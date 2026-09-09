@@ -1,6 +1,6 @@
 [project]
 name = "docforge-dots-ocr-server"
-version = "1.0.2"
+version = "1.0.3"
 description = "dots.ocr per-element layout VLM micro-service — PDF in, reading-ordered blocks (text/table-html/formula-latex) out"
 requires-python = ">=3.12"
 license = "MIT"

@@ -36,6 +36,7 @@
 # ====== Standard Library Imports ======
 from __future__ import annotations
 
+import os
 from typing import Any
 
 # ====== Third-Party Library Imports ======
@@ -75,6 +76,7 @@ class DotsOcrEngine(LoggerClass):
     def __init__(
         self,
         model_path: str,
+        model_cache_home: str,
         render_dpi: int,
         max_pages: int,
         max_tokens: int,
@@ -85,6 +87,8 @@ class DotsOcrEngine(LoggerClass):
         """
         Args:
             model_path (str): HuggingFace id or local path of the dots.ocr weights transformers loads.
+            model_cache_home (str): Root under which the weights are materialised as a dot-free local
+                dir (see ``_resolve_local_model_dir`` — dots.ocr's repo id contains a '.').
             render_dpi (int): DPI each PDF page is rasterised to before the smart-resize.
             max_pages (int): Hard ceiling on pages parsed from one PDF (0 = no cap).
             max_tokens (int): Max new tokens the VLM may emit per page.
@@ -94,6 +98,8 @@ class DotsOcrEngine(LoggerClass):
         """
         LoggerClass.__init__(self)
         self._model_path = model_path
+        self._model_cache_home = model_cache_home
+        self._local_model_dir: str | None = None
         self._render_dpi = render_dpi
         self._max_pages = max_pages
         self._max_tokens = max_tokens
@@ -205,6 +211,44 @@ class DotsOcrEngine(LoggerClass):
 
     # ── transformers model (GPU) ───────────────────────────────────────────────────────
 
+    def _resolve_local_model_dir(self) -> str:
+        """Return a LOCAL model directory whose leaf name has NO '.', fetching the weights if needed.
+
+        dots.ocr's official repo id is ``rednote-hilab/dots.ocr`` — and the '.' in ``dots.ocr`` breaks
+        transformers' dynamic-module loader: it turns the weights' source path into a Python package
+        under ``transformers_modules`` by splitting on '.', so loading by that id (or any dotted leaf)
+        makes the model's own relative import fail with
+        ``ModuleNotFoundError: No module named 'transformers_modules...dots'``. Loading from a directory
+        whose basename has no '.' makes that module name dot-free, which is dots.ocr's documented
+        workaround. So: materialise the weights into a sanitised local dir under the cache and load from
+        THERE. Cached after the first resolve (idempotent — ``snapshot_download`` re-uses the dir).
+        """
+        # 1. Resolve once per engine (snapshot_download is cheap-on-cache but avoid re-walking each load).
+        if self._local_model_dir is not None:
+            return self._local_model_dir
+        leaf = os.path.basename(self._model_path.rstrip("/"))
+        # 2. An existing local dir already free of '.' is safe as-is (a pre-sanitised / mounted path).
+        if os.path.isdir(self._model_path) and "." not in leaf:
+            self._local_model_dir = self._model_path
+            return self._local_model_dir
+        # 3. Otherwise target a dot-free dir under the model cache.
+        safe_leaf = leaf.replace(".", "_") or "model"
+        local_dir = os.path.join(self._model_cache_home, "local_models", safe_leaf)
+        if os.path.isdir(self._model_path):
+            # A local BUT dotted path: symlink it under a dot-free name rather than re-download.
+            os.makedirs(os.path.dirname(local_dir), exist_ok=True)
+            if not os.path.exists(local_dir):
+                os.symlink(os.path.abspath(self._model_path), local_dir)
+        else:
+            from huggingface_hub import snapshot_download  # noqa: PLC0415
+
+            self.logger.info(
+                f"Materialising dots.ocr weights to a dot-free dir: {self._model_path} -> {local_dir}"
+            )
+            snapshot_download(repo_id=self._model_path, local_dir=local_dir)
+        self._local_model_dir = local_dir
+        return local_dir
+
     def _ensure_model(self) -> None:
         """Lazy-load the transformers model + processor for the dots.ocr weights (first call only).
 
@@ -213,6 +257,9 @@ class DotsOcrEngine(LoggerClass):
         (model loaded, processor load failed) can never wedge the engine into serving a ``None``
         processor forever: the next parse retries cleanly and the REAL load error surfaces every time,
         instead of a misleading downstream ``'NoneType' has no attribute 'apply_chat_template'``.
+
+        Loads from a DOT-FREE local dir (``_resolve_local_model_dir``), never the raw ``dots.ocr`` id,
+        so transformers' dynamic-module import of the model's remote code does not break on the '.'.
         """
         # Already fully loaded (a lone _model is a FAILED prior init, not a warm engine — re-load).
         if self._model is not None and self._processor is not None:
@@ -220,14 +267,15 @@ class DotsOcrEngine(LoggerClass):
         import torch  # noqa: PLC0415
         from transformers import AutoModelForCausalLM, AutoProcessor  # noqa: PLC0415
 
-        self.logger.info(f"Loading dots.ocr via transformers: {self._model_path} (first parse) ...")
+        model_dir = self._resolve_local_model_dir()
+        self.logger.info(f"Loading dots.ocr via transformers: {model_dir} (first parse) ...")
         try:
             # trust_remote_code: dots.ocr ships a custom HF model class transformers must import.
             # torch_dtype=float16 + attn_implementation="sdpa": the sm_70-safe combo for a Tesla V100
             # (no bf16 tensor cores, no flash-attn kernels). device_map="cuda" places the whole 3B
             # model on the single visible GPU (never sharded — "auto" is not wanted for one small model).
             model = AutoModelForCausalLM.from_pretrained(
-                self._model_path,
+                model_dir,
                 trust_remote_code=True,
                 torch_dtype=torch.float16,
                 attn_implementation="sdpa",
@@ -239,7 +287,7 @@ class DotsOcrEngine(LoggerClass):
             # to a different frame than the divisor this engine reports) — the two must agree or every
             # crop is mis-scaled.
             processor = AutoProcessor.from_pretrained(
-                self._model_path,
+                model_dir,
                 trust_remote_code=True,
                 min_pixels=self._min_pixels,
                 max_pixels=self._max_pixels,

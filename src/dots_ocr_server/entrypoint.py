@@ -39,6 +39,7 @@ def _build_app() -> FastAPI:
     #    first /parse request, so this wiring step is cheap and never touches CUDA).
     CONTEXT.dots_ocr = DotsOcrService(
         model_path=DotsOcrServerConfig.DOTS_OCR_MODEL_PATH,
+        model_cache_home=DotsOcrServerConfig.DOTS_OCR_MODEL_CACHE_HOME,
         render_dpi=DotsOcrServerConfig.DOTS_OCR_RENDER_DPI,
         max_pages=DotsOcrServerConfig.DOTS_OCR_MAX_PAGES,
         max_tokens=DotsOcrServerConfig.DOTS_OCR_MAX_TOKENS,
