@@ -110,8 +110,8 @@ class DotsOcrEngine(LoggerClass):
 
     @property
     def warmed(self) -> bool:
-        """True once the transformers model has been loaded (the first analyze() paid the load cost)."""
-        return self._model is not None
+        """True once BOTH the model and processor are loaded (a lone model is a failed partial init)."""
+        return self._model is not None and self._processor is not None
 
     def analyze(self, pdf_bytes: bytes) -> tuple[list[dict[str, Any]], int]:
         """
@@ -206,36 +206,53 @@ class DotsOcrEngine(LoggerClass):
     # ── transformers model (GPU) ───────────────────────────────────────────────────────
 
     def _ensure_model(self) -> None:
-        """Lazy-load the transformers model + processor for the dots.ocr weights (first call only)."""
-        if self._model is None:
-            import torch  # noqa: PLC0415
-            from transformers import AutoModelForCausalLM, AutoProcessor  # noqa: PLC0415
+        """Lazy-load the transformers model + processor for the dots.ocr weights (first call only).
 
-            self.logger.info(
-                f"Loading dots.ocr via transformers: {self._model_path} (first parse) ..."
-            )
+        Loads BOTH into locals and publishes them together only after both succeed. If either load
+        raises, the engine is reset to fully-unloaded and the error re-raised — so a partial init
+        (model loaded, processor load failed) can never wedge the engine into serving a ``None``
+        processor forever: the next parse retries cleanly and the REAL load error surfaces every time,
+        instead of a misleading downstream ``'NoneType' has no attribute 'apply_chat_template'``.
+        """
+        # Already fully loaded (a lone _model is a FAILED prior init, not a warm engine — re-load).
+        if self._model is not None and self._processor is not None:
+            return
+        import torch  # noqa: PLC0415
+        from transformers import AutoModelForCausalLM, AutoProcessor  # noqa: PLC0415
+
+        self.logger.info(f"Loading dots.ocr via transformers: {self._model_path} (first parse) ...")
+        try:
             # trust_remote_code: dots.ocr ships a custom HF model class transformers must import.
             # torch_dtype=float16 + attn_implementation="sdpa": the sm_70-safe combo for a Tesla V100
             # (no bf16 tensor cores, no flash-attn kernels). device_map="cuda" places the whole 3B
             # model on the single visible GPU (never sharded — "auto" is not wanted for one small model).
-            self._model = AutoModelForCausalLM.from_pretrained(
+            model = AutoModelForCausalLM.from_pretrained(
                 self._model_path,
                 trust_remote_code=True,
                 torch_dtype=torch.float16,
                 attn_implementation="sdpa",
                 device_map="cuda",
             )
-            self._model.eval()
+            model.eval()
             # Pin the SAME min/max pixel budget the sidecar smart-resized to, so the processor's own
             # smart-resize is idempotent on our already-conforming dims (it does not re-resize the page
             # to a different frame than the divisor this engine reports) — the two must agree or every
             # crop is mis-scaled.
-            self._processor = AutoProcessor.from_pretrained(
+            processor = AutoProcessor.from_pretrained(
                 self._model_path,
                 trust_remote_code=True,
                 min_pixels=self._min_pixels,
                 max_pixels=self._max_pixels,
             )
+        except Exception:
+            # Never leave a half-initialized engine: reset both so the next parse retries from scratch
+            # and the genuine load error propagates (a lone _model would otherwise skip re-init forever).
+            self._model = None
+            self._processor = None
+            raise
+        # Publish together — only now is the engine truly ready to serve.
+        self._model = model
+        self._processor = processor
 
     def _generate(self, image: Any) -> str:
         """
