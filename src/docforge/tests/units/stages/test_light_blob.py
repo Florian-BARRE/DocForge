@@ -27,7 +27,16 @@ _ENRICHMENT_NODE_IDS = {
 }
 
 # render + language stay on (both local, free) alongside the mandatory core.
-_LIGHT_ENABLED_STAGES = {"intake", "parse", "language", "render", "chunk", "embed", "deliver"}
+_LIGHT_ENABLED_STAGES = {
+    "intake",
+    "convert",
+    "parse",
+    "language",
+    "render",
+    "chunk",
+    "embed",
+    "deliver",
+}
 
 
 def test_light_blob_builds_and_validates_clean() -> None:

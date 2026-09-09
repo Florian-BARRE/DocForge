@@ -121,6 +121,9 @@ class StageViewer:
                 "figure_enrich_mode": state.figure_enrich_mode,
                 "uniform_treatment": state.uniform_treatment,
             },
+            # Convert is a fixed converter node whose config lives in the intake node map (keyed by
+            # node id), surfaced here so its base_url + optional basic-auth render in the stage rail.
+            StageKey.CONVERT: dict(state.intake_configs.get("convert", {})),
             StageKey.LANGUAGE: state.language_config,
             StageKey.RENDER: state.render_config,
             StageKey.CHUNK: state.chunker_config,

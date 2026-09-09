@@ -38,6 +38,7 @@ class StageKey(StrEnum):
     """The stable key of every stage of the canonical ingestion skeleton, in run order."""
 
     INTAKE = "intake"
+    CONVERT = "convert"
     PARSE = "parse"
     LANGUAGE = "language"
     RENDER = "render"
@@ -143,8 +144,20 @@ class StageSpecs:
             kind=StageKind.FIXED,
             removable=False,
             title="Intake",
-            description="Validate the upload against the collection contract and prepare a PDF "
-            "view (format probe, admission gate, conversion, PDF probe, content addressing).",
+            description="Validate the upload against the collection contract and prepare it for "
+            "conversion (format probe, admission gate, PDF probe, content addressing).",
+        ),
+        StageMeta(
+            key=StageKey.CONVERT,
+            kind=StageKind.TOGGLE,
+            removable=False,
+            family="converter",
+            primary_node="convert",
+            title="Convert",
+            description="Convert office/legacy/image sources to a PDF view with the chosen "
+            "converter (Gotenberg's LibreOffice/Chromium routes); html/md pass through untouched. "
+            "Point base_url at a remote Gotenberg and set the optional basic-auth username/password "
+            "when it sits behind auth — empty means the in-stack service (always on, not removable).",
         ),
         StageMeta(
             key=StageKey.PARSE,

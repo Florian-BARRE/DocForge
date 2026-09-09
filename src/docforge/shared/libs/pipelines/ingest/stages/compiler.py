@@ -319,6 +319,11 @@ class StageCompiler(LoggerClass):
                 return
             state.intake_configs[node] = dict(config)
             return
+        # 1b. Convert is surfaced as its own stage card but its node lives in the intake segment, so
+        #     its config is stored under the ``convert`` intake node id (node arg unused: primary).
+        if stage == StageKey.CONVERT:
+            state.intake_configs["convert"] = dict(config)
+            return
         # 2. A chain stage (parse, embed) — editing its config edits the head step (the selected
         #    provider); the fuller chain is edited with SetChain.
         if stage in _CHAIN_STAGES:

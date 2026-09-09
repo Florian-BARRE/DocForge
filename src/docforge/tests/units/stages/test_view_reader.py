@@ -1,4 +1,4 @@
-"""The stage VIEW/READ layer: the default blob's canonical shape, the full 11-stage catalog,
+"""The stage VIEW/READ layer: the default blob's canonical shape, the full 12-stage catalog,
 and the compiler's dependency-cascade correctness (enrich requires render).
 
 Sections 1, 2, 4a, 4b of the scratchpad's test_stage_layer.py — the only sections not already
@@ -15,6 +15,7 @@ from shared_libs.pipelines.ingest import IngestPipeline
 from shared_libs.pipelines.ingest.stages import (
     DisableStage,
     EnableStage,
+    SetStageConfig,
     StageViewer,
     StateReader,
 )
@@ -42,6 +43,7 @@ EXPECTED_TOP_LEVEL_IDS = [
 # ship disabled (provider-hosted, opt-in).
 DEFAULT_ENABLED_STAGES = {
     "intake",
+    "convert",
     "parse",
     "language",
     "render",
@@ -54,6 +56,7 @@ DEFAULT_DISABLED_STAGES = {"enrich", "metagen_chunk", "metagen_document"}
 
 EXPECTED_STAGE_ORDER = [
     "intake",
+    "convert",
     "parse",
     "language",
     "render",
@@ -82,10 +85,10 @@ def test_default_blob_has_the_canonical_top_level_node_ids_and_zero_issues(
     assert issues == [], issues
 
 
-def test_stage_catalog_lists_all_eleven_stages_in_run_order_with_provider_stages_off(
+def test_stage_catalog_lists_all_twelve_stages_in_run_order_with_provider_stages_off(
     builder, validator
 ) -> None:
-    """The catalog always lists all eleven stages in run order (disabled ones stay visible/greyed);
+    """The catalog always lists all twelve stages in run order (disabled ones stay visible/greyed);
     only the reachable core ships enabled — the provider-hosted stages default off (opt-in)."""
     default = IngestPipeline.default_blob()
     keys = [stage.key for stage in StageViewer.catalog(StateReader.read(default)).stages]
@@ -107,6 +110,44 @@ def test_stage_catalog_flags_removable_and_available_providers(builder, validato
     # Mandatory stages are never removable.
     assert stages["intake"].removable is False
     assert stages["parse"].removable is False
+
+
+def test_convert_stage_is_a_visible_editable_converter_step(builder, validator) -> None:
+    """The conversion node is surfaced as its own always-on stage card whose schema-driven config
+    exposes the gotenberg base_url (the auth fields render from the same converter node schema)."""
+    default = IngestPipeline.default_blob()
+    stages = _view(default, builder, validator)
+    convert = stages["convert"]
+    # Always on (structural), editable via the schema-driven config form (toggle face → SchemaForm).
+    assert convert.kind == "toggle"
+    assert convert.removable is False
+    assert convert.enabled is True
+    assert convert.family == "converter"
+    # The stock endpoint is surfaced so the base_url (and the optional basic-auth) are editable.
+    assert convert.config == {"base_url": "http://gotenberg:3000"}
+
+
+def test_editing_the_convert_config_round_trips_the_remote_gotenberg_auth(
+    builder, validator, compiler
+) -> None:
+    """A set_config on the convert stage lands on the intake ``convert`` node, so a remote Gotenberg
+    base_url + basic-auth persists in the blob and re-reads through the stage view."""
+    default = IngestPipeline.default_blob()
+    new_config = {
+        "base_url": "https://gotenberg.remote:3000",
+        "username": "forge",
+        "password": "s3cr3t",
+    }
+    edited, notices = compiler.apply(
+        default, SetStageConfig(stage="convert", node=None, config=new_config)
+    )
+
+    # 1. The graph still builds clean and the convert node carries the new config verbatim.
+    assert validator.validate(builder.build(edited)) == []
+    convert_node = next(n for n in edited.nodes if n.id == "convert")
+    assert convert_node.config == new_config
+    # 2. The stage view re-reads the edited config (the auth is visible for the next edit).
+    assert _view(edited, builder, validator)["convert"].config == new_config
 
 
 def test_disable_enrich_alone_rebinds_chunk_ir_to_render_with_no_render_notice(

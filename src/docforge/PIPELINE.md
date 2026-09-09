@@ -135,7 +135,7 @@ flowchart TB
 |---|---|---|---|
 | **format_probe** | — | `source : SourceDocument` ← run | `probe : SourceProbe` |
 | **admission** | `unknown_field_policy` = reject\|ignore | `source` ← run · `probe : SourceProbe` ← format_probe · `contract : CollectionContract` ← run | `source : SourceDocument` (méta nettoyées) |
-| **convert / gotenberg** | `base_url` (requis) · `timeout_seconds`=120 · `username`/`password` (optionnels — basic-auth d'un Gotenberg DISTANT ; vides = service in-stack, aucune auth ; `password` masqué en lecture/export) | `source` ← admission · `probe` ← format_probe | `pdf : PdfView` (None si inconvertible → dégradation) |
+| **convert / gotenberg** | `base_url` (requis) · `timeout_seconds`=120 · `username`/`password` (optionnels — basic-auth d'un Gotenberg DISTANT ; vides = service in-stack, aucune auth ; `password` masqué en lecture/export). **Carte de stage-rail éditable dédiée** (`StageKey.CONVERT`, kind `TOGGLE` `removable=False` = toujours-on mais configurable) — l'adresse + l'auth se règlent dans le rail via `SchemaForm`, comme le node `language`. | `source` ← admission · `probe` ← format_probe | `pdf : PdfView` (None si inconvertible → dégradation) |
 | **pdf_probe** | `max_pages`=2000 (0 = pas de plafond) | `pdf : PdfView` ← convert | `probe : PdfProbe` (page_count) — un PDF au-delà de `max_pages` est rejeté ICI, avant parse/OCR |
 | **content_address** | — | `source` ← admission · `source_probe : SourceProbe` ← format_probe · `pdf` ← convert · `probe` ← pdf_probe | `ingest : IntakeResult` |
 
