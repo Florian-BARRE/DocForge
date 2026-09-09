@@ -1,6 +1,6 @@
 [project]
 name = "docforge-dots-ocr-server"
-version = "1.0.1"
+version = "1.0.2"
 description = "dots.ocr per-element layout VLM micro-service — PDF in, reading-ordered blocks (text/table-html/formula-latex) out"
 requires-python = ">=3.12"
 license = "MIT"
@@ -42,7 +42,12 @@ cpu = ["torch", "torchvision"]
 gpu = [
     "torch",
     "torchvision",
-    "transformers>=4.49.0,<5",
+    # Pinned EXACT to dots.ocr's own requirements.txt (rednote-hilab/dots.ocr): its remote-code
+    # processor (configuration_dots.py) subclasses Qwen2_5_VLProcessor and calls super().__init__
+    # WITHOUT a video_processor. transformers >=4.57 made video_processor a required non-None arg of
+    # that processor (check_argument_for_proper_class) -> `TypeError: Received a NoneType for argument
+    # video_processor`. 4.56.1 is the version dots.ocr ships/tests against; do NOT float it.
+    "transformers==4.56.1",
     "accelerate>=0.34.0",
     "qwen-vl-utils>=0.0.8",
 ]
