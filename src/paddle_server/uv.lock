@@ -527,14 +527,13 @@ wheels = [
 
 [[package]]
 name = "docforge-paddle-server"
-version = "1.0.0"
+version = "1.0.1"
 source = { virtual = "." }
 dependencies = [
     { name = "configplusplus" },
     { name = "fastapi" },
     { name = "loggerplusplus" },
     { name = "paddleocr" },
-    { name = "paddlepaddle" },
     { name = "paddlex", extra = ["ocr"] },
     { name = "pyfiglet" },
     { name = "uvicorn", extra = ["standard"] },
@@ -563,9 +562,8 @@ requires-dist = [
     { name = "fastapi", specifier = ">=0.115.0" },
     { name = "loggerplusplus", specifier = ">=1.0.0" },
     { name = "paddleocr", specifier = "==3.7.0" },
-    { name = "paddlepaddle", specifier = "==3.3.1" },
-    { name = "paddlepaddle", marker = "extra == 'cpu'" },
-    { name = "paddlepaddle-gpu", marker = "extra == 'gpu'", index = "https://www.paddlepaddle.org.cn/packages/stable/cu126/", conflict = { package = "docforge-paddle-server", extra = "gpu" } },
+    { name = "paddlepaddle", marker = "extra == 'cpu'", specifier = "==3.3.1" },
+    { name = "paddlepaddle-gpu", marker = "extra == 'gpu'", specifier = "==3.3.1", index = "https://www.paddlepaddle.org.cn/packages/stable/cu126/", conflict = { package = "docforge-paddle-server", extra = "gpu" } },
     { name = "paddlex", extras = ["ocr"], specifier = "==3.7.2" },
     { name = "pyfiglet", specifier = ">=1.0.2" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.30.0" },

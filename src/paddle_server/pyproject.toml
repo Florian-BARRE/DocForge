@@ -1,6 +1,6 @@
 [project]
 name = "docforge-paddle-server"
-version = "1.0.0"
+version = "1.0.1"
 description = "PaddleOCR PP-StructureV3 layout-parsing micro-service — PDF/image in, reading-ordered blocks (text/table-html/formula-latex) out"
 requires-python = ">=3.12"
 license = "GPL-3.0-or-later"
@@ -16,10 +16,16 @@ dependencies = [
     # for table HTML serialization, latex2mathml/sentencepiece/tokenizers for formula recognition)
     # so every sub-pipeline toggle works without a rebuild, matching the same pin as paddleocr.
     "paddlex[ocr]==3.7.2",
-    # paddlepaddle itself is a DIRECT dependency (not just paddlex's transitive pull) so uv sources
-    # below can steer it to the correct wheel index — same reasoning as bge_server's direct torch
-    # declaration (uv sources are ignored for transitive deps).
-    "paddlepaddle==3.3.1",
+    # paddlepaddle is DELIBERATELY ABSENT here — verified against PyPI metadata that neither
+    # paddleocr==3.7.0 nor paddlex==3.7.2 declares paddlepaddle as a dependency of their own (both
+    # expect the caller to bring their own paddle install, CPU or GPU). Unlike torch (same dist
+    # name, different wheel per index — see bge_server), Paddle ships CPU and GPU as two DIFFERENT
+    # PyPI distribution names (`paddlepaddle` vs `paddlepaddle-gpu`) that both install into the
+    # same `site-packages/paddle/` tree. An earlier revision pinned `paddlepaddle==3.3.1` HERE
+    # unconditionally, which meant the plain CPU wheel got installed in EVERY build — including the
+    # gpu extra below — clobbering the GPU wheel's shared libs post-install and crashing `import
+    # paddle` at runtime with an undefined-symbol ImportError. The variant choice must live
+    # EXCLUSIVELY in the cpu/gpu extras below.
     # FastAPI + ASGI server.
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.30.0",
@@ -40,13 +46,19 @@ dependencies = [
 # used by worker/bge_server for zero release-workflow special-casing, even though this service is
 # Paddle not torch). Default: cpu.
 #
+# Each extra pins the SAME exact version (3.3.1) as the two distributions' own release cadence
+# aligns 1:1 — keeping both pins explicit (rather than leaving one of them floating) means a bare
+# `uv lock --upgrade` can't silently drift cpu and gpu apart. This is now the ONLY place
+# paddlepaddle/paddlepaddle-gpu are declared — see the comment on paddlex above for why a base
+# `dependencies` pin must never come back.
+#
 # Build commands:
 #   CPU  (default): docker compose build paddle_server
 #   GPU  (opt-in):  docker build --build-arg TORCH_VARIANT=gpu -f src/paddle_server/Dockerfile \
 #                     -t docforge-paddle-server:gpu src
 [project.optional-dependencies]
-cpu = ["paddlepaddle"]
-gpu = ["paddlepaddle-gpu"]
+cpu = ["paddlepaddle==3.3.1"]
+gpu = ["paddlepaddle-gpu==3.3.1"]
 
 [dependency-groups]
 dev = [
