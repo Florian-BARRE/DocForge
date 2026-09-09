@@ -1,6 +1,6 @@
 [project]
 name = "docforge-mineru-server"
-version = "1.0.1"
+version = "1.0.2"
 description = "MinerU2.5-Pro VLM layout-parsing micro-service — PDF in, reading-ordered blocks (text/table-html/formula-latex) out"
 requires-python = ">=3.12"
 license = "GPL-3.0-or-later"

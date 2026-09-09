@@ -95,12 +95,26 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 #   mounts a named volume so weights persist across restarts.
 # - MALLOC_ARENA_MAX: caps glibc malloc arenas at 2 — the multi-threaded native stack (torch/OpenMP)
 #   otherwise scales arenas to the HOST's core count, inflating RSS well past what is needed.
+# - TORCH_DISABLE_NATIVE_JIT: torch>=2.10's `torch/_native` eager-triton router (see
+#   torch/_native/triton_utils.py::register_op_override, gated by
+#   torch/_native/common_utils.py::check_native_jit_disabled) opportunistically overrides SOME eager
+#   ops (observed: the "bmm" op family — e.g. the rotary-embedding matmul in transformers' Qwen2-VL
+#   forward pass, MinerU's VLM backend) with a Triton kernel that is JIT-COMPILED AT RUNTIME on first
+#   call. That JIT compile needs a host C compiler (gcc/cc), which this slim runtime image does not
+#   ship, so the very first GPU parse crashes with "RuntimeError: Failed to find C compiler." This var
+#   makes `register_op_override` a documented no-op (verified: `get_dsl_operations("triton")` returns
+#   `["bmm"]` unset vs `[]` set, on the SAME torch==2.13.0+cu126/triton==3.7.1 pair mineru ships) —
+#   eager execution then falls straight through to the standard ATen/cuBLAS bmm kernel, exactly as
+#   torch<2.10 always did (verified: torch==2.9.0, which bge_server/worker/dots_ocr_server precedents
+#   don't hit this on, has no `torch/_native/` package at all). No image bloat, no torch downgrade, no
+#   runtime JIT latency. See agent-memory/infra/mineru-torch-native-triton-jit.md.
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PATH="/opt/venv/bin:${PATH}" \
     HF_HOME=/models \
     MINERU_MODEL_CACHE_HOME=/models \
-    MALLOC_ARENA_MAX=2
+    MALLOC_ARENA_MAX=2 \
+    TORCH_DISABLE_NATIVE_JIT=1
 
 # Working directory is set to the application root so that `config_loader`, `backend`, and `libs` are
 # all top-level names on sys.path — matches the sibling src/bge_server/ + src/paddle_server/ pattern.
