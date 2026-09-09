@@ -8,6 +8,9 @@
 # positives: a connection failure (DNS/refused/timeout) is fatal, a 401/403 is fatal, and ANY other
 # HTTP status means the host answered — reachable — so it passes.
 
+# ====== Standard Library Imports ======
+import base64
+
 # ====== Third-Party Library Imports ======
 import httpx
 from loggerplusplus import loggerplusplus
@@ -60,6 +63,7 @@ class EndpointReachability:
         node_kind: str,
         base_url: str,
         api_key: str = "",
+        basic_auth: tuple[str, str] | None = None,
         timeout_seconds: float = _DEFAULT_PREFLIGHT_TIMEOUT_SECONDS,
         path: str = "/models",
     ) -> None:
@@ -70,6 +74,10 @@ class EndpointReachability:
             node_kind (str): The calling node's KIND, named in the error for a clear message.
             base_url (str): The endpoint base URL to reach (per-collection config).
             api_key (str): Bearer token sent when non-empty (lets the probe surface a 401/403).
+            basic_auth (tuple[str, str] | None): ``(username, password)`` for an endpoint behind
+                HTTP basic auth (e.g. a remote Gotenberg). When set it authenticates the probe with a
+                Basic ``Authorization`` header INSTEAD of the bearer, so an authed ``/health`` reads
+                as reachable rather than a 401. Mutually exclusive with ``api_key`` — basic_auth wins.
             timeout_seconds (float): Per-attempt probe timeout — the node's configured
                 ``preflight_timeout_seconds``, used as-is (no ceiling; the config wins).
             path (str): The lightweight route appended to ``base_url`` (defaults to ``/models``).
@@ -78,10 +86,17 @@ class EndpointReachability:
             PreflightError: The host is unreachable (DNS/refused/timeout, after the retries) or the
                 credentials are rejected (HTTP 401/403). Any other status is treated as reachable.
         """
-        # 1. Build the probe URL + optional bearer. The configured timeout is used directly — the
-        #    sweep bounds the overall probe, so preflight no longer needs to cap the per-attempt value.
+        # 1. Build the probe URL + credentials. Basic auth wins over the bearer when both are given (a
+        #    remote behind basic auth). The configured timeout is used directly — the sweep bounds the
+        #    overall probe, so preflight no longer needs to cap the per-attempt value.
         url = base_url.rstrip("/") + path
-        headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+        if basic_auth is not None:
+            token = base64.b64encode(f"{basic_auth[0]}:{basic_auth[1]}".encode()).decode("ascii")
+            headers = {"Authorization": f"Basic {token}"}
+        elif api_key:
+            headers = {"Authorization": f"Bearer {api_key}"}
+        else:
+            headers = {}
         timeout = timeout_seconds
 
         # 2. Try once, retry on a transport error to absorb a transient blip.

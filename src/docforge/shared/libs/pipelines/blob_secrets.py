@@ -4,17 +4,20 @@
 # worker (which masks secrets before writing a portable export bundle). The product STORES provider
 # secrets per collection in clear (an accepted design choice), but must NEVER leak them off the server:
 # not on a GET, and not inside an exported `.dcexport` bundle a READ-scoped key can download. This
-# module is the ONE definition of "walk a node graph, mask/restore every provider ``api_key``", so the
-# API surface and the export surface can never drift on what counts as a secret.
+# module is the ONE definition of "walk a node graph, mask/restore every provider secret field" (the
+# name-keyed ``SECRET_FIELDS`` — ``api_key`` plus the gotenberg basic-auth ``password``), so the API
+# surface and the export surface can never drift on what counts as a secret.
 
 # ====== Standard Library Imports ======
 import copy
 from typing import Any
 
-# The provider-node config keys that hold a secret. Every provider node (openai_compat llm/vlm/embed,
-# mistral ocr/llm, bge_server embed, structgen, cross_encoder rerank) declares its secret as a
-# TOP-LEVEL config key named exactly "api_key" — audited across the node Config models.
-SECRET_FIELDS: frozenset[str] = frozenset({"api_key"})
+# The provider-node config keys that hold a secret, matched by NAME across every node config. Most
+# provider nodes (openai_compat llm/vlm/embed, mistral ocr/llm, bge_server embed, structgen,
+# cross_encoder rerank) declare their secret as a TOP-LEVEL "api_key"; the gotenberg converter adds a
+# basic-auth "password" for a remote instance (its "username" is NOT a secret and stays clear). Any
+# future field named "api_key"/"password" is auto-covered — audited across the node Config models.
+SECRET_FIELDS: frozenset[str] = frozenset({"api_key", "password"})
 
 # Marker prefixing every masked secret. A masked value is NON-reversible (only the last 4 chars of the
 # real key survive, purely so an operator can tell a key is set and which one) and is recognisable on

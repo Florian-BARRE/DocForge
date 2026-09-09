@@ -73,19 +73,35 @@ class ConverterGotenbergNode(BaseConverterNode):
     # PDF: Gotenberg's Chromium routes render them for the page-render + PDF-view channel only.
     PREVIEW_FORMATS = frozenset({"html", "md"})
 
+    def _basic_auth(self) -> httpx.BasicAuth | None:
+        """Build the HTTP basic-auth for a REMOTE Gotenberg, or None for the in-stack service.
+
+        Auth applies only when BOTH username and password are set (a per-collection remote instance);
+        an empty pair means the in-stack service, which needs no credentials.
+        """
+        config: ConverterGotenbergConfig = self.config
+        if config.username and config.password:
+            return httpx.BasicAuth(config.username, config.password)
+        return None
+
     async def preflight(self) -> None:
         """Verify the Gotenberg service is reachable before any conversion spend.
 
         Gotenberg is the one provider-hosted node on the intake path; without this it was the only
         external endpoint preflight could not check. Probes its ``/health`` route — any answer
-        proves the host is up.
+        proves the host is up. A remote instance behind basic auth is probed WITH those credentials,
+        so an authed ``/health`` reads as reachable (OK) rather than a 401 (auth_failed).
         """
         config: ConverterGotenbergConfig = self.config
+        basic_auth = (
+            (config.username, config.password) if config.username and config.password else None
+        )
         await EndpointReachability.check(
             node_kind=self.KIND,
             base_url=config.base_url,
             timeout_seconds=config.preflight_timeout_seconds,
             path="/health",
+            basic_auth=basic_auth,
         )
 
     async def _convert(self, source: SourceDocument, probe: SourceProbe) -> bytes | None:
@@ -106,7 +122,7 @@ class ConverterGotenbergNode(BaseConverterNode):
         # 2. POST the file (under the shared bounded retry); Gotenberg answers with the PDF bytes.
         async def _post() -> bytes:
             async with httpx.AsyncClient(
-                base_url=config.base_url, timeout=config.timeout_seconds
+                base_url=config.base_url, timeout=config.timeout_seconds, auth=self._basic_auth()
             ) as client:
                 response = await client.post(
                     route, files={"files": (upload_name, source.content, probe.mime_type)}
@@ -158,7 +174,7 @@ class ConverterGotenbergNode(BaseConverterNode):
         # not lose the view-only preview any more than it may lose the parser PDF.
         async def _post() -> bytes:
             async with httpx.AsyncClient(
-                base_url=config.base_url, timeout=config.timeout_seconds
+                base_url=config.base_url, timeout=config.timeout_seconds, auth=self._basic_auth()
             ) as client:
                 response = await client.post(route, files=files)
                 response.raise_for_status()

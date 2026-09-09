@@ -72,6 +72,52 @@ async def test_connection_failure_is_fatal_after_retry(monkeypatch) -> None:
         await EndpointReachability.check(node_kind="ocr", base_url="http://nope:9999")
 
 
+def _capturing_client(*, captured: dict, status_code: int = 200):
+    """A stand-in httpx.AsyncClient that records the headers of its GET probe."""
+
+    class _Client:
+        def __init__(self, *args: object, **kwargs: object) -> None: ...
+
+        async def __aenter__(self) -> "_Client":
+            return self
+
+        async def __aexit__(self, *exc: object) -> None: ...
+
+        async def get(self, url: str, headers: dict | None = None) -> _FakeResponse:
+            captured["headers"] = headers or {}
+            return _FakeResponse(status_code)
+
+    return _Client
+
+
+async def test_basic_auth_sends_a_basic_authorization_header(monkeypatch) -> None:
+    # A remote endpoint behind basic auth is probed with a Basic (not Bearer) Authorization header.
+    captured: dict = {}
+    monkeypatch.setattr(httpx, "AsyncClient", _capturing_client(captured=captured))
+    await EndpointReachability.check(
+        node_kind="gotenberg",
+        base_url="https://gotenberg.remote:3000",
+        basic_auth=("forge", "s3cr3t"),
+        path="/health",
+    )
+    auth = captured["headers"].get("Authorization", "")
+    assert auth.startswith("Basic ")
+    assert "Bearer" not in auth
+
+
+async def test_basic_auth_wins_over_bearer_when_both_given(monkeypatch) -> None:
+    # basic_auth is mutually exclusive with api_key and takes precedence.
+    captured: dict = {}
+    monkeypatch.setattr(httpx, "AsyncClient", _capturing_client(captured=captured))
+    await EndpointReachability.check(
+        node_kind="gotenberg",
+        base_url="https://x:3000",
+        api_key="tok",
+        basic_auth=("forge", "s3cr3t"),
+    )
+    assert captured["headers"]["Authorization"].startswith("Basic ")
+
+
 async def test_base_node_preflight_is_a_noop() -> None:
     # A model-free node inherits the default no-op preflight — it must never raise.
     node = FigureEntryNode(id="entry", config=FigureEntryConfig())

@@ -19,6 +19,20 @@ class ConverterGotenbergConfig(TimeoutRetryConfig):
 
     base_url: str = Field(description="Gotenberg endpoint (e.g. http://gotenberg:3000).")
     timeout_seconds: float = Field(default=120.0, gt=0, description="HTTP timeout per conversion.")
+    username: str = Field(
+        default="",
+        description=(
+            "Basic-auth username for a REMOTE Gotenberg (empty = no auth; the in-stack service "
+            "needs none)."
+        ),
+    )
+    password: str = Field(
+        default="",
+        description=(
+            "Basic-auth password for a REMOTE Gotenberg (empty = no auth). Stored per-collection "
+            "and masked on read/export."
+        ),
+    )
 
 
 __all__ = ["ConverterGotenbergConfig"]

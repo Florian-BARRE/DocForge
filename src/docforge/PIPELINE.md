@@ -100,7 +100,7 @@ flowchart TB
     ADMIT["<b>admission</b> (intake)<br/>─────────────<br/>gate fail-fast : format DÉTECTÉ ∈ contrat,<br/>vide, taille, métadonnées (required/type/enum)<br/>⚙️ unknown_field_policy: reject|ignore"]:::node
 
     subgraph CONV["🔀 CHOIX — famille converter (1 parmi)"]
-        GOT["<b>gotenberg</b><br/>─────────────<br/>office/legacy/images → LibreOffice<br/>html → Chromium · pdf → passthrough<br/>⚙️ base_url · timeout_seconds=120"]:::choice
+        GOT["<b>gotenberg</b><br/>─────────────<br/>office/legacy/images → LibreOffice<br/>html → Chromium · pdf → passthrough<br/>⚙️ base_url · timeout_seconds=120 · username/password (basic-auth distant, opt.)"]:::choice
         FUT1["(futur : libreoffice direct, …)"]:::choice
     end
 
@@ -135,7 +135,7 @@ flowchart TB
 |---|---|---|---|
 | **format_probe** | — | `source : SourceDocument` ← run | `probe : SourceProbe` |
 | **admission** | `unknown_field_policy` = reject\|ignore | `source` ← run · `probe : SourceProbe` ← format_probe · `contract : CollectionContract` ← run | `source : SourceDocument` (méta nettoyées) |
-| **convert / gotenberg** | `base_url` (requis) · `timeout_seconds`=120 | `source` ← admission · `probe` ← format_probe | `pdf : PdfView` (None si inconvertible → dégradation) |
+| **convert / gotenberg** | `base_url` (requis) · `timeout_seconds`=120 · `username`/`password` (optionnels — basic-auth d'un Gotenberg DISTANT ; vides = service in-stack, aucune auth ; `password` masqué en lecture/export) | `source` ← admission · `probe` ← format_probe | `pdf : PdfView` (None si inconvertible → dégradation) |
 | **pdf_probe** | `max_pages`=2000 (0 = pas de plafond) | `pdf : PdfView` ← convert | `probe : PdfProbe` (page_count) — un PDF au-delà de `max_pages` est rejeté ICI, avant parse/OCR |
 | **content_address** | — | `source` ← admission · `source_probe : SourceProbe` ← format_probe · `pdf` ← convert · `probe` ← pdf_probe | `ingest : IntakeResult` |
 

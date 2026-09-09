@@ -222,6 +222,72 @@ def test_restore_blanks_an_orphan_mask_never_persists_it(fastapi_app) -> None:
     assert healed["nodes"][0]["config"]["api_key"] == ""
 
 
+# ─────────────────────────── gotenberg basic-auth password (a second secret field) ───────────────────────────
+
+GOTENBERG_PASSWORD = "g0t3nb3rg-REMOTE-pass"
+
+
+def _gotenberg_basic_auth_pipeline() -> dict:
+    """A pipeline whose converter node carries a REMOTE-Gotenberg basic-auth username + password.
+
+    The username is NOT a secret (must stay clear); the password is (must be masked like api_key).
+    """
+    return {
+        "node_type": "group",
+        "id": "root",
+        "nodes": [
+            {
+                "node_type": "action",
+                "id": "conv1",
+                "family": "converter",
+                "kind": "gotenberg",
+                "config": {
+                    "base_url": "https://gotenberg.remote:3000",
+                    "username": "forge",
+                    "password": GOTENBERG_PASSWORD,
+                },
+            }
+        ],
+    }
+
+
+def test_redact_masks_gotenberg_password_but_not_username(fastapi_app) -> None:
+    from shared_libs.pipelines.blob_secrets import MASK_PREFIX, redact_blob_secrets
+
+    masked = redact_blob_secrets(_gotenberg_basic_auth_pipeline())
+    config = masked["nodes"][0]["config"]
+    assert GOTENBERG_PASSWORD not in str(masked)
+    assert config["password"] == f"{MASK_PREFIX}pass"
+    assert config["username"] == "forge"  # the username is not a secret — never masked
+
+
+def test_restore_keeps_stored_gotenberg_password_on_masked_round_trip(fastapi_app) -> None:
+    from shared_libs.pipelines.blob_secrets import redact_blob_secrets, restore_blob_secrets
+
+    stored = _gotenberg_basic_auth_pipeline()
+    incoming = redact_blob_secrets(stored)  # client PATCHes the masked password back untouched
+    healed = restore_blob_secrets(incoming, stored)
+    assert healed["nodes"][0]["config"]["password"] == GOTENBERG_PASSWORD
+
+
+def test_restore_blanks_an_orphan_gotenberg_password_mask(fastapi_app) -> None:
+    from shared_libs.pipelines.blob_secrets import MASK_PREFIX, restore_blob_secrets
+
+    incoming = {
+        "nodes": [
+            {
+                "node_type": "action",
+                "id": "ghost",
+                "family": "converter",
+                "kind": "gotenberg",
+                "config": {"password": f"{MASK_PREFIX}dead"},
+            }
+        ]
+    }
+    healed = restore_blob_secrets(incoming, {"nodes": []})
+    assert healed["nodes"][0]["config"]["password"] == ""
+
+
 # ─────────────────────────── HTTP surface: list + detail never leak ───────────────────────────
 
 
