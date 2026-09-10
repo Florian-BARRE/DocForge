@@ -5,7 +5,7 @@ from .keys import AuthKeys
 from .principal import AuthPrincipal
 
 # ---------------------- AuthN dependency (the gate) ---------------------- #
-from .dependency import authenticate
+from .dependency import authenticate, evict_cached_key
 
 # ---------------------- AuthN ASGI middleware (pre-body gate) ---------------------- #
 from .middleware import AuthMiddleware
@@ -22,6 +22,7 @@ __all__ = [
     "AuthKeys",
     "AuthPrincipal",
     "authenticate",
+    "evict_cached_key",
     "AuthMiddleware",
     "Capability",
     "KeyPermissions",

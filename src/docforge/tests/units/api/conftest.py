@@ -56,3 +56,19 @@ def _auth_off_by_default(fastapi_app, monkeypatch):
     # down). Off here regardless of the ambient .env; test_audit.py flips it back on with mocks to
     # cover the audit path itself (its override runs after this and wins, reverting cleanly).
     monkeypatch.setattr(RUNTIME_CONFIG, "AUDIT_ENABLED", False)
+
+
+@pytest.fixture(autouse=True)
+def _clear_auth_key_cache(fastapi_app):
+    """Reset the process-level authN key cache around every test.
+
+    ``_KEY_CACHE`` in ``backend.libs.auth.dependency`` is a module singleton shared across the whole
+    session. Every auth-on test presents the same bearer (``df_whatever``) → the same hash, so a
+    resolution cached by one test would otherwise be served to the next (e.g. a root principal leaking
+    into a test that expects a scoped-key 403). Clear before AND after to keep tests independent.
+    """
+    from backend.libs.auth.dependency import _KEY_CACHE  # noqa: PLC0415 — deferred import
+
+    _KEY_CACHE.clear()
+    yield
+    _KEY_CACHE.clear()

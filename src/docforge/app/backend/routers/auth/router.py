@@ -17,7 +17,7 @@ from shared_libs.services.db.postgresql.tables import ApiKey
 
 # ====== Local Project Imports ======
 from ...context import CONTEXT
-from ...libs.auth import AuthKeys, Capability, require
+from ...libs.auth import AuthKeys, Capability, evict_cached_key, require
 from ...libs.logsafe import LogSafeHelpers
 from ...utils.error_handling import auto_handle_errors
 from .models import CreatedKey, CreateKeyRequest, KeyInfo, RotateKeyRequest
@@ -242,8 +242,12 @@ async def rotate_key(key_id: uuid.UUID, payload: RotateKeyRequest) -> CreatedKey
         )
     )
 
-    # 4. Revoke the old key — the new secret is now the sole active credential.
+    # 4. Revoke the old key — the new secret is now the sole active credential. Evict its cached
+    #    lookup so the rotated-away secret stops authenticating in THIS process at once (we already
+    #    hold its hash; other replicas/the worker wait out the short TTL). The standalone DELETE
+    #    /auth/keys/{id} path holds only the key id, so it relies on the TTL instead.
     await CONTEXT.database.auth.revoke_key(old.id, datetime.now(UTC))
+    evict_cached_key(old.key_hash)
     CONTEXT.logger.info(f"API key {key_id} rotated → {created.id} (prefix={prefix})")
 
     # 5. Return the plaintext ONCE — same one-time contract as creation.

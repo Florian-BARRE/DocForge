@@ -306,6 +306,7 @@ def _old_key(
     permissions=None,
     expires_at=None,
     revoked_at=None,
+    key_hash="old-key-hash",
 ) -> SimpleNamespace:
     """A stand-in for the source ApiKey row being rotated (only the fields the handler reads)."""
     return SimpleNamespace(
@@ -315,6 +316,7 @@ def _old_key(
         permissions=permissions,
         expires_at=expires_at,
         revoked_at=revoked_at,
+        key_hash=key_hash,
     )
 
 
@@ -427,6 +429,33 @@ def test_rotate_key_scoped_permissions_override_replaces_full_access(client, mon
 
     assert response.status_code == 201, response.text
     assert captured["key"].permissions == new_scope
+
+
+def test_rotate_key_evicts_old_key_from_cache(client, monkeypatch) -> None:
+    """Rotation drops the old key's cached lookup so the rotated-away secret dies in-process at once."""
+    from backend.context import CONTEXT
+    from backend.libs.auth.dependency import _KEY_CACHE
+
+    _auth_on(monkeypatch)
+    _root_principal_resolves(monkeypatch)
+    monkeypatch.setattr(
+        CONTEXT.database.auth,
+        "get_user_by_username",
+        AsyncMock(return_value=SimpleNamespace(id=ROOT_ID)),
+    )
+    old = _old_key(key_hash="hash-to-evict")
+    monkeypatch.setattr(CONTEXT.database.auth, "get_key", AsyncMock(return_value=old))
+    _mock_rotate_create(monkeypatch, {})
+    monkeypatch.setattr(CONTEXT.database.auth, "revoke_key", AsyncMock())
+    # Seed a stale cache entry for the old key as if it had just authenticated a request.
+    _KEY_CACHE.put("hash-to-evict", (old, SimpleNamespace(is_active=True)))
+    assert _KEY_CACHE.get("hash-to-evict")[0] is True
+
+    response = client.post(f"/api/v1/auth/keys/{old.id}/rotate", json={}, headers=_headers())
+
+    assert response.status_code == 201, response.text
+    # The old key's cached resolution is gone — a subsequent request re-reads the (now revoked) row.
+    assert _KEY_CACHE.get("hash-to-evict")[0] is False
 
 
 def test_rotate_key_missing_key_is_404(client, monkeypatch) -> None:

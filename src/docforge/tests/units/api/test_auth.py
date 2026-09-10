@@ -452,6 +452,107 @@ async def test_authenticate_auth_off_never_touches_last_used(fastapi_app, monkey
     auth.touch_key_last_used.assert_not_called()
 
 
+# ── AuthKeyCache (authN hot-path lookup cache) ──────────────────────────────────────────────────
+
+
+async def test_authenticate_caches_lookup_skips_second_db_read(fastapi_app, monkeypatch) -> None:
+    """A second authentication of the same key within the TTL is served from cache — no DB read."""
+    from backend.context import CONTEXT  # noqa: PLC0415
+    from backend.libs.auth.dependency import authenticate  # noqa: PLC0415
+    from config import RUNTIME_CONFIG  # noqa: PLC0415
+
+    monkeypatch.setattr(RUNTIME_CONFIG, "AUTH_ENABLED", True)
+    monkeypatch.setattr(RUNTIME_CONFIG, "AUTH_KEY_CACHE_TTL_SECONDS", 10.0)
+    key = _key()
+    auth = SimpleNamespace(
+        get_key_with_user=AsyncMock(return_value=(key, _user(is_active=True))),
+        touch_key_last_used=AsyncMock(),
+    )
+    monkeypatch.setattr(CONTEXT, "database", SimpleNamespace(auth=auth))
+    headers = {"Authorization": "Bearer df_whatever"}
+
+    first = await authenticate(_request(headers=headers))
+    second = await authenticate(_request(headers=headers))
+
+    # The DB was read exactly once; the second call came from the cache, same resolution.
+    auth.get_key_with_user.assert_awaited_once()
+    assert first.key is key
+    assert second.key is key
+
+
+async def test_authenticate_cache_expires_after_ttl_rehits_db(fastapi_app, monkeypatch) -> None:
+    """Once the TTL elapses the cached entry is dropped and the next request reads the DB again."""
+    from backend.context import CONTEXT  # noqa: PLC0415
+    from backend.libs.auth import key_cache as kc  # noqa: PLC0415
+    from backend.libs.auth.dependency import authenticate  # noqa: PLC0415
+    from config import RUNTIME_CONFIG  # noqa: PLC0415
+
+    monkeypatch.setattr(RUNTIME_CONFIG, "AUTH_ENABLED", True)
+    monkeypatch.setattr(RUNTIME_CONFIG, "AUTH_KEY_CACHE_TTL_SECONDS", 10.0)
+    # Drive the cache's monotonic clock deterministically (no real sleeping).
+    clock = {"t": 1000.0}
+    monkeypatch.setattr(kc.time, "monotonic", lambda: clock["t"])
+    auth = SimpleNamespace(
+        get_key_with_user=AsyncMock(return_value=(_key(), _user(is_active=True))),
+        touch_key_last_used=AsyncMock(),
+    )
+    monkeypatch.setattr(CONTEXT, "database", SimpleNamespace(auth=auth))
+    headers = {"Authorization": "Bearer df_whatever"}
+
+    await authenticate(_request(headers=headers))  # miss → DB read, deadline = 1010
+    await authenticate(_request(headers=headers))  # hit (t=1000)
+    assert auth.get_key_with_user.await_count == 1
+
+    clock["t"] = 1011.0  # past the TTL deadline
+    await authenticate(_request(headers=headers))  # miss again → second DB read
+
+    assert auth.get_key_with_user.await_count == 2
+
+
+async def test_authenticate_caches_negative_result_for_unknown_key(
+    fastapi_app, monkeypatch
+) -> None:
+    """An unknown key is negatively cached — a repeat 401 flood does NOT re-hit the DB each time."""
+    from backend.context import CONTEXT  # noqa: PLC0415
+    from backend.libs.auth.dependency import authenticate  # noqa: PLC0415
+    from config import RUNTIME_CONFIG  # noqa: PLC0415
+
+    monkeypatch.setattr(RUNTIME_CONFIG, "AUTH_ENABLED", True)
+    monkeypatch.setattr(RUNTIME_CONFIG, "AUTH_KEY_CACHE_TTL_SECONDS", 10.0)
+    auth = SimpleNamespace(get_key_with_user=AsyncMock(return_value=None))
+    monkeypatch.setattr(CONTEXT, "database", SimpleNamespace(auth=auth))
+    headers = {"Authorization": "Bearer df_bad-key"}
+
+    for _ in range(3):
+        with pytest.raises(HTTPException) as exc:
+            await authenticate(_request(headers=headers))
+        assert exc.value.status_code == 401
+
+    # Three flood attempts, a SINGLE DB read — the negative result blunted the rest.
+    auth.get_key_with_user.assert_awaited_once()
+
+
+async def test_authenticate_cache_disabled_always_hits_db(fastapi_app, monkeypatch) -> None:
+    """With the TTL at 0 the cache is off — every authentication reads the store."""
+    from backend.context import CONTEXT  # noqa: PLC0415
+    from backend.libs.auth.dependency import authenticate  # noqa: PLC0415
+    from config import RUNTIME_CONFIG  # noqa: PLC0415
+
+    monkeypatch.setattr(RUNTIME_CONFIG, "AUTH_ENABLED", True)
+    monkeypatch.setattr(RUNTIME_CONFIG, "AUTH_KEY_CACHE_TTL_SECONDS", 0.0)
+    auth = SimpleNamespace(
+        get_key_with_user=AsyncMock(return_value=(_key(), _user(is_active=True))),
+        touch_key_last_used=AsyncMock(),
+    )
+    monkeypatch.setattr(CONTEXT, "database", SimpleNamespace(auth=auth))
+    headers = {"Authorization": "Bearer df_whatever"}
+
+    await authenticate(_request(headers=headers))
+    await authenticate(_request(headers=headers))
+
+    assert auth.get_key_with_user.await_count == 2
+
+
 # ── AuthzGuard.enforce / require ─────────────────────────────────────────────────────────────
 
 

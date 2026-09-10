@@ -84,6 +84,10 @@ class RUNTIME_CONFIG(EnvConfigLoader):
     # The bootstrap root key plaintext — provisioned idempotently at startup when auth is on.
     # Its name contains TOKEN, so configplusplus masks it in the startup config dump.
     AUTH_ROOT_TOKEN: str = env("AUTH_ROOT_TOKEN", required=False, default="")
+    # TTL (seconds) of the in-process API-key lookup cache on the authN hot path: an authenticated
+    # request skips the Postgres round-trip for this long. A revoked/deactivated key therefore keeps
+    # working for at most this window (per process); 0 disables the cache (every request reads the DB).
+    AUTH_KEY_CACHE_TTL_SECONDS: float = env("AUTH_KEY_CACHE_TTL_SECONDS", cast=float, default=10.0)
 
     # ───── Search ─────
     # Wall-clock cap for one inline search run. Search is sub-second; this only guards a stuck or
