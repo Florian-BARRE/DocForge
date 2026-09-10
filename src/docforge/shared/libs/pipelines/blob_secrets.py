@@ -95,6 +95,29 @@ def _secret_by_node_id(blob: dict | None) -> dict[str, dict[str, str]]:
     return result
 
 
+def has_blob_secrets(blob: dict | None) -> bool:
+    """Return whether any action node in a blob carries a non-empty provider secret field.
+
+    The cheap predicate behind the fleet-list masking optimization: when it returns False the masked
+    outbound copy would be byte-identical to the input, so the caller can skip the defensive
+    ``copy.deepcopy`` that ``redact_blob_secrets`` always performs and serialise the stored blob as-is.
+    Most collections run the stock in-stack pipeline (gotenberg/bge_server, no ``api_key``), so this is
+    False for them and the per-row deepcopy is avoided entirely on the list path.
+
+    Args:
+        blob (dict | None): The stored pipeline or search blob (or ``None``/``{}``).
+
+    Returns:
+        bool: True as soon as one action node config holds a non-empty secret field value.
+    """
+    for config in _iter_action_configs(blob):
+        for field in SECRET_FIELDS:
+            value = config.get(field)
+            if isinstance(value, str) and value != "":
+                return True
+    return False
+
+
 def redact_blob_secrets(blob: dict | None) -> dict | None:
     """Return a deep copy of a pipeline/search blob with every provider secret masked.
 
@@ -188,6 +211,7 @@ __all__ = [
     "SECRET_FIELDS",
     "MASK_PREFIX",
     "is_masked",
+    "has_blob_secrets",
     "redact_blob_secrets",
     "restore_blob_secrets",
 ]

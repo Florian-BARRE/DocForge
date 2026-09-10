@@ -10,6 +10,7 @@ import asyncio
 import json
 import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
+from datetime import datetime
 from typing import Any
 
 # ====== Internal Project Imports ======
@@ -50,7 +51,7 @@ async def stream_job_events(
     Yields:
         str: One SSE frame per new event and per status change, terminated by the final status.
     """
-    cursor = 0  # number of stage events already emitted (the delta cursor)
+    cursor_ts: datetime | None = None  # newest created_at already emitted (the delta cursor)
     last_snapshot: dict[str, Any] | None = None
     while True:
         # 1. Re-read the row — the worker owns it; a vanished job (deleted mid-stream) closes cleanly.
@@ -59,20 +60,28 @@ async def stream_job_events(
             yield _frame("status", {"job_id": str(job_id), "status": "gone"})
             return
 
-        # 2. Emit every stage event that landed since the last poll, in execution order. The JSONB
-        #    shape summaries are only ever populated at the run's END (persist_execution_tree), so the
-        #    frequent mid-run polls defer them OUT of the query (lean) — they would be null anyway. On
-        #    the TERMINAL iteration they DO exist and the UI renders them on node-expand, so that one
-        #    poll reads them in full (a terminal-job page-open replays the whole list here, so the
-        #    full read on this final pass is what carries the summaries to the client).
+        # 2. Emit every stage event that landed since the last poll, in execution order. The read is
+        #    INCREMENTAL: ``after_created_at`` is the newest created_at already emitted, so each poll
+        #    fetches only the rows inserted since — never re-reading the whole timeline every tick. The
+        #    JSONB shape summaries are only ever populated at the run's END (persist_execution_tree), so
+        #    the frequent mid-run polls defer them OUT of the query (lean) — they would be null anyway.
+        #    On the TERMINAL iteration they DO exist and the UI renders them on node-expand, so that one
+        #    poll reads them in full (a fresh terminal-job page-open has an empty cursor → replays the
+        #    whole list here, so the full read on that first pass carries the summaries to the client).
         terminal = job.status.value in JobStatusEnum.terminal()
-        events = await jobs.list_events(job_id, include_summaries=terminal)
-        for event in events[cursor:]:
+        events = await jobs.list_events(
+            job_id, include_summaries=terminal, after_created_at=cursor_ts
+        )
+        for event in events:
             yield _frame(
                 "event",
                 JobEvent.from_row(event, include_summaries=terminal).model_dump(mode="json"),
             )
-        cursor = len(events)
+        # Advance the delta cursor to the newest row just emitted (monotonic — never regresses).
+        if events:
+            newest = max(event.created_at for event in events)
+            if cursor_ts is None or newest > cursor_ts:
+                cursor_ts = newest
 
         # 3. Emit a status frame only when the snapshot moved (status/progress/stage/error), so the
         #    stream carries progress without spamming an unchanged status every tick.

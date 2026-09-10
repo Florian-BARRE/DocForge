@@ -6,13 +6,14 @@
 # canonicalize, embed vector-space) live in blob_helpers.py.
 
 # ====== Standard Library Imports ======
+from collections.abc import Callable
 
 # ====== Third-Party Library Imports ======
 from fastapi import HTTPException
 from loggerplusplus import loggerplusplus
 
 # ====== Internal Project Imports ======
-from shared_libs.pipelines.blob_secrets import redact_blob_secrets
+from shared_libs.pipelines.blob_secrets import has_blob_secrets, redact_blob_secrets
 from shared_libs.pipelines.ingest import BlobNormalizer
 from shared_libs.public_models import FieldOrigin, FieldScope, FieldType
 from shared_libs.services.db.postgresql.tables import Collection, MetadataField
@@ -20,8 +21,9 @@ from shared_libs.services.db.qdrant import RESERVED_PAYLOAD_KEYS
 
 # ====== Local Project Imports ======
 from ...libs.estimate import EstimateOverrides
+from ...libs.health import CollectionHealthSummary
 from ...utils.search_blob_validation import SearchBlobValidator
-from .models import CollectionModel, FieldSpecModel
+from .models import CollectionListItem, CollectionModel, FieldSpecModel
 
 # Payload keys the chunk point owns for its own machinery (id, ordinal, enable-filter). A
 # filterable field is denormalised onto the point by NAME, so a field sharing one of these would
@@ -54,14 +56,29 @@ class CollectionHelpers:
         return {key: value for key, value in pipeline.items() if key != BlobNormalizer.STAMP_KEY}
 
     @classmethod
-    def to_model(cls, collection: Collection, fields: list[MetadataField]) -> CollectionModel:
-        """Map the rows to the UI contract (shared by every read path).
+    def __base_payload(
+        cls,
+        collection: Collection,
+        fields: list[MetadataField],
+        *,
+        mask: Callable[[dict | None], dict | None],
+    ) -> dict:
+        """Build the shared scalar/blob/field payload every collection read model is composed from.
 
-        Provider secrets (api_key on every provider node of the pipeline AND search blobs) are masked
-        here — the ONE serialisation boundary every read path funnels through — so a live key is never
-        echoed to a client. The stored blobs keep the real keys; only this outbound copy is masked.
+        The ONE place the ORM row is mapped to the UI contract's kwargs, so the single-collection read
+        (``to_model``) and the fleet-list row (``to_list_item``) can never drift on a field. ``mask``
+        is the provider-secret masker applied to BOTH config blobs: the full deepcopy redactor on the
+        single read, the deepcopy-skipping variant on the list (see ``_mask_for_list``).
+
+        Args:
+            collection (Collection): The contract row.
+            fields (list[MetadataField]): The collection's metadata schema rows.
+            mask (Callable): The secret-masking function applied to the pipeline + search blobs.
+
+        Returns:
+            dict: The keyword arguments shared by ``CollectionModel`` and ``CollectionListItem``.
         """
-        return CollectionModel(
+        return dict(
             id=str(collection.id),
             name=collection.name,
             supported_formats=list(collection.supported_formats),
@@ -71,10 +88,49 @@ class CollectionHelpers:
             trace_verbosity=getattr(collection, "trace_verbosity", None) or "shape",
             needs_reindex=collection.needs_reindex,
             created_at=collection.created_at,
-            pipeline=redact_blob_secrets(cls.public_pipeline(collection.pipeline)),
-            search=redact_blob_secrets(collection.search),
+            pipeline=mask(cls.public_pipeline(collection.pipeline)),
+            search=mask(collection.search),
             fields=cls.to_field_specs(fields),
             estimate_overrides=cls.__estimate_overrides(collection),
+        )
+
+    @staticmethod
+    def _mask_for_list(blob: dict | None) -> dict | None:
+        """Mask a config blob for the fleet list, skipping the deepcopy when it carries no secret.
+
+        ``redact_blob_secrets`` ALWAYS deep-copies before masking (the safe single-read boundary). On
+        the fleet list that copy runs twice per collection, overwhelmingly for blobs with NO provider
+        secret (the stock in-stack pipeline). So this pays the copy only when a real secret is present
+        and otherwise serialises the stored blob as-is — the masked result would be byte-identical.
+        """
+        return redact_blob_secrets(blob) if has_blob_secrets(blob) else blob
+
+    @classmethod
+    def to_model(cls, collection: Collection, fields: list[MetadataField]) -> CollectionModel:
+        """Map the rows to the UI contract (shared by every single-collection read path).
+
+        Provider secrets (api_key on every provider node of the pipeline AND search blobs) are masked
+        here — the ONE serialisation boundary every read path funnels through — so a live key is never
+        echoed to a client. The stored blobs keep the real keys; only this outbound copy is masked.
+        """
+        return CollectionModel(**cls.__base_payload(collection, fields, mask=redact_blob_secrets))
+
+    @classmethod
+    def to_list_item(
+        cls,
+        collection: Collection,
+        fields: list[MetadataField],
+        health: CollectionHealthSummary,
+    ) -> CollectionListItem:
+        """Map a collection + its schema + health summary straight to a fleet-list row.
+
+        Built DIRECTLY (not ``to_model(...).model_dump()`` re-splat into the subclass, which paid two
+        Pydantic validations + a dict dump per row). Masking uses the deepcopy-skipping ``_mask_for_list``
+        since the list overwhelmingly renders secret-free stock blobs.
+        """
+        return CollectionListItem(
+            **cls.__base_payload(collection, fields, mask=cls._mask_for_list),
+            health=health,
         )
 
     @staticmethod

@@ -501,7 +501,10 @@ async def test_list_collections_scoped_key_sees_only_its_own(fastapi_app, monkey
     coll_b = SimpleNamespace(id=uuid.UUID(COLL_B))
     collections = SimpleNamespace(
         list_all=AsyncMock(return_value=[coll_a, coll_b]),
-        get_schema=AsyncMock(return_value=[]),
+        # The list path batches every schema in ONE query — return an empty schema per id.
+        get_schemas_by_collections=AsyncMock(
+            return_value={uuid.UUID(COLL_A): [], uuid.UUID(COLL_B): []}
+        ),
     )
     documents = SimpleNamespace(
         count_by_collections=AsyncMock(return_value={}),
@@ -521,16 +524,16 @@ async def test_list_collections_scoped_key_sees_only_its_own(fastapi_app, monkey
     # Bypass the Pydantic model construction — the assertion is purely about the scope filter.
     monkeypatch.setattr(
         collections_router.CollectionHelpers,
-        "to_model",
-        staticmethod(lambda c, schema: SimpleNamespace(model_dump=lambda: {"id": str(c.id)})),
+        "to_list_item",
+        staticmethod(lambda c, schema, health: str(c.id)),
     )
-    monkeypatch.setattr(collections_router, "CollectionListItem", lambda **kw: kw.get("id"))
 
     result = await list_collections(principal=_scoped(COLL_A))
 
-    # Only collection A survives the scope filter; B's contract never leaves the server.
+    # Only collection A survives the scope filter; B's contract never leaves the server — the batched
+    # schema read is asked for A's id alone (B is filtered out BEFORE the schemas are fetched).
     assert result == [str(coll_a.id)]
-    collections.get_schema.assert_awaited_once_with(coll_a.id)
+    collections.get_schemas_by_collections.assert_awaited_once_with([coll_a.id])
 
 
 # ── full-route authz sweep ─────────────────────────────────────────────────────────────────────

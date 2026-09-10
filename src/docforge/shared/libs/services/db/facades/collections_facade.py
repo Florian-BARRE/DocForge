@@ -130,6 +130,18 @@ class CollectionsFacade(LoggerClass):
         async with self._postgres.session() as session:
             return await CollectionApi.get_schema(session, collection_id)
 
+    async def get_schemas_by_collections(
+        self, collection_ids: list[uuid.UUID]
+    ) -> dict[uuid.UUID, list[MetadataField]]:
+        """Return several collections' metadata schemas in ONE query (fleet-list path; avoids the N+1).
+
+        The batched counterpart of ``get_schema``: the list endpoint fetches every collection's schema
+        in a single round-trip instead of one ``get_schema`` per row. Every requested id is present in
+        the map (empty list when the collection has no fields).
+        """
+        async with self._postgres.session() as session:
+            return await CollectionApi.get_schemas_by_collections(session, collection_ids)
+
     async def list_all(self) -> list[Collection]:
         """Return every collection."""
         async with self._postgres.session() as session:

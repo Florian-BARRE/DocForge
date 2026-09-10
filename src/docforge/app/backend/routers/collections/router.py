@@ -89,16 +89,11 @@ async def list_collections(
         last_ingests=last_ingests,
     )
 
-    # 4. Attach each collection's summary to its full contract (masking applied by to_model).
-    return [
-        CollectionListItem(
-            **CollectionHelpers.to_model(
-                c, await CONTEXT.database.collections.get_schema(c.id)
-            ).model_dump(),
-            health=summaries[c.id],
-        )
-        for c in collections
-    ]
+    # 4. Batch EVERY collection's schema in ONE query (no per-row ``get_schema`` N+1), then build each
+    #    list row DIRECTLY from the row + its schema + summary — no to_model()→model_dump() re-splat,
+    #    and masking skips the deepcopy for the secret-free stock blobs (_mask_for_list).
+    schemas = await CONTEXT.database.collections.get_schemas_by_collections(ids)
+    return [CollectionHelpers.to_list_item(c, schemas[c.id], summaries[c.id]) for c in collections]
 
 
 @router.get(

@@ -108,6 +108,17 @@ def _mock_db(monkeypatch, **collections_methods) -> SimpleNamespace:
     from backend.context import CONTEXT  # noqa: PLC0415
 
     facade = SimpleNamespace(**collections_methods)
+    # The list route batches EVERY collection's schema in one query; synthesize it from the provided
+    # per-collection get_schema so the masking-under-test path resolves without a store (same fields
+    # per collection the N+1 get_schema would have returned).
+    if not hasattr(facade, "get_schemas_by_collections"):
+        _per_collection = collections_methods.get("get_schema")
+
+        async def _batched_schemas(ids, _gs=_per_collection):
+            fields = await _gs(None) if _gs is not None else []
+            return {cid: list(fields) for cid in ids}
+
+        facade.get_schemas_by_collections = _batched_schemas
     # The list route also reads three BATCHED fleet counters (doc / chunk / last-ingest) for the
     # health summary; stub them empty so any read path resolves without a store (redaction is the
     # concern under test here, not the counts).

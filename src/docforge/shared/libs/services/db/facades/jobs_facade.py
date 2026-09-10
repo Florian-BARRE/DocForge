@@ -167,16 +167,23 @@ class JobsFacade(LoggerClass):
             )
 
     async def list_events(
-        self, job_id: uuid.UUID, include_summaries: bool = True
+        self,
+        job_id: uuid.UUID,
+        include_summaries: bool = True,
+        after_created_at: datetime | None = None,
     ) -> list[JobStageEvent]:
         """Return a job's per-node trace, in execution order.
 
         ``include_summaries=False`` DEFERS the wide JSONB shape summaries out of the SELECT for the
         high-frequency poll path (the live SSE stream). The deferred attributes must not be read off
         the returned rows — the caller pairs it with ``JobEvent.from_row(..., include_summaries=False)``.
+
+        ``after_created_at`` is the SSE stream's incremental delta cursor: when set, only rows inserted
+        since that ``created_at`` are read (each poll fetches the new rows, never the whole timeline);
+        None reads everything (the one-shot trace read and a fresh stream open).
         """
         async with self._postgres.session() as session:
-            return await JobApi.list_events(session, job_id, include_summaries)
+            return await JobApi.list_events(session, job_id, include_summaries, after_created_at)
 
     async def persist_execution_tree(
         self,

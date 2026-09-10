@@ -142,6 +142,39 @@ class CollectionApi:
         return list(result.scalars().all())
 
     @staticmethod
+    async def get_schemas_by_collections(
+        session: AsyncSession, collection_ids: list[uuid.UUID]
+    ) -> dict[uuid.UUID, list[MetadataField]]:
+        """Return the metadata schema of several collections in ONE query, grouped by collection id.
+
+        The batched counterpart of ``get_schema`` for the fleet-list path: a single SELECT over all
+        the given collections (instead of one round-trip per collection — the N+1 the list rendering
+        used to pay), grouped in memory. Every requested id is PRESENT in the result — an empty list
+        when the collection has no fields — so the caller indexes it directly without a missing-key
+        guard.
+
+        Args:
+            session (AsyncSession): The active DB session.
+            collection_ids (list[uuid.UUID]): The collections whose schemas to fetch.
+
+        Returns:
+            dict[uuid.UUID, list[MetadataField]]: collection id → its metadata field rows ([] when none).
+        """
+        # 1. Empty input → empty map (skip a pointless ``IN ()`` round-trip).
+        if not collection_ids:
+            return {}
+        # 2. One SELECT across every requested collection.
+        result = await session.execute(
+            select(MetadataField).where(MetadataField.collection_id.in_(collection_ids))
+        )
+        # 3. Pre-seed every requested id so a collection with no fields still maps to an empty list,
+        #    then group the rows in memory (preserving the DB return order within each collection).
+        grouped: dict[uuid.UUID, list[MetadataField]] = {cid: [] for cid in collection_ids}
+        for row in result.scalars().all():
+            grouped[row.collection_id].append(row)
+        return grouped
+
+    @staticmethod
     async def replace_schema(
         session: AsyncSession, collection_id: uuid.UUID, fields: list[MetadataField]
     ) -> None:

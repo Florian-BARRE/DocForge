@@ -804,25 +804,40 @@ class JobApi:
         return (1, tokens)
 
     @staticmethod
-    def events_query(job_id: uuid.UUID, include_summaries: bool = True):  # type: ignore[no-untyped-def]
-        """Build the stage-event SELECT for a job, optionally LEAN (summaries deferred).
+    def events_query(  # type: ignore[no-untyped-def]
+        job_id: uuid.UUID,
+        include_summaries: bool = True,
+        after_created_at: datetime | None = None,
+    ):
+        """Build the stage-event SELECT for a job, optionally LEAN (summaries deferred) and/or INCREMENTAL.
 
         The flat timeline (stage/status/kind/path/timings/tokens/cost/score) is cheap; the two JSONB
         shape summaries (``input_summary``/``output_summary``) are the only wide, TOAST-able columns.
         The high-frequency poll path (the live SSE stream's per-tick delta) never renders them, so it
         passes ``include_summaries=False`` to ``defer`` both columns OUT of the SELECT — Postgres then
-        never reads or de-TOASTs them. The one-shot trace read keeps them (default True). Exposed as a
-        builder so a unit test can assert the lean query's rendered column set without a live DB.
+        never reads or de-TOASTs them. The one-shot trace read keeps them (default True).
+
+        ``after_created_at`` makes the read INCREMENTAL: the SSE stream passes its delta cursor (the
+        newest ``created_at`` it has already emitted) so each poll fetches ONLY the rows inserted
+        since — never re-reading the whole timeline every tick. ``created_at`` is the natural insertion
+        ordinal (live stage rows land in their own per-stage transactions; the post-run execution-tree
+        rows land together in one, all newer than every live row), so ``> cursor`` cleanly yields the
+        new rows. None (the default) keeps the full read — a fresh stream open replays everything.
+        Exposed as a builder so a unit test can assert the rendered column/predicate set without a DB.
 
         Args:
             job_id (uuid.UUID): The job whose stage-event rows to select.
             include_summaries (bool): Keep the JSONB summary columns (True, the full trace read) or
                 defer them out of the SELECT (False, the lean poll path).
+            after_created_at (datetime | None): When set, only rows with a strictly greater
+                ``created_at`` (the incremental delta); None reads the whole timeline.
 
         Returns:
             Select: The composed statement.
         """
         stmt = select(JobStageEvent).where(JobStageEvent.job_id == job_id)
+        if after_created_at is not None:
+            stmt = stmt.where(JobStageEvent.created_at > after_created_at)
         if not include_summaries:
             stmt = stmt.options(
                 defer(JobStageEvent.input_summary), defer(JobStageEvent.output_summary)
@@ -831,7 +846,11 @@ class JobApi:
 
     @classmethod
     async def list_events(
-        cls, session: AsyncSession, job_id: uuid.UUID, include_summaries: bool = True
+        cls,
+        session: AsyncSession,
+        job_id: uuid.UUID,
+        include_summaries: bool = True,
+        after_created_at: datetime | None = None,
     ) -> list[JobStageEvent]:
         """Return a job's per-node trace as a stable pre-order tree walk (parent before children).
 
@@ -845,8 +864,14 @@ class JobApi:
         high-frequency poll path (the live SSE stream). The deferred attributes MUST NOT be read off
         the returned rows (an async lazy-load would fail) — the caller pairs this with
         ``JobEvent.from_row(..., include_summaries=False)`` so the summaries are reported None.
+
+        ``after_created_at`` is the SSE stream's delta cursor: when set, only rows inserted since are
+        read (the returned batch is still tree-sorted, so ordering is identical to a full read of that
+        same set). None reads the whole timeline (the one-shot trace read and a fresh stream open).
         """
-        result = await session.execute(cls.events_query(job_id, include_summaries))
+        result = await session.execute(
+            cls.events_query(job_id, include_summaries, after_created_at)
+        )
         return sorted(result.scalars().all(), key=cls._trace_sort_key)
 
     @staticmethod

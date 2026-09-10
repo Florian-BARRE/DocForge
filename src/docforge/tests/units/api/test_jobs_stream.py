@@ -8,7 +8,7 @@ so the test runs with zero real delay."""
 
 import asyncio
 import json
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -40,12 +40,18 @@ def _job(status: str, progress: int, stage: str | None) -> SimpleNamespace:
 
 
 def _event(stage: str, status: str) -> SimpleNamespace:
-    """A stage-event row stand-in."""
+    """A stage-event row stand-in.
+
+    ``created_at`` is the insertion ordinal the SSE stream's incremental delta cursor filters on; it
+    defaults to a fixed instant here and is re-stamped monotonically per distinct stage by ``_FakeJobs``
+    (below), modelling a persistent DB row whose ``created_at`` never changes across polls.
+    """
     return SimpleNamespace(
         id="44444444-4444-4444-4444-444444444444",
         stage=stage,
         status=status,
         node_kind="action",
+        created_at=datetime(2026, 1, 1, tzinfo=UTC),
         started_at=None,
         finished_at=None,
         detail="0.1s",
@@ -72,18 +78,34 @@ class _FakeJobs:
         self._events = events
         self._tick = 0
         self.include_summaries_calls: list[bool] = []
+        self.after_created_at_calls: list = []
+        # Stamp a stable, monotonically increasing created_at per DISTINCT stage across every growing
+        # snapshot — the same stage keeps its ordinal poll-to-poll (a persistent DB row), so the
+        # stream's ``after_created_at`` delta cursor has a real ordinal to filter on.
+        base = datetime(2026, 1, 1, tzinfo=UTC)
+        seen: dict[str, datetime] = {}
+        for snapshot in events:
+            for event in snapshot:
+                if event.stage not in seen:
+                    seen[event.stage] = base + timedelta(seconds=len(seen))
+                event.created_at = seen[event.stage]
 
     async def get(self, _job_id):
         # Clamp to the last snapshot so an extra poll never overruns the timeline.
         job = self._jobs[min(self._tick, len(self._jobs) - 1)]
         return job
 
-    async def list_events(self, _job_id, include_summaries: bool = True):
+    async def list_events(self, _job_id, include_summaries: bool = True, after_created_at=None):
         # The stream passes include_summaries=False on mid-run polls, True on the terminal poll —
-        # record it so a test can assert the hot path runs lean (see test below).
+        # record it so a test can assert the hot path runs lean (see test below). It also passes its
+        # incremental delta cursor (after_created_at) — filter to only the rows newer than it, exactly
+        # as the real query's ``created_at > cursor`` predicate does.
         self.include_summaries_calls.append(include_summaries)
+        self.after_created_at_calls.append(after_created_at)
         events = self._events[min(self._tick, len(self._events) - 1)]
         self._tick += 1  # advance AFTER a full poll (get then list_events)
+        if after_created_at is not None:
+            events = [e for e in events if e.created_at > after_created_at]
         return events
 
 
@@ -168,6 +190,41 @@ def test_stream_polls_lean_until_terminal_then_full() -> None:
 
     # The two running polls ran lean; the terminal poll read summaries in full.
     assert jobs.include_summaries_calls == [False, False, True]
+
+
+def test_stream_reads_incrementally_after_a_cursor() -> None:
+    """Each poll fetches ONLY the rows newer than the last one it emitted — never re-reading the whole
+    timeline. The first poll starts with an empty cursor (None → full read), then every later poll
+    passes the newest created_at it has already seen, and the fake returns only the delta. Guards W2-05."""
+    from backend.routers.jobs.stream import stream_job_events
+
+    jobs = _FakeJobs(
+        jobs=[
+            _job("running", 10, "intake"),
+            _job("running", 60, "chunk"),
+            _job("done", 100, "embed"),
+        ],
+        events=[
+            [_event("intake", "success")],
+            [_event("intake", "success"), _event("chunk", "success")],
+            [
+                _event("intake", "success"),
+                _event("chunk", "success"),
+                _event("embed", "success"),
+            ],
+        ],
+    )
+    frames = asyncio.run(_drain(stream_job_events(jobs, "job", poll_interval=0, sleep=_noop_sleep)))
+
+    # 1. The first read had no cursor (full read); every subsequent read carried an advancing one.
+    assert jobs.after_created_at_calls[0] is None
+    assert all(c is not None for c in jobs.after_created_at_calls[1:])
+    assert jobs.after_created_at_calls[1] < jobs.after_created_at_calls[2]
+
+    # 2. Each stage event still rode through exactly once, in order — the incremental read never
+    #    re-emits an already-seen row nor drops a new one (the SSE contract is unchanged).
+    event_stages = [p["stage"] for p in _payloads(frames) if p["kind"] == "event"]
+    assert event_stages == ["intake", "chunk", "embed"]
 
 
 def test_terminal_frame_carries_summaries_lean_frames_do_not() -> None:
