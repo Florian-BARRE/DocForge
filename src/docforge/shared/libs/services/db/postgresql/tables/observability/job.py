@@ -68,7 +68,10 @@ class Job(Base, UUIDPrimaryKey, TimestampedMixin):
     # only the live rows (``status IN ('pending', 'running')``) the reaper / list_active / queue_depth
     # scan — Alembic's comparator normalises the ``postgresql_where`` predicate and reconciles it
     # cleanly (verified via ``alembic check``), so unlike the grid's functional/GIN indexes it is safe
-    # to declare here rather than leave migration-only.
+    # to declare here rather than leave migration-only. ``ix_job_created_at`` is a standalone btree on
+    # ``created_at DESC`` backing the fleet-wide "All Jobs" listing (no collection leading column) and
+    # age-based pruning — without it that scan falls back to a seq-scan + sort. Created by migration
+    # b2d7f9c4e3a1; mirrors the standalone ``ix_audit_log_created_at`` pattern.
     __table_args__ = (
         Index("ix_job_collection_created_at", "collection_id", text("created_at DESC")),
         Index(
@@ -76,6 +79,7 @@ class Job(Base, UUIDPrimaryKey, TimestampedMixin):
             "status",
             postgresql_where=text("status IN ('pending', 'running')"),
         ),
+        Index("ix_job_created_at", text("created_at DESC")),
     )
 
     document_id: Mapped[uuid.UUID] = mapped_column(
