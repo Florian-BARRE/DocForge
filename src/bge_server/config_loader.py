@@ -127,6 +127,17 @@ class BgeServerConfig(EnvConfigLoader):
     # periodic touch (~0.3 s of compute) prevents the eviction entirely. 0 = disabled.
     BGE_KEEPWARM_SECONDS: int = env("BGE_KEEPWARM_SECONDS", cast=int, default="45")
 
+    # ───── Response compression (gzip) ─────
+    # This service sits behind an internal docker-bridge link (bge_server <-> docforge app/worker),
+    # not a public network -- bandwidth is not the bottleneck, CPU on the shared event loop is.
+    # GZipMiddleware's default compresslevel is 9 (zlib's max), spent synchronously per response;
+    # that's real CPU burned for marginal extra bytes saved over a cheap level on an internal hop.
+    # Compression stays ON by default (still ~2x on the highly-repetitive float JSON) but at the
+    # cheapest useful level -- raise BGE_GZIP_LEVEL or set BGE_GZIP_ENABLED=false if a future
+    # deployment puts a real WAN hop in front of this service.
+    BGE_GZIP_ENABLED: bool = env("BGE_GZIP_ENABLED", cast=bool, default="true")
+    BGE_GZIP_LEVEL: int = env("BGE_GZIP_LEVEL", cast=int, default="1")
+
     # ───── Request size ceilings (edge validation, before the batching engine) ─────
     # A single oversized request is still admitted "whole" by BatchQueueWorker and holds the
     # shared model lock for its entire duration (see libs/batching/worker.py). These ceilings
@@ -181,6 +192,8 @@ class BgeServerConfig(EnvConfigLoader):
             raise ValueError(f"BGE_MAX_TEXT_CHARS must be >= 1, got {cls.BGE_MAX_TEXT_CHARS}")
         if cls.BGE_KEEPWARM_SECONDS < 0:
             raise ValueError(f"BGE_KEEPWARM_SECONDS must be >= 0, got {cls.BGE_KEEPWARM_SECONDS}")
+        if not 1 <= cls.BGE_GZIP_LEVEL <= 9:
+            raise ValueError(f"BGE_GZIP_LEVEL must be between 1 and 9, got {cls.BGE_GZIP_LEVEL}")
 
 
 # ─── Apply logging configuration AFTER class definition ───

@@ -4,6 +4,11 @@
 # mock whose async methods return canned shapes. Asserts that /embed_all's `dense` sub-shape matches
 # what /embed returns and its `sparse` sub-shape matches what /embed_sparse returns for the same
 # input — the like-for-like contract the DocForge app relies on when it falls back to the two routes.
+#
+# Also covers /embed and /embed_all directly: both now return an explicit ORJSONResponse to skip
+# Pydantic response re-validation (see router.py) — these tests pin the exact JSON float shape and
+# values a TestClient caller still gets, so that optimization can never silently change the wire
+# format.
 
 # ====== Standard Library Imports ======
 from typing import cast
@@ -108,3 +113,47 @@ def test_embed_all_queue_full_returns_503(client: TestClient) -> None:
 
     assert resp.status_code == 503
     assert resp.headers["Retry-After"] == "1"
+
+
+# ── Test: /embed returns the exact float matrix via ORJSONResponse ────────────
+
+
+def test_embed_returns_exact_dense_matrix(client: TestClient) -> None:
+    """
+    POST /embed still returns the exact float matrix (values unchanged, valid JSON,
+    application/json) now that it's built via an explicit ORJSONResponse instead of the
+    Pydantic-validated ``list[list[float]]`` response_model path.
+    """
+    resp = client.post("/embed", json={"inputs": ["t1", "t2"]})
+
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("application/json")
+    assert resp.json() == _DENSE
+
+
+def test_embed_empty_input_returns_empty_list(client: TestClient) -> None:
+    """POST /embed with an empty list returns `[]` and never calls the engine."""
+    resp = client.post("/embed", json={"inputs": []})
+
+    assert resp.status_code == 200
+    assert resp.json() == []
+    cast(AsyncMock, CONTEXT.batching_engine.submit_embed_dense).assert_not_awaited()
+
+
+# ── Test: /embed_all returns the exact {dense, sparse} shape via ORJSONResponse ─
+
+
+def test_embed_all_returns_exact_shape(client: TestClient) -> None:
+    """
+    POST /embed_all still returns the exact ``{dense, sparse}`` shape and values (valid JSON,
+    application/json) now that it's built via an explicit ORJSONResponse instead of constructing
+    + validating an ``EmbedAllResponse``/``SparseToken`` model tree.
+    """
+    resp = client.post("/embed_all", json={"inputs": ["t1", "t2"]})
+
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("application/json")
+    assert resp.json() == {
+        "dense": _DENSE,
+        "sparse": [[{"index": 5, "value": 0.5}], [{"index": 7, "value": 0.8}]],
+    }

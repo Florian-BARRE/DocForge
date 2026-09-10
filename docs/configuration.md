@@ -250,6 +250,8 @@ All variables have safe defaults; the service starts with no `.env` at all.
 | `BGE_MAX_QUEUE_SIZE` | `256` | Max pending items in the per-op bounded queue. When full, `submit()` raises `QueueFullError` → HTTP 503 with `Retry-After: 1`. Raise on high-traffic servers; lower for tighter back-pressure. Must be `>= 1`. |
 | `BGE_KEEPWARM_SECONDS` | `45` | Keep-warm interval (s): a background task runs a tiny forward pass on every model so weights stay resident and callers never pay a 30–50 s cold page-in. `0` disables it. Must be `>= 0`. |
 | `BGE_TORCH_NUM_THREADS` | `0` | `0` = auto, derived from the container's cgroup CPU quota. |
+| `BGE_GZIP_ENABLED` | `true` | Enable/disable response gzip compression. Internal docker-bridge link — bandwidth isn't the bottleneck, so this stays on but cheap by default rather than off. |
+| `BGE_GZIP_LEVEL` | `1` | zlib compress level (`1`-`9`) used when `BGE_GZIP_ENABLED=true`. `1` is deliberately far below Starlette's default (`9`, zlib's max) — the max level burns real event-loop CPU for marginal extra bytes saved on an internal hop. |
 | `LOGGING_*` | see file | Same logging knobs as above. |
 
 ---

@@ -35,6 +35,9 @@ dependencies = [
     "loggerplusplus>=1.0.0",
     # ASCII startup banner printed by the lifespan.
     "pyfiglet>=1.0.2,<2",
+    # Rust-backed JSON encoder used as FastAPI's default response class — cheaper on the event
+    # loop than stdlib json.dumps for the large float matrices /embed and /embed_all return.
+    "orjson>=3.10.0,<4",
 ]
 
 # ── Torch variant extras ──────────────────────────────────────────────────────────────────────

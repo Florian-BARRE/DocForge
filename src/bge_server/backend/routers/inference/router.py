@@ -6,9 +6,15 @@
 # native ColBERT multi-vector head. All inference is delegated to CONTEXT.batching_engine; no
 # model logic here. Back-pressure: QueueFullError from the engine is translated to HTTP 503 with
 # Retry-After: 1.
+#
+# /embed and /embed_all are the two hot numeric routes (a full float matrix per request) — both
+# return an explicit ORJSONResponse instead of a plain value. Returning an already-built Response
+# makes FastAPI skip serialize_response() entirely (no Pydantic re-validation walk over every
+# float), while `response_model` stays declared purely for OpenAPI schema accuracy.
 
 # ====== Third-Party Library Imports ======
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import ORJSONResponse
 from loggerplusplus import loggerplusplus
 
 # ====== Internal Project Imports ======
@@ -36,7 +42,7 @@ logger = loggerplusplus.bind(identifier="InferenceRouter")
 
 @router.post("/embed", response_model=list[list[float]])
 @auto_handle_errors
-async def embed(req: EmbedRequest) -> list[list[float]]:
+async def embed(req: EmbedRequest) -> ORJSONResponse:
     """
     Dense embeddings -- mirrors TEI's POST /embed.
 
@@ -52,7 +58,8 @@ async def embed(req: EmbedRequest) -> list[list[float]]:
         req (EmbedRequest): Request body with texts to embed.
 
     Returns:
-        list[list[float]]: One 1024-dim dense vector per input text.
+        ORJSONResponse: One 1024-dim dense vector per input text (``list[list[float]]``),
+            serialized directly with orjson — no Pydantic re-validation of the float matrix.
     """
     # 1. Normalize the TEI inputs field (str | list[str]) into a list
     texts = InferenceHelpers.as_list(req.inputs)
@@ -62,17 +69,22 @@ async def embed(req: EmbedRequest) -> list[list[float]]:
 
     # 3. Empty input — return immediately without touching the engine
     if not texts:
-        return []
+        return ORJSONResponse([])
 
     # 4. Submit to the dense batching worker; translate back-pressure to HTTP 503
     try:
-        return await CONTEXT.batching_engine.submit_embed_dense(texts)
+        dense = await CONTEXT.batching_engine.submit_embed_dense(texts)
     except QueueFullError:
         raise HTTPException(
             status_code=503,
             detail={"error": "server overloaded — try again shortly"},
             headers={"Retry-After": "1"},
         )
+
+    # 5. Return the plain float matrix directly via ORJSONResponse — bypasses FastAPI's
+    #    serialize_response() (Pydantic field.validate + field.serialize walk) entirely, since
+    #    the endpoint already returns a Response instance.
+    return ORJSONResponse(dense)
 
 
 @router.post("/embed_sparse", response_model=list[list[SparseToken]])
@@ -123,7 +135,7 @@ async def embed_sparse(req: EmbedRequest) -> list[list[SparseToken]]:
 
 @router.post("/embed_all", response_model=EmbedAllResponse)
 @auto_handle_errors
-async def embed_all(req: EmbedRequest) -> EmbedAllResponse:
+async def embed_all(req: EmbedRequest) -> ORJSONResponse:
     """
     Combined dense + sparse embeddings in ONE forward pass.
 
@@ -145,7 +157,8 @@ async def embed_all(req: EmbedRequest) -> EmbedAllResponse:
         req (EmbedRequest): Request body with texts to embed.
 
     Returns:
-        EmbedAllResponse: ``{dense, sparse}`` for the input texts.
+        ORJSONResponse: ``{dense, sparse}`` for the input texts, serialized directly with orjson
+            — no Pydantic re-validation of the ``EmbedAllResponse`` model / float matrix.
     """
     # 1. Normalize the TEI inputs field (str | list[str]) into a list
     texts = InferenceHelpers.as_list(req.inputs)
@@ -155,7 +168,7 @@ async def embed_all(req: EmbedRequest) -> EmbedAllResponse:
 
     # 3. Empty input — return immediately without touching the engine
     if not texts:
-        return EmbedAllResponse(dense=[], sparse=[])
+        return ORJSONResponse({"dense": [], "sparse": []})
 
     # 4. One combined forward pass through the engine (serialised on the shared embed lock).
     #    max_length matches the value the engine's dense/sparse workers use (from the same config),
@@ -172,15 +185,15 @@ async def embed_all(req: EmbedRequest) -> EmbedAllResponse:
             headers={"Retry-After": "1"},
         )
 
-    # 5. Wrap each sparse dict into the typed SparseToken model (matching /embed_sparse), pinning
-    #    each field to its declared type (the engine types weights as int | float).
-    return EmbedAllResponse(
-        dense=dense,
-        sparse=[
-            [SparseToken(index=int(tok["index"]), value=float(tok["value"])) for tok in row]
-            for row in sparse_raw
-        ],
-    )
+    # 5. Build the sparse sub-shape as plain dicts (matching what SparseToken would serialize to)
+    #    and return via ORJSONResponse directly — this bypasses FastAPI's serialize_response()
+    #    (which would otherwise construct+validate an EmbedAllResponse/SparseToken tree), while
+    #    still pinning each field to its declared type (the engine types weights as int | float).
+    sparse = [
+        [{"index": int(tok["index"]), "value": float(tok["value"])} for tok in row]
+        for row in sparse_raw
+    ]
+    return ORJSONResponse({"dense": dense, "sparse": sparse})
 
 
 @router.post("/embed_colbert", response_model=list[list[list[float]]])
