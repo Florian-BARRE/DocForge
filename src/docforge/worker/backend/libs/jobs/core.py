@@ -303,6 +303,7 @@ async def ingest_document(
             timeout_seconds=run_job_timeout,
             progress_callback=guarded_progress,
             preflight_enabled=CONTEXT.RUNTIME_CONFIG.WORKER_PREFLIGHT_ENABLED,
+            preflight_cache_ttl_seconds=CONTEXT.RUNTIME_CONFIG.WORKER_PREFLIGHT_CACHE_TTL_SECONDS,
             egress_policy=ProviderEgressPolicy.from_spec(
                 CONTEXT.RUNTIME_CONFIG.PROVIDER_EGRESS_ALLOWLIST
             ),

@@ -1,5 +1,6 @@
 # ---------------------- OpenAI-compatible endpoint access (shared) ---------------------- #
 from .client import OpenAICompatHelpers, UsageAccumulator
+from .client_pool import LangChainClientPool
 from .config import OpenAICompatConfig
 from .preflight import (
     EndpointAuthError,
@@ -13,6 +14,7 @@ from .pricing import EMBED_PRICING, MODEL_PRICING, OCR_PAGE_PRICING, price_ocr_p
 __all__ = [
     "OpenAICompatConfig",
     "OpenAICompatHelpers",
+    "LangChainClientPool",
     "UsageAccumulator",
     "EndpointReachability",
     "PreflightError",

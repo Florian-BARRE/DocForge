@@ -57,6 +57,7 @@ def _fake_context(database: SimpleNamespace) -> SimpleNamespace:
         job_timeout_seconds=30.0,
         RUNTIME_CONFIG=SimpleNamespace(
             WORKER_PREFLIGHT_ENABLED=True,
+            WORKER_PREFLIGHT_CACHE_TTL_SECONDS=0.0,
             WORKER_JOB_TIMEOUT_MAX_SECONDS=7200.0,
             WORKER_CACHE_ENABLED=True,
             PROVIDER_EGRESS_ALLOWLIST="",

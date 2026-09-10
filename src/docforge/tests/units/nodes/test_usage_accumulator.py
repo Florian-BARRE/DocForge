@@ -64,14 +64,19 @@ async def test_on_llm_end_ignores_a_usage_less_result() -> None:
     assert sink.usage is None
 
 
-def test_chat_client_attaches_the_usage_sink() -> None:
-    """A sink passed to ``chat`` is registered as a client callback (the accumulation is wired, live)."""
+def test_chat_client_attaches_the_usage_sink_per_call() -> None:
+    """A sink passed to ``chat`` rides as a PER-CALL callback binding over the shared pooled client.
+
+    The sink is NOT baked onto the memoized ChatOpenAI (that would fragment the pool key and let one
+    run's sink leak onto every sharer) — it is overlaid via ``with_config`` as a RunnableBinding whose
+    config carries the callback, so the accumulation is wired for this invocation alone.
+    """
     sink = UsageAccumulator("m")
-    client = OpenAICompatHelpers.chat(_cfg(), usage_sink=sink)
-    assert sink in (client.callbacks or [])
+    bound = OpenAICompatHelpers.chat(_cfg(), usage_sink=sink)
+    assert sink in (bound.config.get("callbacks") or [])
 
 
 def test_chat_client_has_no_callbacks_without_a_sink() -> None:
-    """Omitting the sink leaves the client's callbacks untouched (the seam is strictly opt-in)."""
+    """Omitting the sink returns the bare shared client (no binding, no callbacks) — strictly opt-in."""
     client = OpenAICompatHelpers.chat(_cfg())
     assert not client.callbacks

@@ -5,8 +5,13 @@
 # ir object the run input carried), and enforces the OUTPUT CONTRACT: an ingestion pipeline must
 # deliver a RunBundle. Persistence lives elsewhere (the translator) — the runner only runs.
 
+# ====== Standard Library Imports ======
+import hashlib
+import json
+
 # ====== Third-Party Library Imports ======
 from loggerplusplus import LoggerClass
+from pydantic import BaseModel
 
 # ====== Internal Project Imports ======
 from shared_libs.pipelines.base import (
@@ -25,6 +30,7 @@ from shared_libs.public_models import CollectionContract, RunBundle, SourceDocum
 
 # ====== Local Project Imports ======
 from .breadcrumb import FailureBreadcrumb
+from .preflight_cache import PreflightCache
 
 # The side stamped on the worker's ingest preflight results (it only sweeps the ingest graph).
 _INGEST_SIDE = "ingest"
@@ -77,7 +83,25 @@ class PipelineRunner(LoggerClass):
         self._validator = GraphValidator()
         self._sweep = ReachabilitySweep()
 
-    async def __preflight(self, group: Group, egress_policy: ProviderEgressPolicy | None) -> None:
+    @staticmethod
+    def __blob_hash(blob: GroupNodeBlob | dict) -> str:
+        """Stable sha256 of the pipeline blob — the cache key's config axis (a change re-probes).
+
+        Normalises a pydantic ``GroupNodeBlob`` to its JSON-mode dict first so the hash is taken over
+        the same canonical shape whether the caller passed a model or a raw dict.
+        """
+        payload = blob.model_dump(mode="json") if isinstance(blob, BaseModel) else blob
+        canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
+        return hashlib.sha256(canonical.encode()).hexdigest()
+
+    async def __preflight(
+        self,
+        group: Group,
+        egress_policy: ProviderEgressPolicy | None,
+        collection_id: str,
+        blob_hash: str,
+        cache_ttl_seconds: float,
+    ) -> None:
         """
         Sweep every provider leaf's reachability BEFORE the first spend — fail fast if any is down.
 
@@ -87,18 +111,36 @@ class PipelineRunner(LoggerClass):
         egress allowlist (``blocked``, never probed) aborts the run before a single byte is read or
         stored. Local leaves (no endpoint) come back ``skipped`` and pass.
 
+        A POSITIVE sweep is memoized per (collection_id, blob_hash) for ``cache_ttl_seconds`` so a
+        burst of documents on one warm collection does not re-probe every endpoint per document: a
+        fresh hit SKIPS the sweep entirely. Only a clean sweep is remembered — a failure raises before
+        the cache write below, so a down endpoint is never cached and is re-probed on the next
+        document (a recovered endpoint is never stuck failing); the blob_hash re-probes on any config
+        change. ``cache_ttl_seconds <= 0`` disables the cache (always probe).
+
         Args:
             group (Group): The built + validated pipeline graph.
             egress_policy (ProviderEgressPolicy | None): The egress allowlist gate; a disallowed
                 base_url is refused here (``blocked``) before the network probe. None → probe all.
+            collection_id (str): The owning collection id — the cache key's isolation axis.
+            blob_hash (str): The stable hash of the pipeline blob — the cache key's config axis.
+            cache_ttl_seconds (float): TTL for a remembered positive result (<= 0 disables the cache).
 
         Raises:
             PipelineRunError: One or more provider leaves failed preflight (named with their reason).
         """
-        # 1. Structured per-leaf outcomes from the shared sweep (probes run concurrently, capped).
+        # 1. Fresh positive result for this (collection, blob) within the TTL → skip the probe.
+        caching = cache_ttl_seconds > 0
+        if caching and PreflightCache.is_fresh(collection_id, blob_hash):
+            self.logger.debug(
+                f"Preflight cache hit for collection {collection_id} — skipping the reachability probe"
+            )
+            return
+
+        # 2. Structured per-leaf outcomes from the shared sweep (probes run concurrently, capped).
         results = await self._sweep.sweep(group, _INGEST_SIDE, egress_policy)
 
-        # 2. The worker's policy: anything that is not ok/skipped aborts BEFORE spend, named.
+        # 3. The worker's policy: anything that is not ok/skipped aborts BEFORE spend, named.
         failures = [
             f"{result.node_id} ({result.kind}): {result.detail}"
             for result in results
@@ -110,6 +152,11 @@ class PipelineRunner(LoggerClass):
                 + "; ".join(failures)
             )
 
+        # 4. Clean sweep — remember it so the next document on this warm collection skips the probe.
+        #    Unreachable (step 3) raised above, so ONLY a success is ever cached.
+        if caching:
+            PreflightCache.remember(collection_id, blob_hash, cache_ttl_seconds)
+
     async def run(
         self,
         blob: GroupNodeBlob | dict,
@@ -118,6 +165,7 @@ class PipelineRunner(LoggerClass):
         timeout_seconds: float,
         progress_callback: ProgressCallback | None = None,
         preflight_enabled: bool = True,
+        preflight_cache_ttl_seconds: float = 0.0,
         cache_hook: CacheHook | None = None,
         egress_policy: ProviderEgressPolicy | None = None,
         trace_level: TraceLevel = TraceLevel.SHAPE,
@@ -134,6 +182,11 @@ class PipelineRunner(LoggerClass):
             preflight_enabled (bool): When True (default), sweep every node's preflight() after
                 build/validate and BEFORE the first spend — a provider pointed at an unreachable
                 endpoint fails fast, having stored nothing.
+            preflight_cache_ttl_seconds (float): TTL (seconds) for memoizing a POSITIVE preflight per
+                (collection_id, blob_hash). > 0 lets a burst of documents on one warm collection skip
+                re-probing every endpoint per document within the window; the first (cold) document
+                still probes and only a success is cached (a failure re-probes the next document). 0
+                (default) disables the cache — every run probes, as before.
             cache_hook (CacheHook | None): Optional per-run stage-cache seam. When provided, a
                 cacheable root stage may be served from / stored into the cache; None runs the
                 pipeline exactly as if no cache existed (a full recompute).
@@ -163,8 +216,16 @@ class PipelineRunner(LoggerClass):
 
         # 2. Preflight reachability BEFORE any spend — a wrong/unreachable endpoint fails fast here,
         #    having read/stored nothing (the last honest gap the structural validator cannot cover).
+        #    A warm collection's positive result is cached per (collection, blob) so a document burst
+        #    does not re-probe every endpoint per document (only a success is cached — see __preflight).
         if preflight_enabled:
-            await self.__preflight(group, egress_policy)
+            await self.__preflight(
+                group,
+                egress_policy,
+                str(contract.collection_id),
+                self.__blob_hash(blob),
+                preflight_cache_ttl_seconds,
+            )
 
         # 3. A FRESH run input per job — the run MUTATES what it carries (the ir, by design).
         run_input = {"source": source, "contract": contract}

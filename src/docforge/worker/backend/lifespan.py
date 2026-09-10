@@ -18,6 +18,7 @@ from pyfiglet import Figlet
 from config import RUNTIME_CONFIG
 from shared_libs.observability import ConfigDumpHelpers, CorrelationContext
 from shared_libs.pipelines.nodes.http_pool import HttpClientPool
+from shared_libs.pipelines.nodes.openai_compat import LangChainClientPool
 from shared_libs.services.db import Database
 from shared_libs.services.db.postgresql import PostgresClient
 from shared_libs.services.db.qdrant import QdrantClient
@@ -151,6 +152,8 @@ async def shutdown(ctx: dict[str, Any]) -> None:
         await CONTEXT.database.close()
     # Close the pooled provider HTTP clients the nodes kept alive for connection reuse.
     await HttpClientPool.shutdown()
+    # Close the pooled LangChain clients (hosted LLM/VLM/embed) kept alive for connection reuse.
+    await LangChainClientPool.shutdown()
     CONTEXT.logger.info(f"Worker '{getattr(CONTEXT, 'worker_id', '?')}' shut down")
 
 

@@ -16,6 +16,7 @@ from pyfiglet import Figlet
 # ====== Internal Project Imports ======
 from shared_libs.observability import ConfigDumpHelpers
 from shared_libs.pipelines.nodes.http_pool import HttpClientPool
+from shared_libs.pipelines.nodes.openai_compat import LangChainClientPool
 
 # ====== Local Project Imports ======
 from .context import CONTEXT
@@ -99,6 +100,8 @@ def lifespan() -> Any:
                 await CONTEXT.database.close()
             # 3. Close the pooled provider HTTP clients the search-path nodes kept alive for reuse.
             await HttpClientPool.shutdown()
+            # 4. Close the pooled LangChain clients (hosted LLM/VLM/embed) kept alive for reuse.
+            await LangChainClientPool.shutdown()
 
     return _lifespan
 

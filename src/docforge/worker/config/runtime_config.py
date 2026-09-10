@@ -199,6 +199,14 @@ class RUNTIME_CONFIG(EnvConfigLoader):
     # opts in is preflighted BEFORE its first spend — a wrong/placeholder endpoint fails fast having
     # stored nothing. Set to False only to skip reachability checks entirely. See PROD-HARDENING.md.
     WORKER_PREFLIGHT_ENABLED = env("WORKER_PREFLIGHT_ENABLED", cast=bool, default=True)
+    # A POSITIVE preflight sweep is memoized per (collection_id, pipeline-blob hash) for this many
+    # seconds, so a BURST of documents on one warm collection probes its providers once, not once per
+    # document. Only SUCCESS is cached (a failure re-probes the next doc so a recovered endpoint isn't
+    # stuck); the blob hash keys it so a config change re-probes; the FIRST/cold-cache doc always probes
+    # (fail-fast-before-spend preserved). 0 disables the cache (always probe). Default 300s (5 min).
+    WORKER_PREFLIGHT_CACHE_TTL_SECONDS = env(
+        "WORKER_PREFLIGHT_CACHE_TTL_SECONDS", cast=float, default=300.0
+    )
     # Provider egress allowlist (SSRF guard, OFF by default) — MUST mirror the app's identically-named
     # knob (both sides read the same value in a shared deployment). A per-collection provider base_url
     # is operator/tenant-writable; unguarded, the preflight sweep + the run's LLM/VLM/embed POSTs reach

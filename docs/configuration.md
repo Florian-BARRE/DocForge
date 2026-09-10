@@ -161,6 +161,7 @@ Backs the public `GET /capabilities` endpoint (outside `/api/v1`, unauthenticate
 | `WORKER_JOB_TIMEOUT_GRACE_SECONDS` | `60.0` | Grace added on top of the MAX job timeout to derive arq's outer per-job cap, so the engine's job timeout always fires first and arq only kills a genuinely wedged run. |
 | `WORKER_HEAVY_THREADS` | `4` | Bounded thread pool for the heavy CPU stages (docling/ocr/render/chunk) dispatched via `asyncio.to_thread`. |
 | `WORKER_PREFLIGHT_ENABLED` | `true` | Provider-reachability preflight (fail-fast before spend). Safe on by default: the stock pipeline ships its provider-hosted stages (enrich/metagen) OFF, so only real in-stack nodes are probed; a stage you opt in is preflighted before its first spend. Set `false` to skip reachability checks. |
+| `WORKER_PREFLIGHT_CACHE_TTL_SECONDS` | `300.0` | Memoize a POSITIVE preflight per (collection, pipeline-blob hash) for this long, so a burst of documents on one warm collection probes its providers once, not per doc. Only success is cached (failures re-probe); a config change re-probes; the first/cold doc still probes. `0` disables. |
 | `WORKER_NAME` | *(empty → hostname)* | Friendly display name for this worker in the fleet view (`GET /jobs/workers/live`). Set per replica (e.g. `gpu-box-1`) when running several. |
 | `WORKER_TRACE_MAX_VERBOSITY` | `full` | Operator ceiling on execution-trace capture: a per-collection `trace_verbosity` is clamped to `min(collection, ceiling)`. Default `full` is PERMISSIVE — the per-collection `trace_verbosity` is authoritative (it itself defaults to `shape`, so a collection still captures only cheap summaries until it opts into `full`; nothing raw is at rest without that opt-in). Set this to `shape` to FORBID full-payload capture fleet-wide regardless of any collection's setting (privacy/cost governance). A `shape` ceiling silently no-ops every collection's `full` opt-in. |
 | `WORKER_TRACE_PAYLOAD_MAX_BYTES` | `1048576` (1 MiB) | Per-payload byte cap for the **full** trace tier: a node input/output whose serialised payload exceeds this is stored truncated behind a marker (its shape summary is unaffected). Only consulted at the `full` level. |
@@ -244,6 +245,7 @@ All variables have safe defaults; the service starts with no `.env` at all.
 |---|---|---|
 | `BGE_M3_MODEL` | `BAAI/bge-m3` | Dense + sparse embedding model. |
 | `BGE_RERANKER_MODEL` | `BAAI/bge-reranker-v2-m3` | Cross-encoder reranker. |
+| `BGE_LOAD_RERANKER` | `true` | Set `false` on an embed-only deployment to skip downloading/loading the reranker entirely (no resident RAM, no 30-120s load time). `POST /rerank` then returns a clean HTTP 503 instead of crashing; `GET /health` still reports ready once the embed model alone is loaded. |
 | `BGE_M3_REVISION` / `BGE_RERANKER_REVISION` | *(pinned SHAs)* | Pin each model to an exact HF commit (supply-chain control) via `snapshot_download`. Set empty to float on `main`. |
 | `BGE_DEVICE` | `auto` | `auto` (GPU if present, else CPU) \| `cuda` (require GPU, fail loud) \| `cpu`. |
 | `BGE_FP16` | `false` | Gated to CUDA — forced off on CPU with a warning. |

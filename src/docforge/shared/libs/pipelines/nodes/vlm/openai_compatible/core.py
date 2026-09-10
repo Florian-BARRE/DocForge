@@ -71,9 +71,11 @@ class VlmOpenAICompatibleNode(BaseVlmNode):
             {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{encoded}"}}
         )
 
-        # 2. Invoke the endpoint (client built by the shared factory). The usage sink rides as a
-        #    callback so THIS attempt's tokens are folded into the base's per-run accumulator — a
-        #    local sink threaded across the retry loop, so a concurrent per-figure ForEach never clobbers.
+        # 2. Invoke the endpoint. The underlying client is pooled + shared across the per-figure
+        #    ForEach; the usage sink is overlaid by the factory as a PER-CALL callback binding (never
+        #    baked into the shared client) so THIS attempt's tokens fold into the base's per-run
+        #    accumulator while the client stays reusable — a local sink threaded across the retry loop
+        #    never clobbers a concurrent item.
         model = OpenAICompatHelpers.chat(
             config,
             temperature=config.temperature,

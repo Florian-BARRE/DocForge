@@ -1,22 +1,27 @@
 # ====== Code Summary ======
-# OpenAICompatHelpers — the ONE place an OpenAI-compatible client is constructed (chat and
-# embeddings). Every consumer calls these instead of building ChatOpenAI/OpenAIEmbeddings
-# by hand: the construction quirks (the empty-key placeholder some endpoints require, the
-# timeout plumbing) live here exactly once. It also owns UsageAccumulator, the seam that lets a
-# consumer running its OWN retry loop attribute the token usage of EVERY paid attempt (not just the
-# final success): a single accumulator passed to every ``chat`` call across the loop sums each
-# attempt's usage, so a call the node discards (a failed-but-billed attempt) still contributes.
+# OpenAICompatHelpers — the ONE place an OpenAI-compatible client is resolved (chat and embeddings).
+# Every consumer calls these instead of building ChatOpenAI/OpenAIEmbeddings by hand: the construction
+# quirks (the empty-key placeholder some endpoints require, the retry-stacking semantics, the timeout
+# plumbing) live here exactly once, while the actual construction + process-wide MEMOIZATION is
+# delegated to LangChainClientPool so repeated calls on the same endpoint (a per-item ForEach, a retry
+# loop) reuse ONE kept-alive client instead of opening a fresh openai.AsyncOpenAI each time. It also
+# owns UsageAccumulator, the seam that lets a consumer running its OWN retry loop attribute the token
+# usage of EVERY paid attempt (not just the final success): a single accumulator passed — as a per-call
+# ``ainvoke`` callback, NEVER baked into the shared client — to every chat call across the loop sums
+# each attempt's usage, so a call the node discards (a failed-but-billed attempt) still contributes.
 
 # ====== Third-Party Library Imports ======
 from langchain_core.callbacks.base import AsyncCallbackHandler
 from langchain_core.outputs import LLMResult
-from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+from langchain_core.runnables import Runnable
+from langchain_openai import OpenAIEmbeddings
 from loggerplusplus import loggerplusplus
 
 # ====== Internal Project Imports ======
 from shared_libs.pipelines.base import NodeUsage
 
 # ====== Local Project Imports ======
+from .client_pool import LangChainClientPool
 from .config import OpenAICompatConfig
 
 # Local endpoints (vLLM, bge_server…) require a NON-EMPTY key even when they ignore it.
@@ -115,9 +120,16 @@ class OpenAICompatHelpers:
         seed: int | None = None,
         max_retries: int | None = None,
         usage_sink: UsageAccumulator | None = None,
-    ) -> ChatOpenAI:
+    ) -> Runnable:
         """
-        Build a chat client on the configured endpoint.
+        Return a chat client on the configured endpoint (memoized per construction identity).
+
+        The underlying ChatOpenAI is SHARED across calls with the same endpoint/params (via
+        LangChainClientPool), so a usage-accumulation callback is NEVER baked into it — that would both
+        fragment the pool key and tie one run's sink to every sharer. Instead, when a ``usage_sink`` is
+        given, it is overlaid as a PER-CALL callback binding (``with_config``): a lightweight
+        RunnableBinding over the one shared client, so two concurrent ForEach items each attribute
+        their own tokens without cross-contamination while both reuse the same kept-alive connection.
 
         Args:
             config (OpenAICompatConfig): The endpoint (base_url / api_key / model / timeout).
@@ -131,18 +143,18 @@ class OpenAICompatHelpers:
                 default of 2 retries, so a consumer that runs its OWN retry loop (VLM/embed) and does
                 not pin here would otherwise stack two layers (e.g. 3×3 calls on an outage). Pinning a
                 value lets a consumer with no own loop (llm/structgen/classify) delegate retries here.
-            usage_sink (UsageAccumulator | None): An optional accumulator attached as a callback so the
-                token usage of EVERY attempt this client answers is summed. A consumer with its own
-                retry loop passes ONE sink to each attempt's ``chat`` call to attribute every paid
-                attempt (not just the final success). None = no usage accumulation on this client.
+            usage_sink (UsageAccumulator | None): An accumulator overlaid as a per-call callback so the
+                token usage of EVERY attempt this invocation answers is summed. A consumer with its own
+                retry loop passes ONE sink to each attempt to attribute every paid attempt (not just
+                the final success). None = no usage accumulation (the bare shared client is returned).
 
         Returns:
-            ChatOpenAI: The ready-to-invoke client.
+            Runnable: The ready-to-invoke chat runnable — the shared ChatOpenAI when no sink is given,
+            else a per-call callback binding over it (``ainvoke`` works on both).
         """
         # None means unpinned → 0: kill the SDK's built-in retries so the node's own loop is the ONLY
         # retry layer. A caller that pins a value delegates retries to the SDK on purpose.
-        retries = {"max_retries": 0 if max_retries is None else max_retries}
-        return ChatOpenAI(
+        client = LangChainClientPool.chat(
             base_url=config.base_url,
             api_key=config.api_key or _EMPTY_KEY_PLACEHOLDER,
             model=config.model,
@@ -150,14 +162,19 @@ class OpenAICompatHelpers:
             max_tokens=max_tokens,
             timeout=config.timeout_seconds,
             seed=seed,
-            callbacks=[usage_sink] if usage_sink is not None else None,
-            **retries,
+            max_retries=0 if max_retries is None else max_retries,
         )
+        # Overlay the sink per call (binding) so the shared client is never mutated — returning the
+        # bare client when there is no sink keeps the ChatOpenAI interface (with_structured_output) the
+        # structgen/llm consumers rely on.
+        if usage_sink is None:
+            return client
+        return client.with_config({"callbacks": [usage_sink]})
 
     @staticmethod
     def embeddings(config: OpenAICompatConfig, max_retries: int | None = None) -> OpenAIEmbeddings:
         """
-        Build an embeddings client on the configured endpoint.
+        Return an embeddings client on the configured endpoint (memoized per construction identity).
 
         Args:
             config (OpenAICompatConfig): The endpoint (base_url / api_key / model / timeout).
@@ -168,18 +185,16 @@ class OpenAICompatHelpers:
                 retries to the SDK for a consumer with no own loop.
 
         Returns:
-            OpenAIEmbeddings: The ready-to-call client (ctx-length check off — local endpoints
-            handle their own limits).
+            OpenAIEmbeddings: The ready-to-call client (pooled; ctx-length check off — local
+            endpoints handle their own limits).
         """
         # None means unpinned → 0: the node's own loop is the sole retry layer (see ``chat``).
-        retries = {"max_retries": 0 if max_retries is None else max_retries}
-        return OpenAIEmbeddings(
+        return LangChainClientPool.embeddings(
             base_url=config.base_url,
             api_key=config.api_key or _EMPTY_KEY_PLACEHOLDER,
             model=config.model,
             timeout=config.timeout_seconds,
-            check_embedding_ctx_length=False,
-            **retries,
+            max_retries=0 if max_retries is None else max_retries,
         )
 
 
