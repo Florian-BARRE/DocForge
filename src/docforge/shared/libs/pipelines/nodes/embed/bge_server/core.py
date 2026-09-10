@@ -9,6 +9,7 @@ import httpx
 from pydantic import Field, field_validator
 
 # ====== Internal Project Imports ======
+from shared_libs.pipelines.nodes.http_pool import HttpClientPool
 from shared_libs.pipelines.nodes.openai_compat import EndpointReachability
 from shared_libs.pipelines.registry import NodeRegistry
 from shared_libs.public_models import SparseVector
@@ -69,11 +70,10 @@ class EmbedBgeServerNode(BaseEmbedderNode):
         """One batched call to the server."""
         config: EmbedBgeServerConfig = self.config
         headers = {"Authorization": f"Bearer {config.api_key}"} if config.api_key else {}
-        async with httpx.AsyncClient(
-            base_url=config.base_url, timeout=config.timeout_seconds
-        ) as client:
-            response = await client.post(route, json={"inputs": texts}, headers=headers)
-            response.raise_for_status()
+        # A pooled client keeps the connection alive across batches — the bearer rides per-request.
+        client = HttpClientPool.get(base_url=config.base_url, timeout=config.timeout_seconds)
+        response = await client.post(route, json={"inputs": texts}, headers=headers)
+        response.raise_for_status()
         return response.json()
 
     @staticmethod

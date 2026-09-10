@@ -14,6 +14,7 @@ from pathlib import PurePosixPath
 import httpx
 
 # ====== Internal Project Imports ======
+from shared_libs.pipelines.nodes.http_pool import HttpClientPool
 from shared_libs.pipelines.nodes.openai_compat import EndpointReachability
 from shared_libs.pipelines.nodes.retry import NetworkRetry
 from shared_libs.pipelines.registry import NodeRegistry
@@ -120,14 +121,16 @@ class ConverterGotenbergNode(BaseConverterNode):
             return None
 
         # 2. POST the file (under the shared bounded retry); Gotenberg answers with the PDF bytes.
+        #    The pooled client is built OUTSIDE the retry loop so every attempt reuses the connection.
+        client = HttpClientPool.get(
+            base_url=config.base_url, timeout=config.timeout_seconds, auth=self._basic_auth()
+        )
+
         async def _post() -> bytes:
-            async with httpx.AsyncClient(
-                base_url=config.base_url, timeout=config.timeout_seconds, auth=self._basic_auth()
-            ) as client:
-                response = await client.post(
-                    route, files={"files": (upload_name, source.content, probe.mime_type)}
-                )
-                response.raise_for_status()
+            response = await client.post(
+                route, files={"files": (upload_name, source.content, probe.mime_type)}
+            )
+            response.raise_for_status()
             return response.content
 
         content = await NetworkRetry.run(
@@ -171,13 +174,15 @@ class ConverterGotenbergNode(BaseConverterNode):
             files = [("files", ("index.html", source.content, "text/html"))]
 
         # POST under the SAME shared bounded retry as _convert — a transient Chromium-route blip must
-        # not lose the view-only preview any more than it may lose the parser PDF.
+        # not lose the view-only preview any more than it may lose the parser PDF. The pooled client
+        # is built OUTSIDE the retry loop so every attempt reuses the connection.
+        client = HttpClientPool.get(
+            base_url=config.base_url, timeout=config.timeout_seconds, auth=self._basic_auth()
+        )
+
         async def _post() -> bytes:
-            async with httpx.AsyncClient(
-                base_url=config.base_url, timeout=config.timeout_seconds, auth=self._basic_auth()
-            ) as client:
-                response = await client.post(route, files=files)
-                response.raise_for_status()
+            response = await client.post(route, files=files)
+            response.raise_for_status()
             return response.content
 
         content = await NetworkRetry.run(

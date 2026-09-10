@@ -15,6 +15,7 @@ from shared_libs.pipelines.build import PipelineBuilder
 from shared_libs.pipelines.engine import FlowEngine
 from shared_libs.pipelines.nodes.embed.base import BaseEmbedConfig, BaseEmbedderNode, EmbedConsumes
 from shared_libs.pipelines.nodes.embed.bge_server import EmbedBgeServerConfig, EmbedBgeServerNode
+from shared_libs.pipelines.nodes.http_pool import HttpClientPool
 from shared_libs.pipelines.registry import NodeRegistry
 from shared_libs.pipelines.validation import GraphValidator
 from shared_libs.public_models import (
@@ -602,6 +603,9 @@ async def test_bge_embed_all_maps_404_to_none_but_propagates_transient(
     original_client = httpx.AsyncClient
 
     def install(handler) -> EmbedBgeServerNode:
+        # Re-installs a fresh transport WITHIN one test → drop the pooled client from the prior install
+        # so the new monkeypatched AsyncClient (with this handler) is actually constructed.
+        HttpClientPool.reset()
         transport = httpx.MockTransport(handler)
         monkeypatch.setattr(
             httpx,

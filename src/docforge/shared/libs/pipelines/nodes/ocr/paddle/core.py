@@ -6,10 +6,8 @@
 # The sidecar reports the mean recognition confidence, which is what a ScoreBelow transition
 # escalates on.
 
-# ====== Standard Library Imports ======
-import httpx
-
 # ====== Internal Project Imports ======
+from shared_libs.pipelines.nodes.http_pool import HttpClientPool
 from shared_libs.pipelines.nodes.openai_compat import EndpointReachability
 from shared_libs.pipelines.nodes.retry import NetworkRetry
 from shared_libs.pipelines.registry import NodeRegistry
@@ -55,13 +53,13 @@ class OcrPaddleNode(BaseOcrNode):
         if config.api_key:
             headers["Authorization"] = f"Bearer {config.api_key}"
 
+        # A pooled client keeps the connection alive across retries — headers ride per-request.
+        client = HttpClientPool.get(base_url=config.base_url, timeout=config.timeout_seconds)
+
         async def _post() -> tuple[str, float]:
             """POST the raw image bytes and read back {text, confidence} — the retryable call."""
-            async with httpx.AsyncClient(
-                base_url=config.base_url, timeout=config.timeout_seconds
-            ) as client:
-                response = await client.post("/ocr", content=image, headers=headers)
-                response.raise_for_status()
+            response = await client.post("/ocr", content=image, headers=headers)
+            response.raise_for_status()
             body = response.json()
             # Clamp to [0, 1] so a ScoreBelow gate stays well-defined even if the sidecar ever
             # reports an out-of-range confidence.

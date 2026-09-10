@@ -7,11 +7,9 @@
 # ====== Standard Library Imports ======
 import base64
 
-# ====== Third-Party Library Imports ======
-import httpx
-
 # ====== Internal Project Imports ======
 from shared_libs.pipelines.base import NodeUsage
+from shared_libs.pipelines.nodes.http_pool import HttpClientPool
 from shared_libs.pipelines.nodes.openai_compat import EndpointReachability
 from shared_libs.pipelines.nodes.retry import NetworkRetry
 from shared_libs.pipelines.registry import NodeRegistry
@@ -61,19 +59,18 @@ class OcrMistralNode(BaseOcrNode):
             },
         }
         page_count = 0
+        # A pooled client keeps the connection alive across retries — the bearer rides per-request.
+        client = HttpClientPool.get(base_url=config.base_url, timeout=config.timeout_seconds)
 
         async def _post() -> str:
             """POST and join the pages' markdown — the retryable network operation."""
             nonlocal page_count
-            async with httpx.AsyncClient(
-                base_url=config.base_url, timeout=config.timeout_seconds
-            ) as client:
-                response = await client.post(
-                    "/ocr",
-                    json=payload,
-                    headers={"Authorization": f"Bearer {config.api_key}"},
-                )
-                response.raise_for_status()
+            response = await client.post(
+                "/ocr",
+                json=payload,
+                headers={"Authorization": f"Bearer {config.api_key}"},
+            )
+            response.raise_for_status()
             pages = response.json().get("pages", [])
             # Mistral bills per PAGE — record how many the API actually returned for the crop.
             page_count = len(pages)

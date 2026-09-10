@@ -8,10 +8,8 @@
 # ScoreBelow escalation head after standard docling, never in the default/light blob — the sidecar's
 # VLM is GPU-only, heavy, slow and optional (built lazily sidecar-side).
 
-# ====== Third-Party Library Imports ======
-import httpx
-
 # ====== Internal Project Imports ======
+from shared_libs.pipelines.nodes.http_pool import HttpClientPool
 from shared_libs.pipelines.nodes.openai_compat import EndpointReachability
 from shared_libs.pipelines.nodes.retry import NetworkRetry
 from shared_libs.pipelines.registry import NodeRegistry
@@ -84,17 +82,17 @@ class ParserMineruNode(BaseParserNode):
         if config.api_key:
             headers["Authorization"] = f"Bearer {config.api_key}"
 
+        # A pooled client keeps the connection alive across retries — headers ride per-request.
+        client = HttpClientPool.get(base_url=config.base_url, timeout=config.timeout_seconds)
+
         async def _post() -> dict:
             """One async call per document — raw PDF bytes in the body (the retryable operation)."""
-            async with httpx.AsyncClient(
-                base_url=config.base_url, timeout=config.timeout_seconds
-            ) as client:
-                response = await client.post(
-                    "/parse",
-                    content=source.pdf_content,
-                    headers=headers,
-                )
-                response.raise_for_status()
+            response = await client.post(
+                "/parse",
+                content=source.pdf_content,
+                headers=headers,
+            )
+            response.raise_for_status()
             return response.json()
 
         # 2. Run the call under the shared bounded retry; a non-transient error re-raises at once.
