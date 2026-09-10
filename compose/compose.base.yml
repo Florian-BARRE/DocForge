@@ -14,9 +14,23 @@
 #
 # Distinct container names, volumes, network and host-port range 10040-10049 (see
 # docs/configuration.md's port table).
+#
+# x-logging anchor: without a cap, Docker's default json-file driver grows unbounded — a wedged
+# provider retry loop or a chatty worker can fill the host disk. Every service below references
+# this anchor via `logging: *default-logging` (10 MiB/file, 3 files kept, ~30 MiB ceiling/service).
+# YAML anchors/aliases are resolved per-document at PARSE time, before Compose's `include:` merge —
+# so this only works because every service using the alias lives IN THIS SAME FILE. Verified with
+# `docker compose config`: the alias resolves to the literal block in every scenario that includes
+# this file (prod-cpu/prod-gpu/dev-cpu/dev-gpu) since compose.base.yml is always parsed whole.
 # ─────────────────────────────────────────────────────────────────────────────
 
 name: docforge
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
 
 services:
   # ── FastAPI app — light image (design surface + admission + monitoring) ─────
@@ -71,6 +85,7 @@ services:
         limits:
           memory: 2g
     restart: unless-stopped
+    logging: *default-logging
     networks:
       - docforge_net
 
@@ -142,6 +157,7 @@ services:
         reservations:
           memory: 1g
     restart: unless-stopped
+    logging: *default-logging
     networks:
       - docforge_net
 
@@ -182,6 +198,7 @@ services:
         reservations:
           memory: 1g
     restart: unless-stopped
+    logging: *default-logging
     networks:
       - docforge_net
 
@@ -209,6 +226,7 @@ services:
         reservations:
           memory: 128m
     restart: unless-stopped
+    logging: *default-logging
     networks:
       - docforge_net
 
@@ -236,6 +254,7 @@ services:
         reservations:
           memory: 1g
     restart: unless-stopped
+    logging: *default-logging
     networks:
       - docforge_net
 
@@ -271,6 +290,7 @@ services:
         limits:
           memory: 1g
     restart: unless-stopped
+    logging: *default-logging
     networks:
       - docforge_net
 
@@ -297,6 +317,7 @@ services:
           # Gotenberg spawns LibreOffice/Chromium per conversion — give it a real ceiling.
           memory: 2g
     restart: unless-stopped
+    logging: *default-logging
     networks:
       docforge_net:
         aliases:
@@ -338,11 +359,18 @@ services:
       resources:
         # Live resident ~3.5 GiB (both models). 5g ceiling = models + batch headroom (was 6g); soft
         # floor at the resident set so the host OOM-killer keeps the loaded models alive.
+        # cpus: without this, libs/bge_models/cpu_budget.py's CpuBudgetResolver (reads the cgroup v2
+        # CFS quota, falling back to sched_getaffinity) has no quota to read and silently falls back
+        # to the full host core count — torch intra-op threading then oversubscribes the host under
+        # concurrent embed+rerank load. Size to the host (this VM: 8 cores; leave headroom for the
+        # other services), re-tune alongside memory if the host changes.
         limits:
+          cpus: "4.0"
           memory: 5g
         reservations:
           memory: 3500m
     restart: unless-stopped
+    logging: *default-logging
     networks:
       docforge_net:
         aliases:
@@ -383,6 +411,7 @@ services:
         limits:
           memory: 512m
     restart: unless-stopped
+    logging: *default-logging
     networks:
       - docforge_net
 
@@ -426,6 +455,7 @@ services:
         reservations:
           memory: 1g
     restart: unless-stopped
+    logging: *default-logging
     networks:
       docforge_net:
         aliases:
@@ -472,6 +502,7 @@ services:
         reservations:
           memory: 1g
     restart: unless-stopped
+    logging: *default-logging
     networks:
       docforge_net:
         aliases:
@@ -511,6 +542,7 @@ services:
         reservations:
           memory: 1g
     restart: unless-stopped
+    logging: *default-logging
     networks:
       docforge_net:
         aliases:

@@ -63,6 +63,11 @@ services:
     image: ghcr.io/florian-barre/docforge-bge-server:${DOCFORGE_TAG:-latest}-gpu
     # Service-level GPU grant — equivalent to `docker run --gpus all`.
     gpus: all
+    environment:
+      # The keep-warm background task (backend/lifespan.py) exists to fight the model weights
+      # getting paged OUT of RAM under host memory pressure on a CPU box; a GPU box keeps its
+      # weights resident in VRAM and never pages, so the periodic dummy inference is pure waste.
+      BGE_KEEPWARM_SECONDS: "0"
     build:
       # Matches overlays/compose.dev.yml's docforge_bge_server build context/dockerfile exactly — see
       # the header comment on why this duplication is required.

@@ -39,3 +39,7 @@ services:
     pull_policy: always
   docforge_paddle_server:
     pull_policy: always
+  docforge_mineru_server:
+    pull_policy: always
+  docforge_dots_ocr_server:
+    pull_policy: always
