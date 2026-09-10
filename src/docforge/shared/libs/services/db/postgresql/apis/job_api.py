@@ -17,6 +17,7 @@ from decimal import Decimal
 from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import defer
 
 # ====== Internal Project Imports ======
 from shared_libs.pipelines.base import NodeExecutionRecord
@@ -802,8 +803,36 @@ class JobApi:
         )
         return (1, tokens)
 
+    @staticmethod
+    def events_query(job_id: uuid.UUID, include_summaries: bool = True):  # type: ignore[no-untyped-def]
+        """Build the stage-event SELECT for a job, optionally LEAN (summaries deferred).
+
+        The flat timeline (stage/status/kind/path/timings/tokens/cost/score) is cheap; the two JSONB
+        shape summaries (``input_summary``/``output_summary``) are the only wide, TOAST-able columns.
+        The high-frequency poll path (the live SSE stream's per-tick delta) never renders them, so it
+        passes ``include_summaries=False`` to ``defer`` both columns OUT of the SELECT — Postgres then
+        never reads or de-TOASTs them. The one-shot trace read keeps them (default True). Exposed as a
+        builder so a unit test can assert the lean query's rendered column set without a live DB.
+
+        Args:
+            job_id (uuid.UUID): The job whose stage-event rows to select.
+            include_summaries (bool): Keep the JSONB summary columns (True, the full trace read) or
+                defer them out of the SELECT (False, the lean poll path).
+
+        Returns:
+            Select: The composed statement.
+        """
+        stmt = select(JobStageEvent).where(JobStageEvent.job_id == job_id)
+        if not include_summaries:
+            stmt = stmt.options(
+                defer(JobStageEvent.input_summary), defer(JobStageEvent.output_summary)
+            )
+        return stmt
+
     @classmethod
-    async def list_events(cls, session: AsyncSession, job_id: uuid.UUID) -> list[JobStageEvent]:
+    async def list_events(
+        cls, session: AsyncSession, job_id: uuid.UUID, include_summaries: bool = True
+    ) -> list[JobStageEvent]:
         """Return a job's per-node trace as a stable pre-order tree walk (parent before children).
 
         The full tree is materialized on the rows (``node_path``/``depth``/``parent_path``/
@@ -811,8 +840,13 @@ class JobApi:
         a parent precedes its children and ForEach body items sort by ascending index. Legacy rows
         with no path lead the list in insertion order. Sorting in Python keeps the numeric ForEach
         order a SQL string ``ORDER BY`` cannot express; the per-job row count is small.
+
+        ``include_summaries=False`` DEFERS the wide JSONB shape summaries out of the SELECT for the
+        high-frequency poll path (the live SSE stream). The deferred attributes MUST NOT be read off
+        the returned rows (an async lazy-load would fail) — the caller pairs this with
+        ``JobEvent.from_row(..., include_summaries=False)`` so the summaries are reported None.
         """
-        result = await session.execute(select(JobStageEvent).where(JobStageEvent.job_id == job_id))
+        result = await session.execute(cls.events_query(job_id, include_summaries))
         return sorted(result.scalars().all(), key=cls._trace_sort_key)
 
     @staticmethod

@@ -16,16 +16,44 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 class PostgresClient(LoggerClass):
     """Async gateway to Postgres — owns the engine and yields transactional sessions."""
 
-    def __init__(self, dsn: str, echo: bool = False) -> None:
+    def __init__(
+        self,
+        dsn: str,
+        echo: bool = False,
+        pool_size: int = 5,
+        max_overflow: int = 10,
+        pool_recycle_seconds: int = 1800,
+    ) -> None:
         """
         Args:
             dsn (str): asyncpg DSN, e.g. ``postgresql+asyncpg://user:pass@host/db``.
             echo (bool): Echo every emitted SQL statement (debug only).
+            pool_size (int): Persistent connections kept open per engine. The effective ceiling of
+                one process is ``pool_size + max_overflow`` — size it so the whole deployment
+                (app + every worker replica) stays under Postgres' ``max_connections``.
+            max_overflow (int): Extra connections opened beyond ``pool_size`` under burst load and
+                discarded when returned. ``pool_size + max_overflow`` is the hard per-engine cap.
+            pool_recycle_seconds (int): Recycle a pooled connection older than this (seconds), so an
+                idle connection a server-side/proxy idle-timeout silently dropped is never handed out
+                stale. -1 disables recycling.
         """
         LoggerClass.__init__(self)
-        self._engine = create_async_engine(dsn, echo=echo, pool_pre_ping=True)
+        # pool_pre_ping stays ON alongside pool_recycle: recycle bounds a connection's age, pre_ping
+        # is the per-checkout SELECT 1 that still catches a connection dropped WITHIN the recycle
+        # window (a server restart, a network blip) — the two are complementary, not redundant.
+        self._engine = create_async_engine(
+            dsn,
+            echo=echo,
+            pool_pre_ping=True,
+            pool_size=pool_size,
+            max_overflow=max_overflow,
+            pool_recycle=pool_recycle_seconds,
+        )
         self._session_factory = async_sessionmaker(self._engine, expire_on_commit=False)
-        self.logger.info(f"PostgresClient connected")
+        self.logger.info(
+            f"PostgresClient connected (pool_size={pool_size}, max_overflow={max_overflow}, "
+            f"pool_recycle={pool_recycle_seconds}s)"
+        )
 
     @asynccontextmanager
     async def session(self) -> AsyncIterator[AsyncSession]:

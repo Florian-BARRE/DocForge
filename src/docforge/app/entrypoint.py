@@ -59,7 +59,12 @@ def _build_app() -> FastAPI:
     # 3. Stores + queue — both connect LAZILY (first session / first enqueue), so the app
     # still boots and serves its design surface with no store running.
     CONTEXT.database = Database(
-        postgres=PostgresClient(RUNTIME_CONFIG.POSTGRES_DSN),
+        postgres=PostgresClient(
+            RUNTIME_CONFIG.POSTGRES_DSN,
+            pool_size=RUNTIME_CONFIG.DB_POOL_SIZE,
+            max_overflow=RUNTIME_CONFIG.DB_MAX_OVERFLOW,
+            pool_recycle_seconds=RUNTIME_CONFIG.DB_POOL_RECYCLE_SECONDS,
+        ),
         qdrant=QdrantClient(
             RUNTIME_CONFIG.QDRANT_URL,
             api_key=RUNTIME_CONFIG.QDRANT_API_KEY,

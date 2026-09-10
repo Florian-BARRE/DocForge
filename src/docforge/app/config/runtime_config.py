@@ -289,6 +289,16 @@ class RUNTIME_CONFIG(EnvConfigLoader):
 
     # ───── Stores (admission writes + status/collection reads; never pipeline execution) ─────
     POSTGRES_DSN = env("POSTGRES_DSN")
+    # SQLAlchemy async-engine connection-pool sizing. The effective per-PROCESS ceiling is
+    # DB_POOL_SIZE + DB_MAX_OVERFLOW. The WHOLE deployment must fit under Postgres' max_connections
+    # (compose ships 50): app(1) + worker × N replicas, each × (pool_size + max_overflow) ≤ 50.
+    # Defaults 5 + 10 = 15/process — same as SQLAlchemy's historical implicit default, now EXPLICIT
+    # and tunable (see docs/configuration.md for the replica math). MUST mirror the worker's knobs.
+    DB_POOL_SIZE: int = env("DB_POOL_SIZE", cast=int, default=5)
+    DB_MAX_OVERFLOW: int = env("DB_MAX_OVERFLOW", cast=int, default=10)
+    # Recycle a pooled connection older than this (seconds) so an idle connection a server/proxy
+    # idle-timeout dropped is never handed out stale. -1 disables recycling.
+    DB_POOL_RECYCLE_SECONDS: int = env("DB_POOL_RECYCLE_SECONDS", cast=int, default=1800)
     QDRANT_URL = env("QDRANT_URL")
     QDRANT_API_KEY = env("QDRANT_API_KEY", required=False, default=None)
     # Per-request Qdrant timeout; passed into QdrantClient at construction (see the client's docstring

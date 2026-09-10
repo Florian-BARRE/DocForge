@@ -49,6 +49,16 @@ class RUNTIME_CONFIG(EnvConfigLoader):
 
     # ───── Stores (the worker persists; the app never does) ─────
     POSTGRES_DSN = env("POSTGRES_DSN")
+    # SQLAlchemy async-engine connection-pool sizing. The effective per-PROCESS ceiling is
+    # DB_POOL_SIZE + DB_MAX_OVERFLOW, so EACH worker replica (--scale docforge_worker=N) consumes up
+    # to that many connections; the whole deployment (app + every worker replica) must fit under
+    # Postgres' max_connections (compose ships 50). Defaults 5 + 10 = 15/process, now EXPLICIT and
+    # tunable (see docs/configuration.md for the safe replica math). MUST mirror the app's knobs.
+    DB_POOL_SIZE = env("DB_POOL_SIZE", cast=int, default=5)
+    DB_MAX_OVERFLOW = env("DB_MAX_OVERFLOW", cast=int, default=10)
+    # Recycle a pooled connection older than this (seconds) so an idle connection a server/proxy
+    # idle-timeout dropped is never handed out stale. -1 disables recycling.
+    DB_POOL_RECYCLE_SECONDS = env("DB_POOL_RECYCLE_SECONDS", cast=int, default=1800)
     QDRANT_URL = env("QDRANT_URL")
     QDRANT_API_KEY = env("QDRANT_API_KEY", required=False, default=None)
     S3_ENDPOINT_URL = env("S3_ENDPOINT_URL")
@@ -79,8 +89,10 @@ class RUNTIME_CONFIG(EnvConfigLoader):
     # without it the download route refuses an expired bundle but the bytes + row leak forever. ON by
     # default; disable to skip the sweep entirely (the cron is then not even registered).
     WORKER_TRANSFER_GC_ENABLED = env("WORKER_TRANSFER_GC_ENABLED", cast=bool, default=True)
-    # Transfer-GC cron cadence (minutes): the sweep runs on every Nth minute of the hour. 15 → every
-    # 15 minutes. It also runs once at startup so a backlog left while GC was off is cleared promptly.
+    # Transfer-GC cron cadence (minutes): the sweep runs on every Nth minute of the hour (phase-shifted
+    # against the other worker crons — see `_cron_minutes` in worker/backend/app.py). 15 → every 15
+    # minutes. Does NOT run at startup (unlike the reaper): a backlog of expired bundles waits for the
+    # first scheduled tick.
     WORKER_TRANSFER_GC_INTERVAL_MINUTES = env(
         "WORKER_TRANSFER_GC_INTERVAL_MINUTES", cast=int, default=15
     )
@@ -104,8 +116,9 @@ class RUNTIME_CONFIG(EnvConfigLoader):
     # Master switch for the audit retention sweep. ON by default, but a no-op unless AUDIT_RETENTION_DAYS
     # > 0 (with retention at 0 the cron is not registered at all). Disable to skip the sweep entirely.
     WORKER_AUDIT_GC_ENABLED = env("WORKER_AUDIT_GC_ENABLED", cast=bool, default=True)
-    # Audit-GC cron cadence (minutes): the prune runs on every Nth minute of the hour. 60 → hourly. It
-    # also runs once at startup so a backlog left while retention was disabled is cleared promptly.
+    # Audit-GC cron cadence (minutes): the prune runs on every Nth minute of the hour (phase-shifted
+    # against the other worker crons — see `_cron_minutes` in worker/backend/app.py). 60 → hourly.
+    # Does NOT run at startup: retention pruning waits for the first scheduled tick.
     WORKER_AUDIT_GC_INTERVAL_MINUTES = env("WORKER_AUDIT_GC_INTERVAL_MINUTES", cast=int, default=60)
 
     # ───── Idempotency-key retention ─────
@@ -113,8 +126,9 @@ class RUNTIME_CONFIG(EnvConfigLoader):
     # cron deletes every row past it so the table never grows unbounded. ON by default (the store is a
     # cache, not history — expired rows carry no value); disable to skip the sweep (cron not registered).
     WORKER_IDEMPOTENCY_GC_ENABLED = env("WORKER_IDEMPOTENCY_GC_ENABLED", cast=bool, default=True)
-    # Idempotency-GC cron cadence (minutes): the prune runs on every Nth minute of the hour. 60 →
-    # hourly. It also runs once at startup so a backlog left while the sweep was off is cleared promptly.
+    # Idempotency-GC cron cadence (minutes): the prune runs on every Nth minute of the hour
+    # (phase-shifted against the other worker crons — see `_cron_minutes` in worker/backend/app.py).
+    # 60 → hourly. Does NOT run at startup: expired keys wait for the first scheduled tick.
     WORKER_IDEMPOTENCY_GC_INTERVAL_MINUTES = env(
         "WORKER_IDEMPOTENCY_GC_INTERVAL_MINUTES", cast=int, default=60
     )
@@ -128,8 +142,9 @@ class RUNTIME_CONFIG(EnvConfigLoader):
     # The cache GC cron: evicts by TTL (LRU on last_hit_at) and a per-collection byte cap, then sweeps
     # any S3 stage-artifact blob whose last pointer was removed. ON by default; disable → no cron.
     WORKER_ARTIFACT_GC_ENABLED = env("WORKER_ARTIFACT_GC_ENABLED", cast=bool, default=True)
-    # Cache-GC cron cadence (minutes): the sweep runs on every Nth minute of the hour AND once at
-    # startup, so a backlog left while the sweep was off is cleared promptly. 60 → hourly.
+    # Cache-GC cron cadence (minutes): the sweep runs on every Nth minute of the hour (phase-shifted
+    # against the other worker crons — see `_cron_minutes` in worker/backend/app.py). 60 → hourly.
+    # Does NOT run at startup: the TTL/LRU caps already bound the cache, so it waits for its first tick.
     WORKER_ARTIFACT_GC_INTERVAL_MINUTES = env(
         "WORKER_ARTIFACT_GC_INTERVAL_MINUTES", cast=int, default=60
     )
@@ -217,7 +232,8 @@ class RUNTIME_CONFIG(EnvConfigLoader):
     # cron is then NOT registered (same convention as the audit GC), so an out-of-box deployment never
     # deletes trace payloads behind the operator's back.
     WORKER_TRACE_RETENTION_DAYS = env("WORKER_TRACE_RETENTION_DAYS", cast=int, default=14)
-    # How often the trace-retention GC runs (minutes) — AND once at startup. Only consulted when
+    # How often the trace-retention GC runs (minutes), phase-shifted against the other worker crons
+    # (see `_cron_minutes` in worker/backend/app.py). Does NOT run at startup. Only consulted when
     # retention is a positive window (the cron is otherwise absent).
     WORKER_TRACE_GC_INTERVAL_MINUTES = env("WORKER_TRACE_GC_INTERVAL_MINUTES", cast=int, default=60)
     # Maximum jobs whose payloads one GC pass reclaims — bounds a single sweep's work/round-trips so a

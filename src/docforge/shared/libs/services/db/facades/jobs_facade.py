@@ -166,10 +166,17 @@ class JobsFacade(LoggerClass):
                 error_type=error_type,
             )
 
-    async def list_events(self, job_id: uuid.UUID) -> list[JobStageEvent]:
-        """Return a job's per-node trace, in execution order."""
+    async def list_events(
+        self, job_id: uuid.UUID, include_summaries: bool = True
+    ) -> list[JobStageEvent]:
+        """Return a job's per-node trace, in execution order.
+
+        ``include_summaries=False`` DEFERS the wide JSONB shape summaries out of the SELECT for the
+        high-frequency poll path (the live SSE stream). The deferred attributes must not be read off
+        the returned rows — the caller pairs it with ``JobEvent.from_row(..., include_summaries=False)``.
+        """
         async with self._postgres.session() as session:
-            return await JobApi.list_events(session, job_id)
+            return await JobApi.list_events(session, job_id, include_summaries)
 
     async def persist_execution_tree(
         self,

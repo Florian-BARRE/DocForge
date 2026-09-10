@@ -71,13 +71,17 @@ class _FakeJobs:
         self._jobs = jobs
         self._events = events
         self._tick = 0
+        self.include_summaries_calls: list[bool] = []
 
     async def get(self, _job_id):
         # Clamp to the last snapshot so an extra poll never overruns the timeline.
         job = self._jobs[min(self._tick, len(self._jobs) - 1)]
         return job
 
-    async def list_events(self, _job_id):
+    async def list_events(self, _job_id, include_summaries: bool = True):
+        # The stream passes include_summaries=False on mid-run polls, True on the terminal poll —
+        # record it so a test can assert the hot path runs lean (see test below).
+        self.include_summaries_calls.append(include_summaries)
         events = self._events[min(self._tick, len(self._events) - 1)]
         self._tick += 1  # advance AFTER a full poll (get then list_events)
         return events
@@ -136,6 +140,61 @@ def test_generator_pushes_events_and_stops_at_terminal() -> None:
 
     # 3. The stream closed on the terminal status — the last frame is the done status.
     assert payloads[-1]["kind"] == "status" and payloads[-1]["status"] == "done"
+
+
+def test_stream_polls_lean_until_terminal_then_full() -> None:
+    """The JSONB shape summaries only exist at the run's end, so the frequent mid-run polls defer
+    them OUT of the query (include_summaries=False) and the one TERMINAL poll reads them in full —
+    the pass that carries the summaries to the client for node-expand. This guards the W1-12 lean."""
+    from backend.routers.jobs.stream import stream_job_events
+
+    jobs = _FakeJobs(
+        jobs=[
+            _job("running", 10, "intake"),
+            _job("running", 60, "chunk"),
+            _job("done", 100, "embed"),
+        ],
+        events=[
+            [_event("intake", "success")],
+            [_event("intake", "success"), _event("chunk", "success")],
+            [
+                _event("intake", "success"),
+                _event("chunk", "success"),
+                _event("embed", "success"),
+            ],
+        ],
+    )
+    asyncio.run(_drain(stream_job_events(jobs, "job", poll_interval=0, sleep=_noop_sleep)))
+
+    # The two running polls ran lean; the terminal poll read summaries in full.
+    assert jobs.include_summaries_calls == [False, False, True]
+
+
+def test_terminal_frame_carries_summaries_lean_frames_do_not() -> None:
+    """A node-expand renders input_summary/output_summary straight off the streamed event. So a mid-run
+    (lean) frame must report them None, while the terminal poll's frames surface them — asserting the
+    lean query + from_row(include_summaries) pairing never drops a summary the UI needs at the end."""
+    from backend.routers.jobs.stream import stream_job_events
+
+    running_event = _event("chunk", "running")
+    # At the run's end persist_execution_tree INSERTS the nested rows carrying the shape summaries;
+    # the terminal poll emits those new rows (the delta cursor only advances over newly-landed rows).
+    nested_event = _event("chunk.item[0]", "success")
+    nested_event.input_summary = {"type": "DocumentIR", "fields": 5}
+    nested_event.output_summary = {"type": "list[Chunk]", "count": 12}
+
+    jobs = _FakeJobs(
+        jobs=[_job("running", 50, "chunk"), _job("done", 100, "chunk")],
+        events=[[running_event], [running_event, nested_event]],
+    )
+    frames = asyncio.run(_drain(stream_job_events(jobs, "job", poll_interval=0, sleep=_noop_sleep)))
+    event_payloads = [p for p in _payloads(frames) if p["kind"] == "event"]
+
+    # The first (lean, mid-run) frame reports null summaries; the terminal poll surfaces the nested
+    # row's summaries in full — the same from_row mapper, read two ways per include_summaries.
+    assert event_payloads[0]["input_summary"] is None
+    assert event_payloads[-1]["input_summary"] == {"type": "DocumentIR", "fields": 5}
+    assert event_payloads[-1]["output_summary"] == {"type": "list[Chunk]", "count": 12}
 
 
 def test_generator_closes_on_a_cancelled_job() -> None:

@@ -104,6 +104,9 @@ Backs the public `GET /capabilities` endpoint (outside `/api/v1`, unauthenticate
 |---|---|---|
 | `REDIS_URL` | `redis://localhost:10042/0` | arq queue. |
 | `POSTGRES_DSN` | `postgresql+asyncpg://docforge:change_me@localhost:10041/docforge` | Async DSN. Credentials **must match** `postgres.env`. |
+| `DB_POOL_SIZE` | `5` | Persistent async connections kept open per process (the app, and **each** worker replica). |
+| `DB_MAX_OVERFLOW` | `10` | Extra burst connections beyond the pool. `DB_POOL_SIZE + DB_MAX_OVERFLOW` is the hard per-process ceiling — the whole deployment (app(1) + `docforge_worker` × N via `--scale`) must sum **≤ Postgres `max_connections`** (compose sets `50`). E.g. app + 3 workers × (5+10) = 60 > 50 → raise `max_connections` or lower these. |
+| `DB_POOL_RECYCLE_SECONDS` | `1800` | Recycle a pooled connection older than this (seconds) so a proxy/DB-side idle timeout never hands the app a dead socket. `pool_pre_ping` stays on as a per-checkout safety net. |
 | `QDRANT_URL` | `http://localhost:10043` | |
 | `QDRANT_API_KEY` | *(unset)* | Optional — unset for the local unauthenticated Qdrant. |
 | `S3_ENDPOINT_URL` | `http://localhost:10044` | SeaweedFS (S3-compatible). |

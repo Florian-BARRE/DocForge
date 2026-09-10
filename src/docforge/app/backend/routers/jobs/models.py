@@ -248,8 +248,14 @@ class JobEvent(BaseModel):
     )
 
     @classmethod
-    def from_row(cls, event: Any) -> "JobEvent":
-        """Map one stage-event row to its trace model (shared by the trace route and the stream)."""
+    def from_row(cls, event: Any, include_summaries: bool = True) -> "JobEvent":
+        """Map one stage-event row to its trace model (shared by the trace route and the stream).
+
+        ``include_summaries=False`` reports the two JSONB shape summaries as None WITHOUT reading them
+        off the row — the lean poll path (the SSE stream) defers those columns out of its query, so
+        touching the attributes here would trigger a failing async lazy-load. The full trace read
+        passes True (the default) and the summaries are surfaced verbatim.
+        """
         return cls(
             stage=event.stage,
             status=event.status,
@@ -266,8 +272,8 @@ class JobEvent(BaseModel):
             parent_path=event.parent_path,
             item_index=event.item_index,
             event_id=str(event.id),
-            input_summary=event.input_summary,
-            output_summary=event.output_summary,
+            input_summary=event.input_summary if include_summaries else None,
+            output_summary=event.output_summary if include_summaries else None,
             has_full_input=event.has_full_input,
             has_full_output=event.has_full_output,
         )

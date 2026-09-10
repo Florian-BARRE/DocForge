@@ -59,10 +59,19 @@ async def stream_job_events(
             yield _frame("status", {"job_id": str(job_id), "status": "gone"})
             return
 
-        # 2. Emit every stage event that landed since the last poll, in execution order.
-        events = await jobs.list_events(job_id)
+        # 2. Emit every stage event that landed since the last poll, in execution order. The JSONB
+        #    shape summaries are only ever populated at the run's END (persist_execution_tree), so the
+        #    frequent mid-run polls defer them OUT of the query (lean) — they would be null anyway. On
+        #    the TERMINAL iteration they DO exist and the UI renders them on node-expand, so that one
+        #    poll reads them in full (a terminal-job page-open replays the whole list here, so the
+        #    full read on this final pass is what carries the summaries to the client).
+        terminal = job.status.value in JobStatusEnum.terminal()
+        events = await jobs.list_events(job_id, include_summaries=terminal)
         for event in events[cursor:]:
-            yield _frame("event", JobEvent.from_row(event).model_dump(mode="json"))
+            yield _frame(
+                "event",
+                JobEvent.from_row(event, include_summaries=terminal).model_dump(mode="json"),
+            )
         cursor = len(events)
 
         # 3. Emit a status frame only when the snapshot moved (status/progress/stage/error), so the
