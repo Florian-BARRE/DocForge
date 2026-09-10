@@ -23,7 +23,8 @@ class BatchQueueWorker(LoggerClass):
     """
     Generic micro-batcher for one inference operation (dense / sparse / rerank).
 
-    One worker is created per operation type (dense / sparse / colbert / rerank — four total).
+    One worker is created per operation type (dense / sparse / colbert / embed_all / rerank —
+    five total).
     The worker runs a single asyncio background task (_run) that forms batches from the queue
     and calls the injected process_fn. Each submitted item carries a cost; batches accumulate
     until the cost budget is met or the wait window elapses.

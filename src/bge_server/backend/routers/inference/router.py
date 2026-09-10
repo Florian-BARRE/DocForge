@@ -145,13 +145,13 @@ async def embed_all(req: EmbedRequest) -> ORJSONResponse:
     /embed_sparse). Not part of the TEI contract — the DocForge app falls back to the two
     separate routes when this one is unavailable.
 
-    Unlike the batched dense/sparse queues, this path calls the model directly (no cross-request
-    coalescing) but is still serialised on the shared embed lock, so it never overlaps a dense or
-    sparse batch on the shared model instance. Request-size ceilings are enforced by EmbedRequest
-    (HTTP 422), exactly as for /embed and /embed_sparse. Back-pressure: this route has no
-    BatchQueueWorker queue of its own, so the engine bounds its admission with an in-flight
-    counter instead (see BatchingEngine.embed_all) and raises QueueFullError past that cap --
-    translated to HTTP 503 + Retry-After: 1 here, exactly like the four queued routes.
+    Like /embed and /embed_sparse, this route is submitted to its own BatchQueueWorker so
+    concurrent callers are coalesced into a single model call (cross-request batching), and it
+    is still serialised on the shared embed lock, so it never overlaps a dense or sparse batch
+    on the shared model instance. Request-size ceilings are enforced by EmbedRequest (HTTP 422),
+    exactly as for /embed and /embed_sparse. Back-pressure: QueueFullError from the engine's
+    embed_all worker queue is translated to HTTP 503 + Retry-After: 1 here, exactly like the
+    other queued routes.
 
     Args:
         req (EmbedRequest): Request body with texts to embed.
@@ -170,14 +170,12 @@ async def embed_all(req: EmbedRequest) -> ORJSONResponse:
     if not texts:
         return ORJSONResponse({"dense": [], "sparse": []})
 
-    # 4. One combined forward pass through the engine (serialised on the shared embed lock).
-    #    max_length matches the value the engine's dense/sparse workers use (from the same config),
-    #    so the returned vectors are identical to the two separate routes. Translate the engine's
-    #    in-flight-cap back-pressure the same way the four queued routes translate QueueFullError.
+    # 4. Submit to the embed_all batching worker — coalesces with other concurrent embed_all
+    #    calls into one combined forward pass (serialised on the shared embed lock). Uses the
+    #    engine's configured max_length (same config the dense/sparse workers use), so the
+    #    returned vectors are identical to the two separate routes.
     try:
-        dense, sparse_raw = await CONTEXT.batching_engine.embed_all(
-            texts, max_length=CONTEXT.CONFIG.BGE_M3_MAX_LENGTH
-        )
+        dense, sparse_raw = await CONTEXT.batching_engine.embed_all(texts)
     except QueueFullError:
         raise HTTPException(
             status_code=503,
@@ -255,15 +253,29 @@ async def rerank(req: RerankRequest) -> list[RerankResult]:
     Returns:
         list[RerankResult]: One ``{"index": i, "score": s}`` per candidate text, sorted
             score-descending (best match first).
+
+    Raises:
+        HTTPException: HTTP 503 when the reranker was never loaded (BGE_LOAD_RERANKER=false —
+            an embed-only deployment). Checked BEFORE touching the batching engine so the
+            failure is a clean, explicit 503 rather than a RuntimeError surfacing from deep
+            inside BgeModelsService.reranker.
     """
-    # 1. Log batch size at DEBUG — never log query text or candidate contents
+    # 1. Reranker gate — BGE_LOAD_RERANKER=false skips loading the reranker entirely (embed-only
+    #    deployments route production rerank to a hosted/GPU reranker instead). Fail clean here.
+    if not CONTEXT.bge_models.reranker_loaded:
+        raise HTTPException(
+            status_code=503,
+            detail={"error": "reranker not loaded (BGE_LOAD_RERANKER=false)"},
+        )
+
+    # 2. Log batch size at DEBUG — never log query text or candidate contents
     logger.debug(f"POST /rerank: {len(req.texts)} candidates")
 
-    # 2. Empty candidate list — return immediately (no engine call needed)
+    # 3. Empty candidate list — return immediately (no engine call needed)
     if not req.texts:
         return []
 
-    # 3. Submit to the rerank batching worker
+    # 4. Submit to the rerank batching worker
     try:
         raw = await CONTEXT.batching_engine.submit_rerank(req.query, req.texts)
     except QueueFullError:

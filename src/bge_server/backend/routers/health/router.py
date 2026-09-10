@@ -48,13 +48,15 @@ async def health(response: Response) -> HealthResponse:
     """
     logger.debug(f"GET /health")
 
-    # 1. Check whether both models have been loaded by inspecting the private sentinel.
+    # 1. Check whether the embed model has been loaded by inspecting the private sentinel.
     # BgeModelsService._embed_model is None until load() completes; using hasattr guards
     # against the race where bge_models itself is not yet set on CONTEXT (very early boot).
+    # The reranker is only required to be loaded when BGE_LOAD_RERANKER is on — an embed-only
+    # deployment (BGE_LOAD_RERANKER=false) never sets _reranker and must still report ready.
     models_ready = (
         hasattr(CONTEXT, "bge_models")
         and CONTEXT.bge_models._embed_model is not None  # noqa: SLF001
-        and CONTEXT.bge_models._reranker is not None  # noqa: SLF001
+        and (CONTEXT.bge_models.reranker_loaded or not CONTEXT.CONFIG.BGE_LOAD_RERANKER)
     )
 
     # 2. Return 503 while loading so compose/docforge treat the container as not-yet-ready

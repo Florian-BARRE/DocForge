@@ -58,7 +58,7 @@ src/bge_server/
     batching/
       models.py          # BatchItem/EmbedItem/RerankItem dataclasses + QueueFullError
       worker.py          # BatchQueueWorker(LoggerClass) -- one generic micro-batcher per op
-      engine.py          # BatchingEngine(LoggerClass) -- owns 4 workers + shared model_lock
+      engine.py          # BatchingEngine(LoggerClass) -- owns 5 workers + shared model_lock
   backend/
     app.py               # create_app() -- FastAPI factory, registers routers
     context.py           # CONTEXT static service locator (CONFIG + bge_models + batching_engine)

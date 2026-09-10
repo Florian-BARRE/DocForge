@@ -54,6 +54,7 @@ class BgeModelsService(LoggerClass):
         torch_num_threads: int = 0,
         embed_revision: str | None = None,
         rerank_revision: str | None = None,
+        load_reranker: bool = True,
     ) -> None:
         """
         Args:
@@ -62,13 +63,14 @@ class BgeModelsService(LoggerClass):
             device_policy (str): BGE_DEVICE policy — "auto", "cuda", or "cpu".
             fp16_requested (bool): BGE_FP16 from config. Gated: only applied on CUDA devices.
             torch_num_threads (int): Intra-op thread cap for torch (BGE_TORCH_NUM_THREADS).
-                0 means "auto" — derived inside load() as ceil(cpu_budget / 2). The batching
-                engine (libs/batching/engine.py) holds TWO independent locks — embed_lock
-                (dense/sparse/colbert) and rerank_lock (the separate FlagReranker instance) —
-                so up to two model forward passes can legitimately run at once (one per lock).
-                Dividing the cpu_budget by 2 keeps the combined intra-op thread usage of both
-                concurrent calls within the real core budget instead of each one alone claiming
-                the full budget and doubling it under load.
+                0 means "auto" — derived inside load() as ceil(cpu_budget / max_concurrency). The
+                batching engine (libs/batching/engine.py) holds TWO independent locks — embed_lock
+                (dense/sparse/colbert/embed_all) and rerank_lock (the separate FlagReranker
+                instance) — so up to two model forward passes can legitimately run at once (one
+                per lock) WHEN the reranker is loaded. Dividing the cpu_budget by max_concurrency
+                keeps the combined intra-op thread usage of concurrent calls within the real core
+                budget instead of each one alone claiming the full budget and doubling it under
+                load.
                 cpu_budget comes from CpuBudgetResolver — the cgroup v2 CFS quota when the
                 process runs under one, else the scheduler affinity/cpu_count fallback.
                 Stored here; applied at the start of load() before any torch model call.
@@ -77,6 +79,10 @@ class BgeModelsService(LoggerClass):
                 snapshot path by ModelRevisionResolver at the start of load().
             rerank_revision (str | None): BGE_RERANKER_REVISION — same as embed_revision, for
                 the reranker.
+            load_reranker (bool): BGE_LOAD_RERANKER from config. When False, load() skips
+                constructing (and downloading) the FlagReranker entirely — for embed-only
+                deployments that route production rerank to a hosted/GPU reranker instead.
+                Defaults True to preserve the previous always-load behavior.
         """
         LoggerClass.__init__(self)
         self._embed_model_id = embed_model_id
@@ -86,11 +92,15 @@ class BgeModelsService(LoggerClass):
         self._torch_num_threads = torch_num_threads
         self._embed_revision = embed_revision
         self._rerank_revision = rerank_revision
+        self._load_reranker = load_reranker
         # The batching engine holds TWO independent locks (embed_lock + rerank_lock — see
         # libs/batching/engine.py), so up to two model forward passes can run concurrently:
-        # one on embed_model (dense/sparse/colbert) and one on the separate reranker instance.
-        # Thread-count auto-derivation must budget for that real max concurrency, not for 1.
-        self._max_concurrency = 2
+        # one on embed_model (dense/sparse/colbert/embed_all) and one on the separate reranker
+        # instance. Thread-count auto-derivation must budget for that real max concurrency — but
+        # only when the reranker is actually loaded; rerank_lock is never contended on an
+        # embed-only deployment (BGE_LOAD_RERANKER=false), so budgeting for it there would just
+        # halve the embed thread pool for no reason.
+        self._max_concurrency = 2 if load_reranker else 1
 
         # Set by load() after device resolution; None until the service is started.
         self._resolved_device: str | None = None
@@ -120,11 +130,31 @@ class BgeModelsService(LoggerClass):
         Return the loaded FlagReranker instance.
 
         Raises:
-            RuntimeError: If the service has not been started yet.
+            RuntimeError: If the service has not been started yet, or if the reranker was
+                never loaded because BGE_LOAD_RERANKER=false (embed-only deployment).
         """
         if self._reranker is None:
+            if not self._load_reranker:
+                raise RuntimeError(
+                    f"Reranker is not loaded (BGE_LOAD_RERANKER=false) — this deployment is "
+                    f"embed-only."
+                )
             raise RuntimeError(f"BgeModelsService.load() has not been called yet.")
         return self._reranker
+
+    @property
+    def reranker_loaded(self) -> bool:
+        """
+        Return True once the reranker model is loaded.
+
+        Always False when BGE_LOAD_RERANKER=false (the reranker is never constructed), and
+        False before load() has completed. Routes use this to fail fast with a clean HTTP 503
+        instead of letting a RuntimeError surface from deep inside the batching engine.
+
+        Returns:
+            bool: True when the reranker is loaded and ready to serve /rerank requests.
+        """
+        return self._reranker is not None
 
     @property
     def resolved_device(self) -> str | None:
@@ -153,17 +183,20 @@ class BgeModelsService(LoggerClass):
 
     def load(self) -> None:
         """
-        Resolve the device, then load both BGE models into memory.
+        Resolve the device, then load the BGE embed model (and, unless gated off, the reranker).
 
         Steps:
           1. Call DeviceResolver.resolve() to translate the BGE_DEVICE policy into a concrete
              device string and gated fp16 flag (torch.cuda.is_available() is called here).
           2. Import FlagEmbedding (deferred — avoids ML stack at module import time).
           3. Cap torch intra-op threads via CpuBudgetResolver (cgroup-aware).
-          4. Resolve each model id to a pinned local snapshot path via ModelRevisionResolver
-             (no-op, returns the bare id unchanged, when no revision is configured).
+          4. Resolve the embed model id to a pinned local snapshot path via
+             ModelRevisionResolver (no-op, returns the bare id unchanged, when no revision is
+             configured).
           5. Construct BGEM3FlagModel with the resolved device, fp16 flag, and path.
-          6. Construct FlagReranker with the same device/fp16 flag and its resolved path.
+          6. Construct FlagReranker with the same device/fp16 flag and its own resolved path —
+             SKIPPED entirely when ``load_reranker=False`` (BGE_LOAD_RERANKER=false): no
+             revision resolution, no download, no resident RAM for an unused model.
 
         Raises:
             RuntimeError: When device_policy="cuda" but CUDA is not available.
@@ -224,9 +257,10 @@ class BgeModelsService(LoggerClass):
         # No-op (returns the bare model id unchanged) when the revision env var is empty/unset —
         # preserves the floating `main` behavior for anyone who clears it. Deliberately NOT
         # wrapped in try/except: a pinned deploy that can't fetch its pinned weights must fail
-        # loudly at startup, not silently fall back to floating.
+        # loudly at startup, not silently fall back to floating. The reranker revision is only
+        # resolved when the reranker will actually be loaded — resolving it needlessly would
+        # still trigger a snapshot_download (network + disk) for a model that is never used.
         embed_source = ModelRevisionResolver.resolve(self._embed_model_id, self._embed_revision)
-        rerank_source = ModelRevisionResolver.resolve(self._rerank_model_id, self._rerank_revision)
 
         # 5. Load the embedding model (dense + sparse heads both available from one instance).
         # The `devices` parameter accepts a device string ("cuda" / "cpu") or list thereof.
@@ -243,7 +277,18 @@ class BgeModelsService(LoggerClass):
         )
         self.logger.info(f"Embed model loaded -> {self._embed_model_id} (source={embed_source})")
 
-        # 6. Load the cross-encoder reranker with the same device settings.
+        # 6. Load the cross-encoder reranker with the same device settings — SKIPPED entirely
+        # when BGE_LOAD_RERANKER=false (embed-only deployment): no download, no resident RAM,
+        # no 30-120s load time for a model this deployment never serves. POST /rerank returns a
+        # clean HTTP 503 in that case (see BgeModelsService.reranker_loaded / router.py).
+        if not self._load_reranker:
+            self.logger.info(
+                f"Reranker load SKIPPED (BGE_LOAD_RERANKER=false) — {self._rerank_model_id} "
+                f"will not be downloaded or loaded; POST /rerank will return HTTP 503"
+            )
+            return
+
+        rerank_source = ModelRevisionResolver.resolve(self._rerank_model_id, self._rerank_revision)
         self.logger.info(
             f"Loading reranker: {self._rerank_model_id} "
             f"(revision={self._rerank_revision or 'main'}, source={rerank_source}, "

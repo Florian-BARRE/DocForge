@@ -40,9 +40,11 @@ async def _keep_warm(interval_seconds: int, max_length: int) -> None:
     reranker instances — calling the model service directly (bypassing both the engine's
     queues AND its locks) would let a keep-warm tick's forward pass race a real batch's forward
     pass on that shared torch/tokenizer state, which is thread-unsafe. The engine methods still
-    bypass the four BatchQueueWorker queues, so a keep-warm tick never competes for queue
-    CAPACITY with real traffic — only for the lock, exactly like any other caller. Each tick is
-    best-effort so a transient failure only skips one round. Cancelled at shutdown.
+    bypass all five BatchQueueWorker queues, so a keep-warm tick never competes for queue
+    CAPACITY with real traffic — only for the lock, exactly like any other caller. touch_rerank
+    is skipped entirely when the reranker was never loaded (BGE_LOAD_RERANKER=false) — there is
+    nothing to keep warm, and touch_rerank would only raise. Each tick is best-effort so a
+    transient failure only skips one round. Cancelled at shutdown.
 
     Args:
         interval_seconds (int): Seconds between keep-warm rounds (caller guarantees > 0).
@@ -54,7 +56,8 @@ async def _keep_warm(interval_seconds: int, max_length: int) -> None:
             engine = CONTEXT.batching_engine
             await engine.touch_dense(max_length)
             await engine.touch_sparse(max_length)
-            await engine.touch_rerank()
+            if CONTEXT.bge_models.reranker_loaded:
+                await engine.touch_rerank()
         except asyncio.CancelledError:
             raise
         except Exception as exc:  # noqa: BLE001 — a keep-warm miss must never crash the task
@@ -109,12 +112,12 @@ def lifespan() -> Any:
             CONTEXT.bge_models.load()
 
             # 4. Build and start the dynamic-batching engine.
-            # The engine owns four per-op workers (dense / sparse / colbert / rerank) plus TWO
-            # locks: embed_lock (dense/sparse/colbert, one shared embed_model instance) and
-            # rerank_lock (the separate FlagReranker instance) — see BatchingEngine's class
-            # docstring for the full rationale. Workers are started here (creates asyncio
-            # tasks) — must be inside the lifespan so the tasks bind to the correct asyncio
-            # event loop (hot-reload safety).
+            # The engine owns five per-op workers (dense / sparse / colbert / embed_all / rerank)
+            # plus TWO locks: embed_lock (dense/sparse/colbert/embed_all, one shared embed_model
+            # instance) and rerank_lock (the separate FlagReranker instance) — see
+            # BatchingEngine's class docstring for the full rationale. Workers are started here
+            # (creates asyncio tasks) — must be inside the lifespan so the tasks bind to the
+            # correct asyncio event loop (hot-reload safety).
             _log_step(3, "Starting batching engine")
             CONTEXT.batching_engine = BatchingEngine(
                 models=CONTEXT.bge_models,
@@ -131,8 +134,9 @@ def lifespan() -> Any:
             # needed to prime the model, and going through it would just add queue/lock overhead.
             # colbert is primed too: it has its OWN route (/embed_colbert) and its own forward pass
             # (the colbert head), so an unwarmed colbert path would leave the first late-interaction
-            # request cold. Best-effort: a warmup failure must never abort startup, only slow the
-            # first request.
+            # request cold. The reranker warmup is skipped entirely when BGE_LOAD_RERANKER=false —
+            # there is no reranker instance to warm. Best-effort: a warmup failure must never abort
+            # startup, only slow the first request.
             _log_step(4, "Warmup pass")
             try:
                 max_length = CONTEXT.CONFIG.BGE_M3_MAX_LENGTH
@@ -142,7 +146,8 @@ def lifespan() -> Any:
                 # first real /embed_all request doesn't pay lazy kernel-compile / allocator costs.
                 CONTEXT.bge_models.encode_dense_sparse(["warmup"], max_length=max_length)
                 CONTEXT.bge_models.encode_colbert(["warmup"], max_length=max_length)
-                CONTEXT.bge_models.compute_rerank_scores_flat([["warmup", "warmup"]])
+                if CONTEXT.bge_models.reranker_loaded:
+                    CONTEXT.bge_models.compute_rerank_scores_flat([["warmup", "warmup"]])
                 logger.info(f"Warmup pass completed")
             except Exception as exc:  # noqa: BLE001 — a warmup miss must never crash the lifespan
                 logger.warning(f"Warmup pass failed (non-fatal, continuing startup): {exc}")
@@ -165,10 +170,15 @@ def lifespan() -> Any:
             # *gated* value (forced false on CPU even if BGE_FP16=true was set).
             resolved_device = CONTEXT.bge_models.resolved_device or "unknown"
             gated_fp16 = CONTEXT.bge_models.use_fp16
+            rerank_summary = (
+                CONTEXT.CONFIG.BGE_RERANKER_MODEL
+                if CONTEXT.bge_models.reranker_loaded
+                else "SKIPPED (BGE_LOAD_RERANKER=false)"
+            )
             logger.info(
                 f"\nBGE Server ready\n"
                 f"  embed   : {CONTEXT.CONFIG.BGE_M3_MODEL}\n"
-                f"  rerank  : {CONTEXT.CONFIG.BGE_RERANKER_MODEL}\n"
+                f"  rerank  : {rerank_summary}\n"
                 f"  policy  : {CONTEXT.CONFIG.BGE_DEVICE} -> device: {resolved_device}\n"
                 f"  fp16    : requested={CONTEXT.CONFIG.BGE_FP16}, active={gated_fp16}\n"
                 f"  max_len : {CONTEXT.CONFIG.BGE_M3_MAX_LENGTH}\n"

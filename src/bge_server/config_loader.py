@@ -64,6 +64,16 @@ class BgeServerConfig(EnvConfigLoader):
     # HuggingFace model ID for the cross-encoder reranker (FlagReranker).
     BGE_RERANKER_MODEL: str = env("BGE_RERANKER_MODEL", default="BAAI/bge-reranker-v2-m3")
 
+    # ───── Reranker load gate ─────
+    # When false, BgeModelsService.load() skips constructing (and downloading) the FlagReranker
+    # entirely — no resident RAM for an unused model, no 30-120s reranker load time added to
+    # startup. For embed-only deployments where production rerank is routed to a hosted/GPU
+    # reranker via base_url override instead (see agent-memory/bge-server/rerank-cpu-ceiling.md).
+    # Defaults true to preserve current behavior — every existing deployment keeps loading the
+    # reranker unless this is explicitly set false. POST /rerank returns a clean HTTP 503 when
+    # the reranker isn't loaded, instead of crashing.
+    BGE_LOAD_RERANKER: bool = env("BGE_LOAD_RERANKER", cast=bool, default="true")
+
     # ───── BGE model revision pins (supply-chain control) ─────
     # Commit sha each model is pinned to. BGEM3FlagModel/FlagReranker silently drop a `revision=`
     # kwarg (never forwarded to from_pretrained — see libs/bge_models/revision.py), so pinning

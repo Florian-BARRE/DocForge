@@ -1,12 +1,17 @@
 # ====== Code Summary ======
-# Unit tests for BgeModelsService.encode_dense_sparse — the single-forward-pass path that returns
-# BOTH dense and sparse vectors. The heavy embed_model is mocked (no torch / FlagEmbedding), so
-# these tests assert only the post-processing contract: the combined path must produce byte-for-byte
-# the same dense vectors as encode_dense and the same sparse token lists as encode_sparse, from ONE
-# encode() call rather than two.
+# Unit tests for BgeModelsService. Covers encode_dense_sparse — the single-forward-pass path that
+# returns BOTH dense and sparse vectors (the heavy embed_model is mocked, no torch / FlagEmbedding,
+# so these tests assert only the post-processing contract: byte-for-byte the same dense vectors as
+# encode_dense and the same sparse token lists as encode_sparse, from ONE encode() call rather than
+# two) — and the BGE_LOAD_RERANKER gate (load_reranker=False skips reranker construction and the
+# `reranker` property raises a gate-specific RuntimeError; thread-budget auto-derivation only
+# accounts for rerank_lock contention when the reranker is actually loaded).
 
 # ====== Standard Library Imports ======
 from unittest.mock import MagicMock
+
+# ====== Third-Party Library Imports ======
+import pytest
 
 # ====== Internal Project Imports ======
 from libs.bge_models.service import BgeModelsService
@@ -93,3 +98,56 @@ def test_encode_dense_sparse_uses_single_forward_pass() -> None:
     assert kwargs["return_sparse"] is True
     assert kwargs["return_colbert_vecs"] is False
     assert kwargs["max_length"] == 256
+
+
+# ── Test: BGE_LOAD_RERANKER=false gate ─────────────────────────────────────────
+
+
+def test_reranker_loaded_false_before_load() -> None:
+    """A freshly-constructed service reports reranker_loaded=False before load() ever runs."""
+    service = BgeModelsService(
+        embed_model_id="stub-embed",
+        rerank_model_id="stub-rerank",
+        device_policy="cpu",
+        fp16_requested=False,
+    )
+    assert service.reranker_loaded is False
+
+
+def test_reranker_property_raises_when_gated_off() -> None:
+    """
+    With load_reranker=False, the `reranker` property raises a RuntimeError that names the
+    gate explicitly — distinguishing "never going to load" from "not loaded yet".
+    """
+    service = BgeModelsService(
+        embed_model_id="stub-embed",
+        rerank_model_id="stub-rerank",
+        device_policy="cpu",
+        fp16_requested=False,
+        load_reranker=False,
+    )
+    with pytest.raises(RuntimeError, match="BGE_LOAD_RERANKER=false"):
+        _ = service.reranker
+
+
+def test_max_concurrency_drops_to_one_when_reranker_gated_off() -> None:
+    """
+    Thread-budget auto-derivation only needs to account for rerank_lock contention when the
+    reranker is actually loaded — with load_reranker=False, _max_concurrency must be 1, not 2.
+    """
+    service_with_reranker = BgeModelsService(
+        embed_model_id="stub-embed",
+        rerank_model_id="stub-rerank",
+        device_policy="cpu",
+        fp16_requested=False,
+        load_reranker=True,
+    )
+    service_without_reranker = BgeModelsService(
+        embed_model_id="stub-embed",
+        rerank_model_id="stub-rerank",
+        device_policy="cpu",
+        fp16_requested=False,
+        load_reranker=False,
+    )
+    assert service_with_reranker._max_concurrency == 2  # noqa: SLF001
+    assert service_without_reranker._max_concurrency == 1  # noqa: SLF001

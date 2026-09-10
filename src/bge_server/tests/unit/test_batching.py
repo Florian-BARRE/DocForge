@@ -415,7 +415,8 @@ async def test_graceful_stop_resolves_pending_futures() -> None:
 async def test_embed_all_combined_path() -> None:
     """
     embed_all runs the combined dense+sparse forward pass in ONE model call and returns the
-    (dense, sparse) pair unchanged. It calls encode_dense_sparse (not encode_dense/encode_sparse).
+    (dense, sparse) pair unchanged. It calls encode_dense_sparse (not encode_dense/encode_sparse),
+    using the engine's configured max_length (same value the dense/sparse workers use).
     """
     dense = [[1.0, 2.0], [3.0, 4.0]]
     sparse = [[{"index": 5, "value": 0.5}], [{"index": 7, "value": 0.8}]]
@@ -423,11 +424,11 @@ async def test_embed_all_combined_path() -> None:
     models = MagicMock()
     models.encode_dense_sparse.return_value = (dense, sparse)
 
-    engine = _make_engine(models)
+    engine = _make_engine(models, max_length=128)
     engine.start()
 
     try:
-        result_dense, result_sparse = await engine.embed_all(["t1", "t2"], max_length=128)
+        result_dense, result_sparse = await engine.embed_all(["t1", "t2"])
     finally:
         await engine.stop()
 
@@ -439,41 +440,80 @@ async def test_embed_all_combined_path() -> None:
     assert result_sparse == sparse
 
 
-# ── Test: embed_all back-pressure (in-flight admission cap) ──────────────────
+# ── Test: embed_all cross-request batching (coalescing) ──────────────────────
 
 
 @pytest.mark.asyncio
-async def test_embed_all_raises_queue_full_when_inflight_cap_reached() -> None:
+async def test_batch_by_size_embed_all() -> None:
     """
-    embed_all has no BatchQueueWorker queue, so back-pressure is enforced via an in-flight
-    counter capped at max_queue_size. With max_queue_size=1, a second concurrent embed_all
-    call must raise QueueFullError immediately instead of piling up behind embed_lock.
+    Two concurrent embed_all requests whose combined cost equals max_batch_size are coalesced
+    into a SINGLE encode_dense_sparse call — cross-request batching on the dedicated embed_all
+    worker, not just the old in-flight admission counter that never batched across requests.
     """
-    block_event = threading.Event()
-    release_event = threading.Event()
-
-    def blocking_encode_dense_sparse(texts, max_length):
-        # Signal that the first call has entered the model, then block until released.
-        block_event.set()
-        assert release_event.wait(timeout=5.0), "test setup: release_event was never set"
-        return ([[0.0] for _ in texts], [[] for _ in texts])
+    texts_a = ["a1", "a2", "a3"]
+    texts_b = ["b1", "b2", "b3"]
+    dense_a = [[1.0], [2.0], [3.0]]
+    dense_b = [[4.0], [5.0], [6.0]]
+    sparse_a = [[{"index": 1, "value": 0.1}]] * 3
+    sparse_b = [[{"index": 2, "value": 0.2}]] * 3
 
     models = MagicMock()
-    models.encode_dense_sparse.side_effect = blocking_encode_dense_sparse
+    models.encode_dense_sparse.return_value = (dense_a + dense_b, sparse_a + sparse_b)
+
+    engine = _make_engine(models, max_batch_size=6, max_wait_ms=100)
+    engine.start()
+
+    try:
+        (result_dense_a, result_sparse_a), (result_dense_b, result_sparse_b) = await asyncio.gather(
+            engine.embed_all(texts_a),
+            engine.embed_all(texts_b),
+        )
+    finally:
+        await engine.stop()
+
+    # ONE combined call for both requests — the coalescing this worker exists to provide
+    models.encode_dense_sparse.assert_called_once()
+    call_args = models.encode_dense_sparse.call_args[0]
+    assert call_args[0] == texts_a + texts_b
+
+    assert result_dense_a == dense_a
+    assert result_dense_b == dense_b
+    assert result_sparse_a == sparse_a
+    assert result_sparse_b == sparse_b
+
+
+# ── Test: embed_all back-pressure (bounded queue, like the other four workers) ─
+
+
+@pytest.mark.asyncio
+async def test_embed_all_worker_queue_full_raises_queue_full_error() -> None:
+    """
+    embed_all's dedicated BatchQueueWorker enforces the same bounded-queue back-pressure as the
+    other four workers: once max_queue_size items are queued, submit() raises QueueFullError
+    immediately (no await) — mirrors test_queue_full_raises_queue_full_error for the dense worker.
+    """
+    models = MagicMock()
+    models.encode_dense_sparse.return_value = ([[0.0]], [[]])
+
+    # Queue size 1: first item fills it, second should raise
     engine = _make_engine(models, max_batch_size=100, max_wait_ms=0, max_queue_size=1)
     engine.start()
 
     try:
-        # First call occupies the single in-flight admission slot.
-        first_task = asyncio.create_task(engine.embed_all(["t1"], max_length=128))
-        await asyncio.get_running_loop().run_in_executor(None, block_event.wait, 5.0)
+        loop = asyncio.get_running_loop()
+        from libs.batching.models import EmbedAllItem
 
-        # Second call must be rejected immediately — no slot available.
+        future1 = loop.create_future()
+        item1 = EmbedAllItem(future=future1, cost=1, texts=["fill"])
+        engine._embed_all_worker.submit(item1)
+
+        future2 = loop.create_future()
+        item2 = EmbedAllItem(future=future2, cost=1, texts=["overflow"])
         with pytest.raises(QueueFullError):
-            await engine.embed_all(["t2"], max_length=128)
+            engine._embed_all_worker.submit(item2)
 
-        release_event.set()
-        await first_task
+        if not future1.done():
+            future1.cancel()
     finally:
         await engine.stop()
 
@@ -481,8 +521,8 @@ async def test_embed_all_raises_queue_full_when_inflight_cap_reached() -> None:
 @pytest.mark.asyncio
 async def test_embed_all_admits_again_after_completion() -> None:
     """
-    Once an embed_all call completes, its in-flight slot is freed and a subsequent call
-    is admitted normally (the cap is a rolling admission limit, not a one-shot circuit breaker).
+    Once an embed_all call completes, subsequent calls are admitted normally — the queue drains
+    and is not left in a stuck/full state after a batch is processed.
     """
     dense: list[list[float]] = [[1.0]]
     sparse: list[list[dict]] = [[]]
@@ -492,8 +532,8 @@ async def test_embed_all_admits_again_after_completion() -> None:
     engine.start()
 
     try:
-        result1 = await engine.embed_all(["t1"], max_length=128)
-        result2 = await engine.embed_all(["t2"], max_length=128)
+        result1 = await engine.embed_all(["t1"])
+        result2 = await engine.embed_all(["t2"])
     finally:
         await engine.stop()
 

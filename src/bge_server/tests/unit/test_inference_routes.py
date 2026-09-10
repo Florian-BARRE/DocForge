@@ -50,9 +50,17 @@ def client() -> TestClient:
     engine.submit_embed_dense = AsyncMock(return_value=_DENSE)
     engine.submit_embed_sparse = AsyncMock(return_value=_SPARSE_RAW)
     engine.embed_all = AsyncMock(return_value=(_DENSE, _SPARSE_RAW))
+    engine.submit_rerank = AsyncMock(return_value=[{"index": 0, "score": 0.9}])
 
     CONTEXT.CONFIG = BgeServerConfig
     CONTEXT.batching_engine = engine
+
+    # bge_models stub — only `reranker_loaded` is read by the /rerank route's gate check.
+    # Defaults to True (reranker loaded) so existing /rerank behavior is unaffected unless a
+    # test explicitly flips it to simulate BGE_LOAD_RERANKER=false.
+    bge_models = MagicMock()
+    bge_models.reranker_loaded = True
+    CONTEXT.bge_models = bge_models
 
     return TestClient(app)
 
@@ -79,10 +87,9 @@ def test_embed_all_shape_matches_separate_routes(client: TestClient) -> None:
     assert combined["dense"] == dense_resp.json()
     assert combined["sparse"] == sparse_resp.json()
 
-    # embed_all is resolved with the config max_length (same value the dense/sparse workers use)
-    cast(AsyncMock, CONTEXT.batching_engine.embed_all).assert_awaited_once_with(
-        ["t1", "t2"], max_length=BgeServerConfig.BGE_M3_MAX_LENGTH
-    )
+    # embed_all no longer takes a per-call max_length — the engine resolves it internally from
+    # its own configured max_length (same value the dense/sparse workers use)
+    cast(AsyncMock, CONTEXT.batching_engine.embed_all).assert_awaited_once_with(["t1", "t2"])
 
 
 # ── Test: empty input short-circuits without touching the engine ──────────────
@@ -157,3 +164,42 @@ def test_embed_all_returns_exact_shape(client: TestClient) -> None:
         "dense": _DENSE,
         "sparse": [[{"index": 5, "value": 0.5}], [{"index": 7, "value": 0.8}]],
     }
+
+
+# ── Test: reranker gate (BGE_LOAD_RERANKER=false) ─────────────────────────────
+
+
+def test_rerank_returns_503_when_reranker_not_loaded(client: TestClient) -> None:
+    """
+    POST /rerank returns a clean HTTP 503 "reranker not loaded" when BGE_LOAD_RERANKER=false
+    (BgeModelsService.reranker_loaded is False) — never a crash, and the batching engine's
+    rerank queue is never touched.
+    """
+    cast(MagicMock, CONTEXT.bge_models).reranker_loaded = False
+
+    resp = client.post("/rerank", json={"query": "q", "texts": ["a", "b"]})
+
+    assert resp.status_code == 503
+    assert "reranker not loaded" in resp.json()["detail"]["error"]
+    cast(AsyncMock, CONTEXT.batching_engine.submit_rerank).assert_not_awaited()
+
+
+def test_embed_still_works_when_reranker_not_loaded(client: TestClient) -> None:
+    """
+    POST /embed is unaffected by the reranker gate — an embed-only deployment
+    (BGE_LOAD_RERANKER=false) still serves dense embeddings normally.
+    """
+    cast(MagicMock, CONTEXT.bge_models).reranker_loaded = False
+
+    resp = client.post("/embed", json={"inputs": ["t1", "t2"]})
+
+    assert resp.status_code == 200
+    assert resp.json() == _DENSE
+
+
+def test_rerank_works_when_reranker_loaded(client: TestClient) -> None:
+    """POST /rerank still serves normally when the reranker IS loaded (the default/gate=on path)."""
+    resp = client.post("/rerank", json={"query": "q", "texts": ["a"]})
+
+    assert resp.status_code == 200
+    assert resp.json() == [{"index": 0, "score": 0.9}]

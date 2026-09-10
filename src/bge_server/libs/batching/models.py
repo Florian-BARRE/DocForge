@@ -51,6 +51,21 @@ class RerankItem(BatchItem):
     texts: list[str] = field(default_factory=list)
 
 
+@dataclass(slots=True)
+class EmbedAllItem(BatchItem):
+    """
+    A single combined dense+sparse embed_all request waiting in the batch queue.
+
+    Unlike EmbedItem, the resolved future value is a ``(dense_slice, sparse_slice)`` tuple —
+    both representations produced by ONE shared forward pass over the whole cross-request batch.
+
+    Attributes:
+        texts (list[str]): The texts to embed. cost == len(texts).
+    """
+
+    texts: list[str] = field(default_factory=list)
+
+
 class QueueFullError(Exception):
     """
     Raised by BatchQueueWorker.submit() when the bounded queue is at capacity.

@@ -13,18 +13,21 @@ from backend.routers import health_router
 
 
 class _StubConfig:
-    """Minimal stand-in exposing only the model IDs the health probe reads."""
+    """Minimal stand-in exposing only the model IDs + reranker gate the health probe reads."""
 
     BGE_M3_MODEL = "BAAI/bge-m3"
     BGE_RERANKER_MODEL = "BAAI/bge-reranker-v2-m3"
+    BGE_LOAD_RERANKER = True
 
 
 class _StubModels:
     """Minimal stand-in exposing the loaded-model sentinels the health probe inspects."""
 
-    def __init__(self, loaded: bool) -> None:
+    def __init__(self, loaded: bool, reranker_loaded: bool | None = None) -> None:
         self._embed_model = object() if loaded else None
-        self._reranker = object() if loaded else None
+        # reranker_loaded defaults to mirroring `loaded` (the common case); an embed-only
+        # deployment passes reranker_loaded=False explicitly even when embed IS loaded.
+        self.reranker_loaded = loaded if reranker_loaded is None else reranker_loaded
 
 
 def _client() -> TestClient:
@@ -52,3 +55,19 @@ def test_health_reports_device_while_loading() -> None:
     body = response.json()
     assert body["status"] == "loading"
     assert body["device"] in {"cpu", "cuda"}
+
+
+def test_health_is_ready_when_reranker_gated_off() -> None:
+    """
+    An embed-only deployment (BGE_LOAD_RERANKER=false) never loads the reranker — the health
+    probe must still report ready once the embed model alone is loaded, not perpetually "loading".
+    """
+
+    class _StubConfigNoReranker(_StubConfig):
+        BGE_LOAD_RERANKER = False
+
+    CONTEXT.CONFIG = _StubConfigNoReranker  # type: ignore[assignment]
+    CONTEXT.bge_models = _StubModels(loaded=True, reranker_loaded=False)  # type: ignore[assignment]
+    response = _client().get("/health")
+    assert response.status_code == 200
+    assert response.json()["status"] == "ok"
