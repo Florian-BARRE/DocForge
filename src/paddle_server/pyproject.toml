@@ -38,7 +38,7 @@ dependencies = [
 
 # ── Paddle variant extras ─────────────────────────────────────────────────────────────────────
 # Exactly ONE of these extras must be selected at install time:
-#   cpu  → CPU-only paddlepaddle wheel (plain PyPI, ~195 MB manylinux1). Measured image size: ~2.0 GB.
+#   cpu  → CPU-only paddlepaddle wheel (plain PyPI, ~195 MB manylinux1). Measured image size: ~2.3 GB.
 #   gpu  → CUDA 12.6 paddlepaddle-gpu wheel (Paddle's own CUDA index). Target image: ~4-5.5 GB.
 #
 # Declared as CONFLICTING extras in [tool.uv] below so uv enforces mutual exclusivity at lock

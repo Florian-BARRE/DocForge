@@ -15,7 +15,7 @@
 #   at /opt/venv, selecting the correct torch wheel variant via TORCH_VARIANT.
 # - TORCH_VARIANT=cpu  (default) installs torch 2.13.0+cpu (~200 MB) — no nvidia-* libs.
 #   Target runtime image size: ~2 GB.
-# - TORCH_VARIANT=gpu installs torch 2.13.0+cu129 (~2 GB) + all nvidia-cu12-* runtime libs.
+# - TORCH_VARIANT=gpu installs torch 2.13.0+cu126 (~2 GB) + all nvidia-cu12-* runtime libs.
 #   Target runtime image size: ~8.5 GB. Requires NVIDIA Container Toolkit on the host.
 # - Isolating dependency installation from application code means code-only changes do
 #   NOT invalidate this slow dependency layer.

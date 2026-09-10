@@ -334,20 +334,20 @@ jobs:
   # 6. Non-blocking vulnerability scan of what was just published (after push, so it scans the
   #    real pushed artifact, not a throwaway local build). A full IMAGE scan (OS layer + deps) is
   #    cheap for app/mcp (no torch, always built, no GPU sibling) AND for the -cpu variant of
-  #    worker/bge-server/paddle-server (~1.2-2 GB each, still fast to pull) — that -cpu image-ref
-  #    scan is what actually covers their OS base layer (python:3.12-slim-bookworm +
-  #    libgl1/libglib2.0-0/... installed via apt in each Dockerfile), which the older fs-only scan
-  #    below never touched. The -gpu variants are skipped here on purpose: they ship huge CUDA
-  #    payloads (multi-GiB) that would be slow to pull+unpack in this job, so they stay covered
-  #    only by the cheap FILESYSTEM scan of the shared dependency manifest (uv.lock) just below —
-  #    still catches known-vulnerable Python dependency versions (same lockfile drives both the
-  #    -cpu and -gpu build), without ever pulling an image. Day-0 baseline is unvetted, so every
-  #    step here is non-blocking (`exit-code: 0` + `continue-on-error`): a brand-new scanner must
-  #    never be able to block a release. FOLLOW-UP (not done here): flip the -cpu image scans to
-  #    blocking once the baseline HIGH/CRITICAL list has been triaged (see docs/PROD-HARDENING.md
-  #    or a follow-up ADR) — doing that blind, before triage, risks blocking a release on CVEs
-  #    nobody has assessed yet. `v*`-only: `images` (via `retag-latest`) is skipped on `sdk-v*`, so
-  #    there is nothing new to scan.
+  #    worker/bge-server/paddle-server/mineru-server/dots-ocr-server (~1.2-2 GB each, still fast to
+  #    pull) — that -cpu image-ref scan is what actually covers their OS base layer
+  #    (python:3.12-slim-bookworm + libgl1/libglib2.0-0/... installed via apt in each Dockerfile),
+  #    which the older fs-only scan below never touched. The -gpu variants are skipped here on
+  #    purpose: they ship huge CUDA payloads (multi-GiB) that would be slow to pull+unpack in this
+  #    job, so they stay covered only by the cheap FILESYSTEM scan of the shared dependency manifest
+  #    (uv.lock) just below — still catches known-vulnerable Python dependency versions (same
+  #    lockfile drives both the -cpu and -gpu build), without ever pulling an image. Day-0 baseline
+  #    is unvetted, so every step here is non-blocking (`exit-code: 0` + `continue-on-error`): a
+  #    brand-new scanner must never be able to block a release. FOLLOW-UP (not done here): flip the
+  #    -cpu image scans to blocking once the baseline HIGH/CRITICAL list has been triaged (see
+  #    docs/PROD-HARDENING.md or a follow-up ADR) — doing that blind, before triage, risks blocking a
+  #    release on CVEs nobody has assessed yet. `v*`-only: `images` (via `retag-latest`) is skipped
+  #    on `sdk-v*`, so there is nothing new to scan.
   security-scan:
     name: security-scan (Trivy, non-blocking)
     needs: retag-latest
@@ -431,6 +431,29 @@ jobs:
           format: table
           output: trivy-paddle-server-cpu.txt
 
+      - name: Scan mineru-server image, -cpu variant (HIGH/CRITICAL)
+        # Same convention as worker/bge-server/paddle-server above: real image scan (not fs) of the
+        # -cpu leg only, so its OS base layer + apt packages are covered too, not just uv.lock.
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        continue-on-error: true
+        with:
+          image-ref: ghcr.io/${{ env.OWNER_LC }}/docforge-mineru-server:${{ env.VERSION }}-cpu
+          severity: HIGH,CRITICAL
+          exit-code: "0"
+          format: table
+          output: trivy-mineru-server-cpu.txt
+
+      - name: Scan dots-ocr-server image, -cpu variant (HIGH/CRITICAL)
+        # Same convention as mineru-server above.
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        continue-on-error: true
+        with:
+          image-ref: ghcr.io/${{ env.OWNER_LC }}/docforge-dots-ocr-server:${{ env.VERSION }}-cpu
+          severity: HIGH,CRITICAL
+          exit-code: "0"
+          format: table
+          output: trivy-dots-ocr-server-cpu.txt
+
       - name: Scan docforge deps — filesystem (covers app + worker, one shared uv.lock)
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         continue-on-error: true
@@ -463,6 +486,33 @@ jobs:
           exit-code: "0"
           format: table
           output: trivy-paddle-server-deps.txt
+
+      - name: Scan mineru_server deps — filesystem
+        # fs-scan (not image-ref), same convention as bge_server/paddle_server above: the -gpu variant
+        # ships a multi-GiB CUDA payload not worth pulling here, and there is no -cpu leg cheap enough
+        # to single out (the sidecar is GPU-oriented) — the shared dependency manifest still catches
+        # known-vulnerable Python package versions for both legs.
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        continue-on-error: true
+        with:
+          scan-type: fs
+          scan-ref: src/mineru_server
+          severity: HIGH,CRITICAL
+          exit-code: "0"
+          format: table
+          output: trivy-mineru-server-deps.txt
+
+      - name: Scan dots_ocr_server deps — filesystem
+        # Same fs-scan convention as mineru_server above.
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        continue-on-error: true
+        with:
+          scan-type: fs
+          scan-ref: src/dots_ocr_server
+          severity: HIGH,CRITICAL
+          exit-code: "0"
+          format: table
+          output: trivy-dots-ocr-server-deps.txt
 
       - name: Publish scan reports to the job summary
         if: always()
