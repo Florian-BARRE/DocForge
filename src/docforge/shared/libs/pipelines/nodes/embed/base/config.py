@@ -25,7 +25,10 @@ class BaseEmbedConfig(TimeoutRetryConfig):
         default=3,
         ge=0,
         description="Retries on a transient provider error (timeout/429/5xx) before a batch is "
-        "split and its halves embedded independently. 0 disables retry AND the adaptive split.",
+        "split and its halves embedded independently. Counts retries BEYOND the initial call, so "
+        "total attempts = 1 + max_retries (0 → a single one-shot attempt with no retry AND no "
+        "adaptive split; 1 → 2 attempts; N → N+1) — the same TimeoutRetryConfig semantics the "
+        "vlm/llm/NetworkRetry loops follow.",
     )
     retry_backoff_seconds: float = Field(
         default=1.5,
