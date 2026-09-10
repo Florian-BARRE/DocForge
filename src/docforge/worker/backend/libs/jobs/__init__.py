@@ -13,6 +13,9 @@ from .transfer_reaper import reap_stuck_transfers
 # ---------------------- Audit retention ---------------------- #
 from .audit_gc import gc_audit_log
 
+# ---------------------- Job-history retention ---------------------- #
+from .history_gc import gc_job_history
+
 # ---------------------- Idempotency retention ---------------------- #
 from .idempotency_gc import gc_idempotency_keys
 
@@ -43,6 +46,7 @@ __all__ = [
     "gc_expired_transfers",
     "reap_stuck_transfers",
     "gc_audit_log",
+    "gc_job_history",
     "gc_idempotency_keys",
     "gc_artifact_cache",
     "gc_trace_payloads",

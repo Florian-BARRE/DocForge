@@ -222,6 +222,9 @@ blob whose last pointer was removed.
 | `AUDIT_RETENTION_DAYS` | `0` | Age (days) past which an audit row is swept. `0` (default) disables retention entirely — the sweep becomes a no-op and audit rows are kept forever. |
 | `WORKER_AUDIT_GC_ENABLED` | `true` | Master switch for the audit-retention sweep cron. On by default but a no-op unless `AUDIT_RETENTION_DAYS > 0`. Set `false` to skip it (cron not registered). |
 | `WORKER_AUDIT_GC_INTERVAL_MINUTES` | `60` | Audit-GC cron cadence (runs on every Nth minute of the hour; also once at startup). |
+| `JOB_HISTORY_RETENTION_DAYS` | `0` | Age (days) past which a TERMINAL job and its `job_stage_event` timeline are pruned. `0` (default) = keep forever (cron not registered). Set >0 to bound the fastest-growing tables. Prunes only terminal jobs old enough that their trace payloads are already GC-eligible, so no un-GC'd S3 trace object is orphaned. |
+| `WORKER_JOB_HISTORY_GC_ENABLED` | `true` | Master switch for the job-history prune cron. On by default but a no-op unless `JOB_HISTORY_RETENTION_DAYS > 0`. |
+| `WORKER_JOB_HISTORY_GC_INTERVAL_MINUTES` | `60` | Job-history GC cron cadence (phase-shifted against the other worker crons; not at startup). |
 | `WORKER_IDEMPOTENCY_GC_ENABLED` | `true` | Reclaim expired idempotency records (each stamped `now + IDEMPOTENCY_TTL_HOURS`) on a cron. Set `false` to skip the sweep (cron not registered). |
 | `WORKER_IDEMPOTENCY_GC_INTERVAL_MINUTES` | `60` | Idempotency-GC cron cadence (runs on every Nth minute of the hour; also once at startup). |
 

@@ -19,6 +19,7 @@ from .libs.jobs import (
     gc_audit_log,
     gc_expired_transfers,
     gc_idempotency_keys,
+    gc_job_history,
     gc_trace_payloads,
     import_collection,
     ingest_document,
@@ -34,11 +35,11 @@ def _cron_minutes(interval_minutes: int, offset: int) -> set[int]:
     Build the minute-of-hour set for a cron firing every `interval_minutes`, phase-shifted by
     `offset` (W1-09 fix).
 
-    All six worker crons used to compute their minute set as `range(0, 60, interval)`, which always
+    The worker crons used to compute their minute set as `range(0, 60, interval)`, which always
     includes `:00` — every family therefore fired together at each hour boundary (AND most of them
     also fire once at startup), saturating the small worker pool right when real ingestion jobs also
     compete for a slot. Shifting each family's cadence by a distinct `offset` keeps every family's
-    own cadence exact while spreading the six families across different minutes.
+    own cadence exact while spreading the families across different minutes.
 
     Args:
         interval_minutes (int): Cadence in minutes (clamped to >= 1 by the caller).
@@ -68,7 +69,7 @@ def create_worker_settings() -> type:
     # left by the previous (crashed/hot-reloaded) run is cleared immediately. Disabled -> no cron.
     # `run_at_startup=True` is kept ONLY for this family (the reaper recovers stuck jobs/workers
     # after a restart — worth the boot-time cost); every GC family below now defers to its first
-    # scheduled tick instead. Offset 2 (of 6, see `_cron_minutes`).
+    # scheduled tick instead. Offset 2 (of 7, see `_cron_minutes`).
     reap_minutes = _cron_minutes(RUNTIME_CONFIG.WORKER_REAP_INTERVAL_MINUTES, offset=2)
     reaper_crons = (
         [
@@ -82,7 +83,7 @@ def create_worker_settings() -> type:
         else []
     )
     # The transfer GC reclaims expired export bundles (S3 object + row) every
-    # WORKER_TRANSFER_GC_INTERVAL_MINUTES. Disabled -> no cron. Offset 8 (of 6, see `_cron_minutes`)
+    # WORKER_TRANSFER_GC_INTERVAL_MINUTES. Disabled -> no cron. Offset 8 (of 7, see `_cron_minutes`)
     # keeps it off both the reaper's minutes above and the hourly GCs below.
     # `run_at_startup=False`: a backlog of expired-but-ungarbage-collected bundles is not urgent
     # enough to justify extra boot-time load — it waits for its first scheduled tick.
@@ -96,7 +97,7 @@ def create_worker_settings() -> type:
     # WORKER_AUDIT_GC_INTERVAL_MINUTES. It is only registered when GC is enabled AND retention is a
     # positive window — with retention at 0 (keep-forever, the default) there is no cron at all, so
     # an out-of-box deployment never deletes audit history.
-    # Offset 20 (of 6, see `_cron_minutes`) — distinct from the reaper, the transfer GC, and the
+    # Offset 20 (of 7, see `_cron_minutes`) — distinct from the reaper, the transfer GC, and the
     # other hourly GCs below. `run_at_startup=False`: retention pruning can wait for its first tick.
     audit_gc_minutes = _cron_minutes(RUNTIME_CONFIG.WORKER_AUDIT_GC_INTERVAL_MINUTES, offset=20)
     audit_gc_crons = (
@@ -104,9 +105,26 @@ def create_worker_settings() -> type:
         if RUNTIME_CONFIG.WORKER_AUDIT_GC_ENABLED and RUNTIME_CONFIG.AUDIT_RETENTION_DAYS > 0
         else []
     )
+    # The job-history retention sweep prunes TERMINAL jobs (and their cascading stage-events) older
+    # than JOB_HISTORY_RETENTION_DAYS every WORKER_JOB_HISTORY_GC_INTERVAL_MINUTES. Same convention as
+    # the audit GC: only registered when GC is enabled AND retention is a positive window — with
+    # retention at 0 (keep-forever, the default) there is no cron at all, so an out-of-box deployment
+    # never deletes job history. A job still carrying an un-GC'd full-trace payload is skipped by the
+    # prune query (the trace GC reclaims those first), so this sweep never strands an object-store
+    # trace namespace. Offset 14 (of 7, see `_cron_minutes`) — distinct from all siblings.
+    # `run_at_startup=False`: retention pruning can wait for its first tick.
+    history_gc_minutes = _cron_minutes(
+        RUNTIME_CONFIG.WORKER_JOB_HISTORY_GC_INTERVAL_MINUTES, offset=14
+    )
+    history_gc_crons = (
+        [cron(with_correlation(gc_job_history), minute=history_gc_minutes, run_at_startup=False)]
+        if RUNTIME_CONFIG.WORKER_JOB_HISTORY_GC_ENABLED
+        and RUNTIME_CONFIG.JOB_HISTORY_RETENTION_DAYS > 0
+        else []
+    )
     # The idempotency retention sweep prunes records past their expires_at (now + IDEMPOTENCY_TTL_HOURS)
     # every WORKER_IDEMPOTENCY_GC_INTERVAL_MINUTES. Disabled -> no cron.
-    # Offset 35 (of 6, see `_cron_minutes`). `run_at_startup=False`: expired keys can wait for the
+    # Offset 35 (of 7, see `_cron_minutes`). `run_at_startup=False`: expired keys can wait for the
     # first tick — the store is a cache, so nothing is lost by a short delay.
     idem_gc_minutes = _cron_minutes(
         RUNTIME_CONFIG.WORKER_IDEMPOTENCY_GC_INTERVAL_MINUTES, offset=35
@@ -119,7 +137,7 @@ def create_worker_settings() -> type:
     # The stage-artifact cache GC evicts stale/over-cap cached parses (TTL + per-collection LRU) and
     # sweeps freed S3 blobs every WORKER_ARTIFACT_GC_INTERVAL_MINUTES. Disabled -> no cron (an
     # unbounded cache is not acceptable, so this is ON by default).
-    # Offset 50 (of 6, see `_cron_minutes`). `run_at_startup=False`: the cache is bounded by its own
+    # Offset 50 (of 7, see `_cron_minutes`). `run_at_startup=False`: the cache is bounded by its own
     # TTL/LRU caps, so an idle cache can wait for the first scheduled sweep.
     artifact_gc_minutes = _cron_minutes(
         RUNTIME_CONFIG.WORKER_ARTIFACT_GC_INTERVAL_MINUTES, offset=50
@@ -139,7 +157,7 @@ def create_worker_settings() -> type:
     # WORKER_TRACE_RETENTION_DAYS every WORKER_TRACE_GC_INTERVAL_MINUTES. Only registered when
     # retention is a positive window — at 0 (keep-forever) there is no cron at all, so an out-of-box
     # deployment never deletes trace payloads (same convention as the audit GC).
-    # Offset 44 (of 6, see `_cron_minutes`) — the last of the six, distinct from all siblings above.
+    # Offset 44 (of 7, see `_cron_minutes`) — distinct from all siblings above.
     # `run_at_startup=False`: aged trace payloads can wait for the first scheduled sweep.
     trace_gc_minutes = _cron_minutes(RUNTIME_CONFIG.WORKER_TRACE_GC_INTERVAL_MINUTES, offset=44)
     trace_gc_crons = (
@@ -162,6 +180,7 @@ def create_worker_settings() -> type:
             reaper_crons
             + transfer_gc_crons
             + audit_gc_crons
+            + history_gc_crons
             + idempotency_gc_crons
             + artifact_gc_crons
             + trace_gc_crons

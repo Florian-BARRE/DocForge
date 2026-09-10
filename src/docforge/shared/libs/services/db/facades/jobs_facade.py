@@ -286,6 +286,30 @@ class JobsFacade(LoggerClass):
         async with self._postgres.session() as session:
             return await JobApi.prune_stale_heartbeats(session, older_than_seconds)
 
+    async def prune_history(self, cutoff: datetime) -> int:
+        """
+        Delete terminal jobs (and their stage-events) older than ``cutoff`` — the retention sweep.
+
+        Never touches a pending/running job, and skips any job still carrying an un-GC'd full-trace
+        payload so the row prune can never strand an object-store trace namespace (see
+        ``JobApi.prune_history``). Runs inside one committed session and logs the count.
+
+        Args:
+            cutoff (datetime): Terminal jobs with ``created_at`` strictly before this are removed.
+
+        Returns:
+            int: The number of job rows deleted.
+        """
+        # 1. Age-based bulk delete inside one committed session.
+        async with self._postgres.session() as session:
+            deleted = await JobApi.prune_history(session, cutoff)
+        if deleted:
+            self.logger.info(
+                f"Job-history retention pruned {deleted} terminal job(s) older than "
+                f"{cutoff.isoformat()}"
+            )
+        return deleted
+
     async def add_usage(
         self,
         job_id: uuid.UUID,

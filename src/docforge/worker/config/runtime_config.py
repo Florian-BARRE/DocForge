@@ -121,6 +121,25 @@ class RUNTIME_CONFIG(EnvConfigLoader):
     # Does NOT run at startup: retention pruning waits for the first scheduled tick.
     WORKER_AUDIT_GC_INTERVAL_MINUTES = env("WORKER_AUDIT_GC_INTERVAL_MINUTES", cast=int, default=60)
 
+    # ───── Job-history retention ─────
+    # How long a TERMINAL job (and its cascading job_stage_event timeline) is kept before the retention
+    # cron prunes it (DAYS). 0 = KEEP FOREVER (the default): when 0 the prune cron is not even
+    # registered, so an out-of-box deployment never deletes job history. Set >0 (e.g. 90) to age out
+    # terminal jobs older than N days. A job still carrying an un-GC'd full-trace payload is skipped by
+    # the prune (the trace GC reclaims those first), so this never strands object-store trace payloads —
+    # keep this window >= WORKER_TRACE_RETENTION_DAYS so traced jobs age out cleanly, not stuck.
+    JOB_HISTORY_RETENTION_DAYS = env("JOB_HISTORY_RETENTION_DAYS", cast=int, default=0)
+    # Master switch for the job-history retention sweep. ON by default, but a no-op unless
+    # JOB_HISTORY_RETENTION_DAYS > 0 (with retention at 0 the cron is not registered at all). Disable to
+    # skip the sweep entirely.
+    WORKER_JOB_HISTORY_GC_ENABLED = env("WORKER_JOB_HISTORY_GC_ENABLED", cast=bool, default=True)
+    # Job-history-GC cron cadence (minutes): the prune runs on every Nth minute of the hour
+    # (phase-shifted against the other worker crons — see `_cron_minutes` in worker/backend/app.py).
+    # 60 → hourly. Does NOT run at startup: retention pruning waits for the first scheduled tick.
+    WORKER_JOB_HISTORY_GC_INTERVAL_MINUTES = env(
+        "WORKER_JOB_HISTORY_GC_INTERVAL_MINUTES", cast=int, default=60
+    )
+
     # ───── Idempotency-key retention ─────
     # The app stamps each idempotency record with an ``expires_at`` (now + IDEMPOTENCY_TTL_HOURS); this
     # cron deletes every row past it so the table never grows unbounded. ON by default (the store is a

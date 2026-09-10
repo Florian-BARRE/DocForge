@@ -1003,6 +1003,58 @@ class JobApi:
         return list(result.scalars().all())
 
     @staticmethod
+    async def prune_history(session: AsyncSession, cutoff: datetime) -> int:
+        """
+        Delete TERMINAL jobs older than ``cutoff`` (with their stage-events) and return the count.
+
+        The observability history (``job`` + ``job_stage_event``) is append-only and grows forever;
+        this is the age-based retention sweep. Three safety invariants shape the predicate:
+
+          1. Only TERMINAL jobs are eligible (``status IN (done, failed, cancelled)``) — a pending or
+             running job is NEVER deleted, whatever its age.
+          2. A job still carrying a stored FULL-trace payload (any stage-event flagging
+             ``has_full_input``/``has_full_output``) is skipped. Those payloads live in the object
+             store under a ``trace/{job_id}/`` prefix and are reclaimed by the SEPARATE trace GC,
+             which keys off exactly these stage-event rows by job id; deleting the rows first would
+             strand the S3 objects forever. The trace GC clears those flags once it reclaims a job's
+             payloads, after which the row becomes prunable here — so the two sweeps converge instead
+             of fighting. When trace retention is keep-forever (0), such a job's rows are deliberately
+             retained to keep its payloads addressable.
+          3. ``job_stage_event.job_id`` is ``ON DELETE CASCADE`` from ``job``, so deleting the job row
+             removes its whole timeline at the DB level — no companion delete is needed.
+
+        The leading ``ix_job_created_at`` index bounds the age scan.
+
+        Args:
+            session (AsyncSession): The active DB session.
+            cutoff (datetime): Terminal jobs with ``created_at`` strictly before this are deleted.
+
+        Returns:
+            int: The number of job rows deleted.
+        """
+        # 1. Correlated existence probe: does this job still advertise a stored full-trace payload?
+        has_full_trace = (
+            select(JobStageEvent.id)
+            .where(
+                JobStageEvent.job_id == Job.id,
+                or_(
+                    JobStageEvent.has_full_input.is_(True),
+                    JobStageEvent.has_full_output.is_(True),
+                ),
+            )
+            .exists()
+        )
+        # 2. Age-based bulk delete of terminal, trace-free jobs (stage-events cascade with the row).
+        result = await session.execute(
+            delete(Job).where(
+                Job.status.in_(tuple(JobStatus.terminal())),
+                Job.created_at < cutoff,
+                ~has_full_trace,
+            )
+        )
+        return result.rowcount or 0
+
+    @staticmethod
     async def list_heartbeats(session: AsyncSession) -> list[WorkerHeartbeat]:
         """Return every worker heartbeat row, ordered by worker id — the fleet liveness snapshot."""
         result = await session.execute(
