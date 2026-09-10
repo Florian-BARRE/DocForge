@@ -17,6 +17,7 @@
 # ====== Standard Library Imports ======
 import inspect
 from abc import ABC, abstractmethod
+from functools import cache
 from typing import Any
 
 # ====== Third-Party Library Imports ======
@@ -184,9 +185,18 @@ class ActionNode(AbstractNode, ABC):
         return None
 
     @classmethod
+    @cache
     def describe(cls) -> NodeDescription:
         """
         Build this node's UI-facing description from its three Pydantic faces.
+
+        Memoized per concrete class (keyed by ``cls`` via ``functools.cache``): node classes and their
+        Pydantic faces are immutable after import, so the card — whose ``config_schema`` is a
+        non-trivial ``Config.model_json_schema()`` build — is computed ONCE and reused. The palette
+        (``GET /pipelines/{key}``) and ``GET /capabilities`` both rebuild it per request over every
+        family × node, so the cache turns that into a single build per class for the process. The
+        per-class keying keeps it correct under the process-global ``NodeRegistry``: a newly
+        registered kind (e.g. a test's ``fake_*`` node) caches its own card independently.
 
         Returns:
             NodeDescription: kind/labels + the ConfigModel JSON Schema + typed I/O slots.

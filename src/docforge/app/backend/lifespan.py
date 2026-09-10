@@ -15,6 +15,7 @@ from pyfiglet import Figlet
 
 # ====== Internal Project Imports ======
 from shared_libs.observability import ConfigDumpHelpers
+from shared_libs.pipelines.nodes.http_pool import HttpClientPool
 
 # ====== Local Project Imports ======
 from .context import CONTEXT
@@ -96,6 +97,8 @@ def lifespan() -> Any:
             # 2. Release the store connections (disposes the Postgres engine, closes Qdrant).
             if hasattr(CONTEXT, "database"):
                 await CONTEXT.database.close()
+            # 3. Close the pooled provider HTTP clients the search-path nodes kept alive for reuse.
+            await HttpClientPool.shutdown()
 
     return _lifespan
 

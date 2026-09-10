@@ -256,6 +256,68 @@ async def test_store_blobs_skips_s3_when_no_objects(monkeypatch) -> None:
 
 
 # --------------------------------------------------------------------------- #
+# store_trace_payloads
+# --------------------------------------------------------------------------- #
+
+
+def _flat(node_path: str, *, resolved_input=None, output=None):
+    """A FlatNode stand-in carrying the two payload slots store_trace_payloads reads."""
+    return SimpleNamespace(
+        node_path=node_path,
+        record=SimpleNamespace(resolved_input=resolved_input, output=output),
+    )
+
+
+async def test_store_trace_payloads_batches_into_one_put_many(monkeypatch) -> None:
+    """Every node payload is accumulated and flushed in a SINGLE put_many (not one PUT per payload)."""
+    nodes = [
+        _flat("parse", resolved_input={"a": 1}, output={"b": 2}),
+        _flat("chunk", resolved_input={"c": 3}, output={"d": 4}),
+    ]
+    monkeypatch.setattr(facade_module.ExecutionTreeFlattener, "flatten", lambda record: nodes)
+    put_many = AsyncMock()
+    monkeypatch.setattr(facade_module.S3ObjectApi, "put_many", put_many)
+
+    facade = IngestionFacade(MagicMock(), MagicMock(), _s3_yielding(MagicMock()))
+    refs = await facade.store_trace_payloads(uuid.uuid4(), MagicMock(), max_payload_bytes=10_000)
+
+    # One call, carrying all four payload objects (2 nodes × input+output).
+    put_many.assert_awaited_once()
+    assert len(put_many.await_args.args[2]) == 4
+    # Every node keeps both of its refs.
+    assert set(refs) == {"parse", "chunk"}
+    assert refs["parse"].input_ref and refs["parse"].output_ref
+
+
+async def test_store_trace_payloads_best_effort_drops_all_refs_on_failure(monkeypatch) -> None:
+    """A batch store failure is swallowed (never raised) and drops every ref — trace never fails ingest."""
+    nodes = [_flat("parse", resolved_input={"a": 1}, output={"b": 2})]
+    monkeypatch.setattr(facade_module.ExecutionTreeFlattener, "flatten", lambda record: nodes)
+    monkeypatch.setattr(
+        facade_module.S3ObjectApi, "put_many", AsyncMock(side_effect=RuntimeError("s3 down"))
+    )
+
+    facade = IngestionFacade(MagicMock(), MagicMock(), _s3_yielding(MagicMock()))
+    refs = await facade.store_trace_payloads(uuid.uuid4(), MagicMock(), max_payload_bytes=10_000)
+
+    assert refs == {}
+
+
+async def test_store_trace_payloads_noop_when_no_payloads(monkeypatch) -> None:
+    """No full payloads attached → no put_many at all (the empty-pending short-circuit)."""
+    nodes = [_flat("parse", resolved_input=None, output=None)]
+    monkeypatch.setattr(facade_module.ExecutionTreeFlattener, "flatten", lambda record: nodes)
+    put_many = AsyncMock()
+    monkeypatch.setattr(facade_module.S3ObjectApi, "put_many", put_many)
+
+    facade = IngestionFacade(MagicMock(), MagicMock(), _s3_yielding(MagicMock()))
+    refs = await facade.store_trace_payloads(uuid.uuid4(), MagicMock(), max_payload_bytes=10_000)
+
+    assert refs == {}
+    put_many.assert_not_called()
+
+
+# --------------------------------------------------------------------------- #
 # index
 # --------------------------------------------------------------------------- #
 

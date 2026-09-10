@@ -12,6 +12,7 @@
 import uuid
 from datetime import UTC, datetime
 from decimal import Decimal
+from time import monotonic
 
 # ====== Third-Party Library Imports ======
 from loggerplusplus import LoggerClass
@@ -27,6 +28,14 @@ from shared_libs.services.db.postgresql.tables import JobStageEvent
 
 # ====== Local Project Imports ======
 from .usage import StageUsageSummer
+
+# Fan-out counter write throttle: the body's entry END fires once per item (100s-1000s per doc), and
+# a naive write-per-item floods the DB with one UPDATE each. The live counter only needs to feel
+# live, so an intermediate write is skipped unless the count has advanced by a whole batch OR a short
+# wall-clock window elapsed since the last write. The EXACT final value is always force-written when
+# the fan-out completes (see __end_stage), so the row never settles on a stale count.
+_ITEMS_WRITE_BATCH = 25
+_ITEMS_WRITE_INTERVAL_S = 1.0
 
 
 class JobProgressRecorder(LoggerClass):
@@ -71,6 +80,10 @@ class JobProgressRecorder(LoggerClass):
         self._items_total: int | None = None
         # Whether the job's item counter currently holds a value — avoids a redundant reset write.
         self._items_active = False
+        # Throttle bookkeeping: the last items_done value actually written to the row, and the
+        # monotonic timestamp of that write (drives the batch/interval skip in __count_item).
+        self._items_last_written = 0
+        self._items_last_write_ts = 0.0
 
     async def __call__(self, event: ProgressEvent) -> None:
         """
@@ -105,6 +118,8 @@ class JobProgressRecorder(LoggerClass):
             self._items_done = 0
             self._items_total = event.total_items
             self._items_active = True
+            self._items_last_written = 0
+            self._items_last_write_ts = monotonic()
             await CONTEXT.database.jobs.set_items(self._job_id, 0, event.total_items)
         else:
             self._fanout_root = None
@@ -153,7 +168,17 @@ class JobProgressRecorder(LoggerClass):
             return
         if event.node_id == self._fanout_entry:
             self._items_done += 1
-            await CONTEXT.database.jobs.set_items(self._job_id, self._items_done, self._items_total)
+            # Throttle: skip the write unless a whole batch has accrued or the wall-clock window
+            # elapsed. The exact final count is force-written at the fan-out's END (__end_stage).
+            now = monotonic()
+            batch_crossed = self._items_done - self._items_last_written >= _ITEMS_WRITE_BATCH
+            window_elapsed = now - self._items_last_write_ts >= _ITEMS_WRITE_INTERVAL_S
+            if batch_crossed or window_elapsed:
+                await CONTEXT.database.jobs.set_items(
+                    self._job_id, self._items_done, self._items_total
+                )
+                self._items_last_written = self._items_done
+                self._items_last_write_ts = now
 
     async def __end_stage(self, event: ProgressEvent) -> None:
         """Finalize the stage's open row (status + duration/error + usage) and advance progress."""
@@ -218,6 +243,13 @@ class JobProgressRecorder(LoggerClass):
                 self._job_id, prompt_tokens, completion_tokens, cost_usd
             )
         if self._fanout_root == node_id:
+            # Force-write the EXACT final item count the throttle may have skipped, so the row never
+            # settles on a stale value when the fan-out finishes (a no-op when already up to date).
+            if self._items_active and self._items_done != self._items_last_written:
+                await CONTEXT.database.jobs.set_items(
+                    self._job_id, self._items_done, self._items_total
+                )
+                self._items_last_written = self._items_done
             self._fanout_root = None
             self._fanout_entry = None
 

@@ -274,21 +274,23 @@ class IngestionFacade(LoggerClass):
         if not pending:
             return {}
 
-        # 2. One S3 client scope for the whole batch; each put is best-effort (a miss just drops that
-        #    payload's ref). Content-addressed keys make repeated puts of the same bytes idempotent.
+        # 2. One S3 client scope AND one put_many for the whole batch — up to ~60 sequential PUTs
+        #    collapsed into a single call (content-addressed keys make repeated puts idempotent).
+        #    Best-effort by contract: a batch failure is logged and drops every ref for this run (the
+        #    rows simply keep no full payload), never failing an ingestion that already produced its
+        #    bundle.
         input_by_path: dict[str, str] = {}
         output_by_path: dict[str, str] = {}
-        async with self._s3.client() as s3:
-            for node_path, side, obj in pending:
-                try:
-                    await S3ObjectApi.put_many(s3, self._s3.bucket, [obj])
-                except Exception as exc:
-                    self.logger.warning(
-                        f"Trace payload store failed for {node_path}/{side} (job {job_id}); "
-                        f"dropping its ref: {exc}"
-                    )
-                    continue
-                (input_by_path if side == "input" else output_by_path)[node_path] = obj.key
+        try:
+            async with self._s3.client() as s3:
+                await S3ObjectApi.put_many(s3, self._s3.bucket, [obj for _, _, obj in pending])
+        except Exception as exc:
+            self.logger.warning(
+                f"Trace payload store failed for job {job_id}; dropping {len(pending)} ref(s): {exc}"
+            )
+            return {}
+        for node_path, side, obj in pending:
+            (input_by_path if side == "input" else output_by_path)[node_path] = obj.key
 
         # 3. Fold the two sides into one TraceRefs per node_path.
         paths = set(input_by_path) | set(output_by_path)

@@ -17,6 +17,7 @@ from pyfiglet import Figlet
 # ====== Internal Project Imports ======
 from config import RUNTIME_CONFIG
 from shared_libs.observability import ConfigDumpHelpers, CorrelationContext
+from shared_libs.pipelines.nodes.http_pool import HttpClientPool
 from shared_libs.services.db import Database
 from shared_libs.services.db.postgresql import PostgresClient
 from shared_libs.services.db.qdrant import QdrantClient
@@ -87,7 +88,12 @@ async def startup(ctx: dict[str, Any]) -> None:
         region=RUNTIME_CONFIG.S3_REGION,
     )
     CONTEXT.database = Database(
-        postgres=PostgresClient(RUNTIME_CONFIG.POSTGRES_DSN),
+        postgres=PostgresClient(
+            RUNTIME_CONFIG.POSTGRES_DSN,
+            pool_size=RUNTIME_CONFIG.DB_POOL_SIZE,
+            max_overflow=RUNTIME_CONFIG.DB_MAX_OVERFLOW,
+            pool_recycle_seconds=RUNTIME_CONFIG.DB_POOL_RECYCLE_SECONDS,
+        ),
         qdrant=QdrantClient(
             RUNTIME_CONFIG.QDRANT_URL,
             api_key=RUNTIME_CONFIG.QDRANT_API_KEY,
@@ -143,6 +149,8 @@ async def shutdown(ctx: dict[str, Any]) -> None:
         await CONTEXT.heartbeat.stop()
     if hasattr(CONTEXT, "database"):
         await CONTEXT.database.close()
+    # Close the pooled provider HTTP clients the nodes kept alive for connection reuse.
+    await HttpClientPool.shutdown()
     CONTEXT.logger.info(f"Worker '{getattr(CONTEXT, 'worker_id', '?')}' shut down")
 
 

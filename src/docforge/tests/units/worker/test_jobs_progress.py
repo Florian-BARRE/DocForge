@@ -29,6 +29,7 @@ def _mock_context() -> tuple[SimpleNamespace, MagicMock]:
     jobs = MagicMock()
     jobs.set_progress = AsyncMock()
     jobs.record_event = AsyncMock()
+    jobs.finalize_event = AsyncMock()
     jobs.set_items = AsyncMock()
     jobs.add_usage = AsyncMock()
     return SimpleNamespace(database=SimpleNamespace(jobs=jobs)), jobs
@@ -77,6 +78,37 @@ async def test_percentage_falls_back_to_all_roots_without_a_plan(
 
     await _end(recorder, "a")
     assert _last_progress(jobs) == 25  # 1 of 4 roots
+
+
+async def _run_fanout(recorder, *, total: int, item_count: int) -> None:
+    """Drive a full fan-out: arm the counter, then fire item_count body-entry END events + the root END."""
+    await recorder(
+        ProgressEvent(phase=ProgressPhase.START, node_id="fan", kind="foreach", total_items=total)
+    )
+    # The body entry's first START binds the entry id the counter keys on.
+    await recorder(ProgressEvent(phase=ProgressPhase.START, node_id="body_entry", kind="vlm"))
+    for _ in range(item_count):
+        await recorder(ProgressEvent(phase=ProgressPhase.END, node_id="body_entry", kind="vlm"))
+    await recorder(
+        ProgressEvent(phase=ProgressPhase.END, node_id="fan", kind="foreach", record=None)
+    )
+
+
+async def test_fanout_counter_is_throttled_but_final_value_is_exact(
+    progress_module, monkeypatch
+) -> None:
+    # 60 items fan out, but the per-item write is throttled (batch of 25, 1s window) — far fewer than
+    # 60 UPDATEs fire, and the EXACT final count is force-written when the fan-out ends.
+    context, jobs = _mock_context()
+    monkeypatch.setattr(progress_module, "CONTEXT", context)
+    recorder = progress_module.JobProgressRecorder(uuid.uuid4(), ["fan"])
+
+    await _run_fanout(recorder, total=60, item_count=60)
+
+    # The throttle collapses 60 per-item writes into a handful (arm + batch crossings + final).
+    assert jobs.set_items.await_count < 60
+    # The LAST write settles the row on the exact final count, never a stale batch boundary.
+    assert jobs.set_items.call_args.args[1:] == (60, 60)
 
 
 async def test_escalation_root_that_does_run_is_still_traced(progress_module, monkeypatch) -> None:
