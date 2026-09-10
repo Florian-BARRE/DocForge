@@ -29,6 +29,28 @@ from .libs.jobs import (
 from .lifespan import shutdown, startup
 
 
+def _cron_minutes(interval_minutes: int, offset: int) -> set[int]:
+    """
+    Build the minute-of-hour set for a cron firing every `interval_minutes`, phase-shifted by
+    `offset` (W1-09 fix).
+
+    All six worker crons used to compute their minute set as `range(0, 60, interval)`, which always
+    includes `:00` — every family therefore fired together at each hour boundary (AND most of them
+    also fire once at startup), saturating the small worker pool right when real ingestion jobs also
+    compete for a slot. Shifting each family's cadence by a distinct `offset` keeps every family's
+    own cadence exact while spreading the six families across different minutes.
+
+    Args:
+        interval_minutes (int): Cadence in minutes (clamped to >= 1 by the caller).
+        offset (int): Phase shift (0-59), distinct per cron family, so siblings never share a minute.
+
+    Returns:
+        set[int]: Minutes of the hour (0-59) this cron fires on.
+    """
+    interval_minutes = max(1, interval_minutes)
+    return {(offset + m) % 60 for m in range(0, 60, interval_minutes)}
+
+
 def create_worker_settings() -> type:
     """
     Assemble the arq worker definition — what `arq entrypoint.WorkerSettings` runs forever.
@@ -44,7 +66,10 @@ def create_worker_settings() -> type:
 
     # The stuck-job reaper runs every WORKER_REAP_INTERVAL_MINUTES AND once at startup, so a wedge
     # left by the previous (crashed/hot-reloaded) run is cleared immediately. Disabled -> no cron.
-    reap_minutes = set(range(0, 60, max(1, RUNTIME_CONFIG.WORKER_REAP_INTERVAL_MINUTES)))
+    # `run_at_startup=True` is kept ONLY for this family (the reaper recovers stuck jobs/workers
+    # after a restart — worth the boot-time cost); every GC family below now defers to its first
+    # scheduled tick instead. Offset 2 (of 6, see `_cron_minutes`).
+    reap_minutes = _cron_minutes(RUNTIME_CONFIG.WORKER_REAP_INTERVAL_MINUTES, offset=2)
     reaper_crons = (
         [
             cron(with_correlation(reap_stuck_jobs), minute=reap_minutes, run_at_startup=True),
@@ -57,51 +82,68 @@ def create_worker_settings() -> type:
         else []
     )
     # The transfer GC reclaims expired export bundles (S3 object + row) every
-    # WORKER_TRANSFER_GC_INTERVAL_MINUTES AND once at startup. Disabled -> no cron.
-    gc_minutes = set(range(0, 60, max(1, RUNTIME_CONFIG.WORKER_TRANSFER_GC_INTERVAL_MINUTES)))
+    # WORKER_TRANSFER_GC_INTERVAL_MINUTES. Disabled -> no cron. Offset 8 (of 6, see `_cron_minutes`)
+    # keeps it off both the reaper's minutes above and the hourly GCs below.
+    # `run_at_startup=False`: a backlog of expired-but-ungarbage-collected bundles is not urgent
+    # enough to justify extra boot-time load — it waits for its first scheduled tick.
+    gc_minutes = _cron_minutes(RUNTIME_CONFIG.WORKER_TRANSFER_GC_INTERVAL_MINUTES, offset=8)
     transfer_gc_crons = (
-        [cron(with_correlation(gc_expired_transfers), minute=gc_minutes, run_at_startup=True)]
+        [cron(with_correlation(gc_expired_transfers), minute=gc_minutes, run_at_startup=False)]
         if RUNTIME_CONFIG.WORKER_TRANSFER_GC_ENABLED
         else []
     )
     # The audit retention sweep prunes rows older than AUDIT_RETENTION_DAYS every
-    # WORKER_AUDIT_GC_INTERVAL_MINUTES AND once at startup. It is only registered when GC is enabled
-    # AND retention is a positive window — with retention at 0 (keep-forever, the default) there is
-    # no cron at all, so an out-of-box deployment never deletes audit history.
-    audit_gc_minutes = set(range(0, 60, max(1, RUNTIME_CONFIG.WORKER_AUDIT_GC_INTERVAL_MINUTES)))
+    # WORKER_AUDIT_GC_INTERVAL_MINUTES. It is only registered when GC is enabled AND retention is a
+    # positive window — with retention at 0 (keep-forever, the default) there is no cron at all, so
+    # an out-of-box deployment never deletes audit history.
+    # Offset 20 (of 6, see `_cron_minutes`) — distinct from the reaper, the transfer GC, and the
+    # other hourly GCs below. `run_at_startup=False`: retention pruning can wait for its first tick.
+    audit_gc_minutes = _cron_minutes(RUNTIME_CONFIG.WORKER_AUDIT_GC_INTERVAL_MINUTES, offset=20)
     audit_gc_crons = (
-        [cron(with_correlation(gc_audit_log), minute=audit_gc_minutes, run_at_startup=True)]
+        [cron(with_correlation(gc_audit_log), minute=audit_gc_minutes, run_at_startup=False)]
         if RUNTIME_CONFIG.WORKER_AUDIT_GC_ENABLED and RUNTIME_CONFIG.AUDIT_RETENTION_DAYS > 0
         else []
     )
     # The idempotency retention sweep prunes records past their expires_at (now + IDEMPOTENCY_TTL_HOURS)
-    # every WORKER_IDEMPOTENCY_GC_INTERVAL_MINUTES AND once at startup. Disabled -> no cron.
-    idem_gc_minutes = set(
-        range(0, 60, max(1, RUNTIME_CONFIG.WORKER_IDEMPOTENCY_GC_INTERVAL_MINUTES))
+    # every WORKER_IDEMPOTENCY_GC_INTERVAL_MINUTES. Disabled -> no cron.
+    # Offset 35 (of 6, see `_cron_minutes`). `run_at_startup=False`: expired keys can wait for the
+    # first tick — the store is a cache, so nothing is lost by a short delay.
+    idem_gc_minutes = _cron_minutes(
+        RUNTIME_CONFIG.WORKER_IDEMPOTENCY_GC_INTERVAL_MINUTES, offset=35
     )
     idempotency_gc_crons = (
-        [cron(with_correlation(gc_idempotency_keys), minute=idem_gc_minutes, run_at_startup=True)]
+        [cron(with_correlation(gc_idempotency_keys), minute=idem_gc_minutes, run_at_startup=False)]
         if RUNTIME_CONFIG.WORKER_IDEMPOTENCY_GC_ENABLED
         else []
     )
     # The stage-artifact cache GC evicts stale/over-cap cached parses (TTL + per-collection LRU) and
-    # sweeps freed S3 blobs every WORKER_ARTIFACT_GC_INTERVAL_MINUTES AND once at startup. Disabled ->
-    # no cron (an unbounded cache is not acceptable, so this is ON by default).
-    artifact_gc_minutes = set(
-        range(0, 60, max(1, RUNTIME_CONFIG.WORKER_ARTIFACT_GC_INTERVAL_MINUTES))
+    # sweeps freed S3 blobs every WORKER_ARTIFACT_GC_INTERVAL_MINUTES. Disabled -> no cron (an
+    # unbounded cache is not acceptable, so this is ON by default).
+    # Offset 50 (of 6, see `_cron_minutes`). `run_at_startup=False`: the cache is bounded by its own
+    # TTL/LRU caps, so an idle cache can wait for the first scheduled sweep.
+    artifact_gc_minutes = _cron_minutes(
+        RUNTIME_CONFIG.WORKER_ARTIFACT_GC_INTERVAL_MINUTES, offset=50
     )
     artifact_gc_crons = (
-        [cron(with_correlation(gc_artifact_cache), minute=artifact_gc_minutes, run_at_startup=True)]
+        [
+            cron(
+                with_correlation(gc_artifact_cache),
+                minute=artifact_gc_minutes,
+                run_at_startup=False,
+            )
+        ]
         if RUNTIME_CONFIG.WORKER_ARTIFACT_GC_ENABLED
         else []
     )
     # The trace-retention GC prefix-deletes the object-store payloads of jobs older than
-    # WORKER_TRACE_RETENTION_DAYS every WORKER_TRACE_GC_INTERVAL_MINUTES AND once at startup. Only
-    # registered when retention is a positive window — at 0 (keep-forever) there is no cron at all, so
-    # an out-of-box deployment never deletes trace payloads (same convention as the audit GC).
-    trace_gc_minutes = set(range(0, 60, max(1, RUNTIME_CONFIG.WORKER_TRACE_GC_INTERVAL_MINUTES)))
+    # WORKER_TRACE_RETENTION_DAYS every WORKER_TRACE_GC_INTERVAL_MINUTES. Only registered when
+    # retention is a positive window — at 0 (keep-forever) there is no cron at all, so an out-of-box
+    # deployment never deletes trace payloads (same convention as the audit GC).
+    # Offset 44 (of 6, see `_cron_minutes`) — the last of the six, distinct from all siblings above.
+    # `run_at_startup=False`: aged trace payloads can wait for the first scheduled sweep.
+    trace_gc_minutes = _cron_minutes(RUNTIME_CONFIG.WORKER_TRACE_GC_INTERVAL_MINUTES, offset=44)
     trace_gc_crons = (
-        [cron(with_correlation(gc_trace_payloads), minute=trace_gc_minutes, run_at_startup=True)]
+        [cron(with_correlation(gc_trace_payloads), minute=trace_gc_minutes, run_at_startup=False)]
         if RUNTIME_CONFIG.WORKER_TRACE_RETENTION_DAYS > 0
         else []
     )
