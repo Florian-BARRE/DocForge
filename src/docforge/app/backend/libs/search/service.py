@@ -9,6 +9,7 @@
 
 # ====== Standard Library Imports ======
 import uuid
+from functools import lru_cache
 from typing import Any
 
 # ====== Third-Party Library Imports ======
@@ -31,6 +32,7 @@ from shared_libs.public_models.search import (
 from shared_libs.services.db import Database
 
 # ====== Local Project Imports ======
+from ..blob_hash import BlobHasher
 from .contract import SearchContractBuilder
 from .read_port import CollectionReadPortImpl
 from .runner import SearchRunError, SearchRunner
@@ -38,6 +40,25 @@ from .runner import SearchRunError, SearchRunner
 # Default wall-clock cap for an inline search run when the caller does not configure one — search is
 # sub-second; this only guards a stuck provider. Deployments override it via SEARCH_RUN_TIMEOUT_SECONDS.
 _DEFAULT_RUN_TIMEOUT_SECONDS = 30.0
+
+# The pool cache key for the stock default search graph — a constant sentinel so the common case
+# (collection.search == {}) never needs to be hashed; stored blobs key by their content hash instead.
+_STOCK_DEFAULT_KEY = "__stock_default_search__"
+
+
+@lru_cache(maxsize=1)
+def _default_search_blob() -> dict:
+    """
+    The serialised stock search blob, built ONCE per process and reused.
+
+    Returning the one memoized dict is safe: the builder only ``model_validate``s it (never mutates
+    it), so every resolver/runner treats it read-only — the same contract the old per-request
+    ``model_dump`` relied on.
+
+    Returns:
+        dict: The stock search topology in plain-dict form.
+    """
+    return SearchPipeline.default_blob().model_dump(mode="json")
 
 
 class SearchServiceError(Exception):
@@ -94,9 +115,26 @@ class SearchService(LoggerClass):
                 return SearchBlobNormalizer.normalize(stored)
             except SearchBlobNormalizationError as exc:
                 raise SearchRunError(str(exc)) from exc
-        # 2. Empty / sentinel → the stock default, serialised to the same plain-dict form (the
-        #    default is freshly built from the current engine, so it needs no heal).
-        return SearchPipeline.default_blob().model_dump(mode="json")
+        # 2. Empty / sentinel → the memoized stock default (built once per process, treated
+        #    read-only), serialised to the same plain-dict form; the default needs no heal.
+        return _default_search_blob()
+
+    def __cache_key(self, stored: dict, resolved: dict) -> str:
+        """
+        The pool cache key for a resolved blob — sentinel for the stock default, else a content hash.
+
+        Args:
+            stored (dict): The raw ``collection.search`` value (decides default vs configured).
+            resolved (dict): The healed blob actually run — hashed so two stores that heal to the
+                same graph reuse the same built graph.
+
+        Returns:
+            str: The stock-default sentinel, or the resolved blob's stable content hash.
+        """
+        # 1. A configured topology keys by its healed content; the empty sentinel skips hashing.
+        if stored.get("nodes"):
+            return BlobHasher.digest(resolved)
+        return _STOCK_DEFAULT_KEY
 
     async def search(
         self,
@@ -160,14 +198,21 @@ class SearchService(LoggerClass):
         #    topology, else the stock default. A broken stored blob makes the runner raise
         #    SearchRunError (at build + validate); the SEARCH ROUTER maps that to a 422 at the HTTP
         #    boundary, so an invalid stored graph is never surfaced as a 500.
-        blob = self.__resolve_blob(collection.search)
+        stored_search = collection.search or {}
+        blob = self.__resolve_blob(stored_search)
+        graph_key = self.__cache_key(stored_search, blob)
 
         # 6. Price any search-time LLM spend against the collection's EFFECTIVE rates (canonical
         #    defaults folded with its per-collection overrides) — the same numbers the estimator/ingest
         #    meter use, so search cost is consistent with the rest of the platform's metering.
         rates = RateTable.from_overrides(getattr(collection, "estimate_overrides", None))
         return await self._runner.run(
-            blob, run_input, read_port, rates, timeout_seconds=self._timeout_seconds
+            blob,
+            run_input,
+            read_port,
+            rates,
+            graph_key=graph_key,
+            timeout_seconds=self._timeout_seconds,
         )
 
 

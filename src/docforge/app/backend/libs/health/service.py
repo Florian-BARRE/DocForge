@@ -12,6 +12,7 @@
 # ====== Standard Library Imports ======
 import uuid
 from datetime import UTC, datetime
+from functools import lru_cache
 
 # ====== Third-Party Library Imports ======
 from loggerplusplus import LoggerClass
@@ -30,6 +31,8 @@ from shared_libs.services.db import Database
 from shared_libs.services.db.postgresql.tables import Collection
 
 # ====== Local Project Imports ======
+from ..blob_hash import BlobHasher
+from .buildability_cache import BuildabilityCache
 from .graph_builds import CollectionGraphBuilder, GraphBuildOutcome
 from .models import (
     CollectionHealthResponse,
@@ -40,6 +43,21 @@ from .models import (
     SearchIndex,
 )
 from .verdict import HealthVerdictResolver
+
+# The buildability cache key for the stock default ingest blob — a constant sentinel so collections
+# with no configured pipeline never need the default blob reconstructed or hashed per list render.
+_STOCK_DEFAULT_KEY = "__stock_default_ingest__"
+
+
+@lru_cache(maxsize=1)
+def _default_ingest_blob() -> dict:
+    """
+    The serialised stock ingest blob, built ONCE per process and reused (read-only).
+
+    Returns:
+        dict: The stock ingest topology in plain-dict form.
+    """
+    return IngestPipeline.default_blob().model_dump(mode="json")
 
 
 class CollectionHealthService(LoggerClass):
@@ -69,6 +87,9 @@ class CollectionHealthService(LoggerClass):
         self._ingest_sweep = ReachabilitySweep()
         self._search_sweep = SearchReachabilitySweep()
         self._egress_policy = egress_policy
+        # Memoizes ingest-blob buildability for the fleet list, keyed by the blob's content hash —
+        # so rendering the list is a dict lookup per collection, not a heal+build+validate each time.
+        self._buildability_cache = BuildabilityCache()
 
     async def __sweep_ingest(self, ingest: GraphBuildOutcome) -> list[ProviderProbeResult]:
         """Sweep the ingest graph's provider leaves (empty when the graph did not build)."""
@@ -224,25 +245,56 @@ class CollectionHealthService(LoggerClass):
             dict[uuid.UUID, CollectionHealthSummary]: collection id → its compact health summary.
         """
         # 1. Per collection: a purely structural verdict from the blob's buildability (no I/O) + the
-        #    caller's batched counts — never a provider sweep or a Qdrant call.
+        #    caller's batched counts — never a provider sweep or a Qdrant call. Buildability is cached
+        #    by the blob hash, so an unchanged pipeline costs a dict lookup (a PATCH → new hash →
+        #    recompute), and the per-collection detail endpoint keeps owning the live provider sweep.
         summaries: dict[uuid.UUID, CollectionHealthSummary] = {}
         for collection in collections:
-            stored_pipeline = collection.pipeline or IngestPipeline.default_blob().model_dump(
-                mode="json"
-            )
-            ingest_build = CollectionGraphBuilder.build_ingest(
-                self._builder, self._validator, stored_pipeline
-            )
+            ingest_buildable = self.__buildable(collection)
             chunk_count = chunk_counts.get(collection.id, 0)
             summaries[collection.id] = CollectionHealthSummary(
                 verdict=self.__list_verdict(
-                    ingest_buildable=ingest_build.buildable, chunk_count=chunk_count
+                    ingest_buildable=ingest_buildable, chunk_count=chunk_count
                 ),
                 doc_count=doc_counts.get(collection.id, 0),
                 chunk_count=chunk_count,
                 last_ingest_at=last_ingests.get(collection.id),
             )
         return summaries
+
+    def __buildable(self, collection: Collection) -> bool:
+        """
+        Whether a collection's ingest blob builds — memoized by the blob's content hash.
+
+        A configured pipeline keys by its content hash; a collection with none keys by the stock
+        sentinel (so the default blob is reconstructed + hashed at most once per process). On a miss
+        the verdict is computed via the EXACT worker heal+build+validate path, then cached.
+
+        Args:
+            collection (Collection): The fleet row whose stored pipeline blob is assessed.
+
+        Returns:
+            bool: Whether the collection's ingest blob heals, builds and validates.
+        """
+        # 1. Pick the cache key without materialising the default blob when the pipeline is empty.
+        if collection.pipeline:
+            stored_pipeline = collection.pipeline
+            key = BlobHasher.digest(stored_pipeline)
+        else:
+            stored_pipeline = None  # the stock default — only built on an actual cache miss
+            key = _STOCK_DEFAULT_KEY
+
+        # 2. Cache hit → a dict lookup; miss → build once (default blob materialised only here).
+        return self._buildability_cache.get_or_compute(
+            key,
+            lambda: (
+                CollectionGraphBuilder.build_ingest(
+                    self._builder,
+                    self._validator,
+                    stored_pipeline if stored_pipeline is not None else _default_ingest_blob(),
+                ).buildable
+            ),
+        )
 
 
 __all__ = ["CollectionHealthService"]

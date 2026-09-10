@@ -1,12 +1,13 @@
 # ====== Code Summary ======
 # SearchRunner — the app-side execution heart of the search pipeline, the search analog of the
 # worker's PipelineRunner. Search runs INLINE in the API request (sub-second, no arq), so this
-# lives app-side. It builds + validates the graph (fail-fast, a broken blob becomes a typed error,
-# never an engine crash), binds the read-only CollectionReadPort onto the port-backed nodes — the
-# engine does NOT bind, so the runner walks the built group's children and injects the capability
-# BEFORE execution — runs FlowEngine.execute with the {query, filters, contract} run-input, and
-# enforces the OUTPUT CONTRACT: a search pipeline must deliver a SearchResult. The engine, builder
-# and validator are reused verbatim.
+# lives app-side. It checks out a built + validated graph from the BuiltGraphPool (built once per
+# distinct blob, then reused — fail-fast, a broken blob becomes a typed error, never an engine
+# crash), binds the read-only CollectionReadPort onto the port-backed nodes — the engine does NOT
+# bind, so the runner walks the built group's children and injects the capability BEFORE execution —
+# runs FlowEngine.execute with the {query, filters, contract} run-input, and enforces the OUTPUT
+# CONTRACT: a search pipeline must deliver a SearchResult, then returns the graph to the pool. The
+# engine, builder and validator are reused verbatim.
 
 # ====== Third-Party Library Imports ======
 from loggerplusplus import LoggerClass
@@ -26,6 +27,9 @@ from shared_libs.pipelines.search import COLLECTION_READ_CAPABILITY, CollectionR
 from shared_libs.pipelines.usage import UsageSummer
 from shared_libs.pipelines.validation import GraphValidator
 from shared_libs.public_models.search import SearchResult
+
+# ====== Local Project Imports ======
+from .graph_pool import BuiltGraphPool
 
 # The error_type the encode node stamps when NO query vector axis could be produced (the shared
 # embedder is saturated) — the runner keys the retryable "unavailable" mapping off it, never a
@@ -75,6 +79,9 @@ class SearchRunner(LoggerClass):
         # Search runs INLINE in the request and DISCARDS the record, so it captures nothing — no
         # per-hop trace work is spent (the ingest worker is the only trace consumer).
         self._engine = FlowEngine(trace_level=TraceLevel.OFF)
+        # The per-blob pool of built+validated graphs — builds once per distinct blob, reused across
+        # requests (the read port is rebound per run, the mutable seam the pool never shares).
+        self._pool = BuiltGraphPool()
 
     @staticmethod
     def __failed_node_reason(record: NodeExecutionRecord) -> str | None:
@@ -148,12 +155,40 @@ class SearchRunner(LoggerClass):
             elif isinstance(child, ActionNode):
                 child.bind({COLLECTION_READ_CAPABILITY: read_port})
 
+    def __build_validated(self, blob: GroupNodeBlob | dict) -> Group:
+        """
+        Build + structurally validate a graph BEFORE any spend — a broken blob is a typed error.
+
+        This is the pool's miss callback: it runs once per distinct blob. An invalid blob raises a
+        SearchRunError (the router maps it to a 422) rather than crashing the engine, exactly as the
+        inline build did before the pool existed.
+
+        Args:
+            blob (GroupNodeBlob | dict): The search pipeline blob to build.
+
+        Returns:
+            Group: The built, validated, UNBOUND graph.
+
+        Raises:
+            SearchRunError: The blob does not build or does not structurally validate.
+        """
+        # 1. Build, then validate — either step surfacing a problem is the "graph is wrong" failure.
+        group = self._builder.build(blob)
+        issues = self._validator.validate(group)
+        if issues:
+            details = "; ".join(
+                f"[{issue.code}] {issue.location}: {issue.message}" for issue in issues
+            )
+            raise SearchRunError(f"invalid search graph ({len(issues)} issue(s)): {details}")
+        return group
+
     async def run(
         self,
         blob: GroupNodeBlob | dict,
         run_input: dict,
         read_port: CollectionReadPort,
         rates: RateTable,
+        graph_key: str,
         timeout_seconds: float | None = None,
     ) -> tuple[SearchResult, tuple[int, int, float | None, int]]:
         """
@@ -171,6 +206,8 @@ class SearchRunner(LoggerClass):
                 nodes (the exclusion invariant lives inside it).
             rates (RateTable): The collection's effective rate table (defaults + rate overrides) the
                 usage is priced against — the SAME numbers the estimator/ingest meter use.
+            graph_key (str): The blob's stable cache key — the stock default's sentinel, or a stored
+                blob's content hash. Graphs built for the same key are reused across requests.
             timeout_seconds (float | None): Wall-clock cap for the whole run (None = no cap).
 
         Returns:
@@ -181,55 +218,56 @@ class SearchRunner(LoggerClass):
             SearchRunError: Invalid graph, failed run, or a final output that is not the
                 SearchResult contract — each with a precise message.
         """
-        # 1. Build + validate BEFORE any spend — a broken blob is a typed error, never a crash.
-        group = self._builder.build(blob)
-        issues = self._validator.validate(group)
-        if issues:
-            details = "; ".join(
-                f"[{issue.code}] {issue.location}: {issue.message}" for issue in issues
-            )
-            raise SearchRunError(f"invalid search graph ({len(issues)} issue(s)): {details}")
+        # 1. Check out a built + validated graph (built once per distinct blob, then pooled). A
+        #    broken blob raises here — never pooled — before any spend.
+        group = self._pool.acquire(graph_key, lambda: self.__build_validated(blob))
+        try:
+            # 2. Bind the read port onto the port-backed nodes — the engine does NOT bind. This is
+            #    the per-request mutable seam; binding our OWN checked-out graph keeps concurrent
+            #    runs on other collections from ever seeing this port.
+            self.__bind_read_port(group, read_port)
 
-        # 2. Bind the read port onto the port-backed nodes — the engine does NOT bind.
-        self.__bind_read_port(group, read_port)
-
-        # 3. Execute inline under the wall-clock cap.
-        self.logger.info(f"Running search pipeline '{group.id}'")
-        output, record = await self._engine.execute(
-            group, run_input, timeout_seconds=timeout_seconds
-        )
-
-        # 4. A failed run — DISTINGUISH the transient, retryable failures of a healthy graph from a
-        #    genuine "the graph is wrong" failure, so the router never mislabels a busy embedder as
-        #    an invalid blob.
-        if output is None:
-            reason = self.__failed_node_reason(record) or (
-                record.error.message if record.error else "see the execution record"
+            # 3. Execute inline under the wall-clock cap.
+            self.logger.info(f"Running search pipeline '{group.id}'")
+            output, record = await self._engine.execute(
+                group, run_input, timeout_seconds=timeout_seconds
             )
-            error_type = self.__failed_error_type(record) or (
-                record.error.error_type if record.error else None
-            )
-            # 4a. The whole run blew the wall-clock cap — the provider is stuck. Retryable 504.
-            if error_type == _TIMEOUT_ERROR:
-                raise SearchRunTimeout(f"search run timed out: {reason}")
-            # 4b. The query could not be encoded on any axis — the embedder is busy. Retryable 503.
-            if error_type == _ENCODE_UNAVAILABLE_ERROR:
-                raise SearchUnavailableError(f"search temporarily unavailable: {reason}")
-            # 4c. Anything else is a genuine run failure of the graph itself.
-            raise SearchRunError(f"search run failed: {reason}")
 
-        # 5. The OUTPUT CONTRACT: the final node must deliver a SearchResult.
-        result = getattr(output, "result", None)
-        if not isinstance(result, SearchResult):
-            raise SearchRunError(
-                f"the pipeline's final node produced '{type(output).__name__}' — a search "
-                f"pipeline must end on a deliver/hits node producing a SearchResult"
-            )
-        # 6. Meter the run's paid text-gen spend (rewrite/HyDE LLM calls stamp usage on the records),
-        #    priced against the collection's effective rates — so search cost is surfaced, not invisible.
-        usage = UsageSummer.summarize(record, rates)
-        self.logger.info(f"Search delivered {len(result.hits)} hit(s)")
-        return result, usage
+            # 4. A failed run — DISTINGUISH the transient, retryable failures of a healthy graph from
+            #    a genuine "the graph is wrong" failure, so the router never mislabels a busy embedder
+            #    as an invalid blob.
+            if output is None:
+                reason = self.__failed_node_reason(record) or (
+                    record.error.message if record.error else "see the execution record"
+                )
+                error_type = self.__failed_error_type(record) or (
+                    record.error.error_type if record.error else None
+                )
+                # 4a. The whole run blew the wall-clock cap — the provider is stuck. Retryable 504.
+                if error_type == _TIMEOUT_ERROR:
+                    raise SearchRunTimeout(f"search run timed out: {reason}")
+                # 4b. The query could not be encoded on any axis — the embedder is busy. Retryable 503.
+                if error_type == _ENCODE_UNAVAILABLE_ERROR:
+                    raise SearchUnavailableError(f"search temporarily unavailable: {reason}")
+                # 4c. Anything else is a genuine run failure of the graph itself.
+                raise SearchRunError(f"search run failed: {reason}")
+
+            # 5. The OUTPUT CONTRACT: the final node must deliver a SearchResult.
+            result = getattr(output, "result", None)
+            if not isinstance(result, SearchResult):
+                raise SearchRunError(
+                    f"the pipeline's final node produced '{type(output).__name__}' — a search "
+                    f"pipeline must end on a deliver/hits node producing a SearchResult"
+                )
+            # 6. Meter the run's paid text-gen spend (rewrite/HyDE LLM calls stamp usage on the
+            #    records), priced against the collection's effective rates — search cost is surfaced.
+            usage = UsageSummer.summarize(record, rates)
+            self.logger.info(f"Search delivered {len(result.hits)} hit(s)")
+            return result, usage
+        finally:
+            # 7. Return the graph for reuse whatever the outcome — nodes keep no run-scoped state
+            #    (the engine holds it all in its RunContext), so a used graph is safe to re-run.
+            self._pool.release(graph_key, group)
 
 
 __all__ = ["SearchRunner", "SearchRunError", "SearchRunTimeout", "SearchUnavailableError"]

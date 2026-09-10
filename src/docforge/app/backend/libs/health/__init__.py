@@ -4,6 +4,9 @@ from .service import CollectionHealthService
 # ---------------------- Graph-build (failure-captured) ---------------------- #
 from .graph_builds import CollectionGraphBuilder, GraphBuildOutcome
 
+# ---------------------- Buildability cache ---------------------- #
+from .buildability_cache import BuildabilityCache
+
 # ---------------------- Verdict roll-up ---------------------- #
 from .verdict import HealthRollup, HealthVerdictResolver
 
@@ -24,6 +27,7 @@ __all__ = [
     "CollectionHealthService",
     "CollectionGraphBuilder",
     "GraphBuildOutcome",
+    "BuildabilityCache",
     "HealthVerdictResolver",
     "HealthRollup",
     "CollectionHealthResponse",

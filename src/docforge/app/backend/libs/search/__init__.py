@@ -7,6 +7,9 @@ from .embedder_probe import QueryEmbedderProbe
 # ---------------------- Read-only capability port ---------------------- #
 from .read_port import CollectionReadPortImpl
 
+# ---------------------- Built-graph pool ---------------------- #
+from .graph_pool import BuiltGraphPool
+
 # ---------------------- Inline runner ---------------------- #
 from .runner import (
     SearchRunError,
@@ -24,6 +27,7 @@ __all__ = [
     "SearchContractError",
     "QueryEmbedderProbe",
     "CollectionReadPortImpl",
+    "BuiltGraphPool",
     "SearchRunner",
     "SearchRunError",
     "SearchRunTimeout",
