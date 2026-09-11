@@ -11,7 +11,9 @@
 from __future__ import annotations
 
 import builtins
-from typing import Literal
+import json
+from pathlib import Path
+from typing import Any, Literal
 
 # ====== Local Project Imports ======
 from .._requestspec import RequestSpec
@@ -27,6 +29,7 @@ from ..models.collections import (
 from ..models.corpus import DocumentFilter
 from ..models.estimate import CollectionEstimateRequest, CostEstimate
 from ..models.health import CollectionHealthResponse
+from ..models.preview import PreviewJobAccepted, PreviewJobResult, PreviewResponse
 from ..models.storage import CollectionStorageResponse
 from ._base import AsyncResource, SyncResource, _ResourceMixin
 
@@ -159,6 +162,63 @@ class _CollectionsSpecs(_ResourceMixin):
     def _contract_schema_spec(self) -> RequestSpec:
         """A GET of the collection identity/limits contract's JSON Schema (discovery)."""
         return RequestSpec("GET", f"{self._COLLECTIONS_PATH}/contract-schema")
+
+    def _preview_job_spec(self, collection_id: str, preview_id: str) -> RequestSpec:
+        """A GET poll of an asynchronous worker-side dry-run preview job by its id."""
+        return RequestSpec(
+            "GET",
+            f"{self._COLLECTIONS_PATH}/{collection_id}/pipeline/preview/jobs/{preview_id}",
+        )
+
+    @staticmethod
+    def _preview_parts(
+        file: str | Path | bytes | None,
+        document_id: str | None,
+        blob: dict[str, Any] | None,
+        metadata: dict[str, Any] | None,
+        max_chunks: int | None,
+        filename: str | None,
+    ) -> tuple[dict[str, Any] | None, dict[str, str]]:
+        """
+        Build the multipart ``files`` + form ``data`` of a dry-run preview request.
+
+        Exactly one SOURCE is expected (a file XOR a document_id); the candidate blob, declared
+        metadata and chunk ceiling are optional form fields. Returns ``files=None`` for the
+        document-id path so the request is sent as a plain form body (no empty file part).
+
+        Args:
+            file (str | Path | bytes | None): A local path or raw bytes to dry-run, or None.
+            document_id (str | None): An existing document to dry-run instead of a file, or None.
+            blob (dict | None): A candidate pipeline blob to preview instead of the stored one.
+            metadata (dict | None): Declared metadata for an uploaded source.
+            max_chunks (int | None): How many preview chunks to return (capped server-side).
+            filename (str | None): Override name for a bytes upload; defaults to the path name.
+
+        Returns:
+            tuple[dict | None, dict]: The httpx ``files`` mapping (None without a file) and form data.
+        """
+        # 1. Assemble the optional form fields shared by both source kinds.
+        data: dict[str, str] = {}
+        if document_id is not None:
+            data["document_id"] = document_id
+        if blob is not None:
+            data["blob"] = json.dumps(blob)
+        if metadata is not None:
+            data["metadata"] = json.dumps(metadata)
+        if max_chunks is not None:
+            data["max_chunks"] = str(max_chunks)
+
+        # 2. No uploaded file → a plain form body (document-id path).
+        if file is None:
+            return None, data
+
+        # 3. Resolve the file part from a path or in-memory bytes.
+        if isinstance(file, bytes):
+            content, resolved_name = file, (filename or "upload")
+        else:
+            path = Path(file)
+            content, resolved_name = path.read_bytes(), (filename or path.name)
+        return {"file": (resolved_name, content)}, data
 
 
 class AsyncCollections(AsyncResource, _CollectionsSpecs):
@@ -298,6 +358,102 @@ class AsyncCollections(AsyncResource, _CollectionsSpecs):
             self._estimate_spec(collection_id, request), CostEstimate
         )
 
+    async def preview_pipeline(
+        self,
+        collection_id: str,
+        *,
+        file: str | Path | bytes | None = None,
+        document_id: str | None = None,
+        blob: dict[str, Any] | None = None,
+        metadata: dict[str, Any] | None = None,
+        max_chunks: int | None = None,
+        filename: str | None = None,
+    ) -> PreviewResponse:
+        """
+        Dry-run the ingestion pipeline on ONE document and return a bounded preview — nothing persisted.
+
+        Provide exactly one source: ``file`` (a local path or raw bytes) OR ``document_id`` (an
+        already-ingested document). Optionally pass a candidate ``blob`` to preview instead of the
+        collection's stored pipeline. The server runs the ingest graph inline and returns an IR
+        summary, the first N chunks, the run's actual metered cost and the execution trace, writing
+        no document / blob / vector.
+
+        Args:
+            collection_id (str): The collection whose contract + pipeline the run uses.
+            file (str | Path | bytes | None): A local path or raw bytes to dry-run.
+            document_id (str | None): An existing document to dry-run instead of a file.
+            blob (dict | None): A candidate pipeline blob to preview instead of the stored one.
+            metadata (dict | None): Declared metadata for an uploaded source (field → value).
+            max_chunks (int | None): How many preview chunks to return (capped server-side).
+            filename (str | None): Override name for a bytes upload; defaults to the path name.
+
+        Returns:
+            PreviewResponse: The bounded dry-run report (ok=false + trace when a node failed).
+        """
+        files, data = self._preview_parts(file, document_id, blob, metadata, max_chunks, filename)
+        return await self._transport.upload(
+            f"{self._COLLECTIONS_PATH}/{collection_id}/pipeline/preview",
+            files,
+            data,
+            PreviewResponse,
+        )
+
+    async def submit_preview_job(
+        self,
+        collection_id: str,
+        *,
+        file: str | Path | bytes | None = None,
+        document_id: str | None = None,
+        blob: dict[str, Any] | None = None,
+        metadata: dict[str, Any] | None = None,
+        max_chunks: int | None = None,
+        filename: str | None = None,
+    ) -> PreviewJobAccepted:
+        """
+        Submit an ASYNCHRONOUS worker-side dry-run preview — returns a pollable id, persists nothing.
+
+        Unlike ``preview_pipeline`` (inline, API-process), this enqueues a WORKER job that runs the
+        full ingest graph with every dependency present (docling included), so it covers ALL pipelines.
+        Poll the returned id with ``get_preview_job`` until its status is terminal.
+
+        Args:
+            collection_id (str): The collection whose contract + pipeline the run uses.
+            file (str | Path | bytes | None): A local path or raw bytes to dry-run.
+            document_id (str | None): An existing document to dry-run instead of a file.
+            blob (dict | None): A candidate pipeline blob to preview instead of the stored one.
+            metadata (dict | None): Declared metadata for an uploaded source (field → value).
+            max_chunks (int | None): How many preview chunks to return (capped server-side).
+            filename (str | None): Override name for a bytes upload; defaults to the path name.
+
+        Returns:
+            PreviewJobAccepted: The preview id + initial status (poll it with ``get_preview_job``).
+        """
+        files, data = self._preview_parts(file, document_id, blob, metadata, max_chunks, filename)
+        return await self._transport.upload(
+            f"{self._COLLECTIONS_PATH}/{collection_id}/pipeline/preview/jobs",
+            files,
+            data,
+            PreviewJobAccepted,
+        )
+
+    async def get_preview_job(self, collection_id: str, preview_id: str) -> PreviewJobResult:
+        """
+        Poll an asynchronous dry-run preview by its id — the report appears once status is 'done'.
+
+        A failed NODE is DATA: status 'done' with ``result.ok`` = false. 'failed' is reserved for the
+        worker job itself crashing/timing out. An unknown/expired id is a 404.
+
+        Args:
+            collection_id (str): The collection the preview belongs to.
+            preview_id (str): The id returned by ``submit_preview_job``.
+
+        Returns:
+            PreviewJobResult: status + (the bounded report when done).
+        """
+        return await self._transport.request(
+            self._preview_job_spec(collection_id, preview_id), PreviewJobResult
+        )
+
     async def contract_schema(self) -> CollectionContractSchemaResponse:
         """The JSON Schema of the collection identity/limits contract (drives a discovery form)."""
         return await self._transport.request(
@@ -433,6 +589,102 @@ class SyncCollections(SyncResource, _CollectionsSpecs):
         """
         request = CollectionEstimateRequest(scope=scope, document_ids=document_ids, filter=filter)
         return self._transport.request(self._estimate_spec(collection_id, request), CostEstimate)
+
+    def preview_pipeline(
+        self,
+        collection_id: str,
+        *,
+        file: str | Path | bytes | None = None,
+        document_id: str | None = None,
+        blob: dict[str, Any] | None = None,
+        metadata: dict[str, Any] | None = None,
+        max_chunks: int | None = None,
+        filename: str | None = None,
+    ) -> PreviewResponse:
+        """
+        Dry-run the ingestion pipeline on ONE document and return a bounded preview — nothing persisted.
+
+        Provide exactly one source: ``file`` (a local path or raw bytes) OR ``document_id`` (an
+        already-ingested document). Optionally pass a candidate ``blob`` to preview instead of the
+        collection's stored pipeline. The server runs the ingest graph inline and returns an IR
+        summary, the first N chunks, the run's actual metered cost and the execution trace, writing
+        no document / blob / vector.
+
+        Args:
+            collection_id (str): The collection whose contract + pipeline the run uses.
+            file (str | Path | bytes | None): A local path or raw bytes to dry-run.
+            document_id (str | None): An existing document to dry-run instead of a file.
+            blob (dict | None): A candidate pipeline blob to preview instead of the stored one.
+            metadata (dict | None): Declared metadata for an uploaded source (field → value).
+            max_chunks (int | None): How many preview chunks to return (capped server-side).
+            filename (str | None): Override name for a bytes upload; defaults to the path name.
+
+        Returns:
+            PreviewResponse: The bounded dry-run report (ok=false + trace when a node failed).
+        """
+        files, data = self._preview_parts(file, document_id, blob, metadata, max_chunks, filename)
+        return self._transport.upload(
+            f"{self._COLLECTIONS_PATH}/{collection_id}/pipeline/preview",
+            files,
+            data,
+            PreviewResponse,
+        )
+
+    def submit_preview_job(
+        self,
+        collection_id: str,
+        *,
+        file: str | Path | bytes | None = None,
+        document_id: str | None = None,
+        blob: dict[str, Any] | None = None,
+        metadata: dict[str, Any] | None = None,
+        max_chunks: int | None = None,
+        filename: str | None = None,
+    ) -> PreviewJobAccepted:
+        """
+        Submit an ASYNCHRONOUS worker-side dry-run preview — returns a pollable id, persists nothing.
+
+        Unlike ``preview_pipeline`` (inline, API-process), this enqueues a WORKER job that runs the
+        full ingest graph with every dependency present (docling included), so it covers ALL pipelines.
+        Poll the returned id with ``get_preview_job`` until its status is terminal.
+
+        Args:
+            collection_id (str): The collection whose contract + pipeline the run uses.
+            file (str | Path | bytes | None): A local path or raw bytes to dry-run.
+            document_id (str | None): An existing document to dry-run instead of a file.
+            blob (dict | None): A candidate pipeline blob to preview instead of the stored one.
+            metadata (dict | None): Declared metadata for an uploaded source (field → value).
+            max_chunks (int | None): How many preview chunks to return (capped server-side).
+            filename (str | None): Override name for a bytes upload; defaults to the path name.
+
+        Returns:
+            PreviewJobAccepted: The preview id + initial status (poll it with ``get_preview_job``).
+        """
+        files, data = self._preview_parts(file, document_id, blob, metadata, max_chunks, filename)
+        return self._transport.upload(
+            f"{self._COLLECTIONS_PATH}/{collection_id}/pipeline/preview/jobs",
+            files,
+            data,
+            PreviewJobAccepted,
+        )
+
+    def get_preview_job(self, collection_id: str, preview_id: str) -> PreviewJobResult:
+        """
+        Poll an asynchronous dry-run preview by its id — the report appears once status is 'done'.
+
+        A failed NODE is DATA: status 'done' with ``result.ok`` = false. 'failed' is reserved for the
+        worker job itself crashing/timing out. An unknown/expired id is a 404.
+
+        Args:
+            collection_id (str): The collection the preview belongs to.
+            preview_id (str): The id returned by ``submit_preview_job``.
+
+        Returns:
+            PreviewJobResult: status + (the bounded report when done).
+        """
+        return self._transport.request(
+            self._preview_job_spec(collection_id, preview_id), PreviewJobResult
+        )
 
     def contract_schema(self) -> CollectionContractSchemaResponse:
         """The JSON Schema of the collection identity/limits contract (drives a discovery form)."""

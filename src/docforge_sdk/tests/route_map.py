@@ -45,6 +45,9 @@ ROUTES: set[tuple[str, str]] = {
     ("GET", "/api/v1/collections/{collection_id}/storage"),
     ("POST", "/api/v1/collections/{collection_id}/reingest"),
     ("POST", "/api/v1/collections/{collection_id}/estimate"),
+    ("POST", "/api/v1/collections/{collection_id}/pipeline/preview"),
+    ("POST", "/api/v1/collections/{collection_id}/pipeline/preview/jobs"),
+    ("GET", "/api/v1/collections/{collection_id}/pipeline/preview/jobs/{preview_id}"),
     # Corpus grid + bulk ops — resources/corpus.py
     ("POST", "/api/v1/collections/{collection_id}/documents/query"),
     ("POST", "/api/v1/collections/{collection_id}/documents/delete"),
@@ -83,6 +86,9 @@ ROUTES: set[tuple[str, str]] = {
     ("GET", "/api/v1/jobs/cost"),
     ("GET", "/api/v1/jobs/queue"),
     ("GET", "/api/v1/jobs/stage-durations"),
+    ("GET", "/api/v1/jobs/failures/breakdown"),
+    ("GET", "/api/v1/jobs/failures/new"),
+    ("GET", "/api/v1/jobs/timeseries"),
 }
 
 # Backend routes with NO SDK method, each with the reason it is deliberately not wrapped.

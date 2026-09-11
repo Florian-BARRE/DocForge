@@ -91,11 +91,14 @@ from .models.ir import (
 # ------------------- Jobs models ------------------- #
 from .models.jobs import (
     CancelResult,
+    FailureBreakdown,
     JobEvent,
     JobEventPayload,
     JobPage,
     JobStatus,
+    JobTimeseries,
     JobTrace,
+    NewFailures,
     WorkerActivity,
     WorkersLive,
 )
@@ -109,6 +112,17 @@ from .models.pipelines import (
     PipelineSurface,
     StageApplyResponse,
     StageViewResponse,
+)
+
+# ------------------- Preview models ------------------- #
+from .models.preview import (
+    PreviewChunk,
+    PreviewCost,
+    PreviewIrSummary,
+    PreviewJobAccepted,
+    PreviewJobResult,
+    PreviewResponse,
+    PreviewTraceNode,
 )
 
 # ------------------- Search models ------------------- #
@@ -193,6 +207,14 @@ __all__ = [
     "BlockLocation",
     "SearchHit",
     "SearchResponse",
+    # Preview
+    "PreviewIrSummary",
+    "PreviewChunk",
+    "PreviewCost",
+    "PreviewTraceNode",
+    "PreviewResponse",
+    "PreviewJobAccepted",
+    "PreviewJobResult",
     # Jobs
     "JobStatus",
     "JobPage",
@@ -202,6 +224,9 @@ __all__ = [
     "WorkerActivity",
     "WorkersLive",
     "CancelResult",
+    "FailureBreakdown",
+    "JobTimeseries",
+    "NewFailures",
     # Blobs
     "BlobContent",
     "CapabilitiesResponse",

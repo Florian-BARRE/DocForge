@@ -169,7 +169,7 @@ are identical.
 | `health(collection_id)` | `CollectionHealthResponse` | On-demand operational health — 5-state verdict, provider reachability sweep, index stats. No job enqueued, no spend. |
 | `storage(collection_id)` | `CollectionStorageResponse` | Material storage footprint per store (S3 exact, Postgres/Qdrant estimated) + per-document breakdown. |
 | `estimate(collection_id, scope="pending", document_ids=None, filter=None)` | `CostEstimate` | Pre-hoc cost + volume dry-run over the whole collection (`scope`), a selected subset (`document_ids`), or a corpus `filter`. No spend. Per-collection rate/assumption overrides apply. |
-| `contract_schema()` | `CollectionContractSchemaResponse` | JSON Schema of the identity/limits contract (build a valid create/update). |
+| `contract_schema()` | `CollectionContractSchemaResponse` | The full contract vocabulary to build a valid create/update: identity/limits JSON Schema, the metadata FieldSpec schema (field_type/origin/scope enums), and the accepted `supported_formats` tokens. |
 
 ### `documents`
 | Method | Returns | Purpose |

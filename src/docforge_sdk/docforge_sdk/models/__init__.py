@@ -111,13 +111,19 @@ from .ir import (
 from .jobs import (
     CancelResult,
     CollectionCost,
+    CollectionFailureBucket,
+    FailureBreakdown,
+    FailureBucket,
     JobEvent,
     JobEventPayload,
     JobPage,
     JobStatus,
+    JobTimeseries,
     JobTrace,
+    NewFailures,
     QueueDepth,
     StageDurations,
+    TimeseriesBucket,
     WorkerActivity,
     WorkersLive,
 )
@@ -128,9 +134,21 @@ from .pipelines import (
     InspectResponse,
     PipelineDesignResponse,
     PipelineIndexResponse,
+    PipelinePreset,
     PipelineSurface,
     StageApplyResponse,
     StageViewResponse,
+)
+
+# ------------------- Preview models ------------------- #
+from .preview import (
+    PreviewChunk,
+    PreviewCost,
+    PreviewIrSummary,
+    PreviewJobAccepted,
+    PreviewJobResult,
+    PreviewResponse,
+    PreviewTraceNode,
 )
 
 # ------------------- Search models ------------------- #
@@ -254,6 +272,12 @@ __all__ = [
     "WorkerActivity",
     "WorkersLive",
     "CancelResult",
+    "FailureBucket",
+    "CollectionFailureBucket",
+    "FailureBreakdown",
+    "TimeseriesBucket",
+    "JobTimeseries",
+    "NewFailures",
     # Blobs
     "BlobContent",
     "CapabilitiesResponse",
@@ -263,10 +287,19 @@ __all__ = [
     "PipelineSurface",
     "PipelineIndexResponse",
     "PipelineDesignResponse",
+    "PipelinePreset",
     "InspectResponse",
     "EditResponse",
     "StageViewResponse",
     "StageApplyResponse",
+    # Preview
+    "PreviewIrSummary",
+    "PreviewChunk",
+    "PreviewCost",
+    "PreviewTraceNode",
+    "PreviewResponse",
+    "PreviewJobAccepted",
+    "PreviewJobResult",
     # Storage
     "S3FootprintModel",
     "PostgresFootprintModel",
