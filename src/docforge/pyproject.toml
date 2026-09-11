@@ -21,20 +21,20 @@ dependencies = [
     "pydantic>=2.13.5,<3",
     # Config & logging (internal libraries, pulled from the default index)
     "configplusplus>=0.3.0",
-    "loggerplusplus>=1.0.0",
+    "loggerplusplus>=1.1.0",
     # Startup banner (used by the FastAPI lifespan)
     "pyfiglet>=1.0.2,<2",
     # Job queue — ArqRedis pool to enqueue worker jobs (pulls redis transitively). arq is pre-1.0:
     # cap tight at the next minor, where its API can break.
     "arq>=0.28.0,<0.29",
     # LLM — LangChain message types + adapted chat clients (per provider node)
-    "langchain-core>=1.6.1,<2",
+    "langchain-core>=1.6.2,<2",
     "langchain-openai>=1.6.0,<2",
     "langchain-mistralai>=1.1.6,<2",
     "sqlalchemy[asyncio]>=2.0.36,<3",
     # asyncpg is pre-1.0: cap tight at the next minor.
     "asyncpg>=0.31.0,<0.32",
-    "alembic>=1.19.1,<2",
+    "alembic>=1.19.2,<2",
     "qdrant-client>=1.19.0,<2",
     "aioboto3>=15.5.0,<16",
     "pypdf>=6.14.2,<7",
@@ -104,10 +104,10 @@ dev = [
     "pytest>=8.3.0",
     "pytest-asyncio>=0.24.0",
     "pytest-cov>=6.0.0",
-    "ruff>=0.16.5",
+    "ruff>=0.16.6",
 ]
 worker = [
-    "docling>=2.124.0,<3",
+    "docling>=2.126.0,<3",
     # docling pulls transformers transitively with NO upper bound; uv resolves the latest (5.x),
     # whose AutoProcessor API breaks docling 2.108 (ModuleNotFoundError at parse). Pin to 4.x.
     # The <5 cap is also CVE-relevant (a deliberate security pin), not only an API-compat guard.
