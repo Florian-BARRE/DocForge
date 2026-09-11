@@ -14,7 +14,7 @@ from loggerplusplus import loggerplusplus
 
 # ====== Internal Project Imports ======
 from shared_libs.pipelines.blob_secrets import has_blob_secrets, redact_blob_secrets
-from shared_libs.pipelines.ingest import BlobNormalizer
+from shared_libs.pipelines.ingest import BlobNormalizer, FormatProbeHelpers
 from shared_libs.public_models import FieldOrigin, FieldScope, FieldType
 from shared_libs.services.db.postgresql.tables import Collection, MetadataField
 from shared_libs.services.db.qdrant import RESERVED_PAYLOAD_KEYS
@@ -23,7 +23,13 @@ from shared_libs.services.db.qdrant import RESERVED_PAYLOAD_KEYS
 from ...libs.estimate import EstimateOverrides
 from ...libs.health import CollectionHealthSummary
 from ...utils.search_blob_validation import SearchBlobValidator
-from .models import CollectionListItem, CollectionModel, FieldSpecModel
+from .models import (
+    CollectionContractModel,
+    CollectionContractSchemaResponse,
+    CollectionListItem,
+    CollectionModel,
+    FieldSpecModel,
+)
 
 # Payload keys the chunk point owns for its own machinery (id, ordinal, enable-filter). A
 # filterable field is denormalised onto the point by NAME, so a field sharing one of these would
@@ -159,6 +165,27 @@ class CollectionHelpers:
         """
         stored = getattr(collection, "estimate_overrides", None)
         return EstimateOverrides.model_validate(stored) if stored else None
+
+    # -------------------- discovery --------------------
+    @staticmethod
+    def contract_schema() -> CollectionContractSchemaResponse:
+        """Build the collection-contract discovery payload — the full vocabulary, no guessing.
+
+        Every part is serialized from the SAME canonical server source it validates against, so the
+        discovery surface can never drift from what an upload/create actually accepts:
+        - ``config_schema``: the identity/limits scalar contract (``CollectionContractModel``);
+        - ``field_schema``: one metadata ``FieldSpecModel`` (its ``$defs`` carry the
+          ``field_type``/``origin``/``scope`` enums the scalar contract omits);
+        - ``supported_format_tokens``: the pipeline's own accepted upload tokens.
+
+        Returns:
+            CollectionContractSchemaResponse: The schema-driven form + the field/format vocabulary.
+        """
+        return CollectionContractSchemaResponse(
+            config_schema=CollectionContractModel.model_json_schema(),
+            field_schema=FieldSpecModel.model_json_schema(),
+            supported_format_tokens=FormatProbeHelpers.supported_format_tokens(),
+        )
 
     # -------------------- validation --------------------
     @staticmethod

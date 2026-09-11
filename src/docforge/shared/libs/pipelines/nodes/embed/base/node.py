@@ -238,10 +238,51 @@ class BaseEmbedderNode(ActionNode):
                     sparse_vectors.extend(batch_sparse)
         return dense, sparse_vectors
 
+    @staticmethod
+    def __indexed_field_values(chunks: list[Chunk], field_name: str) -> list[tuple[int, str]]:
+        """The (chunk index, text) pairs for the chunks that carry a value for ``field_name``.
+
+        Lists render as comma-joined text; blank values are skipped — so a field with no value on
+        any chunk yields an empty list and gets no vectors at all.
+        """
+        indexed: list[tuple[int, str]] = []
+        for index, chunk in enumerate(chunks):
+            value = chunk.generated_meta.get(field_name)
+            if value is None:
+                continue
+            text = ", ".join(value) if isinstance(value, list) else str(value)
+            if text.strip():
+                indexed.append((index, text))
+        return indexed
+
+    async def __embed_sparse_batched(self, texts: list[str]) -> list[SparseVector] | None:
+        """Batch texts through the sparse hook → one SparseVector each, or None (no sparse axis).
+
+        The sparse-only companion of ``__embed_all``: it walks ``batch_size`` slices through the
+        resilient retry/split wrapper around ``_embed_sparse`` and concatenates them in order. A
+        None on the first batch means the provider has no sparse support and propagates as None
+        (the caller then writes no lexical field vectors); a later-batch None after an earlier
+        non-None is a contract breach (inconsistent sparse support) and fails loud.
+        """
+        config: BaseEmbedConfig = self.config
+        out: list[SparseVector] = []
+        for start in range(0, len(texts), config.batch_size):
+            batch = texts[start : start + config.batch_size]
+            batch_sparse = await self.__resilient_batch(self._embed_sparse, batch)
+            if batch_sparse is None:
+                if out:
+                    raise RuntimeError(
+                        f"Embedder '{self.KIND}' returned sparse vectors for earlier batches but "
+                        f"None for a later one — inconsistent sparse support"
+                    )
+                return None
+            out.extend(batch_sparse)
+        return out
+
     async def __embed_semantic_fields(
         self, chunks: list[Chunk], contract: CollectionContract
     ) -> dict[str, dict[int, list[float]]]:
-        """Per-field vectors of the SEMANTIC chunk fields → {field: {chunk index: vector}}."""
+        """Per-field dense vectors of the SEMANTIC chunk fields → {field: {chunk index: vector}}."""
         semantic_fields = [
             spec.field_name
             for spec in contract.fields
@@ -249,21 +290,44 @@ class BaseEmbedderNode(ActionNode):
         ]
         vectors: dict[str, dict[int, list[float]]] = {}
         for field_name in semantic_fields:
-            # 1. Only chunks that carry a value; lists render as comma-joined text.
-            indexed: list[tuple[int, str]] = []
-            for index, chunk in enumerate(chunks):
-                value = chunk.generated_meta.get(field_name)
-                if value is None:
-                    continue
-                text = ", ".join(value) if isinstance(value, list) else str(value)
-                if text.strip():
-                    indexed.append((index, text))
+            # 1. Only chunks that carry a value for the field.
+            indexed = self.__indexed_field_values(chunks, field_name)
             if not indexed:
                 continue
             # 2. One batched pass per field, mapped back to the chunk indexes.
             dense, _ = await self.__embed_all([text for _, text in indexed], sparse=False)
             vectors[field_name] = {
                 index: vector for (index, _), vector in zip(indexed, dense, strict=True)
+            }
+        return vectors
+
+    async def __embed_lexical_fields(
+        self, chunks: list[Chunk], contract: CollectionContract
+    ) -> dict[str, dict[int, SparseVector]]:
+        """Per-field sparse vectors of the LEXICAL chunk fields → {field: {chunk index: vector}}.
+
+        The lexical mirror of ``__embed_semantic_fields``: each LEXICAL chunk-scope contract field's
+        value is sparse-encoded into a named per-field vector (``meta_<slug>_bm25`` downstream). A
+        provider with no sparse axis yields nothing for every field (the batched hook returns None),
+        so the field is simply absent from the output rather than written empty.
+        """
+        lexical_fields = [
+            spec.field_name
+            for spec in contract.fields
+            if spec.lexical and spec.scope == FieldScope.CHUNK
+        ]
+        vectors: dict[str, dict[int, SparseVector]] = {}
+        for field_name in lexical_fields:
+            # 1. Only chunks that carry a value for the field.
+            indexed = self.__indexed_field_values(chunks, field_name)
+            if not indexed:
+                continue
+            # 2. One batched sparse pass per field; a provider with no sparse axis skips the field.
+            sparse = await self.__embed_sparse_batched([text for _, text in indexed])
+            if sparse is None:
+                continue
+            vectors[field_name] = {
+                index: vector for (index, _), vector in zip(indexed, sparse, strict=True)
             }
         return vectors
 
@@ -335,10 +399,16 @@ class BaseEmbedderNode(ActionNode):
         texts = [chunk.enriched_text for chunk in enabled]
         dense, sparse_vectors = await self.__embed_all(texts, sparse=config.embed_sparse)
 
-        # 3. The named per-field vectors of the semantic chunk fields (enabled chunks only).
+        # 3. The named per-field vectors of the semantic (dense) and lexical (sparse) chunk fields
+        #    (enabled chunks only) — each gated by its own config switch.
         field_vectors = (
             await self.__embed_semantic_fields(enabled, data.contract)
             if config.embed_semantic_fields
+            else {}
+        )
+        field_sparse_vectors = (
+            await self.__embed_lexical_fields(enabled, data.contract)
+            if config.embed_lexical_fields
             else {}
         )
 
@@ -353,6 +423,11 @@ class BaseEmbedderNode(ActionNode):
                     for field_name, per_chunk in field_vectors.items()
                     if index in per_chunk
                 },
+                field_sparse={
+                    field_name: per_chunk[index]
+                    for field_name, per_chunk in field_sparse_vectors.items()
+                    if index in per_chunk
+                },
             )
             for index, chunk in enumerate(enabled)
         ]
@@ -360,7 +435,7 @@ class BaseEmbedderNode(ActionNode):
             f"Embedded {len(items)}/{len(data.chunks)} chunk(s) "
             f"({len(data.chunks) - len(enabled)} skipped by role or empty content) "
             f"(dense dim {len(dense[0])}, sparse: {sparse_vectors is not None}, "
-            f"semantic fields: {sorted(field_vectors)})"
+            f"semantic fields: {sorted(field_vectors)}, lexical fields: {sorted(field_sparse_vectors)})"
         )
         output = EmbedProduces(
             embeddings=ChunkEmbeddings(model=config.model, dimension=len(dense[0]), items=items)

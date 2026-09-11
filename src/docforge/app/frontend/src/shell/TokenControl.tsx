@@ -14,7 +14,13 @@
 
 import { useEffect, useState } from "react";
 import { API_TOKEN_CLEARED_EVENT, clearApiToken, getApiToken, setApiToken } from "../api/http";
+import { WarningGlyph } from "../features/auth/AuthOffBanner";
+import { useAuthEnabled } from "../features/auth/useAuthEnabled";
 import { theme } from "../theme";
+
+const AUTH_OFF_TITLE = "Authentication is disabled on this deployment — API keys are not enforced.";
+const TOKEN_PREFIX = "df_";
+const TOKEN_FORMAT_WARNING = `DocForge API keys normally start with "${TOKEN_PREFIX}" — double-check this value.`;
 
 const RESPONSIVE_LABEL_CSS = `
   @media (max-width: 480px) {
@@ -37,9 +43,11 @@ interface TokenControlProps {
 }
 
 export function TokenControl({ compact = false, onRequestExpand }: TokenControlProps = {}) {
+  const authEnabled = useAuthEnabled();
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState("");
   const [hasToken, setHasToken] = useState(() => Boolean(getApiToken()));
+  const authOff = authEnabled === false;
 
   // A request can clear the token from outside this component (a 401 response — see api/http.ts),
   // so the pill must react to that too, not just its own `clear()` button.
@@ -53,16 +61,16 @@ export function TokenControl({ compact = false, onRequestExpand }: TokenControlP
     return (
       <button
         onClick={onRequestExpand}
-        title={hasToken ? "API token set — expand sidebar to manage" : "No API token set — expand sidebar to add one"}
+        title={authOff ? AUTH_OFF_TITLE : hasToken ? "API token set — expand sidebar to manage" : "No API token set — expand sidebar to add one"}
         aria-label="API token"
         style={{
           display: "grid", placeItems: "center", width: 30, height: 26, flexShrink: 0,
-          background: "none", border: `1px solid ${hasToken ? theme.color.ok : theme.color.line}`,
-          color: hasToken ? theme.color.ok : theme.color.dim,
+          background: "none", border: `1px solid ${authOff ? theme.color.error : hasToken ? theme.color.ok : theme.color.line}`,
+          color: authOff ? theme.color.error : hasToken ? theme.color.ok : theme.color.dim,
           borderRadius: theme.radius.s, cursor: "pointer",
         }}
       >
-        <KeyGlyph />
+        {authOff ? <WarningGlyph /> : <KeyGlyph />}
       </button>
     );
   }
@@ -88,24 +96,28 @@ export function TokenControl({ compact = false, onRequestExpand }: TokenControlP
         <style>{RESPONSIVE_LABEL_CSS}</style>
         <button
           onClick={() => setOpen(true)}
-          title={hasToken ? "API token set" : "No API token set"}
+          title={authOff ? AUTH_OFF_TITLE : hasToken ? "API token set" : "No API token set"}
           style={{
             display: "inline-flex", alignItems: "center", gap: 6,
-            background: "none", border: `1px solid ${hasToken ? theme.color.ok : theme.color.line}`,
-            color: hasToken ? theme.color.ok : theme.color.dim,
+            background: "none", border: `1px solid ${authOff ? theme.color.error : hasToken ? theme.color.ok : theme.color.line}`,
+            color: authOff ? theme.color.error : hasToken ? theme.color.ok : theme.color.dim,
             borderRadius: theme.radius.s, padding: "5px 10px",
             fontSize: theme.font.size.m, cursor: "pointer",
           }}
         >
-          <KeyGlyph />
-          <span className="df-token-label">{hasToken ? "Token set" : "Token"}</span>
+          {authOff ? <WarningGlyph /> : <KeyGlyph />}
+          <span className="df-token-label">{authOff ? "Auth off" : hasToken ? "Token set" : "Token"}</span>
         </button>
       </>
     );
   }
 
+  const draftFormatWarning = draft.trim().length > 0 && !draft.trim().startsWith(TOKEN_PREFIX);
+
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: theme.space.xs }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: theme.space.xs }}>
+      {authOff && <span style={{ color: theme.color.error, fontSize: theme.font.size.xs }}>{AUTH_OFF_TITLE}</span>}
+      <div style={{ display: "flex", alignItems: "center", gap: theme.space.xs }}>
       <input
         type="password"
         autoFocus
@@ -151,6 +163,10 @@ export function TokenControl({ compact = false, onRequestExpand }: TokenControlP
       >
         ✕
       </button>
+      </div>
+      {draftFormatWarning && (
+        <span style={{ color: theme.color.warn, fontSize: theme.font.size.xs }}>{TOKEN_FORMAT_WARNING}</span>
+      )}
     </div>
   );
 }

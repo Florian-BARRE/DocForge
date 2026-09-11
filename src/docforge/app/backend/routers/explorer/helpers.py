@@ -18,6 +18,7 @@ from shared_libs.services.db.postgresql.tables import (
     ChunkMetadata,
     Document,
     DocumentMetadata,
+    DocumentStatus,
     MetadataField,
     Page,
 )
@@ -83,9 +84,21 @@ class ExplorerHelpers:
             warning_reason=document.warning_reason,
         )
 
-    @staticmethod
-    def detail(document: Document, metadata: list[MetadataValue]) -> DocumentDetail:
-        """Map a document row + resolved metadata to the full detail model."""
+    @classmethod
+    def detail(
+        cls,
+        document: Document,
+        metadata: list[MetadataValue],
+        failure_reason: str | None = None,
+    ) -> DocumentDetail:
+        """Map a document row + resolved metadata to the full detail model.
+
+        Args:
+            document (Document): The document row.
+            metadata (list[MetadataValue]): Its resolved document-level metadata values.
+            failure_reason (str | None): The failing job's error, passed by the route only for a
+                non-successful document; None otherwise.
+        """
         return DocumentDetail(
             id=str(document.id),
             collection_id=str(document.collection_id),
@@ -106,8 +119,26 @@ class ExplorerHelpers:
             enabled=document.enabled,
             chunk_count=document.chunk_count,
             warning_reason=document.warning_reason,
+            failure_reason=failure_reason,
+            searchable=cls._document_searchable(document),
             metadata=metadata,
         )
+
+    @staticmethod
+    def _document_searchable(document: Document) -> bool:
+        """Whether a document is actually retrievable now (honest, not just the 'enabled' intent).
+
+        A document is only searchable when the user keeps it enabled AND it fully ingested AND it is
+        not KNOWN to be empty. A failed/cancelled/in-flight run, or a completed run that produced 0
+        chunks, is never searchable — the 'enabled' toggle alone would otherwise over-report it. A
+        legacy row with an unknown (NULL) chunk count is not held against it.
+        """
+        # 1. Only a done+enabled document can be retrievable at all.
+        if not document.enabled or document.status != DocumentStatus.DONE:
+            return False
+
+        # 2. A KNOWN zero-chunk run has nothing to retrieve; NULL (legacy/unknown) is not penalised.
+        return document.chunk_count is None or document.chunk_count > 0
 
     # -------------------- pages --------------------
     @staticmethod

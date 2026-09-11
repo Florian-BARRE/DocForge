@@ -15,13 +15,13 @@ from typing import Protocol, runtime_checkable
 # ====== Internal Project Imports ======
 from shared_libs.pipelines.build import GroupNodeBlob
 from shared_libs.pipelines.ingest import IngestPipeline
-from shared_libs.pipelines.introspection import Palette
+from shared_libs.pipelines.introspection import Palette, PipelinePreset
 from shared_libs.pipelines.search import SearchPipeline
 
 
 @runtime_checkable
 class PipelineFacade(Protocol):
-    """The static contract every pipeline facade satisfies — its palette and its default topology."""
+    """The static contract every pipeline facade satisfies — its palette, presets and topology."""
 
     @classmethod
     def palette(cls, full: bool = False) -> Palette:
@@ -31,6 +31,16 @@ class PipelineFacade(Protocol):
     @classmethod
     def default_blob(cls) -> GroupNodeBlob:
         """Return the stock topology a new editor opens on."""
+        ...
+
+    @classmethod
+    def presets(cls) -> list[PipelinePreset]:
+        """Return the discoverable creation presets (name + label + rationale) this pipeline offers."""
+        ...
+
+    @classmethod
+    def preset_blob(cls, preset: str | None) -> GroupNodeBlob:
+        """Resolve a preset name to its curated stock blob (None/unknown → the default)."""
         ...
 
 

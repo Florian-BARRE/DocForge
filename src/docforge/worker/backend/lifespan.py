@@ -144,7 +144,15 @@ async def startup(ctx: dict[str, Any]) -> None:
 
 
 async def shutdown(ctx: dict[str, Any]) -> None:
-    """Close every connection the startup opened (arq on_shutdown)."""
+    """
+    Close every connection the startup opened (arq on_shutdown).
+
+    arq runs ``log_redis_info`` BEFORE ``on_startup``, so a Redis that denies the ``INFO`` command
+    (an ACL-hardened deployment) crashes the worker in arq's own ``main()`` — our ``startup`` never
+    ran, yet arq still calls ``on_shutdown``. Every access here must therefore tolerate a never-started
+    CONTEXT (``hasattr`` guards + a fallback logger), otherwise an unguarded ``CONTEXT.logger`` raises
+    and MASKS the real startup error (the classic "AttributeError hides NoPermissionError").
+    """
     _ = ctx
     if hasattr(CONTEXT, "heartbeat"):
         await CONTEXT.heartbeat.stop()
@@ -154,7 +162,10 @@ async def shutdown(ctx: dict[str, Any]) -> None:
     await HttpClientPool.shutdown()
     # Close the pooled LangChain clients (hosted LLM/VLM/embed) kept alive for connection reuse.
     await LangChainClientPool.shutdown()
-    CONTEXT.logger.info(f"Worker '{getattr(CONTEXT, 'worker_id', '?')}' shut down")
+    # Fall back to a freshly bound logger when startup never set CONTEXT.logger — so this line can
+    # never be the exception that hides the real reason the worker failed to start.
+    logger = getattr(CONTEXT, "logger", None) or loggerplusplus.bind(identifier="WORKER")
+    logger.info(f"Worker '{getattr(CONTEXT, 'worker_id', '?')}' shut down")
 
 
 __all__ = ["startup", "shutdown"]

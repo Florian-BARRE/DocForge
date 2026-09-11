@@ -53,6 +53,25 @@ class PipelineIndexResponse(BaseModel):
     )
 
 
+class PipelinePreset(BaseModel):
+    """
+    One creation preset a pipeline offers — a curated, validation-passing stock blob.
+
+    Attributes:
+        name (str): Machine name posted as the creation preset selector.
+        label (str): Human label a UI renders for the choice.
+        description (str): Why this preset exists and when to pick it.
+        is_default (bool): True for the preset selected when none is given.
+    """
+
+    name: str = Field(description="Machine name posted as the creation preset selector.")
+    label: str = Field(description="Human label a UI renders for the choice.")
+    description: str = Field(description="Why this preset exists and when to pick it.")
+    is_default: bool = Field(
+        default=False, description="True for the preset selected when none is given."
+    )
+
+
 class PipelineDesignResponse(BaseModel):
     """
     Everything the product UI needs to open the design surface in one call.
@@ -60,11 +79,16 @@ class PipelineDesignResponse(BaseModel):
     Attributes:
         palette (dict[str, Any]): Every available block (per family); OPAQUE engine JSON.
         blob (dict[str, Any]): The editable pipeline graph; OPAQUE engine JSON.
+        presets (list[PipelinePreset]): The curated creation presets this pipeline offers.
         issues (list[dict[str, Any]]): Validation problems of the blob (empty when healthy).
     """
 
     palette: dict[str, Any] = Field(description="Available blocks per family (opaque engine JSON).")
     blob: dict[str, Any] = Field(description="The editable pipeline graph (opaque engine JSON).")
+    presets: list[PipelinePreset] = Field(
+        default_factory=list,
+        description="The curated creation presets this pipeline offers (name + label + rationale).",
+    )
     issues: list[dict[str, Any]] = Field(
         default_factory=list,
         description="Validation problems of the blob (opaque; empty = healthy).",

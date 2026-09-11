@@ -14,6 +14,7 @@ from shared_libs.pipelines.introspection import (
     FamilyCatalog,
     GraphMechanics,
     Palette,
+    PipelinePreset,
 )
 from shared_libs.pipelines.registry import NodeRegistry
 from shared_libs.pipelines.validation import PaletteScopeValidator
@@ -89,7 +90,9 @@ class SearchPipeline:
         if not full:
             return Palette(families=families)
 
-        # 2. The advanced blocks — the graph-editing vocabulary, described on demand only.
+        # 2. The advanced blocks — the graph-editing vocabulary, described on demand only. No
+        #    stage-action union is passed: search has no stage rail, so mechanics.stage_actions
+        #    stays empty (edit_operations still surface — graph edits are pipeline-agnostic).
         return Palette(
             families=families,
             run_inputs=list(cls.RUN_INPUTS),
@@ -334,6 +337,94 @@ class SearchPipeline:
             GroupNodeBlob: The serialised HyDE topology (nodes, transitions, bindings).
         """
         return cls._query_transform_blob("query", "hyde")
+
+    @classmethod
+    def dense_only_blob(cls) -> GroupNodeBlob:
+        """
+        The DENSE-ONLY search topology — pure semantic retrieval, no lexical axis.
+
+        The stock ``default_blob`` with the normalize node configured to default a target-less query
+        to the dense (semantic) content vector only — the sparse BM25 axis is never queried for a
+        plain query. Same linear spine (normalize → encode → retrieve → hydrate → deliver); the only
+        difference is ``normalize.content_modalities = "semantic"``. Pick it for a dense-only
+        embedder or a pure-meaning retrieval profile; an explicit per-query targets list still wins.
+
+        Returns:
+            GroupNodeBlob: The serialised dense-only topology (nodes, transitions, bindings).
+        """
+        # 1. Start from the stock blob and narrow the normalize node's default content modalities.
+        blob = cls.default_blob()
+        for node in blob.nodes:
+            if node.id == "normalize":
+                node.config = {**dict(node.config or {}), "content_modalities": "semantic"}
+        return blob
+
+    # The creation presets this pipeline offers for the collection's SEARCH blob — each a curated,
+    # validation-passing stock topology (a starting point, NOT a new engine). The first entry is the
+    # default. Provider-hosted query transforms (rewrite/HyDE) stay OFF in every preset.
+    _PRESETS: tuple[tuple[str, str, str, bool], ...] = (
+        (
+            "hybrid",
+            "Hybrid (dense + sparse)",
+            "The stock search: fuse the dense (semantic) and sparse (lexical) content vectors with "
+            "RRF for the most robust recall. The balanced default for most collections.",
+            True,
+        ),
+        (
+            "hybrid_rerank",
+            "Hybrid + rerank",
+            "Hybrid retrieval followed by a cross-encoder rerank of the top candidates (in-stack "
+            "reranker) for higher precision at the top of the list. Costs an extra rerank pass per "
+            "query.",
+            False,
+        ),
+        (
+            "dense_only",
+            "Dense only (semantic)",
+            "Pure semantic retrieval on the dense vector — the sparse BM25 axis is never queried for "
+            "a plain query. Pick it for a dense-only embedder or a pure-meaning profile.",
+            False,
+        ),
+    )
+
+    # name -> the builder method that assembles its stock blob (resolved server-side, not UI-sent).
+    _PRESET_BLOBS: dict[str, str] = {
+        "hybrid": "default_blob",
+        "hybrid_rerank": "rerank_blob",
+        "dense_only": "dense_only_blob",
+    }
+
+    @classmethod
+    def presets(cls) -> list[PipelinePreset]:
+        """
+        The discoverable creation presets of the search pipeline (name + label + rationale).
+
+        Carries only the metadata a schema-driven UI / the MCP needs to OFFER the choice — the blob
+        each selects is resolved server-side by ``preset_blob``. The default preset is flagged.
+
+        Returns:
+            list[PipelinePreset]: One entry per offered preset, in display order.
+        """
+        return [
+            PipelinePreset(name=name, label=label, description=description, is_default=is_default)
+            for name, label, description, is_default in cls._PRESETS
+        ]
+
+    @classmethod
+    def preset_blob(cls, preset: str | None) -> GroupNodeBlob:
+        """
+        The stock search blob a creation preset selects.
+
+        An unknown or omitted preset falls back to the default (``hybrid``, == ``default_blob``).
+
+        Args:
+            preset (str | None): The preset name, or None for the default.
+
+        Returns:
+            GroupNodeBlob: The selected stock search topology.
+        """
+        method_name = cls._PRESET_BLOBS.get(preset or "hybrid", "default_blob")
+        return getattr(cls, method_name)()
 
 
 __all__ = ["SearchPipeline"]

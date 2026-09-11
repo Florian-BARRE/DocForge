@@ -6,23 +6,24 @@
 // inline confirm.
 
 import { useEffect, useState, type ReactNode } from "react";
-import { listKeys, revokeKey, rotateKey, type ApiKeyInfo, type CreatedApiKey } from "../../api/auth";
+import { listKeys, rotateKey, type ApiKeyInfo, type CreatedApiKey } from "../../api/auth";
 import { listCollections } from "../../api/collections";
 import { Breadcrumb } from "../../components/Breadcrumb";
-import { Button } from "../../components/Button";
 import { Chip } from "../../components/Chip";
 import { ErrorState } from "../../components/ErrorState";
 import { LoadingState } from "../../components/LoadingState";
 import { PageHeader } from "../../components/PageHeader";
 import type { Navigate } from "../../shell/view";
-import { useToast } from "../../shell/toast";
 import { theme as t } from "../../theme";
 import { ALL_COLLECTIONS_SCOPE } from "../../api/auth";
+import { AuthOffBanner } from "./AuthOffBanner";
 import { CreatedKeyModal } from "./CreatedKeyModal";
 import { CreateKeyForm } from "./CreateKeyForm";
 import { ExpiryChip } from "./ExpiryChip";
+import { KeyDetailActions } from "./KeyDetailActions";
 import { deriveRotateInitial } from "./rotateInitial";
 import { StaleChip } from "./StaleChip";
+import { useAuthEnabled } from "./useAuthEnabled";
 import { humanizeAgo, humanizeUntil } from "./relativeTime";
 
 interface KeyDetailPageProps {
@@ -54,14 +55,15 @@ function fullScope(collections: string[], collectionNames: Map<string, string>):
 }
 
 export function KeyDetailPage({ keyId, onNavigate }: KeyDetailPageProps) {
-  const toast = useToast();
+  const authEnabled = useAuthEnabled();
   const [keys, setKeys] = useState<ApiKeyInfo[] | null>(null);
   const [collectionNames, setCollectionNames] = useState<Map<string, string>>(new Map());
   const [error, setError] = useState<string | null>(null);
   const [rotating, setRotating] = useState(false);
   const [createdKey, setCreatedKey] = useState<CreatedApiKey | null>(null);
-  const [confirming, setConfirming] = useState(false);
-  const [revoking, setRevoking] = useState(false);
+  // Auth off means anyone reaching this UI already has full admin access — never offer a write
+  // surface (rotate/revoke), only the informative read-only detail.
+  const writesDisabled = authEnabled === false;
 
   const load = () => {
     setError(null);
@@ -82,20 +84,6 @@ export function KeyDetailPage({ keyId, onNavigate }: KeyDetailPageProps) {
   }
 
   const revoked = Boolean(apiKey.revoked_at);
-
-  const handleRevoke = async () => {
-    setRevoking(true);
-    try {
-      await revokeKey(apiKey.id);
-      toast.success(`Key “${apiKey.name}” revoked`);
-      onNavigate({ name: "api-keys" });
-    } catch (e) {
-      const message = e instanceof Error ? e.message : String(e);
-      setError(message);
-      toast.error(`Revoke failed — ${message}`);
-      setRevoking(false);
-    }
-  };
 
   const handleRotated = (created: CreatedApiKey) => {
     setRotating(false);
@@ -124,23 +112,19 @@ export function KeyDetailPage({ keyId, onNavigate }: KeyDetailPageProps) {
           </span>
         }
         actions={
-          !revoked && !rotating && (
-            <>
-              <Button variant="secondary" onClick={() => setRotating(true)}>Rotate</Button>
-              {confirming ? (
-                <>
-                  <Button variant="danger" disabled={revoking} onClick={handleRevoke}>{revoking ? "revoking…" : "Confirm revoke"}</Button>
-                  <Button onClick={() => setConfirming(false)}>Cancel</Button>
-                </>
-              ) : (
-                <Button variant="danger" onClick={() => setConfirming(true)}>Revoke</Button>
-              )}
-            </>
-          )
+          <KeyDetailActions
+            apiKey={apiKey}
+            writesDisabled={writesDisabled}
+            rotating={rotating}
+            onRevoked={() => onNavigate({ name: "api-keys" })}
+            onStartRotate={() => setRotating(true)}
+          />
         }
       />
 
-      {rotating && (
+      {writesDisabled && <AuthOffBanner />}
+
+      {!writesDisabled && rotating && (
         <div style={{ marginBottom: t.space.l }}>
           <CreateKeyForm
             mode="rotate"
@@ -174,7 +158,11 @@ export function KeyDetailPage({ keyId, onNavigate }: KeyDetailPageProps) {
       </div>
 
       {createdKey && (
-        <CreatedKeyModal createdKey={createdKey} onClose={() => { setCreatedKey(null); onNavigate({ name: "api-keys" }); }} />
+        <CreatedKeyModal
+          createdKey={createdKey}
+          rotated
+          onClose={() => { setCreatedKey(null); onNavigate({ name: "api-keys" }); }}
+        />
       )}
     </div>
   );

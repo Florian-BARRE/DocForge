@@ -14,7 +14,7 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 
 # ====== Third-Party Library Imports ======
-from sqlalchemy import delete, func, or_, select, update
+from sqlalchemy import String, cast, delete, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import defer
@@ -50,6 +50,52 @@ class JobWithNames:
     document_filename: str | None
     document_title: str | None
     collection_name: str | None
+
+
+@dataclass(frozen=True)
+class FailureAggregates:
+    """
+    The raw grouped counts behind the failure-breakdown panel — three roll-ups over a window.
+
+    Each grouping is ordered by descending count (the biggest cause first) and bounded to a top-N, so
+    the "why is it breaking" panel shows the dominant causes rather than an unbounded long tail.
+
+    Attributes:
+        total (int): Total FAILED jobs matching the window (+ optional collection) filter.
+        by_error_type (list[tuple[str | None, int]]): (error_type, count) — None = an unattributed
+            failure (no structured exception class was recorded).
+        by_stage (list[tuple[str | None, int]]): (current_stage, count) — the node the job died in;
+            None = a failure with no recorded stage.
+        by_collection (list[tuple[uuid.UUID, str | None, int]]): (collection_id, collection_name,
+            count) — the collection name is None when the collection row is gone.
+    """
+
+    total: int
+    by_error_type: list[tuple[str | None, int]]
+    by_stage: list[tuple[str | None, int]]
+    by_collection: list[tuple[uuid.UUID, str | None, int]]
+
+
+@dataclass(frozen=True)
+class TimeseriesAggregates:
+    """
+    The raw per-hour counts behind the trends sparklines — reconstructed purely from the job table.
+
+    ``baseline`` is the instantaneous backlog (queued + running) at the window's START, so the per-
+    bucket backlog can be rebuilt as ``baseline + cumulative(arrivals) - cumulative(completions)``
+    without a Prometheus-style sample store. ``arrivals`` bucket by ``created_at``, ``completions``
+    by ``finished_at`` (split by terminal status), so done/h and failed/h come straight from the rows.
+
+    Attributes:
+        baseline (int): Jobs created before the window that were still un-finished at its start.
+        arrivals (list[tuple[datetime, int]]): (hour bucket, count created in that hour).
+        completions (list[tuple[datetime, JobStatus, int]]): (hour bucket, terminal status, count
+            finished in that hour) — only DONE/FAILED rows.
+    """
+
+    baseline: int
+    arrivals: list[tuple[datetime, int]]
+    completions: list[tuple[datetime, JobStatus, int]]
 
 
 class JobApi:
@@ -1327,17 +1373,34 @@ class JobApi:
         return list(result.scalars().all())
 
     @staticmethod
-    def _job_filters(collection_id: uuid.UUID | None, statuses: Sequence[JobStatus] | None):  # type: ignore[no-untyped-def]
+    def _job_filters(  # type: ignore[no-untyped-def]
+        collection_id: uuid.UUID | None,
+        statuses: Sequence[JobStatus] | None,
+        *,
+        stage: str | None = None,
+        error_type: str | None = None,
+        search: str | None = None,
+        created_after: datetime | None = None,
+        created_before: datetime | None = None,
+    ):
         """
-        Build the WHERE conditions shared by the fleet-wide list + count reads.
+        Build the WHERE conditions shared by the fleet-wide list + count reads — the triage filter set.
 
-        Both the optional collection scope and the optional status filter are additive: an omitted
-        ``collection_id`` (None) means fleet-wide, an omitted/empty ``statuses`` means every status.
+        Every condition is additive and optional, so an omitted argument widens the scan: no
+        ``collection_id`` is fleet-wide, no ``statuses`` is every status, and the remaining filters
+        (stage / error class / id search / created-date range) simply narrow the match when present.
         Keeping the predicate in one place is what keeps the list and its total counting the same rows.
 
         Args:
             collection_id (uuid.UUID | None): Scope to one collection, or None for the whole fleet.
             statuses (Sequence[JobStatus] | None): Restrict to these statuses, or None/empty for all.
+            stage (str | None): Restrict to jobs whose ``current_stage`` equals this (the node the job
+                is in / died in).
+            error_type (str | None): Restrict to jobs whose structured failure class equals this.
+            search (str | None): Case-insensitive PREFIX match on the job id OR document id (cast to
+                text) — supports pasting a full id or a leading fragment from a triage search box.
+            created_after (datetime | None): Keep jobs created at or after this instant (range start).
+            created_before (datetime | None): Keep jobs created at or before this instant (range end).
 
         Returns:
             list: The SQLAlchemy conditions (possibly empty — an unfiltered, fleet-wide scan).
@@ -1347,6 +1410,25 @@ class JobApi:
             conditions.append(Job.collection_id == collection_id)
         if statuses:
             conditions.append(Job.status.in_(list(statuses)))
+        if stage:
+            conditions.append(Job.current_stage == stage)
+        if error_type:
+            conditions.append(Job.error_type == error_type)
+        if created_after is not None:
+            conditions.append(Job.created_at >= created_after)
+        if created_before is not None:
+            conditions.append(Job.created_at <= created_before)
+        if search:
+            # Prefix match on either id cast to text: a full id is an exact prefix, a fragment a
+            # leading match. No btree can serve a LIKE on a cast, but the job table is small and the
+            # match is always paired with LIMIT — acceptable for the triage search box (see handoff).
+            pattern = f"{search}%"
+            conditions.append(
+                or_(
+                    cast(Job.id, String).ilike(pattern),
+                    cast(Job.document_id, String).ilike(pattern),
+                )
+            )
         return conditions
 
     # -------------------- joined reads (job + display names) --------------------
@@ -1433,6 +1515,36 @@ class JobApi:
             for job, filename, title, collection_name in result.all()
         ]
 
+    @staticmethod
+    def _order_clause(sort_by: str, descending: bool):  # type: ignore[no-untyped-def]
+        """
+        Build the ORDER BY tuple for the triage list — a sort field plus a stable id tie-break.
+
+        Three sortable dimensions back the All-Jobs table: ``created`` (the monitoring default),
+        ``duration`` (longest/shortest run — ``finished_at`` minus ``started_at``, or ``now`` minus
+        ``started_at`` for a still-running job so it sorts by elapsed time), and ``status``. A
+        still-pending job has no ``started_at``, so its duration is NULL and always sorts LAST under
+        both directions (``nullslast``); every sort is tie-broken by ``id`` so paging is stable.
+
+        Args:
+            sort_by (str): "created" (default), "duration" or "status".
+            descending (bool): True = DESC (newest / longest / z-a); False = ASC (FIFO / shortest / a-z).
+
+        Returns:
+            tuple: The (primary, tie-break) column expressions for ``order_by``.
+        """
+        if sort_by == "duration":
+            elapsed = func.extract(
+                "epoch", func.coalesce(Job.finished_at, func.now()) - Job.started_at
+            )
+            primary = elapsed.desc().nullslast() if descending else elapsed.asc().nullslast()
+        elif sort_by == "status":
+            primary = Job.status.desc() if descending else Job.status.asc()
+        else:  # "created" — the default monitoring order.
+            primary = Job.created_at.desc() if descending else Job.created_at.asc()
+        tiebreak = Job.id.desc() if descending else Job.id.asc()
+        return (primary, tiebreak)
+
     @classmethod
     async def list_with_names(
         cls,
@@ -1442,16 +1554,23 @@ class JobApi:
         limit: int | None = None,
         offset: int = 0,
         newest_first: bool = True,
+        *,
+        sort_by: str = "created",
+        stage: str | None = None,
+        error_type: str | None = None,
+        search: str | None = None,
+        created_after: datetime | None = None,
+        created_before: datetime | None = None,
     ) -> list[JobWithNames]:
         """
-        Return one page of jobs (fleet-wide or scoped, optionally status-filtered), joined to names.
+        Return one page of jobs (fleet-wide or scoped, fully triageable), joined to display names.
 
         The generalised read behind ``GET /jobs`` — a superset of ``list_for_collection_with_names``:
         an omitted ``collection_id`` lists across every collection (the "All Jobs" view), an omitted
-        ``statuses`` lists every status. ``newest_first`` picks the sort: ``created_at`` DESC (the
-        default, the monitoring view) or ASC — the oldest-first, FIFO order that surfaces "what runs
-        next" when paired with ``statuses=[PENDING]``. The order is always tie-broken by ``id`` so
-        paging never repeats or drops a row.
+        ``statuses`` lists every status. ``sort_by`` picks the dimension (created / duration / status)
+        and ``newest_first`` its direction (DESC when True); the remaining filters (stage, error class,
+        id search, created-date range) narrow the match through the shared ``_job_filters`` predicate,
+        so the listed page and its ``count_jobs`` total always agree. Always tie-broken by ``id``.
 
         Args:
             session (AsyncSession): The active DB session.
@@ -1459,20 +1578,30 @@ class JobApi:
             statuses (Sequence[JobStatus] | None): Restrict to these statuses, or None/empty for all.
             limit (int | None): Page size (None = no bound); ``offset`` skips rows for paging.
             offset (int): Rows to skip for paging.
-            newest_first (bool): True = created_at DESC (newest first); False = ASC (FIFO).
+            newest_first (bool): Sort direction — True = DESC (newest/longest first); False = ASC (FIFO).
+            sort_by (str): The sort dimension — "created" (default), "duration" or "status".
+            stage (str | None): Keep only jobs in this ``current_stage``.
+            error_type (str | None): Keep only jobs with this structured failure class.
+            search (str | None): Prefix-match the job id OR document id (triage search box).
+            created_after (datetime | None): Keep jobs created at/after this instant (range start).
+            created_before (datetime | None): Keep jobs created at/before this instant (range end).
 
         Returns:
             list[JobWithNames]: The page of jobs, each joined to its display names.
         """
-        order = (
-            (Job.created_at.desc(), Job.id.desc())
-            if newest_first
-            else (Job.created_at.asc(), Job.id.asc())
+        conditions = cls._job_filters(
+            collection_id,
+            statuses,
+            stage=stage,
+            error_type=error_type,
+            search=search,
+            created_after=created_after,
+            created_before=created_before,
         )
         query = (
             cls._with_names_select()
-            .where(*cls._job_filters(collection_id, statuses))
-            .order_by(*order)
+            .where(*conditions)
+            .order_by(*cls._order_clause(sort_by, newest_first))
             .offset(offset)
         )
         if limit is not None:
@@ -1489,9 +1618,15 @@ class JobApi:
         session: AsyncSession,
         collection_id: uuid.UUID | None = None,
         statuses: Sequence[JobStatus] | None = None,
+        *,
+        stage: str | None = None,
+        error_type: str | None = None,
+        search: str | None = None,
+        created_after: datetime | None = None,
+        created_before: datetime | None = None,
     ) -> int:
         """
-        Count jobs matching the same optional collection + status filter — the pager's total.
+        Count jobs matching the SAME triage filter set — the pager's total.
 
         Independent of limit/offset so the "All Jobs" pager knows the full match count. Uses the exact
         same predicate as ``list_with_names`` so the total always agrees with the listed page.
@@ -1500,14 +1635,240 @@ class JobApi:
             session (AsyncSession): The active DB session.
             collection_id (uuid.UUID | None): Scope to one collection, or None for the whole fleet.
             statuses (Sequence[JobStatus] | None): Restrict to these statuses, or None/empty for all.
+            stage (str | None): Keep only jobs in this ``current_stage``.
+            error_type (str | None): Keep only jobs with this structured failure class.
+            search (str | None): Prefix-match the job id OR document id.
+            created_after (datetime | None): Keep jobs created at/after this instant.
+            created_before (datetime | None): Keep jobs created at/before this instant.
 
         Returns:
             int: The number of matching jobs.
         """
-        result = await session.execute(
-            select(func.count()).select_from(Job).where(*cls._job_filters(collection_id, statuses))
+        conditions = cls._job_filters(
+            collection_id,
+            statuses,
+            stage=stage,
+            error_type=error_type,
+            search=search,
+            created_after=created_after,
+            created_before=created_before,
         )
+        result = await session.execute(select(func.count()).select_from(Job).where(*conditions))
         return int(result.scalar_one())
 
+    @staticmethod
+    async def failure_breakdown(
+        session: AsyncSession,
+        since: datetime,
+        collection_id: uuid.UUID | None = None,
+        top_n: int = 25,
+    ) -> FailureAggregates:
+        """
+        Roll up FAILED jobs over a window into its three triage groupings (cause / stage / collection).
 
-__all__ = ["JobApi", "JobWithNames"]
+        The data behind the "why is it breaking" panel: failures created at or after ``since`` (the
+        window, bounded by the ``ix_job_created_at`` index), optionally scoped to one collection. Each
+        grouping is a separate GROUP BY ordered by descending count and capped to ``top_n`` so the
+        dominant causes lead and an unbounded tail never bloats the response. Failures are attributed
+        by the job's creation time (not its finish), which the leading created-at index serves cheaply.
+
+        Args:
+            session (AsyncSession): The active DB session.
+            since (datetime): Window start — FAILED jobs created at/after this are aggregated.
+            collection_id (uuid.UUID | None): Scope to one collection, or None for the whole fleet.
+            top_n (int): Maximum buckets per grouping (the dominant causes).
+
+        Returns:
+            FailureAggregates: Total + the three descending, bounded groupings.
+        """
+        # 1. The shared base predicate: FAILED jobs inside the window, optionally one collection.
+        base = [Job.status == JobStatus.FAILED, Job.created_at >= since]
+        if collection_id is not None:
+            base.append(Job.collection_id == collection_id)
+
+        # 2. Total failures in the window (the panel's headline count).
+        total = int(
+            (await session.execute(select(func.count()).select_from(Job).where(*base))).scalar_one()
+        )
+
+        # 3. Cause roll-up (by structured exception class) and stage roll-up (the node it died in).
+        by_error_type = [
+            (value, int(count))
+            for value, count in (
+                await session.execute(
+                    select(Job.error_type, func.count())
+                    .where(*base)
+                    .group_by(Job.error_type)
+                    .order_by(func.count().desc())
+                    .limit(top_n)
+                )
+            ).all()
+        ]
+        by_stage = [
+            (value, int(count))
+            for value, count in (
+                await session.execute(
+                    select(Job.current_stage, func.count())
+                    .where(*base)
+                    .group_by(Job.current_stage)
+                    .order_by(func.count().desc())
+                    .limit(top_n)
+                )
+            ).all()
+        ]
+
+        # 4. Collection roll-up — LEFT-joined to the name so a deleted collection still counts (name None).
+        by_collection = [
+            (coll_id, name, int(count))
+            for coll_id, name, count in (
+                await session.execute(
+                    select(Job.collection_id, Collection.name, func.count())
+                    .outerjoin(Collection, Collection.id == Job.collection_id)
+                    .where(*base)
+                    .group_by(Job.collection_id, Collection.name)
+                    .order_by(func.count().desc())
+                    .limit(top_n)
+                )
+            ).all()
+        ]
+        return FailureAggregates(
+            total=total,
+            by_error_type=by_error_type,
+            by_stage=by_stage,
+            by_collection=by_collection,
+        )
+
+    @staticmethod
+    async def count_failed_since(
+        session: AsyncSession, since: datetime, collection_id: uuid.UUID | None = None
+    ) -> tuple[int, datetime | None]:
+        """
+        Count jobs that FAILED strictly after ``since`` and return the newest failure time.
+
+        Backs the "X new failures since you last looked" signal: a job counts when it is FAILED and
+        its ``finished_at`` (the instant it failed) is past the caller's last-seen cursor. The returned
+        ``latest`` (max ``finished_at``) lets the client advance its cursor so the same failure is
+        never counted twice. Keyed on ``finished_at`` so a job created before the cursor but failing
+        after it is still caught (exactly the "new since" semantics a stale created-at filter would miss).
+
+        Args:
+            session (AsyncSession): The active DB session.
+            since (datetime): The last-seen cursor — only failures finished strictly after it count.
+            collection_id (uuid.UUID | None): Scope to one collection, or None for the whole fleet.
+
+        Returns:
+            tuple[int, datetime | None]: (new-failure count, newest failure ``finished_at`` or None).
+        """
+        conditions = [Job.status == JobStatus.FAILED, Job.finished_at > since]
+        if collection_id is not None:
+            conditions.append(Job.collection_id == collection_id)
+        result = await session.execute(
+            select(func.count(), func.max(Job.finished_at)).where(*conditions)
+        )
+        count, latest = result.one()
+        return int(count), latest
+
+    @staticmethod
+    async def list_failed_since(
+        session: AsyncSession,
+        since: datetime,
+        collection_id: uuid.UUID | None = None,
+        limit: int = 50,
+    ) -> list[uuid.UUID]:
+        """
+        Return the ids of jobs that FAILED after ``since``, newest failure first (bounded).
+
+        The optional companion to ``count_failed_since`` when the caller wants the actual ids (to deep-
+        link each new failure), bounded by ``limit`` so the signal never returns an unbounded list.
+
+        Args:
+            session (AsyncSession): The active DB session.
+            since (datetime): Only failures finished strictly after this cursor.
+            collection_id (uuid.UUID | None): Scope to one collection, or None for the whole fleet.
+            limit (int): Maximum ids to return.
+
+        Returns:
+            list[uuid.UUID]: The new-failure job ids, newest failure first (at most ``limit``).
+        """
+        conditions = [Job.status == JobStatus.FAILED, Job.finished_at > since]
+        if collection_id is not None:
+            conditions.append(Job.collection_id == collection_id)
+        result = await session.execute(
+            select(Job.id).where(*conditions).order_by(Job.finished_at.desc()).limit(limit)
+        )
+        return list(result.scalars().all())
+
+    @staticmethod
+    async def job_timeseries(
+        session: AsyncSession, since: datetime, collection_id: uuid.UUID | None = None
+    ) -> TimeseriesAggregates:
+        """
+        Return the raw per-hour counts behind the trends sparklines — straight from the job table.
+
+        Three cheap reads, no Prometheus: arrivals bucketed by ``date_trunc('hour', created_at)``,
+        completions bucketed by ``date_trunc('hour', finished_at)`` split by terminal status, and the
+        backlog BASELINE (jobs created before the window still un-finished at its start). The caller
+        reconstructs each hour's backlog as ``baseline + cumulative(arrivals) - cumulative(completions)``
+        — an instantaneous queued+running depth the job rows alone can express (hourly truncation is DB-
+        clock but re-aligned to UTC hour boundaries by the caller, so deployment timezone is irrelevant).
+
+        Args:
+            session (AsyncSession): The active DB session.
+            since (datetime): Window start — arrivals/completions at/after this hour are bucketed.
+            collection_id (uuid.UUID | None): Scope to one collection, or None for the whole fleet.
+
+        Returns:
+            TimeseriesAggregates: The backlog baseline + the arrival and completion hour buckets.
+        """
+        # 1. Optional collection scope, shared by all three reads.
+        scope = [] if collection_id is None else [Job.collection_id == collection_id]
+
+        # 2. Arrivals per hour (created_at) — served by the leading ix_job_created_at index.
+        arrivals_bucket = func.date_trunc("hour", Job.created_at)
+        arrivals = [
+            (bucket, int(count))
+            for bucket, count in (
+                await session.execute(
+                    select(arrivals_bucket, func.count())
+                    .where(Job.created_at >= since, *scope)
+                    .group_by(arrivals_bucket)
+                )
+            ).all()
+        ]
+
+        # 3. Completions per hour (finished_at), split by terminal status → done/h and failed/h.
+        completions_bucket = func.date_trunc("hour", Job.finished_at)
+        completions = [
+            (bucket, status, int(count))
+            for bucket, status, count in (
+                await session.execute(
+                    select(completions_bucket, Job.status, func.count())
+                    .where(
+                        Job.finished_at >= since,
+                        Job.status.in_([JobStatus.DONE, JobStatus.FAILED]),
+                        *scope,
+                    )
+                    .group_by(completions_bucket, Job.status)
+                )
+            ).all()
+        ]
+
+        # 4. Backlog baseline: jobs created before the window still un-finished at its start (so the
+        #    reconstructed per-bucket backlog never goes spuriously negative or starts from zero).
+        baseline = int(
+            (
+                await session.execute(
+                    select(func.count())
+                    .select_from(Job)
+                    .where(
+                        Job.created_at < since,
+                        or_(Job.finished_at.is_(None), Job.finished_at >= since),
+                        *scope,
+                    )
+                )
+            ).scalar_one()
+        )
+        return TimeseriesAggregates(baseline=baseline, arrivals=arrivals, completions=completions)
+
+
+__all__ = ["JobApi", "JobWithNames", "FailureAggregates", "TimeseriesAggregates"]

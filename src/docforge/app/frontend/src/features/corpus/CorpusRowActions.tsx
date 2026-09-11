@@ -62,8 +62,12 @@ export function CorpusRowActions({ documentId, onDelete, onReingested }: CorpusR
 
   return (
     <span style={{ display: "inline-flex", gap: theme.space.xs, alignItems: "center" }}>
+      {/* Steel/muted at rest — forge orange is reserved for the ONE thing actually being worked
+          (brand.md), and every row carrying a solid-orange button at rest read as decorative noise,
+          not a "this is active" signal. Steps to `primary` only while ITS OWN reingest is in
+          flight, i.e. the one row that is actually the active thing right now. */}
       <Button
-        variant="primary"
+        variant={reingesting ? "primary" : "secondary"}
         size="sm"
         disabled={reingesting}
         onClick={handleReingest}

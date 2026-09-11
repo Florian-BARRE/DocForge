@@ -1,10 +1,12 @@
 # ====== Code Summary ======
-# The single choke point that keeps every tool's API error informative: a raw `docforge_sdk`
+# The single choke point that keeps every tool's error informative: a raw `docforge_sdk`
 # `APIStatusError` reaching the LLM as-is carries only "API request failed with status 404" — the
 # useful REST error body (e.g. "collection name already exists") never reaches the model, so it
-# can't self-correct. `ErrorTranslatingFastMCP` wraps every tool at registration time (the ONE
-# place `@mcp.tool()` funnels through — `FastMCP.add_tool`) so no individual tool file needs its
-# own try/except.
+# can't self-correct. Likewise, a bare pydantic `ValidationError` raised while a tool builds a typed
+# SDK model from the LLM's plain-dict arguments (e.g. `FieldSpec(**field)`) would otherwise fall
+# through to FastMCP's generic unhandled-exception path and lose its per-field detail.
+# `ErrorTranslatingFastMCP` wraps every tool at registration time (the ONE place `@mcp.tool()`
+# funnels through — `FastMCP.add_tool`) so no individual tool file needs its own try/except.
 
 from __future__ import annotations
 
@@ -18,6 +20,7 @@ from docforge_sdk import APIConnectionError, APIStatusError
 from mcp.server.fastmcp import FastMCP
 from mcp.server.fastmcp.exceptions import ToolError
 from mcp.types import Icon, ToolAnnotations
+from pydantic import ValidationError
 
 AnyAsyncTool = Callable[..., Awaitable[Any]]
 
@@ -36,6 +39,34 @@ def _status_error_message(exc: APIStatusError) -> str:
     body = exc.body
     detail = body.get("detail") if isinstance(body, dict) and "detail" in body else body
     return f"DocForge API error {exc.status_code}: {detail}"
+
+
+def _validation_error_message(exc: ValidationError) -> str:
+    """
+    Render a pydantic `ValidationError` into a message naming each offending field and what was
+    wrong with it, instead of FastMCP's generic unhandled-exception path (which loses the
+    per-field detail).
+
+    The wrapper below applies this to EVERY `ValidationError` raised inside a tool call — which
+    covers two distinct sources: a tool building a typed SDK REQUEST model from the LLM's plain
+    dict at the tool boundary (e.g. `FieldSpec(**field)`, `SearchTarget(**target)`,
+    `DocumentFilter(**filter)`, `KeyPermissions.model_validate(permissions)`,
+    `CollectionSnippet(**snippet)`), AND — more rarely — the SDK parsing a RESPONSE body it didn't
+    expect. The message deliberately says "argument or response field(s)" rather than assuming the
+    caller's input was at fault, since this function cannot tell the two apart.
+
+    Args:
+        exc (ValidationError): The validation failure, from either source above.
+
+    Returns:
+        str: One line per invalid field: dotted location, message, and the value received.
+    """
+    lines = [
+        f"{'.'.join(str(part) for part in error['loc']) or '<root>'}: {error['msg']} "
+        f"(got {error.get('input')!r})"
+        for error in exc.errors()
+    ]
+    return "Invalid argument or response field(s):\n" + "\n".join(lines)
 
 
 def translate_sdk_errors(fn: AnyAsyncTool) -> AnyAsyncTool:
@@ -59,6 +90,8 @@ def translate_sdk_errors(fn: AnyAsyncTool) -> AnyAsyncTool:
             raise ToolError(_status_error_message(exc)) from exc
         except APIConnectionError as exc:
             raise ToolError(f"DocForge API unreachable: {exc}") from exc
+        except ValidationError as exc:
+            raise ToolError(_validation_error_message(exc)) from exc
 
     return wrapper
 

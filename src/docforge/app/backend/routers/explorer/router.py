@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response
 
 # ====== Internal Project Imports ======
 from config import RUNTIME_CONFIG
+from shared_libs.services.db.postgresql.tables import Document, DocumentStatus
 
 # ====== Local Project Imports ======
 from ...context import CONTEXT
@@ -52,6 +53,22 @@ async def _require_document(document_id: uuid.UUID, principal: AuthPrincipal):
     # 2. Scope the read/write by the document's own collection.
     AuthzGuard.assert_collection_scope(principal, str(document.collection_id))
     return document
+
+
+async def _failure_reason(document: Document) -> str | None:
+    """Return the failing job's error for a non-successful document, else None.
+
+    The failure reason lives on the ingestion ``job.error``, never on the document row. Only a
+    terminal-unsuccessful document (failed/cancelled) carries one; a done or in-flight document has
+    nothing to explain and returns None without a job lookup.
+    """
+    # 1. Only failed/cancelled documents have a reason to surface — skip the query otherwise.
+    if document.status not in (DocumentStatus.FAILED, DocumentStatus.CANCELLED):
+        return None
+
+    # 2. The reason is the latest job's error message (may be absent for a bare cancel).
+    job = await CONTEXT.database.jobs.get_latest_for_document(document.id)
+    return job.error if job is not None else None
 
 
 async def _assert_chunk_scope(chunk_ids: list[uuid.UUID], principal: AuthPrincipal) -> None:
@@ -122,7 +139,8 @@ async def get_document(
     Return one document's full facts and its resolved document-level metadata.
 
     Returns:
-        DocumentDetail: Facts + metadata (field names joined from the schema); 404 when unknown.
+        DocumentDetail: Facts + metadata (field names joined from the schema), plus the failure
+        reason for a non-successful run; 404 when unknown.
     """
     # 1. The document (404 guard + collection-scope gate) — its collection scopes the schema lookup.
     document = await _require_document(document_id, principal)
@@ -131,7 +149,13 @@ async def get_document(
     schema = await CONTEXT.database.collections.get_schema(document.collection_id)
     rows = await CONTEXT.database.documents.get_metadata(document_id)
     names = ExplorerHelpers.field_names(schema)
-    return ExplorerHelpers.detail(document, ExplorerHelpers.metadata_values(rows, names))
+
+    # 3. For a non-successful document, surface WHY from its latest job (the reason lives on the job,
+    #    not the document) so the detail page can explain the failure instead of a bare status.
+    failure_reason = await _failure_reason(document)
+    return ExplorerHelpers.detail(
+        document, ExplorerHelpers.metadata_values(rows, names), failure_reason=failure_reason
+    )
 
 
 @router.get("/documents/{document_id}/pages", response_model=list[PageInfo])

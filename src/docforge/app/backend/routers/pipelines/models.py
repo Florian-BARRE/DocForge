@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 from shared_libs.pipelines.build import GroupNodeBlob
 from shared_libs.pipelines.edit import EditOperation
 from shared_libs.pipelines.ingest.stages import StageAction, StageView
-from shared_libs.pipelines.introspection import ExploredNode, Palette
+from shared_libs.pipelines.introspection import ExploredNode, Palette, PipelinePreset
 from shared_libs.pipelines.validation import ValidationIssue
 
 
@@ -17,7 +17,7 @@ class PipelineDesignResponse(BaseModel):
     """
     Everything the product UI needs to open the design surface in one call.
 
-    The default payload is LEAN: family catalogue + blob + issues. The advanced blocks
+    The default payload is LEAN: family catalogue + blob + presets + issues. The advanced blocks
     (``palette.run_inputs`` / ``mechanics`` / ``artefacts``) are only filled when the request
     asks for the full surface (``?full=true``); the described tree of a blob is served by the
     advanced ``/inspect`` and ``/edit`` endpoints, never here.
@@ -25,11 +25,14 @@ class PipelineDesignResponse(BaseModel):
     Attributes:
         palette (Palette): Every available block (per family); advanced blocks when ``full``.
         blob (GroupNodeBlob): The editable pipeline — the single source of truth the UI mutates.
+        presets (list[PipelinePreset]): The curated creation presets this pipeline offers (name +
+            label + rationale) — the starting points a new collection can pick instead of the blob.
         issues (list[ValidationIssue]): Validation problems of the blob (empty when healthy).
     """
 
     palette: Palette
     blob: GroupNodeBlob
+    presets: list[PipelinePreset] = Field(default_factory=list)
     issues: list[ValidationIssue] = Field(default_factory=list)
 
 

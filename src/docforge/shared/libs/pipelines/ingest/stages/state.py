@@ -211,4 +211,56 @@ def light_state() -> PipelineState:
     return state
 
 
-__all__ = ["ChainSpec", "PipelineState", "default_state", "light_state"]
+def ocr_scan_state() -> PipelineState:
+    """
+    Build the OCR-SCAN pipeline state — a local OCR pass over scanned / image-only documents.
+
+    Takes the stock state and turns the per-figure ENRICH stage ON in ``uniform`` mode with the
+    ``ocr`` treatment, wired to a LOCAL RapidOCR chain (no provider-hosted escalation): every figure
+    — including the full-page images a scanned PDF parses into — is read as text so its content
+    becomes searchable. Deliberately uses ONLY the local ``rapidocr`` step (the stock default's
+    ``mistral`` OCR escalation is dropped) so the preset stays preflight-clean and free: it ingests a
+    scanned corpus with ZERO external configuration, exactly like the stock default does for a born-
+    digital one. The contextualize stack and metagen stay as the stock default (local stack on,
+    provider-hosted metagen off).
+
+    Returns:
+        PipelineState: The OCR-scan canonical state (assembled into ocr_scan_blob()).
+    """
+    state = default_state()
+    state.enrich_on = True
+    state.figure_enrich_mode = "uniform"
+    state.uniform_treatment = "ocr"
+    state.chains = {
+        "scanned_text_ocr": ChainSpec(family="ocr", steps=[ChainStep(kind="rapidocr", config={})])
+    }
+    return state
+
+
+def high_precision_state() -> PipelineState:
+    """
+    Build the HIGH-PRECISION pipeline state — finer chunks for sharper hybrid retrieval.
+
+    Takes the stock state and tightens the structure-aware chunker to SMALLER units (target 256 /
+    hard cap 512 tokens, overlap 96) so each embedded chunk is more focused — the single highest-
+    leverage knob for retrieval precision — while the local contextualize stack (doc_meta +
+    breadcrumb) and the dense+sparse embed (bge_server) the default already ships keep it hybrid-
+    ready out of the box. Everything provider-hosted (figure VLM enrich, chunk/document metagen)
+    stays OFF, so this preset is still preflight-clean and free; a user opts those in in the studio.
+
+    Returns:
+        PipelineState: The high-precision canonical state (assembled into high_precision_blob()).
+    """
+    state = default_state()
+    state.chunker_config = {"target_tokens": 256, "max_tokens": 512, "overlap_tokens": 96}
+    return state
+
+
+__all__ = [
+    "ChainSpec",
+    "PipelineState",
+    "default_state",
+    "light_state",
+    "ocr_scan_state",
+    "high_precision_state",
+]

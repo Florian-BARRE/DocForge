@@ -3,6 +3,10 @@
 # A completed export's bundle bytes are NEVER streamed back through an MCP tool result (a bundle can
 # be multi-GB); get_export_download_ref instead points the caller at the REST download endpoint,
 # which they hit directly (or via docforge_sdk's own streaming transfers.download_export).
+# import_collection_bytes is the remote-caller counterpart of import_collection: the bundle travels
+# base64-encoded inside the tool call, never touching the MCP server's filesystem or PathGuard —
+# use it for a small-to-medium bundle held in the caller's own memory; for a multi-GB bundle, stage
+# it into MCP_UPLOAD_DIR and use path-based import_collection instead (base64 costs ~33% overhead).
 
 from __future__ import annotations
 
@@ -15,9 +19,15 @@ from mcp.server.fastmcp import FastMCP
 
 # ====== Local Project Imports ======
 from ..path_guard import PathGuard
+from ._encoding import DEFAULT_MAX_INLINE_UPLOAD_BYTES, decode_base64_arg
 
 
-def register(mcp: FastMCP, sdk: AsyncClient, path_guard: PathGuard) -> None:
+def register(
+    mcp: FastMCP,
+    sdk: AsyncClient,
+    path_guard: PathGuard,
+    max_inline_upload_bytes: int = DEFAULT_MAX_INLINE_UPLOAD_BYTES,
+) -> None:
     """Register transfer (export/import) tools on the MCP server.
 
     Args:
@@ -27,6 +37,8 @@ def register(mcp: FastMCP, sdk: AsyncClient, path_guard: PathGuard) -> None:
             on stdio, but on streamable-HTTP it refuses any path outside the configured inbox (or
             everything, if no inbox is configured) so a remote caller can never read an arbitrary
             file off the MCP container's filesystem.
+        max_inline_upload_bytes (int): Decoded-size ceiling for `import_collection_bytes`'
+            `content_base64` (operator-configured via `MCP_MAX_INLINE_UPLOAD_BYTES`).
     """
 
     @mcp.tool()
@@ -51,6 +63,22 @@ def register(mcp: FastMCP, sdk: AsyncClient, path_guard: PathGuard) -> None:
         """
         resolved = path_guard.resolve(file_path)
         accepted = await sdk.transfers.import_collection(resolved, target_name=target_name)
+        return accepted.model_dump(mode="json")
+
+    @mcp.tool()
+    async def import_collection_bytes(content_base64: str, target_name: str | None = None) -> Any:
+        """
+        Import a `.dcexport` bundle by sending its raw bytes instead of a server-local file path —
+        use this one (never import_collection) when you hold the bundle's content yourself and are
+        connected over streamable-HTTP without a shared MCP_UPLOAD_DIR volume.
+        `content_base64` is the bundle's exact bytes, standard base64-encoded — expect this to be
+        large (a whole collection's export), so only use it for small-to-medium bundles; a
+        multi-GB bundle should instead be staged into MCP_UPLOAD_DIR and imported via the
+        path-based import_collection. Returns the transfer handle immediately (202) — poll
+        get_transfer with its transfer_id for progress.
+        """
+        content = decode_base64_arg(content_base64, max_bytes=max_inline_upload_bytes)
+        accepted = await sdk.transfers.import_collection(content, target_name=target_name)
         return accepted.model_dump(mode="json")
 
     @mcp.tool()

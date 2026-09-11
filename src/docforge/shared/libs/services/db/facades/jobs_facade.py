@@ -18,7 +18,11 @@ from shared_libs.pipelines.base import NodeExecutionRecord
 from shared_libs.services.db.postgresql import PostgresClient
 from shared_libs.services.db.postgresql.apis import DocumentApi, JobApi
 from shared_libs.services.db.postgresql.apis.execution_tree import TraceRefs
-from shared_libs.services.db.postgresql.apis.job_api import JobWithNames
+from shared_libs.services.db.postgresql.apis.job_api import (
+    FailureAggregates,
+    JobWithNames,
+    TimeseriesAggregates,
+)
 from shared_libs.services.db.postgresql.tables import (
     DocumentStatus,
     Job,
@@ -81,8 +85,15 @@ class JobsFacade(LoggerClass):
         limit: int | None = None,
         offset: int = 0,
         newest_first: bool = True,
+        *,
+        sort_by: str = "created",
+        stage: str | None = None,
+        error_type: str | None = None,
+        search: str | None = None,
+        created_after: datetime | None = None,
+        created_before: datetime | None = None,
     ) -> list[JobWithNames]:
-        """Return one page of jobs (fleet-wide or scoped, optional status filter), joined to names."""
+        """Return one bounded page of jobs (fleet-wide or scoped, fully triageable), joined to names."""
         async with self._postgres.session() as session:
             return await JobApi.list_with_names(
                 session,
@@ -91,16 +102,68 @@ class JobsFacade(LoggerClass):
                 limit=limit,
                 offset=offset,
                 newest_first=newest_first,
+                sort_by=sort_by,
+                stage=stage,
+                error_type=error_type,
+                search=search,
+                created_after=created_after,
+                created_before=created_before,
             )
 
     async def count_jobs(
         self,
         collection_id: uuid.UUID | None = None,
         statuses: Sequence[JobStatus] | None = None,
+        *,
+        stage: str | None = None,
+        error_type: str | None = None,
+        search: str | None = None,
+        created_after: datetime | None = None,
+        created_before: datetime | None = None,
     ) -> int:
-        """Count jobs matching the optional collection + status filter — the 'All Jobs' pager total."""
+        """Count jobs matching the same triage filter set — the 'All Jobs' pager total."""
         async with self._postgres.session() as session:
-            return await JobApi.count_jobs(session, collection_id=collection_id, statuses=statuses)
+            return await JobApi.count_jobs(
+                session,
+                collection_id=collection_id,
+                statuses=statuses,
+                stage=stage,
+                error_type=error_type,
+                search=search,
+                created_after=created_after,
+                created_before=created_before,
+            )
+
+    async def failure_breakdown(
+        self,
+        since: datetime,
+        collection_id: uuid.UUID | None = None,
+        top_n: int = 25,
+    ) -> FailureAggregates:
+        """Roll up FAILED jobs over a window by cause / stage / collection — the failure-breakdown panel."""
+        async with self._postgres.session() as session:
+            return await JobApi.failure_breakdown(session, since, collection_id, top_n)
+
+    async def count_failed_since(
+        self, since: datetime, collection_id: uuid.UUID | None = None
+    ) -> tuple[int, datetime | None]:
+        """Count (and date) jobs that failed after a cursor — the 'X new failures since' signal."""
+        async with self._postgres.session() as session:
+            return await JobApi.count_failed_since(session, since, collection_id)
+
+    async def list_failed_since(
+        self, since: datetime, collection_id: uuid.UUID | None = None, limit: int = 50
+    ) -> list[uuid.UUID]:
+        """Return the ids of jobs that failed after a cursor, newest first (bounded)."""
+        async with self._postgres.session() as session:
+            return await JobApi.list_failed_since(session, since, collection_id, limit)
+
+    async def job_timeseries(
+        self, since: datetime, collection_id: uuid.UUID | None = None
+    ) -> TimeseriesAggregates:
+        """Return the per-hour arrival/completion counts + backlog baseline — the trends sparklines."""
+        async with self._postgres.session() as session:
+            return await JobApi.job_timeseries(session, since, collection_id)
 
     async def list_active_with_names(self) -> list[JobWithNames]:
         """Return every RUNNING job joined to its display names — the fleet activity view."""

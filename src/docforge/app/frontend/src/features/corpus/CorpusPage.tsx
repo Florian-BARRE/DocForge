@@ -43,7 +43,9 @@ export function CorpusPage({ collectionId, onNavigate }: CorpusPageProps) {
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>({});
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [sorting, setSorting] = useState<SortingState>([{ id: "created_at", desc: true }]);
-  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
+  // "Chunks" is an engineering-facing pipeline internal — Pages/Size lead the default grid for a
+  // business reader; Chunks stays one click away via the Columns menu, never removed.
+  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({ chunk_count: false });
   const [limit, setLimit] = useState(DEFAULT_LIMIT);
   const [offset, setOffset] = useState(0);
 

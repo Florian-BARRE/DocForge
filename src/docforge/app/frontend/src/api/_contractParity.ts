@@ -39,9 +39,30 @@ import type {
   PageInfo,
 } from "./explorer";
 import type { AssumptionOverrides, Collection, EstimateOverrides, FieldSpec, ModelRateOverride, RateOverrides } from "./collections";
+import type { CapabilitiesResponse, CapabilityMatrix, CapabilityService } from "./capabilities";
 import type { DocumentGridRow } from "./corpus";
 import type { JobEvent, JobEventPayload, JobPage, JobStatus, WorkerActivity } from "./jobs";
 import type { BlockLocationModel, SearchHitModel } from "./search";
+import type {
+  PreviewChunk,
+  PreviewCost,
+  PreviewIrSummary,
+  PreviewJobAccepted,
+  PreviewJobResult,
+  PreviewResponse,
+  PreviewTraceNode,
+} from "./preview";
+import type {
+  ChainSpec,
+  ChainStep,
+  ChainView,
+  InspectResponse,
+  StackMethod,
+  StageApplyResponse,
+  StageView,
+  StageViewResponse,
+  ValidationIssue,
+} from "./types";
 
 type Schemas = components["schemas"];
 
@@ -163,7 +184,63 @@ export type _JobStatusParity = Expect<Equal<Normalize<JobStatus>, Normalize<Sche
 export type _JobPageParity = Expect<Equal<Normalize<JobPage>, Normalize<Schemas["JobPage"]>>>;
 export type _WorkerActivityParity = Expect<Equal<Normalize<WorkerActivity>, Normalize<Schemas["WorkerActivity"]>>>;
 
+// ---------- capabilities.ts — the public deployment self-description ----------
+
+export type _CapabilityServiceParity = Expect<Equal<Normalize<CapabilityService>, Normalize<Schemas["ServiceInfo"]>>>;
+export type _CapabilityMatrixParity = Expect<Equal<Normalize<CapabilityMatrix>, Normalize<Schemas["CapabilityMatrix"]>>>;
+export type _CapabilitiesResponseParity = Expect<Equal<Normalize<CapabilitiesResponse>, Normalize<Schemas["CapabilitiesResponse"]>>>;
+
 // ---------- search.ts — the search hit model ----------
 
 export type _BlockLocationModelParity = Expect<Equal<Normalize<BlockLocationModel>, Normalize<Schemas["BlockLocationModel"]>>>;
 export type _SearchHitModelParity = Expect<Equal<Normalize<SearchHitModel>, Normalize<Schemas["SearchHitModel"]>>>;
+
+// ---------- types.ts — the stage-rail design/apply/inspect responses ----------
+// Added 2026-09 after the recurring "hand-mirror forgot a backend field" drift class (e.g.
+// StageApplyResponse.build_error was missing for a while — see its doc comment) kept slipping past
+// the original parity set, which only covered explorer/collections/jobs/capabilities/search.
+
+// `GroupBlob`/`NodeBlob` are DELIBERATELY excluded here: their `node_type` field is narrowed to a
+// per-variant string literal ("group"/"action"/"foreach") so the hand-written union discriminates
+// in TS, while openapi-typescript types every variant's `node_type` as the FULL `NodeType` enum
+// (the OpenAPI schema doesn't carry per-variant literal defaults) — a permanent codegen shape
+// asymmetry, not a drift risk. `blob` is Omitted below for the same reason wherever it appears.
+export type _ChainStepParity = Expect<Equal<Normalize<ChainStep>, Normalize<Schemas["ChainStep"]>>>;
+export type _ChainSpecParity = Expect<Equal<Normalize<ChainSpec>, Normalize<Schemas["ChainSpec"]>>>;
+export type _ChainViewParity = Expect<Equal<Normalize<ChainView>, Normalize<Schemas["ChainView"]>>>;
+export type _StackMethodParity = Expect<Equal<Normalize<StackMethod>, Normalize<Schemas["StackMethod"]>>>;
+export type _StageViewParity = Expect<Equal<Normalize<StageView>, Normalize<Schemas["StageView"]>>>;
+
+// `ValidationIssue.code` is DELIBERATELY the plain `string` every existing consumer (ApiIssueList,
+// etc.) has always treated it as, while the backend types it as the narrower `ValidationCode` enum.
+// Assert the safe direction (a real backend issue always satisfies the hand type) instead of full
+// equality, which would permanently fail on this one widening — `issues` is Omitted below wherever
+// it appears in a response so THIS is the one place that mismatch is asserted, still catching a
+// real drift on any other field of `ValidationIssue` itself.
+export type _ValidationIssueSafeToRead = Expect<AssignableTo<Normalize<Schemas["ValidationIssue"]>, Normalize<ValidationIssue>>>;
+
+export type _StageViewResponseParity = Expect<
+  Equal<Normalize<Omit<StageViewResponse, "issues">>, Normalize<Omit<Schemas["StageViewResponse"], "issues">>>
+>;
+export type _StageApplyResponseParity = Expect<
+  Equal<
+    Normalize<Omit<StageApplyResponse, "issues" | "blob">>,
+    Normalize<Omit<Schemas["StageApplyResponse"], "issues" | "blob">>
+  >
+>;
+
+// `InspectResponse.explored` (the described tree) is DELIBERATELY not mirrored — advanced/headless
+// field with no UI consumer today (see the type's own doc comment in api/types.ts).
+export type _InspectResponseParity = Expect<
+  Equal<Normalize<Omit<InspectResponse, "issues">>, Normalize<Omit<Schemas["InspectResponse"], "explored" | "issues">>>
+>;
+
+// ---------- preview.ts — the pipeline dry-run/preview report + its async job envelope ----------
+
+export type _PreviewIrSummaryParity = Expect<Equal<Normalize<PreviewIrSummary>, Normalize<Schemas["PreviewIrSummary"]>>>;
+export type _PreviewChunkParity = Expect<Equal<Normalize<PreviewChunk>, Normalize<Schemas["PreviewChunk"]>>>;
+export type _PreviewCostParity = Expect<Equal<Normalize<PreviewCost>, Normalize<Schemas["PreviewCost"]>>>;
+export type _PreviewTraceNodeParity = Expect<Equal<Normalize<PreviewTraceNode>, Normalize<Schemas["PreviewTraceNode"]>>>;
+export type _PreviewResponseParity = Expect<Equal<Normalize<PreviewResponse>, Normalize<Schemas["PreviewResponse"]>>>;
+export type _PreviewJobAcceptedParity = Expect<Equal<Normalize<PreviewJobAccepted>, Normalize<Schemas["PreviewJobAccepted"]>>>;
+export type _PreviewJobResultParity = Expect<Equal<Normalize<PreviewJobResult>, Normalize<Schemas["PreviewJobResult"]>>>;

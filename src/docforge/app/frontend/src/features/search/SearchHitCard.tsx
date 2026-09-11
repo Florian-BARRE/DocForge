@@ -2,9 +2,10 @@
 // One search hit: its relevance (a coarse High/Medium/Low bucket — SearchRelevanceBadge — with the
 // raw fused score demoted behind a "technical score" toggle), a human citation (document title/
 // filename · page · section path — SearchHitCitation), the chunk text (reusing the explorer's
-// truncatable ChunkText), and a small mono meta line (short document id, chunk index, token count)
-// demoted below the text. When the hit carries a block location, a "view page" action opens the
-// hit's source page with the matched block(s) boxed — the render blob is looked up lazily (GET
+// truncatable ChunkText), and its machine provenance (full document id, chunk index, token count)
+// demoted behind SearchHitTechnicalDetails' collapsed disclosure. When the hit carries a block
+// location, a "view page" action opens the hit's source page with the matched block(s) boxed — the
+// render blob is looked up lazily (GET
 // /documents/{id}/pages) on click, and degrades gracefully (text-only lightbox) when the page has
 // no render.
 
@@ -18,6 +19,7 @@ import { useToast } from "../../shell/toast";
 import { theme } from "../../theme";
 import { displayPage } from "../explorer/format";
 import { SearchHitCitation } from "./SearchHitCitation";
+import { SearchHitTechnicalDetails } from "./SearchHitTechnicalDetails";
 import { SearchHitText } from "./SearchHitText";
 import { SearchRelevanceBadge } from "./SearchRelevanceBadge";
 
@@ -123,9 +125,7 @@ export function SearchHitCard({ hit, topScore }: SearchHitCardProps) {
         )}
       </div>
       <SearchHitText text={hit.text} />
-      <span style={{ fontFamily: theme.font.mono, fontSize: theme.font.size.xs, color: theme.color.mute }}>
-        doc {hit.document_id.slice(0, 8)} · chunk #{hit.chunk_index} · {hit.token_count} tokens
-      </span>
+      <SearchHitTechnicalDetails hit={hit} />
 
       {box && (
         <PageBoxLightbox

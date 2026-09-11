@@ -39,6 +39,15 @@ class EndpointAuthError(PreflightError):
     """The endpoint answered but rejected the credentials (HTTP 401/403)."""
 
 
+class EndpointIncompatibleError(PreflightError):
+    """The endpoint answered but a REQUIRED route is absent (HTTP 404) — wrong server kind.
+
+    Distinct from unreachable (host down) and auth (creds rejected): the host is up and creds pass,
+    but it does not expose the specific route the node calls (e.g. a TEI-only server that has no
+    ``/v1/embeddings``). Surfaced by the capability probe, never by the plain reachability check.
+    """
+
+
 class EndpointReachability:
     """Static HTTP reachability probe shared by every provider node's ``preflight()``."""
 
@@ -86,6 +95,81 @@ class EndpointReachability:
             PreflightError: The host is unreachable (DNS/refused/timeout, after the retries) or the
                 credentials are rejected (HTTP 401/403). Any other status is treated as reachable.
         """
+        # A plain reachability check: any answered status (bar 401/403) proves the host is up.
+        await cls.__probe(
+            node_kind=node_kind,
+            base_url=base_url,
+            api_key=api_key,
+            basic_auth=basic_auth,
+            timeout_seconds=timeout_seconds,
+            path=path,
+        )
+
+    @classmethod
+    async def check_route_present(
+        cls,
+        *,
+        node_kind: str,
+        base_url: str,
+        path: str,
+        capability_hint: str,
+        api_key: str = "",
+        timeout_seconds: float = _DEFAULT_PREFLIGHT_TIMEOUT_SECONDS,
+    ) -> None:
+        """
+        Probe that a SPECIFIC route exists, not merely that the host answers.
+
+        Unlike :meth:`check` — which treats any non-auth status as reachable — this treats a 404 as
+        fatal: the host is up and the credentials pass, but the exact route the node will POST to is
+        absent (the classic case: a TEI-only server that has no ``/v1/embeddings``). A GET to a
+        POST-only route that DOES exist answers 405/422/200 (route present), so only a 404 is read as
+        "route missing". The distinction turns an opaque mid-run 404 into an actionable preflight error.
+
+        Args:
+            node_kind (str): The calling node's KIND, named in the error for a clear message.
+            base_url (str): The endpoint base URL (per-collection config).
+            path (str): The route appended to ``base_url`` that the node actually calls (its presence
+                is the capability being verified, e.g. ``/embeddings`` on an OpenAI-compatible base).
+            capability_hint (str): Actionable guidance appended to the 404 error (what the endpoint
+                must expose and how to fix a mispointed ``base_url``).
+            api_key (str): Bearer token sent when non-empty (lets the probe surface a 401/403).
+            timeout_seconds (float): Per-attempt probe timeout — the node's ``preflight_timeout_seconds``.
+
+        Raises:
+            EndpointUnreachableError: The host did not answer (DNS/refused/timeout, after retries).
+            EndpointAuthError: The credentials were rejected (HTTP 401/403).
+            EndpointIncompatibleError: The host answered 404 — the required route is absent.
+        """
+        status_code = await cls.__probe(
+            node_kind=node_kind,
+            base_url=base_url,
+            api_key=api_key,
+            basic_auth=None,
+            timeout_seconds=timeout_seconds,
+            path=path,
+        )
+        if status_code == 404:
+            raise EndpointIncompatibleError(
+                f"{node_kind}: {base_url.rstrip('/')}{path} not found (HTTP 404) — {capability_hint}"
+            )
+
+    @classmethod
+    async def __probe(
+        cls,
+        *,
+        node_kind: str,
+        base_url: str,
+        api_key: str,
+        basic_auth: tuple[str, str] | None,
+        timeout_seconds: float,
+        path: str,
+    ) -> int:
+        """Run the retry loop and return the answered HTTP status (transport/auth failures raise).
+
+        The shared core of :meth:`check` and :meth:`check_route_present`: transport errors are fatal
+        after the retries, a 401/403 is fatal, and any other status is RETURNED for the caller to
+        interpret (reachability accepts anything; the capability probe rejects a 404).
+        """
         # 1. Build the probe URL + credentials. Basic auth wins over the bearer when both are given (a
         #    remote behind basic auth). The configured timeout is used directly — the sweep bounds the
         #    overall probe, so preflight no longer needs to cap the per-attempt value.
@@ -101,7 +185,7 @@ class EndpointReachability:
 
         # 2. Try once, retry on a transport error to absorb a transient blip.
         last_error: Exception | None = None
-        for attempt in range(RETRIES + 1):
+        for _attempt in range(RETRIES + 1):
             try:
                 async with httpx.AsyncClient(timeout=timeout) as client:
                     response = await client.get(url, headers=headers)
@@ -109,7 +193,7 @@ class EndpointReachability:
                 # DNS failure, connection refused, connect/read timeout — the host did not answer.
                 last_error = exc
                 continue
-            # 3. The host answered: rejected credentials are fatal, any other status is reachable.
+            # 3. The host answered: rejected credentials are fatal, any other status is returned.
             if response.status_code in (401, 403):
                 raise EndpointAuthError(
                     f"{node_kind}: credentials rejected by {base_url} "
@@ -118,7 +202,7 @@ class EndpointReachability:
             cls.logger.debug(
                 f"{node_kind}: endpoint {base_url} reachable (HTTP {response.status_code})"
             )
-            return
+            return response.status_code
 
         # 4. Every attempt failed to connect — a genuine unreachable endpoint, fail loudly.
         raise EndpointUnreachableError(
@@ -132,4 +216,5 @@ __all__ = [
     "PreflightError",
     "EndpointUnreachableError",
     "EndpointAuthError",
+    "EndpointIncompatibleError",
 ]

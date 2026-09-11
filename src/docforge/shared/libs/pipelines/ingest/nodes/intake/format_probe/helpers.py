@@ -48,6 +48,21 @@ class FormatProbeHelpers:
         raise TypeError("FormatProbeHelpers is a static-only class and cannot be instantiated.")
 
     @classmethod
+    def supported_format_tokens(cls) -> list[str]:
+        """
+        Return the format tokens a collection may accept as uploads.
+
+        Read-only public accessor over ``MIME_TYPES`` so callers (e.g. the API discovery surface) do
+        not reach into the detection table by key. Excludes the ``unknown`` sentinel — the
+        undetected-format fallback, never a real accepted format. Sorted for a stable payload.
+
+        Returns:
+            list[str]: The detectable upload format tokens (e.g. 'pdf', 'docx', 'md'), sorted.
+        """
+        # 1. Every detectable token except the undetected-format sentinel, in a stable order.
+        return sorted(token for token in cls.MIME_TYPES if token != "unknown")
+
+    @classmethod
     def __zip_format(cls, content: bytes) -> str:
         """Classify a zip container by its member names (OOXML) or mimetype entry (ODF)."""
         try:

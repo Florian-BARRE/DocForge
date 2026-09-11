@@ -6,12 +6,29 @@ directly (no HTTP needed); one extra test confirms the ``?full=true`` query flow
 real router (see [[port-scratchpad-gap-plan]]).
 """
 
+from typing import Any, get_args
+
 from shared_libs.pipelines.base import ActionNode
 from shared_libs.pipelines.build import PipelineBuilder
+from shared_libs.pipelines.edit.operations import EditOperation
 from shared_libs.pipelines.ingest import IngestPipeline
-from shared_libs.pipelines.ingest.stages import EnableStage, StageCompiler
+from shared_libs.pipelines.ingest.stages import EnableStage, StageAction, StageCompiler
 from shared_libs.pipelines.registry import FamilyMode, NodeRegistry
+from shared_libs.pipelines.search import SearchPipeline
 from shared_libs.pipelines.validation import GraphValidator
+
+
+def _union_discriminator(alias: Any) -> str:
+    """The tag field name of a `type X = Annotated[…, Field(discriminator=…)]` union, read from its
+    own metadata — the source of truth the surfaced ``MechanicCard.discriminator`` must mirror."""
+    return get_args(alias.__value__)[1].discriminator
+
+
+def _union_tags(alias: Any, discriminator: str) -> set[str]:
+    """The set of discriminator defaults of a `type X = Annotated[A | B | …]` union — the source
+    of truth the introspection must mirror (add a variant and this set grows on its own)."""
+    members = get_args(get_args(alias.__value__)[0])
+    return {str(m.model_fields[discriminator].default) for m in members}
 
 
 def test_every_registered_node_has_zero_mute_field_descriptions() -> None:
@@ -93,6 +110,63 @@ def test_full_palette_carries_run_inputs_mechanics_and_artefacts() -> None:
     }
     assert "DocumentIR" in full.artefacts
     assert full.artefacts["Chunk"].json_schema["properties"]
+
+
+def test_full_mechanics_surfaces_the_edit_operation_vocabulary() -> None:
+    """Every EditOperation variant is described with its tag + params_schema, dynamically matching
+    the source union (add an operation and the introspection must grow with it — no frozen list)."""
+    mechanics = IngestPipeline.palette(full=True).mechanics
+    expected = _union_tags(EditOperation, "op")
+    assert len(expected) == 9  # the 9 graph mutations documented in PIPELINE.md / architecture.md
+    cards = {card.kind: card for card in mechanics.edit_operations}
+    assert set(cards) == expected
+    # The discriminator key a client sends this variant under is surfaced, dynamically matching the
+    # source union's Field(discriminator=…) — a rename in the source flips this without touching here.
+    op_key = _union_discriminator(EditOperation)
+    assert op_key == "op"
+    # Every card carries the params form the discriminator was stripped from (never the tag itself).
+    for kind, card in cards.items():
+        assert card.discriminator == op_key
+        assert "properties" in card.params_schema
+        assert op_key not in card.params_schema.get("properties", {})
+        assert card.name and card.summary
+
+
+def test_full_mechanics_surfaces_the_stage_action_vocabulary() -> None:
+    """Every StageAction variant is described with its tag + params_schema, dynamically matching the
+    source union — the ingest stage-rail vocabulary a client composes /stages/apply from."""
+    mechanics = IngestPipeline.palette(full=True).mechanics
+    expected = _union_tags(StageAction, "action")
+    assert len(expected) == 6  # enable/disable/set_provider/set_config/set_chain/set_stack
+    cards = {card.kind: card for card in mechanics.stage_actions}
+    assert set(cards) == expected
+    action_key = _union_discriminator(StageAction)
+    assert action_key == "action"
+    for kind, card in cards.items():
+        assert card.discriminator == action_key
+        assert "properties" in card.params_schema
+        assert action_key not in card.params_schema.get("properties", {})
+        assert card.name and card.summary
+
+
+def test_search_mechanics_has_no_stage_actions_but_keeps_edit_operations() -> None:
+    """Stage actions are ingest-only (the stage rail is ingest-coupled); the edit-operation
+    vocabulary is pipeline-agnostic, so it surfaces for search too."""
+    mechanics = SearchPipeline.palette(full=True).mechanics
+    assert mechanics.stage_actions == []
+    assert {card.kind for card in mechanics.edit_operations} == _union_tags(EditOperation, "op")
+
+
+def test_full_query_flag_carries_the_mutation_vocabularies_through_the_router(client) -> None:
+    """The new schemas must reach an MCP/SDK client through the real endpoint, not just in-process."""
+    payload = client.get("/api/v1/pipelines/ingest", params={"full": "true"}).json()
+    mechanics = payload["palette"]["mechanics"]
+    assert {card["kind"] for card in mechanics["edit_operations"]} == _union_tags(
+        EditOperation, "op"
+    )
+    assert {card["kind"] for card in mechanics["stage_actions"]} == _union_tags(
+        StageAction, "action"
+    )
 
 
 def test_palette_hides_internal_kinds_but_keeps_them_registered() -> None:

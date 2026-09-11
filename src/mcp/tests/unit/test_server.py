@@ -6,6 +6,9 @@
 
 from __future__ import annotations
 
+# ====== Standard Library Imports ======
+import math
+
 # ====== Third-Party Library Imports ======
 import pytest
 from docforge_sdk import AsyncClient
@@ -29,6 +32,7 @@ class _StubMcpConfig:
     MCP_HOST = "127.0.0.1"
     MCP_PORT = 9000
     MCP_HTTP_PATH = "/mcp"
+    MCP_MAX_INLINE_UPLOAD_BYTES = 100 * 1024 * 1024
 
 
 def test_build_mcp_disables_dns_rebinding_protection() -> None:
@@ -53,6 +57,25 @@ def test_http_app_is_wrapped_by_the_bearer_passthrough_middleware() -> None:
     app = build_http_app(mcp, _StubMcpConfig)  # type: ignore[arg-type]
     middleware_classes = {entry.cls for entry in app.user_middleware}
     assert BearerPassthroughMiddleware in middleware_classes
+
+
+def test_http_app_raises_the_transport_body_ceiling_above_the_default() -> None:
+    """
+    build_http_app must raise mcp SDK's max_request_body_size (default 4 MiB — see
+    mcp.server.transport_security.DEFAULT_MAX_REQUEST_BODY_SIZE) well above it, so a base64
+    payload sized for MCP_MAX_INLINE_UPLOAD_BYTES never 413s at the transport before
+    upload_document_bytes/import_collection_bytes's own decode_base64_arg cap ever runs.
+    """
+    from mcp.server.transport_security import DEFAULT_MAX_REQUEST_BODY_SIZE
+
+    mcp = build_mcp(AsyncClient("http://localhost:8000"))
+    build_http_app(mcp, _StubMcpConfig)  # type: ignore[arg-type]
+
+    # base64 inflates the raw inline-upload cap by 4/3; the ceiling must clear that comfortably.
+    assert mcp.settings.max_request_body_size > DEFAULT_MAX_REQUEST_BODY_SIZE
+    assert mcp.settings.max_request_body_size >= math.ceil(
+        _StubMcpConfig.MCP_MAX_INLINE_UPLOAD_BYTES * 4 / 3
+    )
 
 
 class _FakeAsyncClient:

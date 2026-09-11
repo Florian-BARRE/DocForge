@@ -4,7 +4,7 @@
 // frontend code.
 
 import { SchemaForm } from "../../components/schema-form/SchemaForm";
-import type { Palette, StageView } from "../../api/types";
+import type { Palette, StageView, ValidationIssue } from "../../api/types";
 import type { StageRailActions } from "./actions";
 import { findNodeCard, primaryNodeCard } from "../../components/schema-form/paletteLookup";
 import { EnrichClassifyPanel } from "./enrich-classify/EnrichClassifyPanel";
@@ -13,9 +13,12 @@ interface StageConfigFormProps {
   stage: StageView;
   palette: Palette;
   actions: StageRailActions;
+  /** Current `/stages/view` (or `/apply`) issues for the whole ingest blob — see `SchemaForm`'s own
+   *  `issues` doc. */
+  issues?: ValidationIssue[];
 }
 
-export function StageConfigForm({ stage, palette, actions }: StageConfigFormProps) {
+export function StageConfigForm({ stage, palette, actions, issues }: StageConfigFormProps) {
   if (!stage.config || !stage.family) return null;
   // The enrich stage's figure-classify config is the one place the generic flat form reads as
   // "bricolage" — its structural choices (classify vs OCR-only, heuristics vs VLM) and its cases are
@@ -37,6 +40,7 @@ export function StageConfigForm({ stage, palette, actions }: StageConfigFormProp
       schema={card.config_schema}
       values={stage.config}
       onChange={(field, value) => actions.setConfig(stage.key, field, value)}
+      issues={issues}
     />
   );
 }

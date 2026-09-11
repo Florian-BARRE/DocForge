@@ -1,7 +1,8 @@
 # ====== Code Summary ======
 # The config every embedder shares: the model identity (provenance, stored with the vectors),
-# batching, and the two switches — sparse vectors (when the provider supports them) and the
-# per-field vectors of the contract's SEMANTIC chunk fields. Children add their endpoint.
+# batching, and the switches — sparse vectors (when the provider supports them) and the per-field
+# vectors of the contract's SEMANTIC (dense) and LEXICAL (sparse) chunk fields. Children add their
+# endpoint.
 
 # ====== Third-Party Library Imports ======
 from pydantic import Field
@@ -44,9 +45,20 @@ class BaseEmbedConfig(TimeoutRetryConfig):
     embed_semantic_fields: bool = Field(
         default=False,
         description="Also embed each SEMANTIC chunk-scope contract field's value as a named "
-        "per-field vector. OFF by default: ingest writes these vectors but the search path does "
-        "not query them yet, so leaving it on pays embedding + storage for unread vectors. Turn "
-        "on once the semantic meta-field read side is wired (see the search endpoint).",
+        "per-field dense vector (meta_<slug>_dense). The search path DOES query these — a "
+        "semantic SearchTarget on the field routes the query's dense vector to that named vector. "
+        "OFF by default because it costs one extra embedding call + vector storage per field per "
+        "chunk; leave OFF unless you actually run metadata search against chunk-scope semantic "
+        "fields.",
+    )
+    embed_lexical_fields: bool = Field(
+        default=False,
+        description="Also embed each LEXICAL chunk-scope contract field's value as a named "
+        "per-field sparse vector (meta_<slug>_bm25), skipped when the provider has no sparse axis. "
+        "The search path DOES query these — a lexical SearchTarget on the field routes the query's "
+        "sparse vector to that named vector. OFF by default because it costs sparse encoding + "
+        "vector storage per field per chunk; leave OFF unless you run lexical metadata search "
+        "against chunk-scope fields.",
     )
 
 

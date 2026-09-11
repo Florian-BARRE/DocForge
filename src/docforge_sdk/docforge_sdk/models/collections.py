@@ -170,10 +170,17 @@ class CreateCollectionRequest(BaseModel):
         default=None,
         description="The pipeline blob; omitted → the product default (all stages wired).",
     )
-    preset: Literal["standard", "light"] | None = Field(
+    preset: Literal["standard", "light", "ocr_scan", "high_precision"] | None = Field(
         default=None,
-        description="Stock-blob selector (ignored when pipeline is set); 'light' = fast, "
-        "enrichment-free core.",
+        description="Stock INGESTION-blob selector (ignored when pipeline is set): 'standard' (full "
+        "default), 'light' (fast, enrichment-free core), 'ocr_scan' (local OCR pass for scanned "
+        "docs) or 'high_precision' (finer chunks). Discover via GET /pipelines/ingest → presets.",
+    )
+    search_preset: Literal["hybrid", "hybrid_rerank", "dense_only"] | None = Field(
+        default=None,
+        description="Stock SEARCH-blob selector applied at creation: 'hybrid' (default dense+sparse "
+        "fusion), 'hybrid_rerank' (hybrid + cross-encoder rerank) or 'dense_only' (pure semantic). "
+        "Omitted → the stock hybrid default. Discover via GET /pipelines/search → presets.",
     )
 
 
@@ -292,10 +299,18 @@ class BulkReingestAccepted(BaseModel):
 
 
 class CollectionContractSchemaResponse(BaseModel):
-    """The JSON Schema of the collection identity/limits contract — the discovery payload."""
+    """The full discoverable vocabulary of a collection contract — no value has to be guessed."""
 
     config_schema: dict[str, Any] = Field(
         description="JSON Schema of the collection identity/limits contract (drives the UI form)."
+    )
+    field_schema: dict[str, Any] = Field(
+        description="JSON Schema of one metadata FieldSpec — carries the field_type/origin/scope "
+        "enums the identity/limits contract omits."
+    )
+    supported_format_tokens: list[str] = Field(
+        description="Every upload format token a collection may declare in supported_formats "
+        "(e.g. 'pdf', 'docx', 'md')."
     )
 
 

@@ -1,10 +1,12 @@
 // ====== Code Summary ======
 // Render smoke-test for the audit fix that replaced the raw bold-accent RRF float with a coarse
-// relevance bucket + filename-led citation. Covers: a top-scoring hit renders "High relevance" and
-// its filename, the raw score is NOT in the DOM until the "technical score" toggle is clicked, and a
-// weak hit (low ratio to the result set's top score) renders "Low relevance" instead.
+// relevance bucket + filename-led citation. Covers: a top-scoring hit renders "High relevance", its
+// filename, AND its raw numeric score visible by default (round-4 T8 — a power user needs the
+// number without an extra click), a weak hit (low ratio to the result set's top score) renders
+// "Low relevance" instead, and the machine provenance (doc id/chunk/tokens) stays behind a closed
+// "Technical details" disclosure rather than an always-visible mono line.
 
-import { fireEvent, render, screen } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import type { SearchHitModel } from "../../api/search";
 import { ToastProvider } from "../../shell/toast";
@@ -24,8 +26,8 @@ function baseHit(overrides: Partial<SearchHitModel>): SearchHitModel {
 }
 
 describe("SearchHitCard", () => {
-  it("renders a High relevance bucket and the filename, raw score hidden until toggled", () => {
-    render(
+  it("renders a High relevance bucket, the filename, and the raw numeric score by default", () => {
+    const { container } = render(
       <ToastProvider>
         <SearchHitCard hit={baseHit({ score: 0.95 })} topScore={1.0} />
       </ToastProvider>,
@@ -33,10 +35,13 @@ describe("SearchHitCard", () => {
 
     expect(screen.getByText("High relevance")).toBeInTheDocument();
     expect(screen.getByText("annual-report.pdf")).toBeInTheDocument();
-    expect(screen.queryByText(/raw score/)).not.toBeInTheDocument();
+    expect(screen.getByText("score 0.9500")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByText("technical score"));
-    expect(screen.getByText("raw score 0.9500")).toBeInTheDocument();
+    // Machine provenance is gated behind a collapsed "Technical details" disclosure, not printed
+    // as an always-visible mono footer line.
+    expect(screen.getByText("Technical details")).toBeInTheDocument();
+    const details = container.querySelector("details");
+    expect(details?.open).toBe(false);
   });
 
   it("renders a Low relevance bucket for a hit far below the result set's top score", () => {

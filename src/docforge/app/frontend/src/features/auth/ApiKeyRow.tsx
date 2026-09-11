@@ -12,6 +12,8 @@ import { theme } from "../../theme";
 import { ExpiryChip } from "./ExpiryChip";
 import { describeScope } from "./permissionsSummary";
 import { humanizeAgo } from "./relativeTime";
+import { isRootKey } from "./rootKey";
+import { RootKeyConfirmGate } from "./RootKeyConfirmGate";
 import { StaleChip } from "./StaleChip";
 
 interface ApiKeyRowProps {
@@ -22,18 +24,22 @@ interface ApiKeyRowProps {
   onOpen: () => void;
   /** Best-effort collection id→name map, used to spell out scoped grants by name. */
   collectionNames: Map<string, string>;
+  /** True when auth is off — write actions (rotate/revoke) are hidden, never just disabled. */
+  writesDisabled?: boolean;
 }
 
 function formatTimestamp(value: string | null): string {
   return value ? new Date(value).toLocaleString() : "—";
 }
 
-export function ApiKeyRow({ apiKey, onRevoked, onRotate, onOpen, collectionNames }: ApiKeyRowProps) {
+export function ApiKeyRow({ apiKey, onRevoked, onRotate, onOpen, collectionNames, writesDisabled = false }: ApiKeyRowProps) {
   const toast = useToast();
   const [confirming, setConfirming] = useState(false);
+  const [confirmingRotate, setConfirmingRotate] = useState(false);
   const [revoking, setRevoking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const revoked = Boolean(apiKey.revoked_at);
+  const isRoot = isRootKey(apiKey);
 
   const handleRevoke = async () => {
     setRevoking(true);
@@ -78,17 +84,34 @@ export function ApiKeyRow({ apiKey, onRevoked, onRotate, onOpen, collectionNames
         <ExpiryChip expiresAt={apiKey.expires_at} />
         <StaleChip apiKey={apiKey} />
         <div style={{ marginLeft: "auto", display: "flex", gap: theme.space.s }}>
-          {revoked ? null : confirming ? (
-            <>
-              <span style={{ color: theme.color.dim, fontSize: theme.font.size.s, alignSelf: "center" }}>Revoke for good?</span>
-              <Button variant="danger" disabled={revoking} onClick={handleRevoke}>
-                {revoking ? "revoking…" : "Confirm revoke"}
-              </Button>
-              <Button onClick={() => setConfirming(false)}>Cancel</Button>
-            </>
+          {writesDisabled || revoked ? null : confirming ? (
+            isRoot ? (
+              <RootKeyConfirmGate
+                expectedText={apiKey.name}
+                actionLabel="Confirm revoke"
+                busy={revoking}
+                onConfirm={handleRevoke}
+                onCancel={() => setConfirming(false)}
+              />
+            ) : (
+              <>
+                <span style={{ color: theme.color.dim, fontSize: theme.font.size.s, alignSelf: "center" }}>Revoke for good?</span>
+                <Button variant="danger" disabled={revoking} onClick={handleRevoke}>
+                  {revoking ? "revoking…" : "Confirm revoke"}
+                </Button>
+                <Button onClick={() => setConfirming(false)}>Cancel</Button>
+              </>
+            )
+          ) : confirmingRotate ? (
+            <RootKeyConfirmGate
+              expectedText={apiKey.name}
+              actionLabel="Confirm rotate"
+              onConfirm={() => { setConfirmingRotate(false); onRotate(); }}
+              onCancel={() => setConfirmingRotate(false)}
+            />
           ) : (
             <>
-              <Button variant="secondary" onClick={onRotate}>Rotate</Button>
+              <Button variant="secondary" onClick={() => (isRoot ? setConfirmingRotate(true) : onRotate())}>Rotate</Button>
               <Button variant="danger" onClick={() => setConfirming(true)}>Revoke</Button>
             </>
           )}

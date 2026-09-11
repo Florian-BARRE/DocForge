@@ -70,11 +70,18 @@ class EmbedBgeServerNode(BaseEmbedderNode):
         """One batched call to the server."""
         config: EmbedBgeServerConfig = self.config
         headers = {"Authorization": f"Bearer {config.api_key}"} if config.api_key else {}
-        # A pooled client keeps the connection alive across batches — the bearer rides per-request.
-        client = HttpClientPool.get(base_url=config.base_url, timeout=config.timeout_seconds)
-        response = await client.post(route, json={"inputs": texts}, headers=headers)
-        response.raise_for_status()
-        return response.json()
+
+        async def _post(client: httpx.AsyncClient) -> list:
+            """One batched POST against the server — replayed on a fresh client if the socket died."""
+            response = await client.post(route, json={"inputs": texts}, headers=headers)
+            response.raise_for_status()
+            return response.json()
+
+        # The pooled client keeps the connection alive across batches (bearer rides per-request) and
+        # self-heals a dead socket left by a bge_server restart.
+        return await HttpClientPool.run(
+            _post, base_url=config.base_url, timeout=config.timeout_seconds
+        )
 
     @staticmethod
     def __parse_sparse(entries_per_input: list) -> list[SparseVector]:

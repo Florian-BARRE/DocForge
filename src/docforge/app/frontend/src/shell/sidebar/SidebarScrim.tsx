@@ -1,8 +1,11 @@
 // ====== Code Summary ======
-// A full-viewport, click-through scrim behind the sidebar's TRANSIENT hover/focus overlay — never
-// shown while pinned (a pinned rail reflows the content instead of floating over it, see
-// Sidebar.tsx/App.tsx). Makes the expanded rail read as a passing flyout, not the resting state,
-// closing the P0 gap where an expanded overlay could be mistaken for stuck/broken chrome.
+// A full-viewport, click-through scrim behind the sidebar's expanded rail, shown ONLY when the rail
+// is a floating overlay rather than reflowing the content — which today is exclusively a pin on a
+// compact/touch viewport (no room to push content there; see Sidebar.tsx's `reflow`/
+// `isTransientOverlay`). On a wide viewport, ANY expansion (hover, focus, or pin) reflows instead —
+// content is pushed, never floated under — so the scrim never shows there. Makes an unavoidable
+// overlay read as a passing flyout, not the resting state, closing the P0 gap where it could be
+// mistaken for stuck/broken chrome.
 
 import { theme as t } from "../../theme";
 

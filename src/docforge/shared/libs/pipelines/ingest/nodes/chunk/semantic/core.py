@@ -56,17 +56,27 @@ class ChunkerSemanticNode(BaseChunkerNode):
     UNIQUE_IN_GRAPH = True
 
     async def preflight(self) -> None:
-        """Verify the embeddings endpoint is reachable and its credentials accepted, before any spend.
+        """Verify the endpoint exposes an OpenAI-compatible embeddings route, before any spend.
 
         The semantic chunker embeds every unit's context window through a hosted OpenAI-compatible
-        endpoint; a wrong/unreachable ``base_url`` would otherwise only surface mid-run, after the
-        parse and enrich stages already spent. Overriding this hook makes the reachability sweep
-        probe the node before the first spend.
+        endpoint (the openai SDK POSTs to ``{base_url}/embeddings``). A plain reachability probe is
+        NOT enough here: a TEI-only server (e.g. bge_server, whose routes are ``/embed`` /
+        ``/embed_sparse``) answers on the host yet has no ``/embeddings`` route, so it would pass a
+        reachability check and only fail mid-run with an opaque 404 — after the parse and enrich
+        stages already spent. Probing the actual embeddings route turns that into an actionable
+        fail-fast: a 404 means the endpoint is not an OpenAI-compatible embeddings server.
         """
         config: ChunkerSemanticConfig = self.config
-        await EndpointReachability.check(
+        await EndpointReachability.check_route_present(
             node_kind=self.KIND,
             base_url=config.base_url,
+            path="/embeddings",
+            capability_hint=(
+                "the semantic chunker needs an OpenAI-compatible /v1/embeddings endpoint; this looks "
+                "like a TEI-only server (its routes are /embed, not /embeddings). Point base_url at "
+                "an OpenAI-compatible embeddings endpoint (e.g. a base_url ending in /v1), or switch "
+                "to a non-semantic chunker (structure_aware / fixed_size)"
+            ),
             api_key=config.api_key,
             timeout_seconds=config.preflight_timeout_seconds,
         )

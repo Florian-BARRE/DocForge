@@ -32,7 +32,7 @@ function jobFixture(overrides: Partial<JobStatus>): JobStatus {
     job_id: "job-1", document_id: "doc-1", document_filename: "report.pdf", document_title: null,
     collection_id: "col-1", collection_name: "Contracts", status: "running", cancel_requested: false,
     progress: 40, current_stage: "embed", error: null, attempt: 1, started_at: "2026-01-01T00:00:00Z",
-    finished_at: null, updated_at: new Date().toISOString(), stalled: false,
+    finished_at: null, updated_at: new Date().toISOString(), stalled: false, duration_seconds: null,
     total_prompt_tokens: 0, total_completion_tokens: 0, cost_usd: 0, items_done: null, items_total: null,
     failed_node_id: null, failed_node_kind: null, failed_item_index: null, error_type: null,
     ...overrides,

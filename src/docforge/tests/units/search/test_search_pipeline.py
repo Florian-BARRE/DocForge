@@ -243,6 +243,70 @@ def test_query_normalize_preserves_case_by_default_and_folds_only_when_asked() -
     assert folding_out.spec.text == "aes-256 encryption policy"  # opt-in still works
 
 
+def test_query_normalize_content_modalities_shapes_the_targetless_default() -> None:
+    """content_modalities narrows the default content target (dense_only preset); caller targets win.
+
+    With no search_targets, 'hybrid' (default) queries both content axes, 'semantic' the dense only,
+    'lexical' the sparse only. An explicit per-query targets list always overrides the config.
+    """
+    from shared_libs.pipelines.search.nodes.query.normalize.core import (
+        QueryNormalizeConfig,
+        QueryNormalizeConsumes,
+        QueryNormalizeNode,
+    )
+    from shared_libs.public_models.search import SearchTarget
+
+    # The service passes an EMPTY targets list when the caller named none, so the node owns the
+    # content-target default via its content_modalities config.
+    raw = RawQuery(text="policy", top_k=5, search_targets=[], flags={})
+    filters = QueryFilters(filters={})
+
+    def _targets(modalities: str) -> list:
+        node = QueryNormalizeNode(
+            id="n", config=QueryNormalizeConfig(content_modalities=modalities)
+        )
+        out = asyncio.run(node.run(QueryNormalizeConsumes(query=raw, filters=filters)))
+        return out.spec.search_targets
+
+    hybrid = _targets("hybrid")
+    assert hybrid[0].semantic and hybrid[0].lexical  # both axes (historical default)
+
+    semantic = _targets("semantic")
+    assert semantic[0].semantic and not semantic[0].lexical  # dense only
+
+    lexical = _targets("lexical")
+    assert lexical[0].lexical and not lexical[0].semantic  # sparse only
+
+    # An explicit targets list wins over the config default.
+    explicit = [SearchTarget(field="content", semantic=True, lexical=True)]
+    raw_with_targets = RawQuery(text="policy", top_k=5, search_targets=explicit, flags={})
+    node = QueryNormalizeNode(id="n", config=QueryNormalizeConfig(content_modalities="semantic"))
+    out = asyncio.run(node.run(QueryNormalizeConsumes(query=raw_with_targets, filters=filters)))
+    assert out.spec.search_targets[0].lexical  # caller's lexical axis preserved
+
+
+def test_query_normalize_rejects_an_absurd_candidate_multiplier() -> None:
+    """candidate_multiplier is bounded (0 < x <= 100): an absurd value fails config validation.
+
+    Beyond 100, candidate_k = top_k × multiplier explodes the retrieval pool with no recall benefit,
+    so the upper bound is a fail-fast guard at build/write, not a silently accepted knob.
+    """
+    from pydantic import ValidationError
+
+    from shared_libs.pipelines.search.nodes.query.normalize.core import QueryNormalizeConfig
+
+    with pytest.raises(ValidationError) as excinfo:
+        QueryNormalizeConfig(candidate_multiplier=999999)
+    # The error names the field and the max-value constraint clearly.
+    assert "candidate_multiplier" in str(excinfo.value)
+    assert "less than or equal to 100" in str(excinfo.value)
+
+    # The boundary value is accepted; one past it is not.
+    assert QueryNormalizeConfig(candidate_multiplier=100).candidate_multiplier == 100
+    with pytest.raises(ValidationError):
+        QueryNormalizeConfig(candidate_multiplier=101)
+
+
 def test_search_palette_lists_the_registered_families() -> None:
     """The palette exposes every search family with described nodes (must-have kinds present)."""
     palette = SearchPipeline.palette()

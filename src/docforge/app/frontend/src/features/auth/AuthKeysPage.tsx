@@ -15,9 +15,11 @@ import { TabNav } from "../../components/TabNav";
 import type { Navigate } from "../../shell/view";
 import { theme } from "../../theme";
 import { ApiKeyRow } from "./ApiKeyRow";
+import { AuthOffBanner } from "./AuthOffBanner";
 import { CreatedKeyModal } from "./CreatedKeyModal";
 import { CreateKeyForm } from "./CreateKeyForm";
 import { deriveRotateInitial } from "./rotateInitial";
+import { useAuthEnabled } from "./useAuthEnabled";
 
 type StatusFilter = "active" | "revoked" | "all";
 
@@ -26,11 +28,13 @@ interface AuthKeysPageProps {
 }
 
 export function AuthKeysPage({ onNavigate }: AuthKeysPageProps) {
+  const authEnabled = useAuthEnabled();
   const [keys, setKeys] = useState<ApiKeyInfo[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [rotatingKey, setRotatingKey] = useState<ApiKeyInfo | null>(null);
   const [createdKey, setCreatedKey] = useState<CreatedApiKey | null>(null);
+  const [createdKeyRotated, setCreatedKeyRotated] = useState(false);
   const [collectionNames, setCollectionNames] = useState<Map<string, string>>(new Map());
   const [filter, setFilter] = useState<StatusFilter>("active");
 
@@ -50,11 +54,18 @@ export function AuthKeysPage({ onNavigate }: AuthKeysPageProps) {
   }, []);
 
   const handleCreated = (created: CreatedApiKey) => {
+    // Read BEFORE resetting `rotatingKey` below — its non-null-ness right now is what tells us
+    // this reveal follows a rotation rather than a brand new key.
+    setCreatedKeyRotated(rotatingKey !== null);
     setShowCreate(false);
     setRotatingKey(null);
     setCreatedKey(created);
     load();
   };
+
+  // Auth off means anyone reaching this UI already has full admin access — never offer a write
+  // surface (create/rotate/revoke) to an unauthenticated visitor, only the informative read-only list.
+  const writesDisabled = authEnabled === false;
 
   const activeCount = keys?.filter((k) => !k.revoked_at).length ?? 0;
   const revokedCount = keys?.filter((k) => k.revoked_at).length ?? 0;
@@ -70,8 +81,10 @@ export function AuthKeysPage({ onNavigate }: AuthKeysPageProps) {
       <PageHeader
         title="API Keys"
         subtitle={keys ? `${totalCount} key${totalCount === 1 ? "" : "s"} — bearer authentication for the API` : " "}
-        actions={!showCreate && !rotatingKey && <Button variant="primary" onClick={() => setShowCreate(true)}>+ New key</Button>}
+        actions={!writesDisabled && !showCreate && !rotatingKey && <Button variant="primary" onClick={() => setShowCreate(true)}>+ New key</Button>}
       />
+
+      {writesDisabled && <AuthOffBanner />}
 
       {keys && keys.length > 0 && (
         <div style={{ marginBottom: theme.space.l }}>
@@ -90,12 +103,12 @@ export function AuthKeysPage({ onNavigate }: AuthKeysPageProps) {
         </div>
       )}
 
-      {showCreate && (
+      {!writesDisabled && showCreate && (
         <div className="df-rise" style={{ marginBottom: theme.space.l }}>
           <CreateKeyForm onCreated={handleCreated} onCancel={() => setShowCreate(false)} />
         </div>
       )}
-      {rotatingKey && (
+      {!writesDisabled && rotatingKey && (
         <div className="df-rise" style={{ marginBottom: theme.space.l }}>
           <CreateKeyForm
             mode="rotate"
@@ -139,12 +152,15 @@ export function AuthKeysPage({ onNavigate }: AuthKeysPageProps) {
               onRotate={() => setRotatingKey(key)}
               onOpen={() => onNavigate({ name: "api-key", keyId: key.id })}
               collectionNames={collectionNames}
+              writesDisabled={writesDisabled}
             />
           ))}
         </div>
       )}
 
-      {createdKey && <CreatedKeyModal createdKey={createdKey} onClose={() => setCreatedKey(null)} />}
+      {createdKey && (
+        <CreatedKeyModal createdKey={createdKey} rotated={createdKeyRotated} onClose={() => setCreatedKey(null)} />
+      )}
     </div>
   );
 }

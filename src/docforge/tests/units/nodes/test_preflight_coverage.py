@@ -29,7 +29,14 @@ from shared_libs.pipelines.ingest.nodes.metagen.prep import (
     MetagenDocumentPrepConfig,
     MetagenDocumentPrepNode,
 )
-from shared_libs.pipelines.nodes.openai_compat.preflight import PreflightError
+from shared_libs.pipelines.nodes.embed.openai_compatible import (
+    EmbedOpenAICompatibleConfig,
+    EmbedOpenAICompatibleNode,
+)
+from shared_libs.pipelines.nodes.openai_compat.preflight import (
+    EndpointIncompatibleError,
+    PreflightError,
+)
 from shared_libs.pipelines.reachability import ReachabilitySweep
 
 
@@ -122,6 +129,60 @@ async def test_semantic_chunker_unreachable_fails(monkeypatch) -> None:
     monkeypatch.setattr(httpx, "AsyncClient", _fake_client(raises=httpx.ConnectError("refused")))
     with pytest.raises(PreflightError, match="unreachable"):
         await _semantic().preflight()
+
+
+async def test_semantic_chunker_missing_embeddings_route_fails_with_actionable_message(
+    monkeypatch,
+) -> None:
+    # A TEI-only server (bge_server) answers on the host but has no /embeddings route -> 404. The
+    # capability probe must turn that into an actionable fail-fast, NOT let it slip to a mid-run 404.
+    monkeypatch.setattr(httpx, "AsyncClient", _fake_client(status_code=404))
+    with pytest.raises(EndpointIncompatibleError, match="not found") as exc_info:
+        await _semantic().preflight()
+    message = str(exc_info.value)
+    assert "/embeddings" in message
+    assert "TEI" in message  # names the likely culprit, so the fix is obvious
+
+
+async def test_semantic_chunker_present_embeddings_route_passes(monkeypatch) -> None:
+    # A real OpenAI-compatible server answers 405 to a GET on its POST-only /embeddings route: the
+    # route EXISTS, so preflight passes (only a 404 means the route is absent).
+    monkeypatch.setattr(httpx, "AsyncClient", _fake_client(status_code=405))
+    await _semantic().preflight()
+
+
+# ---------------------- EmbedOpenAICompatibleNode (/v1/embeddings) ---------------------- #
+
+
+def _embed_openai() -> EmbedOpenAICompatibleNode:
+    return EmbedOpenAICompatibleNode(
+        id="embed", config=EmbedOpenAICompatibleConfig(base_url="http://bge:80", model="bge-m3")
+    )
+
+
+async def test_embed_openai_missing_embeddings_route_fails_with_actionable_message(
+    monkeypatch,
+) -> None:
+    # Same trap as the semantic chunker: a TEI-only server answers on the host but has no
+    # /embeddings route -> 404. The capability probe must fail fast with an actionable message.
+    monkeypatch.setattr(httpx, "AsyncClient", _fake_client(status_code=404))
+    with pytest.raises(EndpointIncompatibleError, match="not found") as exc_info:
+        await _embed_openai().preflight()
+    message = str(exc_info.value)
+    assert "/embeddings" in message
+    assert "TEI" in message
+
+
+async def test_embed_openai_present_embeddings_route_passes(monkeypatch) -> None:
+    # A real OpenAI-compatible server answers 405 to a GET on its POST-only /embeddings route.
+    monkeypatch.setattr(httpx, "AsyncClient", _fake_client(status_code=405))
+    await _embed_openai().preflight()
+
+
+async def test_embed_openai_unreachable_fails(monkeypatch) -> None:
+    monkeypatch.setattr(httpx, "AsyncClient", _fake_client(raises=httpx.ConnectError("refused")))
+    with pytest.raises(PreflightError, match="unreachable"):
+        await _embed_openai().preflight()
 
 
 # ---------------------- Metagen prep (default LLM endpoint) ---------------------- #

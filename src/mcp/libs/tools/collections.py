@@ -40,14 +40,35 @@ def register(mcp: FastMCP, sdk: AsyncClient) -> None:
         tags: list[str] | None = None,
         fields: list[dict[str, Any]] | None = None,
         pipeline: dict[str, Any] | None = None,
+        preset: Literal["standard", "light", "ocr_scan", "high_precision"] | None = None,
+        search_preset: Literal["hybrid", "hybrid_rerank", "dense_only"] | None = None,
+        job_timeout_seconds: float | None = None,
+        trace_verbosity: Literal["shape", "full"] | None = None,
     ) -> Any:
         """
-        Create a collection from A to Z. `fields` is the FULL metadata schema declared up
-        front (each item: field_name, field_type, required, filterable, lexical, semantic,
-        enum_values, origin, scope) — the vector space is fixed at creation and cannot grow
-        later. `pipeline` is the ingestion graph blob; omit it to use the product default
-        (all stages wired). `tags` is an optional list of free-form labels for grouping and
-        filtering collections in the UI (omit for untagged).
+        Create a collection from A to Z. BEFORE calling this, call
+        get_collection_contract_schema() to learn the exact enum values for `supported_formats`
+        (`supported_format_tokens`) and for each field's `field_type`/`origin`/`scope`
+        (`field_schema`) — do not guess them. To discover the available business presets (label +
+        rationale for each), call get_pipeline_design("ingest") / get_pipeline_design("search")
+        and read their `presets` list.
+
+        `fields` is the FULL metadata schema declared up front (each item: field_name,
+        field_type, required, filterable, lexical, semantic, enum_values, origin, scope) — the
+        vector space is fixed at creation and cannot grow later; omit for a schema-free
+        collection. `pipeline` is the ingestion graph blob (opaque dict); omit it AND leave
+        `preset` unset to get the product default ('standard' — all stages wired, thorough but
+        slower/costlier). Ingestion presets (ignored if `pipeline` is also set): `preset="light"`
+        is the fast on-ramp (enrichment-free core, no config); `preset="ocr_scan"` adds a local OCR
+        pass for scanned/image documents; `preset="high_precision"` uses finer chunks for sharper
+        retrieval. `search_preset` selects the collection's SEARCH blob: 'hybrid' (default
+        dense+sparse fusion), 'hybrid_rerank' (hybrid + cross-encoder rerank) or 'dense_only' (pure
+        semantic). `tags` is an optional list of free-form labels for grouping/filtering collections
+        in the UI (omit for untagged). `job_timeout_seconds` overrides the worker's default
+        whole-ingest-job wall-clock timeout for this collection (omit to inherit the server
+        default). `trace_verbosity="full"` additionally stores each pipeline node's raw input/output
+        payload (fetchable via get_job_event_payload) instead of just its cheap shape summary —
+        costs object-store space, use only while debugging a collection's ingestion.
         """
         request = CreateCollectionRequest(
             name=name,
@@ -58,6 +79,13 @@ def register(mcp: FastMCP, sdk: AsyncClient) -> None:
             # FieldSpec so the request is correctly typed (and malformed fields fail fast here).
             fields=[FieldSpec(**field) for field in fields] if fields else [],
             pipeline=pipeline,
+            preset=preset,
+            search_preset=search_preset,
+            job_timeout_seconds=job_timeout_seconds,
+            # trace_verbosity has no None-means-default meaning on the request model itself
+            # (it's a plain "shape"/"full" Literal with default "shape") — an omitted tool
+            # argument must fall through to that default rather than being sent as an explicit None.
+            **({"trace_verbosity": trace_verbosity} if trace_verbosity is not None else {}),
         )
         collection = await sdk.collections.create(request)
         return collection.model_dump(mode="json")
@@ -140,6 +168,64 @@ def register(mcp: FastMCP, sdk: AsyncClient) -> None:
             filter=DocumentFilter(**filter) if filter is not None else None,
         )
         return estimate.model_dump(mode="json")
+
+    @mcp.tool()
+    async def preview_pipeline(
+        collection_id: str,
+        document_id: str,
+        blob: dict[str, Any] | None = None,
+        max_chunks: int | None = None,
+    ) -> Any:
+        """
+        Dry-run the ingestion pipeline on ONE already-ingested document and return a bounded preview —
+        NOTHING is persisted (no document, blob or vector is written). Runs the ingest graph inline on
+        `document_id` (404 when the collection or document is unknown), optionally with a candidate
+        `blob` instead of the collection's stored pipeline. Returns an IR summary, the first N chunks
+        (text truncated; cap with `max_chunks`), the run's ACTUAL metered cost, and the full execution
+        trace. A node that fails is DATA here (`ok` is false + `failed_node_id` + the partial trace),
+        never an error — so this is the way to see what a pipeline change WOULD do before applying it.
+        """
+        preview = await sdk.collections.preview_pipeline(
+            collection_id,
+            document_id=document_id,
+            blob=blob,
+            max_chunks=max_chunks,
+        )
+        return preview.model_dump(mode="json")
+
+    @mcp.tool()
+    async def submit_preview_job(
+        collection_id: str,
+        document_id: str,
+        blob: dict[str, Any] | None = None,
+        max_chunks: int | None = None,
+    ) -> Any:
+        """
+        Submit an ASYNCHRONOUS worker-side dry-run preview on one already-ingested document — returns a
+        pollable preview id, NOTHING is persisted. Unlike `preview_pipeline` (inline, API-process), the
+        worker runs the FULL ingest graph with every dependency present (docling included), so it covers
+        ALL pipelines — use it when `preview_pipeline` cannot parse the collection's pipeline. Optionally
+        pass a candidate `blob` instead of the stored pipeline. Poll the returned id with
+        `get_preview_job` until status is 'done' (the report) or 'failed' (the worker job crashed).
+        """
+        accepted = await sdk.collections.submit_preview_job(
+            collection_id,
+            document_id=document_id,
+            blob=blob,
+            max_chunks=max_chunks,
+        )
+        return accepted.model_dump(mode="json")
+
+    @mcp.tool()
+    async def get_preview_job(collection_id: str, preview_id: str) -> Any:
+        """
+        Poll an asynchronous dry-run preview by its id (from `submit_preview_job`). The bounded report
+        appears in `result` once `status` is 'done'; a failed NODE is DATA there (`result.ok` is false),
+        while `status` 'failed' is reserved for the worker job itself crashing/timing out. An
+        unknown/expired id is a 404 (the result TTL elapsed).
+        """
+        poll = await sdk.collections.get_preview_job(collection_id, preview_id)
+        return poll.model_dump(mode="json")
 
     @mcp.tool()
     async def export_collection_snippet(

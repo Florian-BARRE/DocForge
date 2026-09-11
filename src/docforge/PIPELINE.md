@@ -356,7 +356,7 @@ Quelle que soit la méthode, l'IR est d'abord projeté en **passages** ordonnés
 |---|---|---|
 | **structure_aware** ✅ | `target_tokens`=512 · `max_tokens`=1024 · `min_tokens`=64 · `overlap_tokens`=64 · `hard_section_boundaries`=true | Empaquette LE LONG de l'arbre : frontière de section = coupe dure pour toute section ≥ `min_tokens`, **MAIS** les sections consécutives **< `min_tokens`** sont **fusionnées à travers les frontières** jusqu'à `min(target, max)` (fin de la sur-fragmentation ; une grosse section n'absorbe jamais et n'est jamais absorbée). Le `heading_path` d'un chunk fusionné = **préfixe commun** des sections coalescées (`[]` si non liées, l'ancêtre partagé sinon). Overlap optionnel (coupes de taille uniquement) |
 | **fixed_size** ✅ | `chunk_tokens`=512 · `overlap_tokens`=64 (< chunk, validé) | La classique : fenêtres de N tokens, aveugle à la structure, queue répétée en overlap |
-| **semantic** ✅ | `base_url` · `api_key` · `model` · `buffer_size`=1 · `breakpoint_percentile`=90 · `min_tokens` · `max_tokens` · `timeout_seconds` | **Embedding-windows** : phrases → fenêtres de contexte embeddées (endpoint openai-compat : bge_server, OpenAI…) → coupe là où la distance cosinus SAUTE (percentile) = au changement de sujet ; bornes de taille ensuite |
+| **semantic** ✅ | `base_url` · `api_key` · `model` · `buffer_size`=1 · `breakpoint_percentile`=90 · `min_tokens` · `max_tokens` · `timeout_seconds` (+ hérite `preflight_timeout_seconds`) | **Embedding-windows** : phrases → fenêtres de contexte embeddées (endpoint **OpenAI-compat** exposant `/v1/embeddings` : OpenAI, vLLM, Infinity… — **PAS** le `bge_server` TEI-only, dont les routes sont `/embed`) → coupe là où la distance cosinus SAUTE (percentile) = au changement de sujet ; bornes de taille ensuite. Son `preflight()` sonde la **présence de la route `/embeddings`** (404 = serveur TEI incompatible → fail-fast actionnable AVANT dépense, pas un 404 opaque au run) |
 
 *(La famille est ouverte : `late_chunking`, `page_based`… s'ajouteront comme un provider de plus.)*
 
@@ -463,13 +463,19 @@ Le texte embeddé est l'**`enriched_text`** (toute la raison d'être du contextu
 
 **Config commune** : `model` (provenance, stocké avec les vecteurs) · `batch_size=32` · `embed_sparse=true` ·
 **`embed_semantic_fields=false`** (défaut) — quand activé, les champs chunk-scope `semantic=True` du contrat
-sont embeddés en **vecteurs nommés par champ** (`fields["keywords"]` — seulement les chunks qui portent une
+sont embeddés en **vecteurs nommés par champ** (dense `fields["keywords"]` — seulement les chunks qui portent une
 valeur ; une liste se rend en texte joint). Le **read-side EST câblé** : un `SearchTarget{field, semantic}` sur un
 champ métadonnée résout vers `meta_<slug>_dense` (via `TargetVectorResolver`, à côté du read port) et le retrieve
 l'interroge. ⚠️ **OFF par défaut** malgré tout, par pur **coût** : les cibles de recherche par défaut sont
 content-only (`default_content_targets`), donc sans requête métadonnée explicite on paierait embedding + stockage
 pour des vecteurs non interrogés. À activer quand une collection exploite la recherche sémantique par champ.
-Doc-scope sémantique : hors v1 (les points Qdrant sont des chunks).
+**`embed_lexical_fields=false`** (défaut) — le miroir lexical : quand activé, les champs chunk-scope `lexical=True`
+sont encodés en **vecteurs sparse nommés par champ** (`field_sparse["tags"]` → écrit sous `meta_<slug>_bm25` par le
+translator, sauté si le provider n'a pas d'axe sparse). Read-side câblé de la même façon (`SearchTarget{field,
+lexical}` → `meta_<slug>_bm25` via `TargetVectorResolver`). ⚠️ **OFF par défaut** pour le même coût (encodage sparse
++ stockage par champ par chunk) ; à activer quand une collection interroge un champ métadonnée chunk-scope en lexical.
+Doc-scope sémantique/lexical : écrit hors du node embed, par le hook best-effort `MetaVectorSyncFacade` après
+`index()` (les points Qdrant sont des chunks).
 
 **Échec = fatal** (pas de dégradation ici : un chunk sans vecteur est ininde­xable).
 
@@ -491,6 +497,31 @@ tout perdu). Le runner reste **pur** : il ne décide pas — il rend le bundle t
 document **DONE** avec `document.warning_reason` = « 0 chunks — rien de récupérable » et `document.chunk_count=0`
 (dénormalisé pour la grille/overview, sans COUNT N+1). Un run normal (chunks > 0) passe `warning_reason=None` (un
 re-ingest efface donc un avertissement périmé). Le compteur est stampé pour **tous** les documents à la persistance.
+
+### Dry-run / aperçu (sans persistance — INLINE app OU job worker)
+
+L'ingestion tourne normalement **async au worker** (persistance aux bords). Mais le moteur étant **pur**, le graphe
+d'ingest peut aussi tourner **sans** le translator de persistance pour produire un **aperçu** (`PreviewResponse` :
+résumé IR + N premiers chunks tronqués + **coût RÉEL mesuré** via `UsageSummer`, mêmes taux que le meter + **trace**
+complète via `ExecutionTreeFlattener`). Un node en échec est une **donnée** (`ok=false` + node fautif + trace
+partielle), jamais un 500. **Rien n'est persisté** — aucun document, blob, vecteur, ni écriture d'arbre d'exécution.
+Le socle PUR partagé vit dans `shared_libs/pipelines/preview/` (runner · projector · contract · models · errors ·
+source_resolver), réutilisé par les **deux** chemins :
+
+- **INLINE (app, synchrone)** : `POST /collections/{id}/pipeline/preview`. Un `PreviewRunner` tourne dans le process
+  API (pendant ingest du `SearchRunner` : `build → validate → FlowEngine.execute → assert RunBundle`, **zéro**
+  preflight, **zéro** écriture). Voie rapide, mais **limitée aux pipelines dont les deps sont dans l'image app**
+  (docling, absent de l'image app, n'y tourne pas). Garde-fous : `PREVIEW_RUN_TIMEOUT_SECONDS` + `PREVIEW_MAX_BYTES`.
+  Coordinateur : `app/backend/libs/preview/service.py`.
+- **JOB WORKER (async, général)** : `POST /collections/{id}/pipeline/preview/jobs` → renvoie un `preview_id` ;
+  `GET /collections/{id}/pipeline/preview/jobs/{preview_id}` le poll. Le job arq `preview_pipeline`
+  (`worker/backend/libs/jobs/preview.py`) tourne le graphe COMPLET côté worker (toutes les deps présentes → couvre
+  **tous** les pipelines, docling inclus) et **RENVOIE** l'aperçu comme **résultat de job arq** (gardé dans Redis
+  `WORKER_PREVIEW_RESULT_TTL_SECONDS` — aucune table transitoire, aucune migration). Les bytes uploadés (déjà cappés)
+  transitent par la queue ; un `document_id` existant est relu du store (jamais réécrit). Non-persistance garantie par
+  test (`tests/units/worker/test_jobs_preview.py` : aucun writer document/chunk/qdrant/s3/trace appelé). Garde-fous :
+  `WORKER_PREVIEW_RUN_TIMEOUT_SECONDS` + `WORKER_PREVIEW_MAX_BYTES` + `WORKER_PREVIEW_MAX_CHUNKS`. Un blob cassé /
+  une source invalide est une **donnée** (`ok=false`), jamais une exception — un poll résout toujours en `PreviewResponse`.
 
 ---
 
@@ -561,6 +592,28 @@ placeholder n'est jamais dans un graphe exécuté out-of-box — cf. invariant #
 **La découverte d'abord** — `GET /api/v1/pipelines` : la liste des surfaces de design disponibles
 (`{key, title, description, design_url, inspect_url, edit_url, stages_view_url, stages_apply_url}`) — le SEUL
 appel que l'UI connaît d'avance ; tout le reste se découvre.
+
+**Les presets métier (points de départ curés, PAS de nouveau moteur)** — chaque façade de pipeline porte
+un petit set de `presets`, chacun = un **blob par défaut curé** (validation-passing, stages provider-hosted
+**OFF**, assemblé par le même assembleur/facade). Ils sont **découvrables** : `GET …/ingest` et `GET …/search`
+remontent `presets: [{name, label, description, is_default}]` (schema-driven, l'UI et le MCP les montrent).
+La création les sélectionne par nom — `CreateCollectionRequest.preset` (ingestion, utilisé seulement si
+`pipeline` est omis) et `CreateCollectionRequest.search_preset` (blob `search`). Le défaut existant n'est pas
+touché (golden blob inchangé, **pas de bump `ENGINE_BLOB_VERSION`**).
+
+| Pipeline | Preset | Blob | Pourquoi |
+|---|---|---|---|
+| ingest | `standard` *(défaut)* | `default_blob()` | Le stock complet : intake·parse·contextualize local·embed dense+sparse ; enrich/metagen provider-hosted OFF. L'équilibré. |
+| ingest | `light` | `light_blob()` | Le cœur le moins cher : intake·parse·chunk·embed seulement (pas d'enrich/contextualize/metagen). Le plus rapide, tout local. |
+| ingest | `ocr_scan` | `ocr_scan_blob()` | Documents scannés/image : enrich ON en mode `uniform`+`ocr` câblé sur une chaîne **RapidOCR locale** (pas d'escalade mistral) → chaque figure/page scannée lue en texte cherchable. Reste local et gratuit. |
+| ingest | `high_precision` | `high_precision_blob()` | Chunks plus fins (`target_tokens=256`/`max_tokens=512`/`overlap_tokens=96`) pour une précision de retrieval accrue ; hybrid-ready (dense+sparse) out-of-box. |
+| search | `hybrid` *(défaut)* | `default_blob()` | Fusion dense (semantic) + sparse (lexical) en RRF — le rappel le plus robuste. |
+| search | `hybrid_rerank` | `rerank_blob()` | Hybrid puis un rerank cross-encoder in-stack du top des candidats (précision en tête de liste ; une passe de rerank en plus). |
+| search | `dense_only` | `dense_only_blob()` | Retrieval purement sémantique : le node `normalize` est configuré `content_modalities="semantic"` (le défaut d'une requête sans `search_targets` n'interroge QUE le vecteur dense). Une liste de targets explicite l'emporte toujours. |
+
+> Le knob `content_modalities` (`hybrid`/`semantic`/`lexical`, défaut `hybrid`) du node `(query, normalize)`
+> ne **façonne que le défaut** d'une requête sans targets explicites — l'embedder de la collection décide
+> quels axes existent réellement (un axe absent dégrade proprement).
 
 **Le contrat de collection est schema-driven** — `GET /api/v1/collections/contract-schema` expose l'identité et
 les limites de la collection (dont `job_timeout_seconds`) en **JSON Schema** — le même mécanisme que le

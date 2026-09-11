@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 # ====== Standard Library Imports ======
+import base64
 from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock
@@ -17,6 +18,7 @@ from unittest.mock import AsyncMock
 import pytest
 from docforge_sdk import AsyncClient, UploadAccepted
 from mcp.server.fastmcp import FastMCP
+from mcp.server.fastmcp.exceptions import ToolError
 
 # ====== Internal Project Imports ======
 from libs.path_guard import PathGuard, PathGuardError
@@ -27,7 +29,9 @@ DID = "33333333-3333-3333-3333-333333333333"
 JID = "55555555-5555-5555-5555-555555555555"
 
 
-def _register(path_guard: PathGuard) -> tuple[FastMCP, AsyncMock]:
+def _register(
+    path_guard: PathGuard, max_inline_upload_bytes: int | None = None
+) -> tuple[FastMCP, AsyncMock]:
     """Register the documents tools on a bare FastMCP with a mocked sdk.documents.upload."""
     mcp = FastMCP(name="test")
     sdk = AsyncClient("http://localhost:8000")
@@ -35,7 +39,10 @@ def _register(path_guard: PathGuard) -> tuple[FastMCP, AsyncMock]:
         return_value=UploadAccepted(document_id=DID, job_id=JID, duplicate=False)
     )
     sdk.documents.upload = upload_mock  # type: ignore[method-assign]
-    documents_tools.register(mcp, sdk, path_guard)
+    if max_inline_upload_bytes is None:
+        documents_tools.register(mcp, sdk, path_guard)
+    else:
+        documents_tools.register(mcp, sdk, path_guard, max_inline_upload_bytes)
     return mcp, upload_mock
 
 
@@ -128,3 +135,51 @@ async def test_stdio_transport_allows_arbitrary_local_path_unchanged(tmp_path: P
 
     upload_mock.assert_awaited_once_with(CID, Path(str(outside)), metadata=None)
     assert result["document_id"] == DID
+
+
+async def test_upload_document_bytes_decodes_base64_and_never_touches_path_guard(
+    tmp_path: Path,
+) -> None:
+    """upload_document_bytes never resolves a path — it works even with no inbox configured."""
+    guard = PathGuard(confine=True, inbox_dir=None)  # HTTP, no inbox: path-based tools refused
+    mcp, upload_mock = _register(guard)
+    fn = _tool_fn(mcp, "upload_document_bytes")
+
+    result = await fn(
+        collection_id=CID,
+        filename="report.pdf",
+        content_base64=base64.b64encode(b"%PDF-1.4 hello").decode(),
+        metadata={"lang": "en"},
+    )
+
+    upload_mock.assert_awaited_once_with(
+        CID, b"%PDF-1.4 hello", metadata={"lang": "en"}, filename="report.pdf"
+    )
+    assert result["document_id"] == DID
+
+
+async def test_upload_document_bytes_rejects_malformed_base64() -> None:
+    guard = PathGuard(confine=False, inbox_dir=None)
+    mcp, upload_mock = _register(guard)
+    fn = _tool_fn(mcp, "upload_document_bytes")
+
+    with pytest.raises(ToolError):
+        await fn(collection_id=CID, filename="report.pdf", content_base64="not-base64!!")
+
+    upload_mock.assert_not_awaited()
+
+
+async def test_upload_document_bytes_rejects_payload_over_inline_cap() -> None:
+    """A decoded payload larger than MCP_MAX_INLINE_UPLOAD_BYTES is refused before the SDK call."""
+    guard = PathGuard(confine=False, inbox_dir=None)
+    mcp, upload_mock = _register(guard, max_inline_upload_bytes=4)
+    fn = _tool_fn(mcp, "upload_document_bytes")
+
+    with pytest.raises(ToolError):
+        await fn(
+            collection_id=CID,
+            filename="report.pdf",
+            content_base64=base64.b64encode(b"well over four bytes").decode(),
+        )
+
+    upload_mock.assert_not_awaited()

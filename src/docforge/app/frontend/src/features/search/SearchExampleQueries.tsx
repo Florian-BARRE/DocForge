@@ -7,12 +7,15 @@
 import { Chip } from "../../components/Chip";
 import { theme } from "../../theme";
 
+// Domain-neutral on purpose — this panel has no way to know the collection's subject matter (legal,
+// ML papers, invoices…), and a prior legal-flavoured set ("obligations", "compliance requirements",
+// "effective date and parties") read as off-topic noise on non-legal collections.
 const EXAMPLE_QUERIES = [
-  "What are the key obligations described in this document?",
   "Summarize the main findings.",
-  "List all defined terms and their definitions.",
-  "Find sections that mention compliance requirements.",
-  "What is the effective date and who are the parties involved?",
+  "What are the key topics covered in this document?",
+  "List the key terms and their definitions.",
+  "What conclusions or recommendations does it give?",
+  "Find sections that discuss limitations or risks.",
 ];
 
 interface SearchExampleQueriesProps {

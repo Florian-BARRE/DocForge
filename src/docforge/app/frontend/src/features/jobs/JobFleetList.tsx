@@ -8,6 +8,7 @@ import { InlineErrorBoundary } from "../../components/InlineErrorBoundary";
 import { JobRow } from "../monitoring/JobRow";
 import type { Navigate } from "../../shell/view";
 import { theme } from "../../theme";
+import { JobDurationBadge } from "./JobDurationBadge";
 import { WorkerAttributionLine } from "./WorkerAttributionLine";
 
 interface JobFleetListProps {
@@ -27,7 +28,12 @@ export function JobFleetList({ jobs, workerMap, onNavigate, onJobUpdated }: JobF
             job={job}
             onClick={() => onNavigate({ name: "job", collectionId: job.collection_id, jobId: job.job_id })}
             onUpdated={(patch) => onJobUpdated(job.job_id, patch)}
-            footer={<WorkerAttributionLine job={job} workerLabel={workerMap[job.job_id]} />}
+            footer={
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: theme.space.s }}>
+                <WorkerAttributionLine job={job} workerLabel={workerMap[job.job_id]} />
+                <JobDurationBadge durationSeconds={job.duration_seconds} />
+              </div>
+            }
           />
         ))}
       </div>

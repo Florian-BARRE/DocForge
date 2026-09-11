@@ -9,6 +9,7 @@ import { ItemProgressChip } from "./ItemProgressChip";
 import { JobCancelControl } from "./JobCancelControl";
 import { JobIdentity } from "./JobIdentity";
 import { JobStatusChip } from "./JobStatusChip";
+import { humanizeJobError } from "./jobErrorHumanize";
 import { ProgressBar } from "./ProgressBar";
 
 interface JobRowProps {
@@ -80,7 +81,7 @@ export function JobRow({ job, onClick, onUpdated, footer }: JobRowProps) {
       </div>
       {job.error && (
         <div style={{ color: job.status === "failed" ? theme.color.error : theme.color.skip, fontSize: theme.font.size.xs }}>
-          {job.error}
+          {humanizeJobError(job.error)}
         </div>
       )}
       {footer}

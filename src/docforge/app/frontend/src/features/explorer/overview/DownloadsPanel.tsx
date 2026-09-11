@@ -134,7 +134,7 @@ export function DownloadsPanel({ document }: { document: DocumentDetail }) {
           key={format}
           tag={format === "markdown" ? "MD" : "HTML"}
           label={VIEW_LABEL[format] === "HTML" ? "HTML" : "Markdown"}
-          hint="Generated on the fly from the canonical IR"
+          hint="Generated on the fly from the document's parsed content, not a stored file"
           busy={busy}
           divider
           onView={() => run(`${format}-view`, () => openDocumentViewInNewTab(document.id, format), `Could not open the ${VIEW_LABEL[format]} view`)}

@@ -15,12 +15,20 @@ from shared_libs.pipelines.introspection import (
     FamilyCatalog,
     GraphMechanics,
     Palette,
+    PipelinePreset,
 )
 from shared_libs.pipelines.registry import NodeRegistry
 from shared_libs.pipelines.validation import PaletteScopeValidator
 
 # ====== Local Project Imports ======
-from .stages import IngestAssembler, default_state, light_state
+from .stages import (
+    IngestAssembler,
+    StageAction,
+    default_state,
+    high_precision_state,
+    light_state,
+    ocr_scan_state,
+)
 
 
 class IngestPipeline:
@@ -103,7 +111,7 @@ class IngestPipeline:
         return Palette(
             families=families,
             run_inputs=list(cls.RUN_INPUTS),
-            mechanics=GraphMechanics.describe(),
+            mechanics=GraphMechanics.describe(stage_actions=StageAction),
             artefacts=ArtefactCatalog.describe(),
         )
 
@@ -154,6 +162,114 @@ class IngestPipeline:
             GroupNodeBlob: The serialised light topology (nodes, transitions, bindings).
         """
         return IngestAssembler.assemble(light_state())
+
+    @classmethod
+    def ocr_scan_blob(cls) -> GroupNodeBlob:
+        """
+        The OCR-SCAN ingestion pipeline — a local OCR pass for scanned / image-only documents.
+
+        The stock skeleton with the per-figure enrich stage ON in uniform ``ocr`` mode, wired to a
+        LOCAL RapidOCR chain (no provider-hosted escalation), so a scanned corpus is read into
+        searchable text with zero external configuration. Assembled through the very same assembler,
+        so it enjoys the identical "always builds" guarantee and passes the graph validator.
+
+        Returns:
+            GroupNodeBlob: The serialised OCR-scan topology (nodes, transitions, bindings).
+        """
+        return IngestAssembler.assemble(ocr_scan_state())
+
+    @classmethod
+    def high_precision_blob(cls) -> GroupNodeBlob:
+        """
+        The HIGH-PRECISION ingestion pipeline — finer chunks for sharper hybrid retrieval.
+
+        The stock skeleton with the structure-aware chunker tightened to smaller units (target 256 /
+        max 512 tokens, overlap 96); the local contextualize stack and the dense+sparse embed the
+        default ships keep it hybrid-ready. Assembled through the very same assembler.
+
+        Returns:
+            GroupNodeBlob: The serialised high-precision topology (nodes, transitions, bindings).
+        """
+        return IngestAssembler.assemble(high_precision_state())
+
+    # The creation presets this pipeline offers — each a curated, validation-passing stock blob (a
+    # starting point, NOT a new engine). The first entry is the default a collection gets when no
+    # preset is selected. All keep every provider-hosted stage OFF, so each is preflight-clean.
+    _PRESETS: tuple[tuple[str, str, str, bool], ...] = (
+        (
+            "standard",
+            "Standard",
+            "The full stock pipeline: intake, parse, local contextualization and dense+sparse "
+            "embedding. Figure enrichment and metadata generation ship off (provider-hosted) — "
+            "opt them in per collection. The balanced default for most corpora.",
+            True,
+        ),
+        (
+            "light",
+            "Light (fast, local, free)",
+            "The cheapest searchable core: intake, parse, chunk and embed only — no figure "
+            "enrichment, contextualization or metadata generation. Pick it for the fastest, fully "
+            "local path to vectors.",
+            False,
+        ),
+        (
+            "ocr_scan",
+            "OCR scan",
+            "For scanned or image-only documents: the stock pipeline with a LOCAL OCR pass (uniform "
+            "RapidOCR) over every figure, so full-page scans become searchable text. Still fully "
+            "local and free — no provider-hosted enrichment.",
+            False,
+        ),
+        (
+            "high_precision",
+            "High precision",
+            "Finer, more focused chunks (smaller target size, more overlap) over the stock pipeline "
+            "for sharper hybrid retrieval — hybrid-ready out of the box (dense + sparse). Costs more "
+            "vectors per document.",
+            False,
+        ),
+    )
+
+    # name -> the builder method that assembles its stock blob (resolved server-side, not UI-sent).
+    _PRESET_BLOBS: dict[str, str] = {
+        "standard": "default_blob",
+        "light": "light_blob",
+        "ocr_scan": "ocr_scan_blob",
+        "high_precision": "high_precision_blob",
+    }
+
+    @classmethod
+    def presets(cls) -> list[PipelinePreset]:
+        """
+        The discoverable creation presets of the ingestion pipeline (name + label + rationale).
+
+        Carries only the metadata a schema-driven UI / the MCP needs to OFFER the choice — the blob
+        each selects is resolved server-side by ``preset_blob``. The default preset is flagged.
+
+        Returns:
+            list[PipelinePreset]: One entry per offered preset, in display order.
+        """
+        return [
+            PipelinePreset(name=name, label=label, description=description, is_default=is_default)
+            for name, label, description, is_default in cls._PRESETS
+        ]
+
+    @classmethod
+    def preset_blob(cls, preset: str | None) -> GroupNodeBlob:
+        """
+        The stock blob a creation preset selects (used when no explicit pipeline is posted).
+
+        An unknown or omitted preset falls back to the default (``standard``), mirroring the lenient
+        selection the create endpoint has always had.
+
+        Args:
+            preset (str | None): The preset name, or None for the default.
+
+        Returns:
+            GroupNodeBlob: The selected stock topology.
+        """
+        method_name = cls._PRESET_BLOBS.get(preset or "standard", "default_blob")
+        return getattr(cls, method_name)()
 
 
 __all__ = ["IngestPipeline"]

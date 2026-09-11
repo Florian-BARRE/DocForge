@@ -4,8 +4,10 @@
 // tagged with who filled it).
 
 import type { DocumentDetail, PageInfo } from "../../../api/explorer";
+import type { Navigate } from "../../../shell/view";
 import { theme } from "../../../theme";
 import { MetadataTable } from "../metadata/MetadataTable";
+import { DocumentFailureBanner } from "./DocumentFailureBanner";
 import { DownloadsPanel } from "./DownloadsPanel";
 import { SystemMetadataPanel } from "./SystemMetadataPanel";
 
@@ -24,11 +26,14 @@ interface OverviewTabProps {
   /** The document's page list — null until the overview tab has warmed it (see useDocumentTabs);
    *  SystemMetadataPanel degrades its page-derived facts gracefully while it's still null. */
   pages: PageInfo[] | null;
+  collectionId: string;
+  onNavigate: Navigate;
 }
 
-export function OverviewTab({ document, pages }: OverviewTabProps) {
+export function OverviewTab({ document, pages, collectionId, onNavigate }: OverviewTabProps) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: theme.space.l }}>
+      <DocumentFailureBanner document={document} collectionId={collectionId} onNavigate={onNavigate} />
       <section style={sectionStyle}>
         <h2 style={sectionTitleStyle}>System metadata</h2>
         <SystemMetadataPanel document={document} pages={pages} />

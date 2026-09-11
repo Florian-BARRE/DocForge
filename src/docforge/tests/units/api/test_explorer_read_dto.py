@@ -39,7 +39,12 @@ def _chunk(
     )
 
 
-def _document(*, enabled: bool = True) -> SimpleNamespace:
+def _document(
+    *,
+    enabled: bool = True,
+    status: str = "done",
+    chunk_count: int | None = 3,
+) -> SimpleNamespace:
     """A minimal document row carrying only what the list/detail mapping reads."""
     return SimpleNamespace(
         id=uuid.uuid4(),
@@ -52,14 +57,14 @@ def _document(*, enabled: bool = True) -> SimpleNamespace:
         language="en",
         title="Title",
         source_kind="digital_born",
-        status="done",
+        status=status,
         source_hash="h",
         pdf_blob_hash=None,
         simhash=None,
         pipeline_version="v1",
         created_at=None,
         enabled=enabled,
-        chunk_count=3,
+        chunk_count=chunk_count,
         warning_reason=None,
     )
 
@@ -117,3 +122,39 @@ def test_disabled_document_surfaces_enabled_false_in_list_and_detail(helpers) ->
     document = _document(enabled=False)
     assert helpers.list_item(document).enabled is False
     assert helpers.detail(document, []).enabled is False
+
+
+def test_failed_document_detail_carries_failure_reason_and_is_not_searchable(helpers) -> None:
+    """A failed document must surface WHY it failed and never present as searchable (B2)."""
+    document = _document(status="failed", enabled=True, chunk_count=None)
+    detail = helpers.detail(document, [], failure_reason="Upload rejected: file is empty")
+    assert detail.status == "failed"
+    assert detail.failure_reason == "Upload rejected: file is empty"
+    assert detail.searchable is False
+
+
+def test_zero_chunk_done_document_is_not_searchable(helpers) -> None:
+    """A DONE run that produced 0 chunks has nothing retrievable — not searchable despite enabled."""
+    document = _document(status="done", enabled=True, chunk_count=0)
+    detail = helpers.detail(document, [])
+    assert detail.searchable is False
+    assert detail.failure_reason is None
+
+
+def test_disabled_done_document_is_not_searchable(helpers) -> None:
+    """The user's enabled=False toggle alone drops a fully-ingested document off the searchable set."""
+    detail = helpers.detail(_document(status="done", enabled=False, chunk_count=3), [])
+    assert detail.searchable is False
+
+
+def test_enabled_done_document_with_chunks_is_searchable(helpers) -> None:
+    """The happy path: enabled + done + has chunks → searchable, no failure reason."""
+    detail = helpers.detail(_document(status="done", enabled=True, chunk_count=3), [])
+    assert detail.searchable is True
+    assert detail.failure_reason is None
+
+
+def test_legacy_unknown_chunk_count_does_not_forfeit_searchable(helpers) -> None:
+    """A legacy done+enabled row with an unknown (None) chunk count stays searchable (not penalised)."""
+    detail = helpers.detail(_document(status="done", enabled=True, chunk_count=None), [])
+    assert detail.searchable is True

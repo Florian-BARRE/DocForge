@@ -13,6 +13,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 # ====== Internal Project Imports ======
 from shared_libs.pipelines.nodes.openai_compat import (
     EndpointReachability,
+    LangChainClientPool,
     OpenAICompatHelpers,
     UsageAccumulator,
 )
@@ -76,14 +77,19 @@ class VlmOpenAICompatibleNode(BaseVlmNode):
         #    baked into the shared client) so THIS attempt's tokens fold into the base's per-run
         #    accumulator while the client stays reusable — a local sink threaded across the retry loop
         #    never clobbers a concurrent item.
-        model = OpenAICompatHelpers.chat(
-            config,
-            temperature=config.temperature,
-            max_tokens=config.max_tokens,
-            usage_sink=usage_sink,
-        )
-        answer = await model.ainvoke(
-            [SystemMessage(content=system_prompt), HumanMessage(content=content)]
+        #    The call self-heals a dead pooled socket left by an endpoint restart (connect-phase
+        #    error → evict + retry once on a fresh client), re-applying the sink binding each build.
+        answer = await LangChainClientPool.arun(
+            lambda: OpenAICompatHelpers.chat(
+                config,
+                temperature=config.temperature,
+                max_tokens=config.max_tokens,
+                usage_sink=usage_sink,
+            ),
+            lambda model: model.ainvoke(
+                [SystemMessage(content=system_prompt), HumanMessage(content=content)]
+            ),
+            label=f"vlm '{self.KIND}'",
         )
 
         # 3. No usable confidence from a chat VLM — non-empty answer = accepted.

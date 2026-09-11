@@ -37,6 +37,7 @@ export function CollectionPipelinePage({ collectionId }: CollectionPipelinePageP
   return (
     <div style={{ height: "100%", background: theme.color.bg }}>
       <StageRailPage
+        collectionId={collectionId}
         initialBlob={collection.pipeline as unknown as GroupBlob}
         onSave={async (blob) => {
           const updated = await updateCollection(collectionId, { pipeline: blob as unknown as Record<string, unknown> });

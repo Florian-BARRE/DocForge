@@ -85,6 +85,7 @@ export function SearchPipelineEditor(props: SearchPipelineEditorProps) {
             onChangeNodeConfig={editor.setNodeConfig}
             onSelectQueryTransform={editor.selectQueryTransform}
             onToggleRerank={editor.toggleRerank}
+            issues={editor.issues}
           />
         </div>
       </div>

@@ -13,7 +13,11 @@ from langchain_core.messages import HumanMessage, SystemMessage
 
 # ====== Internal Project Imports ======
 from shared_libs.pipelines.base import NodeUsage
-from shared_libs.pipelines.nodes.openai_compat import EndpointReachability, OpenAICompatHelpers
+from shared_libs.pipelines.nodes.openai_compat import (
+    EndpointReachability,
+    LangChainClientPool,
+    OpenAICompatHelpers,
+)
 from shared_libs.pipelines.registry import NodeRegistry
 from shared_libs.public_models import GenerationRequest, OpenAICompatConfig
 
@@ -63,18 +67,22 @@ class StructGenOpenAICompatibleNode(BaseStructGenNode):
         #    plain ``with_structured_output`` would swallow it. The step's optional ``seed`` pins
         #    reproducibility when a deployment sets it.
         config: StructGenConfig = self.config
-        model = OpenAICompatHelpers.chat(
-            endpoint,
-            temperature=request.temperature,
-            max_tokens=request.max_tokens,
-            seed=config.seed,
-            max_retries=config.max_retries,
-        )
-        structured = model.with_structured_output(schema, include_raw=True)
 
         # 2. Invoke on the system prompt + the text to extract from — result is {"raw", "parsed", …}.
-        result = await structured.ainvoke(
-            [SystemMessage(content=request.system_prompt), HumanMessage(content=request.text)]
+        #    The call self-heals a dead pooled socket left by an endpoint restart (connect-phase error
+        #    → evict + retry once on a fresh client, re-constraining it to the schema each build).
+        result = await LangChainClientPool.arun(
+            lambda: OpenAICompatHelpers.chat(
+                endpoint,
+                temperature=request.temperature,
+                max_tokens=request.max_tokens,
+                seed=config.seed,
+                max_retries=config.max_retries,
+            ),
+            lambda model: model.with_structured_output(schema, include_raw=True).ainvoke(
+                [SystemMessage(content=request.system_prompt), HumanMessage(content=request.text)]
+            ),
+            label=f"structgen '{self.KIND}'",
         )
 
         # 3. Stash the paid-call token usage (from the raw message) for the base ``run`` to stamp on

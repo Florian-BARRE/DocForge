@@ -107,12 +107,13 @@ export function StorageFootprintPanel({ collectionId, onNavigate }: StorageFootp
               </div>
 
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: t.space.m }}>
-                {STORAGE_STORES.map(({ key, label, color, emptyLabel }) => {
+                {STORAGE_STORES.map(({ key, label, technicalName, color, emptyLabel }) => {
                   const s = storeStats(storage, key);
                   return (
                     <StorageStoreBreakdown
                       key={key}
                       label={label}
+                      technicalName={technicalName}
                       swatchColor={color}
                       totalBytes={s.totalBytes}
                       sharePercent={storeSharePercent(s.totalBytes, storage.grand_total_bytes)}

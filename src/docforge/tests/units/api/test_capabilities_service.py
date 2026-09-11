@@ -15,11 +15,11 @@ from types import SimpleNamespace
 _SIDECAR_NAMES = ["gotenberg", "bge_server", "paddle_server", "mineru_server", "dots_ocr_server"]
 
 
-def _config() -> SimpleNamespace:
+def _config(*, auth_enabled: bool = False) -> SimpleNamespace:
     """A minimal stand-in for RUNTIME_CONFIG carrying only what describe() reads."""
     return SimpleNamespace(
         FASTAPI_APP_VERSION="test",
-        AUTH_ENABLED=False,
+        AUTH_ENABLED=auth_enabled,
         CAPABILITIES_BGE_SERVER_URL="http://bge_server:80",
         CAPABILITIES_PADDLE_SERVER_URL="http://paddle_server:80",
         CAPABILITIES_MINERU_SERVER_URL="http://mineru_server:80",
@@ -52,12 +52,30 @@ def _fake_probe(reachable: dict[str, bool], devices: dict[str, str] | None = Non
     return _FakeProbe()
 
 
-def _describe(reachable: dict[str, bool], devices: dict[str, str] | None = None):
+def _describe(
+    reachable: dict[str, bool],
+    devices: dict[str, str] | None = None,
+    *,
+    auth_enabled: bool = False,
+):
     """Run the async describe() to a CapabilitiesResponse with a faked probe."""
     from backend.libs.capabilities.service import CapabilitiesService  # noqa: PLC0415 — deferred
 
-    service = CapabilitiesService(_config(), _fake_probe(reachable, devices))
+    service = CapabilitiesService(
+        _config(auth_enabled=auth_enabled), _fake_probe(reachable, devices)
+    )
     return asyncio.run(service.describe())
+
+
+def test_auth_enabled_mirrors_runtime_config() -> None:
+    """B1 — /capabilities.auth_enabled must be the DEPLOYMENT's real AUTH_ENABLED, not a UI guess.
+
+    The UI dresses the whole key/token surface as protective; on an AUTH_ENABLED=false deployment
+    that is a false sense of security, so the frontend needs the true auth state to warn. It is
+    derived straight from RUNTIME_CONFIG — never a literal — so it flips with the config.
+    """
+    assert _describe({}, auth_enabled=False).auth_enabled is False
+    assert _describe({}, auth_enabled=True).auth_enabled is True
 
 
 def test_sidecar_backed_parsers_appear_only_when_their_sidecar_is_reachable() -> None:

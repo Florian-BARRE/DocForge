@@ -111,6 +111,7 @@ def _bundle() -> RunBundle:
                     dense=[1.0, 2.0, 3.0],
                     sparse=SparseVector(indices=[4], values=[0.5]),
                     fields={"keywords": [9.0, 9.0, 9.0]},
+                    field_sparse={"tags": SparseVector(indices=[2, 3], values=[0.1, 0.2])},
                 )
             ],
         ),
@@ -202,6 +203,10 @@ def test_qdrant_point_has_named_vectors_and_lean_payload(translated) -> None:
     assert point.dense["content_dense"] == [1.0, 2.0, 3.0]
     assert point.dense["meta_keywords_dense"] == [9.0, 9.0, 9.0]
     assert point.sparse["content_bm25"].indices == [4]
+    # The chunk-scope lexical meta vector is written under its named sparse vector (read side routes
+    # a lexical SearchTarget to exactly this name) — the mirror of meta_keywords_dense above.
+    assert point.sparse["meta_tags_bm25"].indices == [2, 3]
+    assert point.sparse["meta_tags_bm25"].values == [0.1, 0.2]
     assert point.payload == {
         "document_id": str(DOC),
         "chunk_index": 0,

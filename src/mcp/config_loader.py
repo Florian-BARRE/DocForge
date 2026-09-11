@@ -85,6 +85,17 @@ class McpConfig(EnvConfigLoader):
         pathlib.Path(_mcp_upload_dir_raw) if _mcp_upload_dir_raw else None
     )
 
+    # ───── Inline (base64) upload size cap ─────
+    # Decoded-size ceiling for upload_document_bytes / import_collection_bytes's content_base64
+    # argument. base64.b64decode materializes the whole payload in memory before any server-side
+    # size check ever runs, so an inline upload with no ceiling of its own is an easy way for one
+    # caller to OOM the MCP process. Default 100 MiB is generous for a single document but finite;
+    # a caller needing to move more should stage the file and use the path-based upload_document /
+    # import_collection tool instead (the SDK streams those from disk).
+    MCP_MAX_INLINE_UPLOAD_BYTES: int = env(
+        "MCP_MAX_INLINE_UPLOAD_BYTES", cast=int, default="104857600"
+    )
+
 
 # ─── Apply logging configuration AFTER class definition ───
 # In stdio mode, stdout is the MCP protocol channel — logs MUST go to stderr to avoid

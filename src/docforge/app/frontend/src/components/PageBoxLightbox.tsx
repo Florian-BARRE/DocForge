@@ -24,9 +24,21 @@ interface PageBoxLightboxProps {
   boxes: OverlayBox[];
   caption: string;
   onClose: () => void;
+  /** Navigate to the previous/next page without closing — omit both on a caller with no natural
+   *  page sequence (e.g. a single search hit's page). Left/Right arrow keys mirror the buttons. */
+  onPrev?: () => void;
+  onNext?: () => void;
 }
 
-export function PageBoxLightbox({ renderBlobHash, width, height, boxes, caption, onClose }: PageBoxLightboxProps) {
+const navButtonStyle: React.CSSProperties = {
+  position: "absolute", top: "50%", transform: "translateY(-50%)", width: 36, height: 36,
+  display: "flex", alignItems: "center", justifyContent: "center",
+  background: theme.color.panel, color: theme.color.text,
+  border: `1px solid ${theme.color.line}`, borderRadius: theme.radius.pill,
+  fontSize: theme.font.size.l, lineHeight: 1, cursor: "pointer", boxShadow: theme.shadow.pop,
+};
+
+export function PageBoxLightbox({ renderBlobHash, width, height, boxes, caption, onClose, onPrev, onNext }: PageBoxLightboxProps) {
   const captionId = useId();
   // Replaces the primitive's own window-level Escape listener — `useFocusTrap` covers Escape plus
   // Tab-cycling and focus restore in one place.
@@ -35,6 +47,10 @@ export function PageBoxLightbox({ renderBlobHash, width, height, boxes, caption,
   return createPortal(
     <div
       onClick={onClose}
+      onKeyDown={(e) => {
+        if (e.key === "ArrowLeft" && onPrev) { e.preventDefault(); onPrev(); }
+        else if (e.key === "ArrowRight" && onNext) { e.preventDefault(); onNext(); }
+      }}
       style={{
         position: "fixed", inset: 0, background: theme.color.overlay, backdropFilter: "blur(2px)", zIndex: 100,
         display: "flex", alignItems: "center", justifyContent: "center", padding: theme.space.l,
@@ -69,6 +85,16 @@ export function PageBoxLightbox({ renderBlobHash, width, height, boxes, caption,
         >
           ×
         </button>
+        {onPrev && (
+          <button type="button" onClick={onPrev} title="Previous page" aria-label="Previous page" style={{ ...navButtonStyle, left: -18 }}>
+            ‹
+          </button>
+        )}
+        {onNext && (
+          <button type="button" onClick={onNext} title="Next page" aria-label="Next page" style={{ ...navButtonStyle, right: -18 }}>
+            ›
+          </button>
+        )}
         <PageBoxOverlay
           renderBlobHash={renderBlobHash}
           width={width}

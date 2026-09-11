@@ -87,6 +87,10 @@ export const theme = {
       chrome: "var(--ir-chrome)",
     },
 
+    // A small physical drop-shadow under a light-coloured raised element (Switch's knob) — same
+    // near-black value in both palettes (index.css), like `overlay`/`overlaySubtle` below, since a
+    // cast shadow is a physical fact, not a themed surface colour.
+    knobShadow: "var(--knob-shadow)",
     // Modal backdrop scrim — same near-black value in both palettes (index.css), so a full-screen
     // dialog's overlay stays visually and semantically identical regardless of theme.
     overlay: "var(--overlay)",

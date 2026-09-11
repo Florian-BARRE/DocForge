@@ -5,24 +5,40 @@
 # stays orchestration and the liveness logic is unit-testable against plain rows.
 
 # ====== Standard Library Imports ======
+import uuid
 from collections import defaultdict
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from typing import Any
 
 # ====== Third-Party Library Imports ======
+from fastapi import HTTPException
 from loggerplusplus import loggerplusplus
 
 # ====== Internal Project Imports ======
 from config import RUNTIME_CONFIG
+from shared_libs.services.db.postgresql.apis.job_api import (
+    FailureAggregates,
+    TimeseriesAggregates,
+)
 from shared_libs.services.db.postgresql.tables import JobStatus as JobStatusEnum
 
 # ====== Local Project Imports ======
+from ...libs.auth import AuthPrincipal, AuthzGuard
 from .models import (
+    CollectionFailureBucket,
+    FailureBreakdown,
+    FailureBucket,
     JobStatus,
+    JobTimeseries,
+    TimeseriesBucket,
     WorkerActivity,
     WorkersLive,
 )
+
+# The hourly bucket width of the trends series, in seconds — one place so the SQL truncation
+# ("hour") and the reported ``bucket_seconds`` never drift apart.
+_BUCKET_SECONDS = 3600
 
 
 class CancelAction(StrEnum):
@@ -185,4 +201,183 @@ class WorkersLiveHelpers:
         return WorkersLive(workers=workers)
 
 
-__all__ = ["WorkersLiveHelpers", "JobCancellationHelpers", "CancelAction"]
+class JobScopeHelpers:
+    """Static helper enforcing the fleet-wide-vs-scoped gate shared by every fleet job endpoint."""
+
+    logger = loggerplusplus.bind(identifier="JobScopeHelpers")
+
+    def __new__(cls, *args: object, **kwargs: object) -> None:
+        raise TypeError("JobScopeHelpers is a static-only class and cannot be instantiated.")
+
+    @staticmethod
+    def assert_fleet_or_scoped(principal: AuthPrincipal, collection_id: uuid.UUID | None) -> None:
+        """
+        Enforce the same scope gate ``GET /jobs`` and ``/jobs/queue`` apply to a fleet/scoped read.
+
+        A named ``collection_id`` must pass the caller's collection scope (403 on a foreign one); an
+        omitted one is a FLEET-WIDE read, allowed only for a full-access key — a collection-scoped key
+        must name a collection it owns, so it can never read cross-tenant aggregates.
+
+        Args:
+            principal (AuthPrincipal): The authenticated caller.
+            collection_id (uuid.UUID | None): The requested scope, or None for fleet-wide.
+
+        Raises:
+            HTTPException: 403 when a scoped key requests a fleet-wide read or a foreign collection.
+        """
+        # 1. A named collection is gated by the caller's own scope.
+        if collection_id is not None:
+            AuthzGuard.assert_collection_scope(principal, str(collection_id))
+            return
+        # 2. Fleet-wide is full-access only — a scoped key must name a collection it owns.
+        if AuthzGuard.scoped_collections(principal) is not None:
+            raise HTTPException(
+                status_code=403,
+                detail="collection_id is required for a collection-scoped key (fleet-wide job "
+                "aggregates are restricted to full-access keys).",
+            )
+
+
+class FailureBreakdownHelpers:
+    """Static helper mapping the data-layer failure aggregates into the response model."""
+
+    logger = loggerplusplus.bind(identifier="FailureBreakdownHelpers")
+
+    def __new__(cls, *args: object, **kwargs: object) -> None:
+        raise TypeError(
+            "FailureBreakdownHelpers is a static-only class and cannot be instantiated."
+        )
+
+    @staticmethod
+    def build(
+        aggregates: FailureAggregates,
+        collection_id: uuid.UUID | None,
+        window_hours: int,
+        since: datetime,
+    ) -> FailureBreakdown:
+        """
+        Map the raw grouped counts into the ``FailureBreakdown`` response.
+
+        A null group key (an unattributed error class or a missing stage) surfaces as the literal
+        'unknown' so the UI never renders a blank bucket label.
+
+        Args:
+            aggregates (FailureAggregates): The three raw groupings + total from the data layer.
+            collection_id (uuid.UUID | None): The scope echoed back (None = fleet-wide).
+            window_hours (int): The window width echoed back.
+            since (datetime): The window start echoed back.
+
+        Returns:
+            FailureBreakdown: The panel-ready breakdown.
+        """
+        return FailureBreakdown(
+            collection_id=str(collection_id) if collection_id is not None else None,
+            window_hours=window_hours,
+            since=since,
+            total_failed=aggregates.total,
+            by_error_type=[
+                FailureBucket(label=label or "unknown", count=count)
+                for label, count in aggregates.by_error_type
+            ],
+            by_stage=[
+                FailureBucket(label=label or "unknown", count=count)
+                for label, count in aggregates.by_stage
+            ],
+            by_collection=[
+                CollectionFailureBucket(
+                    collection_id=str(coll_id), collection_name=name, count=count
+                )
+                for coll_id, name, count in aggregates.by_collection
+            ],
+        )
+
+
+class JobTrendsHelpers:
+    """Static helper turning the per-hour aggregates into contiguous sparkline buckets."""
+
+    logger = loggerplusplus.bind(identifier="JobTrendsHelpers")
+
+    def __new__(cls, *args: object, **kwargs: object) -> None:
+        raise TypeError("JobTrendsHelpers is a static-only class and cannot be instantiated.")
+
+    @staticmethod
+    def _floor_hour(moment: datetime) -> datetime:
+        """Floor an instant to its UTC hour boundary (the canonical bucket key)."""
+        return moment.astimezone(UTC).replace(minute=0, second=0, microsecond=0)
+
+    @classmethod
+    def assemble(
+        cls,
+        aggregates: TimeseriesAggregates,
+        collection_id: uuid.UUID | None,
+        window_hours: int,
+        since: datetime,
+        now: datetime | None = None,
+    ) -> JobTimeseries:
+        """
+        Build contiguous ascending hourly buckets and reconstruct the backlog from the aggregates.
+
+        The DB returns sparse hour rows (only hours with activity); this fills EVERY hour from the
+        window start to the current hour so a sparkline has no gaps. Each hour's backlog is rebuilt
+        as ``baseline + cumulative(arrivals) − cumulative(completions)`` at that hour's end (clamped at
+        zero to absorb any drift from pruned history). All bucket keys are normalised to the UTC hour,
+        so the deployment's database timezone never shifts a boundary.
+
+        Args:
+            aggregates (TimeseriesAggregates): The backlog baseline + arrival/completion hour buckets.
+            collection_id (uuid.UUID | None): The scope echoed back (None = fleet-wide).
+            window_hours (int): The window width echoed back.
+            since (datetime): The window start (already hour-aligned by the caller).
+            now (datetime | None): The reference end instant (defaults to now, UTC).
+
+        Returns:
+            JobTimeseries: The contiguous hourly series.
+        """
+        # 1. Index the sparse DB rows by their UTC hour key — arrivals, and completions split by status.
+        arrivals: dict[datetime, int] = {
+            cls._floor_hour(bucket): count for bucket, count in aggregates.arrivals
+        }
+        done: dict[datetime, int] = {}
+        failed: dict[datetime, int] = {}
+        for bucket, status, count in aggregates.completions:
+            target = done if status == JobStatusEnum.DONE else failed
+            target[cls._floor_hour(bucket)] = count
+
+        # 2. Walk every hour from the window start to the current hour, accumulating the backlog.
+        start = cls._floor_hour(since)
+        end = cls._floor_hour(now or datetime.now(UTC))
+        buckets: list[TimeseriesBucket] = []
+        backlog = aggregates.baseline
+        hour = start
+        while hour <= end:
+            created = arrivals.get(hour, 0)
+            hour_done = done.get(hour, 0)
+            hour_failed = failed.get(hour, 0)
+            backlog += created - (hour_done + hour_failed)
+            buckets.append(
+                TimeseriesBucket(
+                    bucket_start=hour,
+                    created=created,
+                    done=hour_done,
+                    failed=hour_failed,
+                    backlog=max(backlog, 0),
+                )
+            )
+            hour += timedelta(hours=1)
+
+        return JobTimeseries(
+            collection_id=str(collection_id) if collection_id is not None else None,
+            window_hours=window_hours,
+            bucket_seconds=_BUCKET_SECONDS,
+            buckets=buckets,
+        )
+
+
+__all__ = [
+    "WorkersLiveHelpers",
+    "JobCancellationHelpers",
+    "CancelAction",
+    "JobScopeHelpers",
+    "FailureBreakdownHelpers",
+    "JobTrendsHelpers",
+]

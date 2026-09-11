@@ -85,13 +85,19 @@ from docforge_sdk.models.ir import (
 )
 from docforge_sdk.models.jobs import (
     CancelResult,
+    CollectionFailureBucket,
+    FailureBreakdown,
+    FailureBucket,
     JobEvent,
     JobEventPayload,
     JobPage,
     JobStatus,
+    JobTimeseries,
     JobTrace,
+    NewFailures,
     QueueDepth,
     StageDurations,
+    TimeseriesBucket,
     WorkerActivity,
     WorkersLive,
 )
@@ -103,9 +109,19 @@ from docforge_sdk.models.pipelines import (
     InspectResponse,
     PipelineDesignResponse,
     PipelineIndexResponse,
+    PipelinePreset,
     PipelineSurface,
     StageApplyResponse,
     StageViewResponse,
+)
+from docforge_sdk.models.preview import (
+    PreviewChunk,
+    PreviewCost,
+    PreviewIrSummary,
+    PreviewJobAccepted,
+    PreviewJobResult,
+    PreviewResponse,
+    PreviewTraceNode,
 )
 from docforge_sdk.models.search import (
     BlockLocation,
@@ -229,14 +245,30 @@ MODELS: dict[str, type[BaseModel]] = {
     "WorkerActivity": WorkerActivity,
     "WorkersLive": WorkersLive,
     "CancelResult": CancelResult,
+    # Jobs observability (SRE triage/aggregation — GET /jobs/failures/* + /jobs/timeseries)
+    "FailureBucket": FailureBucket,
+    "CollectionFailureBucket": CollectionFailureBucket,
+    "FailureBreakdown": FailureBreakdown,
+    "TimeseriesBucket": TimeseriesBucket,
+    "JobTimeseries": JobTimeseries,
+    "NewFailures": NewFailures,
     # Pipelines (opaque graph JSON typed as dicts, but property names + required still 1:1)
     "PipelineSurface": PipelineSurface,
     "PipelineIndexResponse": PipelineIndexResponse,
     "PipelineDesignResponse": PipelineDesignResponse,
+    "PipelinePreset": PipelinePreset,
     "InspectResponse": InspectResponse,
     "EditResponse": EditResponse,
     "StageViewResponse": StageViewResponse,
     "StageApplyResponse": StageApplyResponse,
+    # Pipeline dry-run preview
+    "PreviewIrSummary": PreviewIrSummary,
+    "PreviewChunk": PreviewChunk,
+    "PreviewCost": PreviewCost,
+    "PreviewTraceNode": PreviewTraceNode,
+    "PreviewResponse": PreviewResponse,
+    "PreviewJobAccepted": PreviewJobAccepted,
+    "PreviewJobResult": PreviewJobResult,
     # Storage
     "S3FootprintModel": S3FootprintModel,
     "PostgresFootprintModel": PostgresFootprintModel,
@@ -377,6 +409,12 @@ SKIPPED: dict[str, str] = {
     "Body_import_collection_api_v1_collections_import_post": "FastAPI-generated multipart form schema "
     "— the SDK streams this import as raw httpx files/data parts (resources/transfers.py), not a JSON "
     "body model.",
+    "Body_preview_pipeline_api_v1_collections__collection_id__pipeline_preview_post": "FastAPI-generated "
+    "multipart form schema — the SDK sends the dry-run source as raw httpx files/data parts "
+    "(resources/collections.py preview_pipeline), not a JSON body model.",
+    "Body_submit_preview_job_api_v1_collections__collection_id__pipeline_preview_jobs_post": "FastAPI-"
+    "generated multipart form schema — the SDK sends the async dry-run source as raw httpx files/data "
+    "parts (resources/collections.py submit_preview_job), not a JSON body model.",
     # Opaque pipeline-graph JSON (59 schemas) — see _OPAQUE_PIPELINE_BLOB_REASON above.
     **{name: _OPAQUE_PIPELINE_BLOB_REASON for name in _PIPELINE_BLOB_SCHEMAS},
 }

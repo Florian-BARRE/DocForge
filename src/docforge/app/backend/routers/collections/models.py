@@ -23,6 +23,7 @@ from shared_libs.services.db import (
 # ====== Local Project Imports ======
 from ...libs.estimate import EstimateOverrides
 from ...libs.health import CollectionHealthSummary
+from ...libs.preview import PreviewResponse
 
 
 class FieldSpecModel(BaseModel):
@@ -115,7 +116,8 @@ class CollectionContractModel(BaseModel):
     is served on the discovery surface so a schema-driven UI renders the form with zero hardcoded
     field knowledge — exactly like a node's ``config_schema``. It deliberately excludes ``fields``
     (the metadata schema) and the ``pipeline`` / ``search`` graph blobs, which have their own
-    dedicated editors.
+    dedicated editors — the ``fields[]`` vocabulary is still discoverable via ``field_schema`` on
+    the same ``CollectionContractSchemaResponse``.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -139,12 +141,24 @@ class CollectionContractModel(BaseModel):
             "store (opt-in, clamped by the operator ceiling WORKER_TRACE_MAX_VERBOSITY)."
         ),
     )
-    preset: Literal["standard", "light"] | None = Field(
+    preset: Literal["standard", "light", "ocr_scan", "high_precision"] | None = Field(
         default=None,
         description=(
-            "Stock-blob selector used ONLY when ``pipeline`` is omitted: 'standard' (the default "
-            "full pipeline) or 'light' (a fast, local, free core — no figure enrich, contextualise "
-            "or metagen). An explicit ``pipeline`` always wins over this."
+            "Stock INGESTION-blob selector used ONLY when ``pipeline`` is omitted. 'standard' (the "
+            "default full pipeline), 'light' (a fast, local, free core — no figure enrich, "
+            "contextualise or metagen), 'ocr_scan' (a local OCR pass for scanned/image documents) "
+            "or 'high_precision' (finer chunks for sharper hybrid retrieval). Every preset keeps "
+            "provider-hosted stages off. Discover the full list (label + rationale) via "
+            "GET /pipelines/ingest → presets. An explicit ``pipeline`` always wins over this."
+        ),
+    )
+    search_preset: Literal["hybrid", "hybrid_rerank", "dense_only"] | None = Field(
+        default=None,
+        description=(
+            "Stock SEARCH-blob selector applied at creation. 'hybrid' (the default dense+sparse "
+            "fusion), 'hybrid_rerank' (hybrid then a cross-encoder rerank) or 'dense_only' (pure "
+            "semantic retrieval). Omitted → the stock hybrid default (stored as {}). Discover the "
+            "full list (label + rationale) via GET /pipelines/search → presets."
         ),
     )
 
@@ -222,19 +236,37 @@ class UpdateCollectionRequest(BaseModel):
 
 class CollectionContractSchemaResponse(BaseModel):
     """
-    The JSON Schema of the collection identity/limits contract — the discovery payload.
+    The full DISCOVERABLE vocabulary of a collection contract — no value has to be guessed.
 
     Mirrors a node's ``config_schema`` face: ``config_schema`` is the raw
     ``CollectionContractModel.model_json_schema()`` the frontend hands to its existing
     ``SchemaForm`` unchanged, so a new scalar contract field auto-surfaces in the UI with zero
-    frontend change.
+    frontend change. Beyond that identity/limits form, a purely-HTTP client (e.g. the MCP, which
+    cannot introspect the server's domain models) also needs the vocabulary the scalar schema does
+    NOT carry: the ``field_type``/``origin``/``scope`` enums of a metadata field, and the set of
+    accepted ``supported_formats`` tokens. Both are served here, straight from the canonical server
+    source, so an LLM never invents ``"str"`` or ``"pdf"`` and only learns it was wrong at a 422.
 
     Attributes:
         config_schema (dict[str, Any]): JSON Schema of the editable identity/limits contract.
+        field_schema (dict[str, Any]): JSON Schema of one metadata ``FieldSpec`` (carries the
+            ``field_type``/``origin``/``scope`` enums in its ``$defs``) — the vocabulary of the
+            ``fields[]`` the scalar contract deliberately omits.
+        supported_format_tokens (list[str]): Every upload format token a collection may declare in
+            ``supported_formats`` (e.g. ``"pdf"``, ``"docx"``, ``"md"``), from the pipeline's own
+            content-detection table.
     """
 
     config_schema: dict[str, Any] = Field(
         description="JSON Schema of the collection identity/limits contract (drives the UI form)."
+    )
+    field_schema: dict[str, Any] = Field(
+        description="JSON Schema of one metadata FieldSpec — carries the field_type/origin/scope "
+        "enums the identity/limits contract omits."
+    )
+    supported_format_tokens: list[str] = Field(
+        description="Every upload format token a collection may declare in supported_formats "
+        "(e.g. 'pdf', 'docx', 'md')."
     )
 
 
@@ -377,6 +409,35 @@ class CollectionStorageResponse(BaseModel):
         )
 
 
+class PreviewJobAccepted(BaseModel):
+    """Acknowledgement of an asynchronous (worker-side) dry-run preview submission."""
+
+    preview_id: str = Field(
+        description="The pollable preview id — GET the result endpoint with it until status is terminal."
+    )
+    status: str = Field(description="The initial job status (always 'pending' right after submit).")
+
+
+class PreviewJobResult(BaseModel):
+    """A poll of an asynchronous dry-run preview — its coarse status plus the report once complete."""
+
+    preview_id: str = Field(description="The preview id being polled.")
+    status: Literal["pending", "running", "done", "failed"] = Field(
+        description="Coarse job state: pending (queued) / running / done (result present) / failed "
+        "(the worker job itself crashed — distinct from a DATA failure, which is a done result with "
+        "ok=false)."
+    )
+    result: PreviewResponse | None = Field(
+        default=None,
+        description="The bounded dry-run report, present only when status is 'done' (else null). A "
+        "failed NODE is DATA here: status 'done' with result.ok = false.",
+    )
+    error: str | None = Field(
+        default=None,
+        description="The reason the worker job itself failed (status 'failed'), else null.",
+    )
+
+
 __all__ = [
     "FieldSpecModel",
     "CollectionModel",
@@ -390,4 +451,6 @@ __all__ = [
     "QdrantFootprintModel",
     "DocumentStorageModel",
     "CollectionStorageResponse",
+    "PreviewJobAccepted",
+    "PreviewJobResult",
 ]

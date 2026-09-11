@@ -7,6 +7,9 @@ from .mechanics import GraphMechanics, MechanicCard, MechanicsDescription
 # ---------------------- Artefacts (slot-type vocabulary) ---------------------- #
 from .artefacts import ArtefactCard, ArtefactCatalog
 
+# ---------------------- Presets (curated stock blobs) ---------------------- #
+from .presets import PipelinePreset
+
 # ---------------------- Explorer (built pipeline) ---------------------- #
 from .explorer import ExploredNode, PipelineExplorer
 
@@ -19,6 +22,7 @@ __all__ = [
     "MechanicsDescription",
     "ArtefactCard",
     "ArtefactCatalog",
+    "PipelinePreset",
     "ExploredNode",
     "PipelineExplorer",
 ]

@@ -6,6 +6,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { GroupBlob, Palette, StageAction, StageView, ValidationIssue } from "../../../api/types";
+import { issuesFromBuildError } from "../../../api/http";
 import { applyStageAction, getDesign, listPipelineDesigns, viewStages } from "../../../api/pipelines";
 import { useToast } from "../../../shell/toast";
 import type { StageRailActions } from "../actions";
@@ -67,7 +68,7 @@ export function useStageRailPage({ initialBlob, onBlobChange, onSave }: UseStage
         setBlob(seedBlob);
         setStages(viewResult.stages);
         const settledIssues = viewResult.build_error
-          ? [{ code: "build_error", location: "blob", message: viewResult.build_error }]
+          ? issuesFromBuildError(viewResult.build_error)
           : viewResult.issues;
         setIssues(settledIssues);
         setValid(settledIssues.length === 0);
@@ -114,10 +115,16 @@ export function useStageRailPage({ initialBlob, onBlobChange, onSave }: UseStage
         setBlob(result.blob);
         setStages(result.stages);
         setValid(result.valid);
-        setIssues(result.issues);
+        // A config value that violates the selected node's own schema bounds (e.g. le=100) fails to
+        // BUILD server-side — `issues` comes back empty and the failure only shows up in
+        // `build_error` (mirrors the `/stages/view` handling in the initial-load effect above), so
+        // the badge must fold it in the same way or it undercounts while Save stays correctly
+        // disabled (`valid=false`).
+        const settledIssues = result.build_error ? issuesFromBuildError(result.build_error) : result.issues;
+        setIssues(settledIssues);
         setNotices(result.notices);
         setApplyError(null);
-        onBlobChangeRef.current?.(result.blob, result.valid, result.issues);
+        onBlobChangeRef.current?.(result.blob, result.valid, settledIssues);
       } catch (error) {
         setApplyError(error instanceof Error ? error.message : String(error));
       } finally {
@@ -203,7 +210,7 @@ export function useStageRailPage({ initialBlob, onBlobChange, onSave }: UseStage
   }, [blob, onSave, valid, busy, debouncePending, toast]);
 
   return {
-    palette, stages, valid, issues, notices, loadError, applyError, busy, debouncePending, saving, saveError,
+    palette, stages, blob, valid, issues, notices, loadError, applyError, busy, debouncePending, saving, saveError,
     actions, handleSave, retryLoad,
   };
 }

@@ -46,9 +46,60 @@ export class HttpError extends Error {
   }
 }
 
+// Matches pydantic v2's own `str(ValidationError)` header, e.g. "1 validation error for
+// QueryNormalizeConfig" or "3 validation errors for StageConfig" — the model name is internal
+// plumbing, never useful to an end user. NOT anchored to the string start: the write-boundary
+// wraps it in its own prefix (e.g. "Pipeline blob cannot be built: 1 validation error for …"), and
+// that wrapper prose is just as uninteresting to an end user as the header itself — both get
+// dropped, leaving only the per-field body.
+const PYDANTIC_HEADER_RE = /\d+ validation errors? for \S+\s*\n/;
+
+/**
+ * Turns a raw `str(pydantic.ValidationError)` dump — optionally wrapped in a caller's own prefix
+ * prose — into one issue per offending field. Strips everything up to and including the
+ * model-name header, the `[type=..., input_value=..., input_type=...]` technical bracket, and the
+ * "For further information visit https://errors.pydantic.dev/..." line, so a config-validation
+ * failure reads as "field: message" instead of an internals dump.
+ *
+ * Returns `[]` when `raw` doesn't contain the pydantic shape — callers fall back to the raw string.
+ */
+export function humanizePydanticError(raw: string): ApiIssue[] {
+  const header = PYDANTIC_HEADER_RE.exec(raw);
+  if (!header) return [];
+  const body = raw.slice(header.index + header[0].length);
+  const issues: ApiIssue[] = [];
+  let currentLocation: string | undefined;
+  for (const line of body.split("\n")) {
+    if (/^\s*For further information visit/.test(line)) continue;
+    if (/^\S/.test(line)) {
+      // An un-indented line names the offending field (e.g. "candidate_multiplier", or "a.0.b" for
+      // a nested/indexed one) — pydantic's own dotted-path convention.
+      currentLocation = line.trim();
+      continue;
+    }
+    const message = line.trim().replace(/\s*\[type=.*\]\s*$/, "");
+    if (message) issues.push({ location: currentLocation, message });
+  }
+  return issues;
+}
+
+/** One issue per offending field for a build/inspect `build_error` string — most often a
+ *  `str(pydantic.ValidationError)` dump (see `humanizePydanticError`), sometimes an engine-level
+ *  one-liner (e.g. "duplicate_unique_node") that stays a single generic issue verbatim. Returns
+ *  the same `{code, location, message}` shape as the server's own `ValidationIssue` (import type
+ *  lives in `api/types.ts` — kept local here to avoid a dependency the other way). */
+export function issuesFromBuildError(raw: string): { code: string; location: string; message: string }[] {
+  const parsed = humanizePydanticError(raw);
+  if (!parsed.length) return [{ code: "build_error", location: "blob", message: raw }];
+  return parsed.map((issue) => ({ code: "build_error", location: issue.location ?? "blob", message: issue.message }));
+}
+
 /** The backend's several `detail` shapes, flattened into one issue list. */
 function normalizeDetail(detail: unknown): ApiIssue[] {
-  if (typeof detail === "string") return [{ message: detail }];
+  if (typeof detail === "string") {
+    const pydanticIssues = humanizePydanticError(detail);
+    return pydanticIssues.length ? pydanticIssues : [{ message: detail }];
+  }
   if (Array.isArray(detail))
     return detail.map((entry) => {
       if (typeof entry === "string") return { message: entry };

@@ -238,6 +238,28 @@ class RUNTIME_CONFIG(EnvConfigLoader):
     # control, NOT per-call inside the pure nodes. See docs/PROD-HARDENING.md.
     PROVIDER_EGRESS_ALLOWLIST = env("PROVIDER_EGRESS_ALLOWLIST", required=False, default="")
 
+    # ───── Pipeline dry-run preview (worker job — non-persistent) ─────
+    # A preview JOB runs the INGEST graph on ONE document exactly like a real ingestion (this worker
+    # has docling + every heavy dep the app image lacks, so it covers the general case the inline
+    # fast-lane cannot parse), but persists NOTHING: no document/chunk row, no S3 blob, no Qdrant
+    # point, no execution-tree write. Its bounded report is RETURNED as the arq job result (kept in
+    # Redis for WORKER_PREVIEW_RESULT_TTL_SECONDS so the client can poll it), never written to a table.
+    WORKER_PREVIEW_RUN_TIMEOUT_SECONDS = env(
+        "WORKER_PREVIEW_RUN_TIMEOUT_SECONDS", cast=float, default=300.0
+    )
+    WORKER_PREVIEW_MAX_CHUNKS = env("WORKER_PREVIEW_MAX_CHUNKS", cast=int, default=20)
+    # Size ceiling when rehydrating an already-ingested document's original bytes for a preview — a
+    # larger original is refused rather than buffered whole (mirrors the app's PREVIEW_MAX_BYTES).
+    WORKER_PREVIEW_MAX_BYTES = env("WORKER_PREVIEW_MAX_BYTES", cast=int, default=10 * 1024 * 1024)
+    WORKER_PREVIEW_CHUNK_TEXT_MAX_CHARS = env(
+        "WORKER_PREVIEW_CHUNK_TEXT_MAX_CHARS", cast=int, default=2000
+    )
+    # TTL (seconds) the preview job's result is retained in Redis for the client to poll. Short by
+    # design — a preview is an interactive, throwaway artefact, not durable state.
+    WORKER_PREVIEW_RESULT_TTL_SECONDS = env(
+        "WORKER_PREVIEW_RESULT_TTL_SECONDS", cast=float, default=1800.0
+    )
+
     # ───── Execution-trace capture ─────
     # The operator CEILING on execution-trace verbosity: a per-collection ``trace_verbosity`` is
     # honoured only up to this bound (the worker clamps ``min(collection, ceiling)``). Default "full"

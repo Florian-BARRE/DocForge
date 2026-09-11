@@ -13,6 +13,8 @@ test, so the reuse asserted here is strictly WITHIN a single test.
 
 import asyncio
 
+import httpx
+import openai
 import pytest
 
 from shared_libs.pipelines.nodes.openai_compat import (
@@ -175,3 +177,129 @@ def test_shutdown_closes_transports_and_clears(monkeypatch: pytest.MonkeyPatch) 
     assert transport.close_calls == 1
     assert LangChainClientPool._chat_clients == {}
     assert LangChainClientPool._embed_clients == {}
+
+
+# ==================== restart resilience (arun() self-heal) ====================
+
+_CHAT_KWARGS = dict(
+    base_url="http://x/v1",
+    api_key="k",
+    model="m",
+    temperature=0.0,
+    max_tokens=None,
+    timeout=30.0,
+    seed=None,
+    max_retries=0,
+)
+
+
+def _connect_error() -> openai.APIConnectionError:
+    """An openai APIConnectionError caused by a connect-phase httpx error (no byte sent → replayable)."""
+    error = openai.APIConnectionError(request=httpx.Request("POST", "http://x/v1"))
+    error.__cause__ = httpx.ConnectError("All connection attempts failed")
+    return error
+
+
+class _Binding:
+    """Stand-in for a with_config RunnableBinding — its ``.bound`` is the pooled client (vlm/structgen)."""
+
+    def __init__(self, bound: object) -> None:
+        self.bound = bound
+
+
+def test_arun_evicts_recreates_and_retries_once_on_connect_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A dead-socket connect error evicts the pooled client, recreates it, and replays the op once."""
+    constructions: list[dict] = []
+    monkeypatch.setattr(client_pool_module, "ChatOpenAI", _counting_chat(constructions))
+    seen: list = []
+
+    async def _op(model: object) -> str:
+        seen.append(model)
+        if len(seen) == 1:
+            raise _connect_error()
+        return "ok"
+
+    result = asyncio.run(
+        LangChainClientPool.arun(lambda: LangChainClientPool.chat(**_CHAT_KWARGS), _op)
+    )
+
+    assert result == "ok"
+    assert len(seen) == 2  # one failed attempt + one retry
+    assert seen[0] is not seen[1]  # the retry ran on a FRESH client, not the dead one
+    assert seen[0].root_async_client.close_calls == 1  # the dead client's transport was closed
+    assert len(constructions) == 2  # original + recreated
+    assert (
+        LangChainClientPool.chat(**_CHAT_KWARGS) is seen[1]
+    )  # the healthy fresh client stays pooled
+
+
+def test_arun_evicts_the_pooled_client_behind_a_binding(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The evict unwraps a with_config binding to reach and drop the real pooled client."""
+    constructions: list[dict] = []
+    monkeypatch.setattr(client_pool_module, "ChatOpenAI", _counting_chat(constructions))
+    seen: list = []
+
+    async def _op(resource: object) -> str:
+        seen.append(resource)
+        if len(seen) == 1:
+            raise _connect_error()
+        return "ok"
+
+    result = asyncio.run(
+        LangChainClientPool.arun(lambda: _Binding(LangChainClientPool.chat(**_CHAT_KWARGS)), _op)
+    )
+
+    assert result == "ok"
+    assert seen[0].bound is not seen[1].bound  # a fresh underlying client backed the retry
+    assert seen[0].bound.root_async_client.close_calls == 1  # the dead pooled client was closed
+    assert len(constructions) == 2
+
+
+def test_arun_does_not_retry_a_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A read/connect timeout may follow a sent request — re-raised, never replayed."""
+    monkeypatch.setattr(client_pool_module, "ChatOpenAI", _counting_chat([]))
+    seen: list = []
+
+    async def _op(model: object) -> str:
+        seen.append(model)
+        raise openai.APITimeoutError(request=httpx.Request("POST", "http://x/v1"))
+
+    with pytest.raises(openai.APITimeoutError):
+        asyncio.run(LangChainClientPool.arun(lambda: LangChainClientPool.chat(**_CHAT_KWARGS), _op))
+
+    assert len(seen) == 1  # NOT replayed
+    assert LangChainClientPool.chat(**_CHAT_KWARGS) is seen[0]  # the client was not evicted
+
+
+def test_arun_does_not_retry_a_non_connect_cause(monkeypatch: pytest.MonkeyPatch) -> None:
+    """An APIConnectionError wrapping a read/write error (bytes may have been sent) is not replayed."""
+    monkeypatch.setattr(client_pool_module, "ChatOpenAI", _counting_chat([]))
+    seen: list = []
+
+    async def _op(model: object) -> str:
+        seen.append(model)
+        error = openai.APIConnectionError(request=httpx.Request("POST", "http://x/v1"))
+        error.__cause__ = httpx.ReadError("response half-read")
+        raise error
+
+    with pytest.raises(openai.APIConnectionError):
+        asyncio.run(LangChainClientPool.arun(lambda: LangChainClientPool.chat(**_CHAT_KWARGS), _op))
+
+    assert len(seen) == 1  # NOT replayed — only a connect-phase failure is idempotency-safe
+
+
+def test_arun_reraises_when_the_fresh_client_also_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The endpoint is still down: after one evict+retry the connect error propagates (no loop)."""
+    monkeypatch.setattr(client_pool_module, "ChatOpenAI", _counting_chat([]))
+    seen: list = []
+
+    async def _op(model: object) -> str:
+        seen.append(model)
+        raise _connect_error()
+
+    with pytest.raises(openai.APIConnectionError):
+        asyncio.run(LangChainClientPool.arun(lambda: LangChainClientPool.chat(**_CHAT_KWARGS), _op))
+
+    assert len(seen) == 2  # exactly one retry, then give up

@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 # ====== Standard Library Imports ======
+import math
 from typing import TYPE_CHECKING
 
 # ====== Third-Party Library Imports ======
@@ -18,22 +19,47 @@ from starlette.applications import Starlette
 from .auth import BearerPassthroughMiddleware
 from .error_translation import ErrorTranslatingFastMCP
 from .path_guard import PathGuard
-from .tools import register_all
+from .tools import DEFAULT_MAX_INLINE_UPLOAD_BYTES, register_all
 
 if TYPE_CHECKING:
     # Only needed for the type annotation (its dynamically-populated env attributes are typed there).
     from config_loader import McpConfig
+
+# base64 inflates a payload by 4/3 (3 raw bytes -> 4 encoded chars, plus padding); the mcp SDK's
+# StreamableHTTPSessionManager rejects the whole HTTP request with a 413 BEFORE it ever reaches a
+# tool once the raw JSON-RPC body exceeds Settings.max_request_body_size (default 4 MiB — see
+# mcp.server.transport_security.DEFAULT_MAX_REQUEST_BODY_SIZE). Left at that default,
+# upload_document_bytes/import_collection_bytes's own MCP_MAX_INLINE_UPLOAD_BYTES ceiling (100 MiB
+# by default) is unreachable: any base64 payload over ~3 MiB of raw bytes 413s at the transport
+# before decode_base64_arg's own, more actionable, ToolError ever runs.
+_BASE64_EXPANSION_FACTOR = 4 / 3
+# Flat margin absorbing the surrounding JSON-RPC envelope (tool name, other arguments like
+# filename/collection_id/metadata, structural quoting/braces) on top of the base64 string itself.
+_REQUEST_ENVELOPE_MARGIN_BYTES = 1 * 1024 * 1024
 
 # Instructions surfaced to the connected LLM so it knows what DocForge is and how to start.
 _INSTRUCTIONS = (
     "DocForge is a document intelligence platform. Use these tools to manage collections of "
     "documents, upload files, inspect their parsed pages/chunks/IR, and run hybrid semantic + "
     "keyword search over indexed content. Start with list_collections to learn what is "
-    "available; only documents with status 'done' are searchable."
+    "available; only documents with status 'done' are searchable.\n\n"
+    "Typical end-to-end flow: call get_collection_contract_schema() first to learn the exact "
+    "field_type/origin/scope enums and supported format tokens, then create_collection(...) — "
+    "pass preset='light' for a fast, config-free pipeline to get started quickly. Upload a "
+    "document with upload_document (server-local file path) or, when connected remotely over "
+    "streamable-HTTP and you hold the file's bytes yourself, upload_document_bytes "
+    "(base64-encoded content, no filesystem access needed). Every upload/reingest returns a "
+    "job_id — call wait_for_job(job_id) to block until ingestion finishes (or times out) "
+    "instead of polling get_job yourself. Once a document's status is 'done', use "
+    "search_collection to query it."
 )
 
 
-def build_mcp(sdk: AsyncClient, path_guard: PathGuard | None = None) -> FastMCP:
+def build_mcp(
+    sdk: AsyncClient,
+    path_guard: PathGuard | None = None,
+    max_inline_upload_bytes: int = DEFAULT_MAX_INLINE_UPLOAD_BYTES,
+) -> FastMCP:
     """
     Build the FastMCP server with every DocForge tool registered.
 
@@ -44,6 +70,10 @@ def build_mcp(sdk: AsyncClient, path_guard: PathGuard | None = None) -> FastMCP:
             selected transport. Left unset here (e.g. by a test building a bare server), the guard
             defaults to the FAIL-CLOSED, HTTP-confined stance with no inbox configured — every
             path-based tool call is refused rather than silently allowed.
+        max_inline_upload_bytes (int): Decoded-size ceiling for `upload_document_bytes` /
+            `import_collection_bytes`'s `content_base64` argument (operator-configured via
+            `MCP_MAX_INLINE_UPLOAD_BYTES`). entrypoint.py always passes McpConfig's value; left
+            unset here it falls back to the same 100 MiB default as the config's own default.
 
     Returns:
         FastMCP: The configured MCP server (transport-agnostic).
@@ -65,7 +95,7 @@ def build_mcp(sdk: AsyncClient, path_guard: PathGuard | None = None) -> FastMCP:
         instructions=_INSTRUCTIONS,
         transport_security=TransportSecuritySettings(enable_dns_rebinding_protection=False),
     )
-    register_all(mcp, sdk, guard)
+    register_all(mcp, sdk, guard, max_inline_upload_bytes)
     return mcp
 
 
@@ -92,6 +122,14 @@ def build_http_app(mcp: FastMCP, config: type[McpConfig]) -> Starlette:
     mcp.settings.streamable_http_path = config.MCP_HTTP_PATH
     mcp.settings.stateless_http = True
     mcp.settings.json_response = True
+    # Raise the transport's raw-HTTP-body ceiling (mcp SDK default: 4 MiB) so it never 413s a
+    # base64 payload that upload_document_bytes/import_collection_bytes would otherwise accept —
+    # derived from MCP_MAX_INLINE_UPLOAD_BYTES rather than its own env var, so the two limits can
+    # never drift apart.
+    mcp.settings.max_request_body_size = (
+        math.ceil(config.MCP_MAX_INLINE_UPLOAD_BYTES * _BASE64_EXPANSION_FACTOR)
+        + _REQUEST_ENVELOPE_MARGIN_BYTES
+    )
 
     # 2. Materialise the streamable-HTTP Starlette app and capture the caller's bearer per request
     app = mcp.streamable_http_app()

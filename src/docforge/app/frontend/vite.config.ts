@@ -9,8 +9,16 @@ export default defineConfig({
     host: true,
     port: 5173,
     // In the dev container the API is another service — the target comes from the env;
-    // plain local dev keeps the localhost default.
-    proxy: { "/api": process.env.VITE_API_PROXY_TARGET ?? "http://127.0.0.1:8000" },
+    // plain local dev keeps the localhost default. `/capabilities` and `/health` live OUTSIDE the
+    // `/api/v1` prefix (deployment self-description + liveness, fetched bare so they work before
+    // any auth/versioning concern) — without them listed here, Vite falls through to its SPA
+    // history-fallback and serves index.html instead of JSON, so e.g. the auth-off banner can never
+    // read `auth_enabled` in dev (prod is same-origin behind FastAPI, unaffected).
+    proxy: {
+      "/api": process.env.VITE_API_PROXY_TARGET ?? "http://127.0.0.1:8000",
+      "/capabilities": process.env.VITE_API_PROXY_TARGET ?? "http://127.0.0.1:8000",
+      "/health": process.env.VITE_API_PROXY_TARGET ?? "http://127.0.0.1:8000",
+    },
   },
   build: {
     outDir: "dist",

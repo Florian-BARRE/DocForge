@@ -7,6 +7,9 @@
 # ====== Standard Library Imports ======
 import base64
 
+# ====== Third-Party Library Imports ======
+import httpx
+
 # ====== Internal Project Imports ======
 from shared_libs.pipelines.base import NodeUsage
 from shared_libs.pipelines.nodes.http_pool import HttpClientPool
@@ -59,10 +62,8 @@ class OcrMistralNode(BaseOcrNode):
             },
         }
         page_count = 0
-        # A pooled client keeps the connection alive across retries — the bearer rides per-request.
-        client = HttpClientPool.get(base_url=config.base_url, timeout=config.timeout_seconds)
 
-        async def _post() -> str:
+        async def _post(client: httpx.AsyncClient) -> str:
             """POST and join the pages' markdown — the retryable network operation."""
             nonlocal page_count
             response = await client.post(
@@ -76,9 +77,12 @@ class OcrMistralNode(BaseOcrNode):
             page_count = len(pages)
             return "\n\n".join(page.get("markdown", "") for page in pages).strip()
 
-        # 2. Run under the shared bounded retry; a non-transient error re-raises at once.
+        # 2. The pooled client keeps the connection alive across retries (bearer rides per-request)
+        #    and self-heals a dead socket; a non-transient error re-raises at once.
         text = await NetworkRetry.run(
-            _post,
+            lambda: HttpClientPool.run(
+                _post, base_url=config.base_url, timeout=config.timeout_seconds
+            ),
             max_retries=config.max_retries,
             retry_backoff_seconds=config.retry_backoff_seconds,
             label=f"ocr '{self.KIND}'",

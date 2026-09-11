@@ -6,6 +6,7 @@
 # ====== Third-Party Library Imports ======
 from arq import cron
 from arq.connections import RedisSettings
+from arq.worker import func
 
 # ====== Internal Project Imports ======
 from config import RUNTIME_CONFIG
@@ -23,6 +24,7 @@ from .libs.jobs import (
     gc_trace_payloads,
     import_collection,
     ingest_document,
+    preview_pipeline,
     reap_stuck_jobs,
     reap_stuck_transfers,
     with_correlation,
@@ -175,6 +177,15 @@ def create_worker_settings() -> type:
             with_correlation(backfill_collection_meta_vectors),
             with_correlation(export_collection),
             with_correlation(import_collection),
+            # The preview job RETURNS its bounded report as the arq job result; unlike every other
+            # task (which is polled via a DB row and keeps no result), this one keeps its result in
+            # Redis for WORKER_PREVIEW_RESULT_TTL_SECONDS so the client can poll it, then it expires.
+            # The registered name stays "preview_pipeline" (func preserves it) to match the enqueue.
+            func(
+                with_correlation(preview_pipeline),
+                name="preview_pipeline",
+                keep_result=RUNTIME_CONFIG.WORKER_PREVIEW_RESULT_TTL_SECONDS,
+            ),
         ]
         cron_jobs = (
             reaper_crons

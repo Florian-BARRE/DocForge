@@ -102,16 +102,27 @@ export function humanizeFieldUnit(name: string): string | undefined {
   return UNIT_SUFFIX_PATTERNS.find(([pattern]) => pattern.test(name))?.[1];
 }
 
-// A field whose wire name smells like a credential — masked as `type="password"` in SchemaField so
-// it isn't shoulder-surfable on screen. Purely a rendering choice (same input, same value/onChange
+// A field whose wire name IS a real credential — masked as `type="password"` in SchemaField so it
+// isn't shoulder-surfable on screen. Purely a rendering choice (same input, same value/onChange
 // wiring): it does not imply the backend redacts or round-trips the value specially, unlike the
 // search pipeline's own `__redacted__` convention (see SearchQueryCard) which is a distinct,
 // backend-driven behaviour this generic schema-form does not have.
-const SECRET_NAME_RE = /(secret|api[_-]?key|password|token)/i;
+//
+// Exact leaf names only (matched on the whole field name, or after a trailing `_` — e.g. a future
+// `basic_auth_password`) — mirrors the backend's own `SECRET_FIELDS` frozenset
+// (`shared/libs/pipelines/blob_secrets.py`), the ONE definition of "what counts as a secret" across
+// every node config (also used server-side to mask outbound blobs / restore on PATCH / redact export
+// bundles). No schema flag exposes this over the wire today, so this is a deliberate frontend mirror
+// — keep it in lockstep with `SECRET_FIELDS` if that ever changes. A prior *substring* regex
+// (`/token/i`) masked `tokenizer_encoding` (Chunk step's tiktoken encoding name, e.g. `cl100k_base` —
+// a public identifier, not a secret) as a password field; substring matching is exactly the class of
+// bug an exact-leaf allowlist rules out.
+const SECRET_LEAF_NAMES = ["api_key", "password"];
 
 /** Whether a wire field name should render as a masked (`type="password"`) control. */
 export function isSecretFieldName(name: string): boolean {
-  return SECRET_NAME_RE.test(name);
+  const lower = name.toLowerCase();
+  return SECRET_LEAF_NAMES.some((leaf) => lower === leaf || lower.endsWith(`_${leaf}`));
 }
 
 /** The label a `SchemaField` should render for a wire field name. */

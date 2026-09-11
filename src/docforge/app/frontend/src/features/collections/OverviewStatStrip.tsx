@@ -11,6 +11,7 @@ import type { Navigate } from "../../shell/view";
 import { theme as t } from "../../theme";
 import { lastIngestLabel } from "./collectionHealth";
 import { MetaLine, StatChip } from "./OverviewCardPrimitives";
+import { bytesToMb } from "./wizard/wizardTypes";
 
 interface OverviewStatStripProps {
   collection: Collection;
@@ -28,7 +29,7 @@ interface OverviewStatStripProps {
 export function OverviewStatStrip({ collection, docs, fields, health, jobs, collectionId, onNavigate }: OverviewStatStripProps) {
   const enabledDocs = docs?.filter((d) => d.enabled).length ?? 0;
   const requiredFields = fields.filter((f) => f.required).length;
-  const maxSizeMb = (collection.max_file_size_bytes / (1024 * 1024)).toFixed(1);
+  const maxSizeMb = bytesToMb(collection.max_file_size_bytes);
   const vectorCount = health?.search.index.vector_count;
   const pendingJobs = jobs?.filter((j) => j.status === "pending").length ?? 0;
   const runningJobs = jobs?.filter((j) => j.status === "running").length ?? 0;
@@ -77,7 +78,7 @@ export function OverviewStatStrip({ collection, docs, fields, health, jobs, coll
         />
         <StatChip
           label="Max file"
-          value={`${maxSizeMb} MB`}
+          value={`${maxSizeMb} MiB`}
           sub="per upload"
           onClick={() => onNavigate({ name: "collection-edit", collectionId })}
         />

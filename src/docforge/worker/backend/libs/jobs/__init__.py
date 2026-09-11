@@ -1,6 +1,9 @@
 # ---------------------- Ingestion job ---------------------- #
 from .core import ingest_document
 
+# ---------------------- Non-persistent dry-run preview job ---------------------- #
+from .preview import preview_pipeline
+
 # ---------------------- Maintenance jobs ---------------------- #
 from .backfill import backfill_collection_filters, backfill_collection_meta_vectors
 from .reaper import reap_stuck_jobs
@@ -37,6 +40,7 @@ from .correlation import with_correlation
 # ------------------- Public API ------------------- #
 __all__ = [
     "ingest_document",
+    "preview_pipeline",
     "with_correlation",
     "backfill_collection_filters",
     "backfill_collection_meta_vectors",

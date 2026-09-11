@@ -50,7 +50,7 @@ def main() -> None:
         confine=McpConfig.MCP_TRANSPORT != "stdio",
         inbox_dir=McpConfig.MCP_UPLOAD_DIR,
     )
-    mcp = build_mcp(sdk, path_guard)
+    mcp = build_mcp(sdk, path_guard, McpConfig.MCP_MAX_INLINE_UPLOAD_BYTES)
 
     # 4. stdio transport — local protocol over stdin/stdout (no network, contextvar never set)
     if McpConfig.MCP_TRANSPORT == "stdio":

@@ -79,6 +79,12 @@ class JobStatus(BaseModel):
         description="A RUNNING job idle past the stall threshold — an early wedge warning surfaced "
         "before the worker reaper hard-fails it."
     )
+    duration_seconds: float | None = Field(
+        default=None,
+        description="Wall-clock run time in seconds: finished_at − started_at for a terminal job, or "
+        "now − started_at for a still-running one (the elapsed time). None while the job is queued "
+        "(never started). The sortable 'duration' column of the triage view.",
+    )
     total_prompt_tokens: int = Field(
         description="Document's lifetime input tokens across paid text-gen (LLM/VLM/structgen) calls."
     )
@@ -138,6 +144,12 @@ class JobStatus(BaseModel):
             and job.updated_at is not None
             and (datetime.now(UTC) - job.updated_at).total_seconds() > STALLED_AFTER_SECONDS
         )
+        # Duration: a terminal job's wall-clock run, or a running job's elapsed time so far. A queued
+        # job never started, so it has no duration (None — sorts last in the triage 'duration' column).
+        duration_seconds: float | None = None
+        if job.started_at is not None:
+            end = job.finished_at if job.finished_at is not None else datetime.now(UTC)
+            duration_seconds = (end - job.started_at).total_seconds()
         return cls(
             job_id=str(job.id),
             document_id=str(job.document_id),
@@ -155,6 +167,7 @@ class JobStatus(BaseModel):
             finished_at=job.finished_at,
             updated_at=job.updated_at,
             stalled=stalled,
+            duration_seconds=duration_seconds,
             total_prompt_tokens=job.total_prompt_tokens,
             total_completion_tokens=job.total_completion_tokens,
             cost_usd=float(job.cost_usd),
@@ -431,6 +444,115 @@ class CancelResult(BaseModel):
     detail: str = Field(description="A human-readable description of what happened.")
 
 
+class FailureBucket(BaseModel):
+    """One failure-breakdown bucket — a cause/stage label and how many failed jobs carry it."""
+
+    label: str = Field(
+        description="The bucket's value — an error class (by_error_type), a stage/node id (by_stage), "
+        "or the literal 'unknown' when the underlying column was null (unattributed failure)."
+    )
+    count: int = Field(description="Number of failed jobs in this bucket over the window.")
+
+
+class CollectionFailureBucket(BaseModel):
+    """One failure-breakdown bucket grouped by collection — id, name and failure count."""
+
+    collection_id: str = Field(description="The collection the failures belong to.")
+    collection_name: str | None = Field(
+        default=None, description="The collection's name (None when the collection row is gone)."
+    )
+    count: int = Field(description="Number of failed jobs in this collection over the window.")
+
+
+class FailureBreakdown(BaseModel):
+    """
+    Failure aggregation over a time window — the "why is it breaking" panel.
+
+    Three roll-ups of the window's FAILED jobs, each ordered by descending count and bounded to the
+    dominant causes: by structured error class, by the stage/node the job died in, and by collection.
+    Failures are attributed by the job's creation time (the indexed column), so the window is "jobs
+    created in the last N hours that failed".
+    """
+
+    collection_id: str | None = Field(
+        default=None, description="The collection scoped to, or None for a fleet-wide breakdown."
+    )
+    window_hours: int = Field(
+        description="The window width in hours the breakdown was computed over."
+    )
+    since: datetime = Field(description="The window start instant (now − window_hours).")
+    total_failed: int = Field(description="Total failed jobs in the window (the panel headline).")
+    by_error_type: list[FailureBucket] = Field(
+        default_factory=list,
+        description="Top failure causes by structured error class, biggest first.",
+    )
+    by_stage: list[FailureBucket] = Field(
+        default_factory=list,
+        description="Top failures by the stage/node the job died in (current_stage), biggest first.",
+    )
+    by_collection: list[CollectionFailureBucket] = Field(
+        default_factory=list,
+        description="Top failures by collection, biggest first (present on a fleet-wide breakdown).",
+    )
+
+
+class TimeseriesBucket(BaseModel):
+    """One hourly bucket of the job trends — arrivals, completions and reconstructed backlog."""
+
+    bucket_start: datetime = Field(description="The bucket's start instant (a UTC hour boundary).")
+    created: int = Field(description="Jobs created (arrived) during this hour.")
+    done: int = Field(description="Jobs that completed successfully during this hour.")
+    failed: int = Field(description="Jobs that failed during this hour.")
+    backlog: int = Field(
+        description="Instantaneous backlog (queued + running) at the END of this hour, reconstructed "
+        "from the cumulative arrivals/completions plus the pre-window baseline."
+    )
+
+
+class JobTimeseries(BaseModel):
+    """
+    Lightweight job trends — contiguous hourly buckets computed from the job table (no Prometheus).
+
+    Each bucket carries the hour's arrivals (created), successful completions (done/h), failures
+    (failed/h) and a reconstructed end-of-hour backlog depth — enough for in-product sparklines
+    without any external timeseries store. The buckets are contiguous and ascending over the window.
+    """
+
+    collection_id: str | None = Field(
+        default=None, description="The collection scoped to, or None for a fleet-wide series."
+    )
+    window_hours: int = Field(description="The window width in hours the series spans.")
+    bucket_seconds: int = Field(description="Bucket width in seconds (3600 — hourly).")
+    buckets: list[TimeseriesBucket] = Field(
+        default_factory=list,
+        description="Contiguous hourly buckets, oldest first, one per hour across the window.",
+    )
+
+
+class NewFailures(BaseModel):
+    """
+    The "X new failures since you last looked" signal — a count (and optional ids) past a cursor.
+
+    The client passes its last-seen timestamp; this returns how many jobs have FAILED since (keyed on
+    the failure instant, so a job created earlier but failing after the cursor still counts) and the
+    newest failure time so the client can advance its cursor. ``job_ids`` is populated only when the
+    caller opted in, bounded so the signal never returns an unbounded list.
+    """
+
+    since: datetime = Field(description="The last-seen cursor the count was computed against.")
+    count: int = Field(description="Jobs that failed strictly after the cursor.")
+    job_ids: list[str] = Field(
+        default_factory=list,
+        description="Ids of the new failures, newest first (bounded); empty unless the caller asked "
+        "for them (include_ids) or there are none.",
+    )
+    latest_failed_at: datetime | None = Field(
+        default=None,
+        description="The newest failure's finish time — the value to pass as the next 'since' cursor "
+        "(None when there are no new failures).",
+    )
+
+
 class CollectionCost(BaseModel):
     """The collection's paid text-gen roll-up — tokens and USD summed over its documents' jobs."""
 
@@ -471,4 +593,10 @@ __all__ = [
     "StageDurations",
     "CollectionCost",
     "CancelResult",
+    "FailureBucket",
+    "CollectionFailureBucket",
+    "FailureBreakdown",
+    "TimeseriesBucket",
+    "JobTimeseries",
+    "NewFailures",
 ]

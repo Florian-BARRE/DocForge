@@ -16,6 +16,7 @@ from shared_libs.pipelines.ingest import (
     BlobNormalizer,
     IngestPipeline,
 )
+from shared_libs.pipelines.search import SearchPipeline
 
 # ====== Local Project Imports ======
 from ...utils.pipeline_validation import PipelineBlobValidator
@@ -66,14 +67,36 @@ class CollectionBlobHelpers:
     def preset_blob(preset: str | None) -> dict:
         """The stock ingestion blob a creation preset selects (used when no explicit pipeline is posted).
 
+        Delegates to the pipeline facade so the curated topologies have ONE definition (the facade's
+        ``preset_blob``); an unknown/omitted name falls back to the full default there.
+
         Args:
-            preset (str | None): ``"light"`` for the enrichment-free core, anything else the full default.
+            preset (str | None): The ingestion preset name (e.g. ``"light"``, ``"ocr_scan"``), or None.
 
         Returns:
             dict: The selected stock blob as a JSON-ready dict.
         """
-        blob = IngestPipeline.light_blob() if preset == "light" else IngestPipeline.default_blob()
-        return blob.model_dump(mode="json")
+        return IngestPipeline.preset_blob(preset).model_dump(mode="json")
+
+    @staticmethod
+    def search_preset_blob(preset: str | None) -> dict:
+        """The stock SEARCH blob a creation preset selects (stored on ``collection.search``).
+
+        Delegates to the search facade's ``preset_blob``. Returns ``{}`` for no/default selection so
+        a collection keeps using the stock hybrid default via the normal ``{}`` sentinel, and only a
+        NON-default preset is persisted as an explicit search graph.
+
+        Args:
+            preset (str | None): The search preset name (e.g. ``"hybrid_rerank"``), or None.
+
+        Returns:
+            dict: The selected stock search blob as a JSON-ready dict, or ``{}`` for the default.
+        """
+        # 1. No selection, or the default (== the stock hybrid default_blob) → the {} sentinel, so
+        #    the stored contract is byte-identical to an omitted search_preset (no redundant graph).
+        if preset is None or preset == "hybrid":
+            return {}
+        return SearchPipeline.preset_blob(preset).model_dump(mode="json")
 
     @staticmethod
     def canonical_pipeline(blob: dict) -> dict:
