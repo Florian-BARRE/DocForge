@@ -201,6 +201,78 @@ async def test_embed_semantic_fields_false_disables_per_field_vectors() -> None:
     assert all(item.fields == {} for item in out.embeddings.items)
 
 
+# A contract carrying a LEXICAL chunk-scope field ("tags") alongside a doc-scope lexical field
+# ("summary") — the lexical mirror of the semantic-fields fixture above.
+LEXICAL_CONTRACT = CollectionContract(
+    collection_id=uuid.uuid4(),
+    name="c",
+    supported_formats=["pdf"],
+    max_file_size_bytes=1,
+    fields=[
+        MetadataFieldSpec(
+            field_name="tags",
+            field_type=FieldType.KEYWORD_LIST,
+            origin=FieldOrigin.GENERATED,
+            scope=FieldScope.CHUNK,
+            lexical=True,
+        ),
+        MetadataFieldSpec(
+            field_name="summary",
+            field_type=FieldType.STRING,
+            origin=FieldOrigin.GENERATED,
+            scope=FieldScope.DOCUMENT,
+            lexical=True,
+        ),
+    ],
+)
+
+LEXICAL_CHUNKS = [
+    _chunk(0, "Cats purr.", meta={"tags": ["cats", "pets"]}),
+    _chunk(1, "Dogs bark."),  # no value for tags
+    _chunk(2, "Bonds fell.", meta={"tags": ["finance"]}),
+]
+
+
+async def test_lexical_chunk_fields_get_named_sparse_vectors_only_where_present() -> None:
+    # The chunk-scope lexical write path (the sibling of the semantic one): a lexical chunk field
+    # produces a per-field SPARSE vector on the chunks that carry a value, and nowhere else. Before
+    # this wiring the field was declared + queryable but NOTHING populated it (silent 0 hits).
+    node = FakeEmbed(
+        id="e", config=BaseEmbedConfig(model="m", batch_size=2, embed_lexical_fields=True)
+    )
+    out = await node.run(EmbedConsumes(chunks=LEXICAL_CHUNKS, contract=LEXICAL_CONTRACT))
+    items = out.embeddings.items
+
+    # 1. Only the chunks with a "tags" value got the named sparse meta vector; the empty chunk none.
+    assert set(items[0].field_sparse) == {"tags"}
+    assert set(items[2].field_sparse) == {"tags"}
+    assert items[1].field_sparse == {}
+    # 2. The vectors are real (non-empty indices/values from the sparse hook).
+    assert items[0].field_sparse["tags"].indices == [1, 7]
+    assert items[0].field_sparse["tags"].values
+    # 3. The sparse hook saw the joined list text for the field.
+    field_texts = [t for call in node.sparse_calls for t in call]
+    assert "cats, pets" in field_texts
+    assert "finance" in field_texts
+    # 4. The doc-scope lexical field ("summary") is NOT a chunk-scope writer here.
+    assert all("summary" not in item.field_sparse for item in items)
+
+
+async def test_embed_lexical_fields_false_disables_per_field_sparse_vectors() -> None:
+    # OFF by default (cost control, symmetric with embed_semantic_fields): no per-field sparse write.
+    node = FakeEmbed(id="e", config=BaseEmbedConfig(model="m", embed_lexical_fields=False))
+    out = await node.run(EmbedConsumes(chunks=LEXICAL_CHUNKS, contract=LEXICAL_CONTRACT))
+    assert all(item.field_sparse == {} for item in out.embeddings.items)
+
+
+async def test_lexical_chunk_fields_skipped_when_provider_has_no_sparse_axis() -> None:
+    # A dense-only provider cannot produce the per-field sparse vectors — the field is simply absent,
+    # never written empty, and the knob-on run still succeeds (no crash on the missing axis).
+    node = FakeDenseOnly(id="e", config=BaseEmbedConfig(model="m", embed_lexical_fields=True))
+    out = await node.run(EmbedConsumes(chunks=LEXICAL_CHUNKS, contract=LEXICAL_CONTRACT))
+    assert all(item.field_sparse == {} for item in out.embeddings.items)
+
+
 async def test_dense_only_provider_skips_the_sparse_axis_gracefully() -> None:
     node = FakeDenseOnly(id="e", config=BaseEmbedConfig(model="m"))
     out = await node.run(EmbedConsumes(chunks=CHUNKS, contract=CONTRACT))
@@ -218,6 +290,7 @@ def test_family_registration_and_describe_expose_the_ui_contract() -> None:
         "batch_size",
         "embed_sparse",
         "embed_semantic_fields",
+        "embed_lexical_fields",
     ):
         assert key in described.config_schema["properties"], key
 

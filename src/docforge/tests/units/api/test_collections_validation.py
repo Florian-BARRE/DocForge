@@ -300,7 +300,8 @@ def test_contract_schema_endpoint_returns_identity_limits_json_schema(client) ->
     """
     response = client.get("/api/v1/collections/contract-schema")
     assert response.status_code == 200, response.text
-    schema = response.json()["config_schema"]
+    body = response.json()
+    schema = body["config_schema"]
     properties = schema["properties"]
     # The editable identity/limits scalars are present...
     assert "job_timeout_seconds" in properties
@@ -309,3 +310,29 @@ def test_contract_schema_endpoint_returns_identity_limits_json_schema(client) ->
     assert "fields" not in properties
     assert "pipeline" not in properties
     assert "search" not in properties
+
+
+def test_contract_schema_endpoint_exposes_field_and_format_vocabulary(client) -> None:
+    """The discovery route also serves the vocabulary a scalar schema cannot carry: the FieldSpec
+    enums (field_type/origin/scope) and the accepted supported_formats tokens — each derived from the
+    canonical server source, so a purely-HTTP client (e.g. the MCP) never has to guess a value.
+    """
+    # Imported here (not at module top) so the shared_libs alias is installed by the fixture first.
+    from shared_libs.pipelines.ingest import FormatProbeHelpers
+    from shared_libs.public_models import FieldOrigin, FieldScope, FieldType
+
+    response = client.get("/api/v1/collections/contract-schema")
+    assert response.status_code == 200, response.text
+    body = response.json()
+
+    # 1. Supported format tokens match the pipeline's detection table (source, not a frozen literal).
+    assert body["supported_format_tokens"] == FormatProbeHelpers.supported_format_tokens()
+    assert "pdf" in body["supported_format_tokens"]
+    assert "unknown" not in body["supported_format_tokens"]
+
+    # 2. The FieldSpec schema carries the field_type/origin/scope enums via its $defs — and those
+    #    enum values match the canonical server enums (not a hand-copied list).
+    defs = body["field_schema"]["$defs"]
+    assert set(defs["FieldType"]["enum"]) == {member.value for member in FieldType}
+    assert set(defs["FieldOrigin"]["enum"]) == {member.value for member in FieldOrigin}
+    assert set(defs["FieldScope"]["enum"]) == {member.value for member in FieldScope}

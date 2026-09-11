@@ -19,12 +19,13 @@ import pytest
 
 
 def _import_worker_jobs_modules():
-    """Import jobs.core + jobs.backfill + jobs.transfer under a throwaway fake backend.context."""
+    """Import jobs.core + jobs.backfill + jobs.transfer + jobs.preview under a fake backend.context."""
     import jobs.backfill as backfill_module  # noqa: PLC0415
     import jobs.core as core_module  # noqa: PLC0415
+    import jobs.preview as preview_module  # noqa: PLC0415
     import jobs.transfer as transfer_module  # noqa: PLC0415
 
-    return core_module, backfill_module, transfer_module
+    return core_module, backfill_module, transfer_module, preview_module
 
 
 def _import_with_fake_backend():
@@ -47,8 +48,11 @@ def _import_with_fake_backend():
 
 @pytest.fixture(scope="session")
 def worker_jobs_modules():
-    """(jobs.core, jobs.backfill, jobs.transfer) module objects, imported once for the session."""
-    if all(name in sys.modules for name in ("jobs.core", "jobs.backfill", "jobs.transfer")):
+    """(jobs.core, jobs.backfill, jobs.transfer, jobs.preview) modules, imported once for the session."""
+    if all(
+        name in sys.modules
+        for name in ("jobs.core", "jobs.backfill", "jobs.transfer", "jobs.preview")
+    ):
         return _import_worker_jobs_modules()
     return _import_with_fake_backend()
 
@@ -66,3 +70,8 @@ def jobs_backfill(worker_jobs_modules):
 @pytest.fixture
 def jobs_transfer(worker_jobs_modules):
     return worker_jobs_modules[2]
+
+
+@pytest.fixture
+def jobs_preview(worker_jobs_modules):
+    return worker_jobs_modules[3]

@@ -118,6 +118,98 @@ def test_a_closed_client_is_recreated(monkeypatch: pytest.MonkeyPatch) -> None:
     assert first is not second
 
 
+# ==================== restart resilience (run() self-heal) ====================
+
+
+def _healing_async_client(*, constructions: list, closed: list):
+    """A client stand-in that records its constructions and best-effort aclose() calls."""
+
+    class _Client:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            self.is_closed = False
+            constructions.append(self)
+
+        async def aclose(self) -> None:
+            self.is_closed = True
+            closed.append(self)
+
+    return _Client
+
+
+def test_run_evicts_recreates_and_retries_once_on_connect_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A dead-socket ConnectError evicts the pooled client, recreates it, and replays the op once."""
+    constructions: list = []
+    closed: list = []
+    monkeypatch.setattr(
+        httpx, "AsyncClient", _healing_async_client(constructions=constructions, closed=closed)
+    )
+
+    seen: list = []
+
+    async def _op(client: object) -> str:
+        # First attempt hits the stale keep-alive socket left by a restarted endpoint; the retry
+        # (on a fresh client) succeeds.
+        seen.append(client)
+        if len(seen) == 1:
+            raise httpx.ConnectError("All connection attempts failed")
+        return "ok"
+
+    result = asyncio.run(HttpClientPool.run(_op, base_url="http://x:80", timeout=30.0))
+
+    assert result == "ok"
+    assert len(seen) == 2  # one failed attempt + one retry
+    assert seen[0] is not seen[1]  # the retry ran on a FRESH client, not the dead one
+    assert seen[0] in closed  # the dead client was evicted AND closed
+    assert len(constructions) == 2  # original + recreated
+    # The healthy fresh client is what stays pooled for the next call.
+    assert HttpClientPool.get(base_url="http://x:80", timeout=30.0) is seen[1]
+
+
+def test_run_does_not_retry_a_non_connect_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A read/write/protocol error (bytes may have reached the server) is re-raised, never replayed."""
+    constructions: list = []
+    closed: list = []
+    monkeypatch.setattr(
+        httpx, "AsyncClient", _healing_async_client(constructions=constructions, closed=closed)
+    )
+
+    seen: list = []
+
+    async def _op(client: object) -> str:
+        seen.append(client)
+        raise httpx.ReadError("response half-read")
+
+    with pytest.raises(httpx.ReadError):
+        asyncio.run(HttpClientPool.run(_op, base_url="http://x:80", timeout=30.0))
+
+    assert len(seen) == 1  # NOT replayed — a non-idempotent POST must not be blindly repeated
+    assert closed == []  # the client was not evicted
+    assert len(constructions) == 1
+
+
+def test_run_reraises_when_the_fresh_client_also_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The endpoint is still down: after one evict+retry the connect error propagates (no loop)."""
+    constructions: list = []
+    closed: list = []
+    monkeypatch.setattr(
+        httpx, "AsyncClient", _healing_async_client(constructions=constructions, closed=closed)
+    )
+
+    seen: list = []
+
+    async def _op(client: object) -> str:
+        seen.append(client)
+        raise httpx.ConnectError("All connection attempts failed")
+
+    with pytest.raises(httpx.ConnectError):
+        asyncio.run(HttpClientPool.run(_op, base_url="http://x:80", timeout=30.0))
+
+    assert len(seen) == 2  # exactly one retry, then give up
+    assert len(constructions) == 2
+
+
 def test_shutdown_closes_and_clears(monkeypatch: pytest.MonkeyPatch) -> None:
     """shutdown() aclose()s every pooled client and empties the registry."""
     closed: list[bool] = []

@@ -57,6 +57,12 @@ async def test_list_jobs_clamps_limit_to_the_ceiling(fastapi_app, monkeypatch) -
     result = await list_jobs(
         collection_id=uuid.UUID(COLL_A),
         status=None,
+        stage=None,
+        error_type=None,
+        search=None,
+        created_after=None,
+        created_before=None,
+        sort="created",
         order="newest",
         limit=99_999,
         offset=10,
@@ -74,6 +80,12 @@ async def test_list_jobs_clamps_limit_to_the_ceiling(fastapi_app, monkeypatch) -
         limit=ceiling,
         offset=10,
         newest_first=True,
+        sort_by="created",
+        stage=None,
+        error_type=None,
+        search=None,
+        created_after=None,
+        created_before=None,
     )
 
 
@@ -119,6 +131,12 @@ async def test_list_jobs_fleetwide_status_filter_and_fifo_for_full_key(
     result = await list_jobs(
         collection_id=None,
         status=["pending"],
+        stage=None,
+        error_type=None,
+        search=None,
+        created_after=None,
+        created_before=None,
+        sort="created",
         order="oldest",
         limit=50,
         offset=0,
@@ -134,8 +152,22 @@ async def test_list_jobs_fleetwide_status_filter_and_fifo_for_full_key(
         limit=50,
         offset=0,
         newest_first=False,
+        sort_by="created",
+        stage=None,
+        error_type=None,
+        search=None,
+        created_after=None,
+        created_before=None,
     )
-    jobs.count_jobs.assert_awaited_once_with(None, [JobStatus.PENDING])
+    jobs.count_jobs.assert_awaited_once_with(
+        None,
+        [JobStatus.PENDING],
+        stage=None,
+        error_type=None,
+        search=None,
+        created_after=None,
+        created_before=None,
+    )
 
 
 # ── GET /jobs/queue — fleet-wide scope ───────────────────────────────────────────────────────────
