@@ -16,10 +16,21 @@
 # ====== Standard Library Imports ======
 import asyncio
 import atexit
+from collections.abc import Awaitable, Callable
+from typing import TypeVar
 
 # ====== Third-Party Library Imports ======
+import httpx
+import openai
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from loggerplusplus import loggerplusplus
+
+_Result = TypeVar("_Result")
+
+# Connect-phase httpx errors: the connection was never established, so NO request byte reached the
+# server. The openai SDK wraps a transport failure as ``APIConnectionError(...) from <httpx error>``;
+# only when that underlying cause is one of these is a replay idempotency-safe (see arun()).
+_CONNECT_ERRORS: tuple[type[Exception], ...] = (httpx.ConnectError, httpx.ConnectTimeout)
 
 # The chat cache key: every bit that shapes a distinct ChatOpenAI client. Two callers differing on any
 # of these must never share a client (different credentials, model, sampling or retry behaviour).
@@ -179,6 +190,82 @@ class LangChainClientPool:
             )
             cls._embed_clients[key] = client
         return client
+
+    @classmethod
+    async def __evict_instance(cls, resource: object) -> None:
+        """Drop the pooled client backing ``resource`` and close its (dead) transport.
+
+        ``resource`` is what a factory returned — either a bare pooled client or a ``with_config``
+        RunnableBinding overlaying a usage sink; the pooled client is the binding's ``.bound``. Only a
+        client that IS currently pooled is evicted, so a stand-in / already-replaced client is a no-op.
+        """
+        target = getattr(resource, "bound", resource)
+        for registry in (cls._chat_clients, cls._embed_clients):
+            for key, pooled in list(registry.items()):
+                if pooled is not target:
+                    continue
+                del registry[key]
+                underlying = cls.__underlying(pooled)
+                close = getattr(underlying, "close", None)
+                if callable(close):
+                    try:
+                        await close()
+                    except Exception as error:  # noqa: BLE001 — socket already dead; close best-effort
+                        cls.logger.debug(f"evicted client close skipped: {error!r}")
+                return
+
+    @classmethod
+    async def arun(
+        cls,
+        factory: Callable[[], object],
+        operation: Callable[[object], Awaitable[_Result]],
+        *,
+        label: str = "openai-compat",
+    ) -> _Result:
+        """
+        Run ``operation(factory())`` self-healing a dead pooled connection (mirrors HttpClientPool).
+
+        ``factory`` builds/fetches the pooled client (a ForEach item / retry reuses the memoized one);
+        ``operation`` invokes it (``ainvoke``, ``async_client.create``…). On a CONNECT-PHASE failure
+        only — an ``openai.APIConnectionError`` whose underlying ``__cause__`` is a connect-phase httpx
+        error (``ConnectError``/``ConnectTimeout``), i.e. a restarted endpoint leaving the pooled
+        client's ``AsyncOpenAI`` holding a dead keep-alive socket — the stale client is evicted and a
+        FRESH one built by re-invoking ``factory`` (new httpx pool, DNS re-resolved) and the operation
+        is retried ONCE. A connect-phase failure means the connection was never established, so NO
+        request byte reached the server → replaying is idempotency-safe even for a non-idempotent call.
+        A read/write timeout (``APITimeoutError``) or any other error may follow a partially-sent
+        request and is re-raised unchanged, NEVER replayed here — the caller's own loop decides.
+
+        Args:
+            factory (Callable[[], object]): Builds/fetches the pooled client (chat runnable or
+                embeddings client); re-invoked to get a fresh client for the retry.
+            operation (Callable[[object], Awaitable]): The async call to run against that client.
+            label (str): A short caller identity named in the self-heal log line.
+
+        Returns:
+            The operation's result — from the first attempt, or from the retry on a fresh client.
+
+        Raises:
+            Exception: The connect error if the retry also fails, or any non-connect error unchanged.
+        """
+        # 1. Run on the pooled (possibly kept-alive) client.
+        resource = factory()
+        try:
+            return await operation(resource)
+        except openai.APIConnectionError as error:
+            # 2. A read/connect timeout, or a wrapped read/write/protocol error, may have sent bytes —
+            #    NOT replay-safe. Only a genuine connect-phase failure (no byte sent) self-heals.
+            if isinstance(error, openai.APITimeoutError) or not isinstance(
+                error.__cause__, _CONNECT_ERRORS
+            ):
+                raise
+            cls.logger.warning(
+                f"{label} pooled connection is dead ({error.__cause__!r}); evicting and retrying "
+                f"once on a fresh client"
+            )
+            await cls.__evict_instance(resource)
+            fresh = factory()
+            return await operation(fresh)
 
     @classmethod
     async def shutdown(cls) -> None:

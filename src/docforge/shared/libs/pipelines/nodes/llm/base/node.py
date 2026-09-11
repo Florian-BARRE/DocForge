@@ -12,10 +12,11 @@ from abc import abstractmethod
 
 # ====== Third-Party Library Imports ======
 from langchain_core.language_models import BaseChatModel
+from langchain_core.messages import BaseMessage
 
 # ====== Internal Project Imports ======
 from shared_libs.pipelines.base import ActionNode, NodeUsage
-from shared_libs.pipelines.nodes.openai_compat import EndpointReachability
+from shared_libs.pipelines.nodes.openai_compat import EndpointReachability, LangChainClientPool
 from shared_libs.public_models.llm import Completion
 
 # ====== Local Project Imports ======
@@ -54,6 +55,27 @@ class BaseLlmChatNode(ActionNode):
         """
         ...
 
+    async def _ainvoke(self, messages: list[BaseMessage]) -> BaseMessage:
+        """Invoke the provider model once on the messages, self-healing a dead pooled connection.
+
+        Routed through ``LangChainClientPool.arun``: for the OpenAI-compatible provider (whose client
+        is pooled) a connect-phase failure after an endpoint restart evicts the dead client and retries
+        once on a fresh one. A provider whose client is NOT pooled (e.g. ChatMistralAI) is unaffected —
+        it is not in the pool (evict is a no-op) and it never raises ``openai.APIConnectionError``, so
+        the guard simply never fires and the behaviour is the single-invoke it always was.
+
+        Args:
+            messages (list[BaseMessage]): The prompt messages to send to the model.
+
+        Returns:
+            BaseMessage: The model's answer message.
+        """
+        return await LangChainClientPool.arun(
+            self._chat_model,
+            lambda model: model.ainvoke(messages),
+            label=f"llm '{self.KIND}'",
+        )
+
     async def run(self, data: LlmChatConsumes) -> LlmChatProduces:
         """
         Invoke the provider's LangChain model on the prompt messages and wrap the answer.
@@ -64,9 +86,8 @@ class BaseLlmChatNode(ActionNode):
         Returns:
             LlmChatProduces: The model's completion.
         """
-        # 1. Build the adapted LangChain client and invoke it on the message composition.
-        model = self._chat_model()
-        answer = await model.ainvoke(data.prompt.messages)
+        # 1. Invoke the adapted LangChain client on the message composition (self-healing a dead pool).
+        answer = await self._ainvoke(data.prompt.messages)
 
         # 2. Wrap the answer text in the output artefact (content is the plain text for chat models).
         output = LlmChatProduces(completion=Completion(text=answer.content))

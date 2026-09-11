@@ -4,6 +4,7 @@ from .client_pool import LangChainClientPool
 from .config import OpenAICompatConfig
 from .preflight import (
     EndpointAuthError,
+    EndpointIncompatibleError,
     EndpointReachability,
     EndpointUnreachableError,
     PreflightError,
@@ -20,6 +21,7 @@ __all__ = [
     "PreflightError",
     "EndpointUnreachableError",
     "EndpointAuthError",
+    "EndpointIncompatibleError",
     "MODEL_PRICING",
     "EMBED_PRICING",
     "OCR_PAGE_PRICING",

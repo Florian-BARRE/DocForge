@@ -6,6 +6,9 @@
 # The sidecar reports the mean recognition confidence, which is what a ScoreBelow transition
 # escalates on.
 
+# ====== Third-Party Library Imports ======
+import httpx
+
 # ====== Internal Project Imports ======
 from shared_libs.pipelines.nodes.http_pool import HttpClientPool
 from shared_libs.pipelines.nodes.openai_compat import EndpointReachability
@@ -53,10 +56,7 @@ class OcrPaddleNode(BaseOcrNode):
         if config.api_key:
             headers["Authorization"] = f"Bearer {config.api_key}"
 
-        # A pooled client keeps the connection alive across retries — headers ride per-request.
-        client = HttpClientPool.get(base_url=config.base_url, timeout=config.timeout_seconds)
-
-        async def _post() -> tuple[str, float]:
+        async def _post(client: httpx.AsyncClient) -> tuple[str, float]:
             """POST the raw image bytes and read back {text, confidence} — the retryable call."""
             response = await client.post("/ocr", content=image, headers=headers)
             response.raise_for_status()
@@ -66,9 +66,12 @@ class OcrPaddleNode(BaseOcrNode):
             confidence = max(0.0, min(1.0, float(body.get("confidence", 0.0))))
             return str(body.get("text", "")), confidence
 
-        # Run under the shared bounded retry; a non-transient error re-raises at once.
+        # The pooled client keeps the connection alive across retries (headers ride per-request) and
+        # self-heals a dead socket left by a sidecar restart; a non-transient error re-raises at once.
         return await NetworkRetry.run(
-            _post,
+            lambda: HttpClientPool.run(
+                _post, base_url=config.base_url, timeout=config.timeout_seconds
+            ),
             max_retries=config.max_retries,
             retry_backoff_seconds=config.retry_backoff_seconds,
             label=f"ocr '{self.KIND}'",

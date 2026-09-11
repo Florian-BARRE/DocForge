@@ -2,7 +2,8 @@
 # The embed-stage artefacts. The CHUNK stays the textual element (raw + context + generated
 # meta); its VECTORS live apart, LINKED by chunk_id — the worker zips both into Qdrant points.
 # ChunkVectors carries the main dense/sparse pair plus one named dense vector per SEMANTIC
-# contract field (the multi-vector schema declared at collection creation).
+# contract field and one named sparse vector per LEXICAL contract field (the multi-vector schema
+# declared at collection creation).
 
 # ====== Third-Party Library Imports ======
 from pydantic import BaseModel, Field
@@ -28,12 +29,16 @@ class ChunkVectors(BaseModel):
         sparse (SparseVector | None): The lexical vector, when the provider supports it.
         fields (dict): Named dense vectors of the chunk's SEMANTIC metadata fields
             (field name → vector; absent when the chunk has no value for the field).
+        field_sparse (dict): Named sparse vectors of the chunk's LEXICAL metadata fields
+            (field name → vector; absent when the chunk has no value for the field, or when the
+            provider has no sparse axis).
     """
 
     chunk_id: str
     dense: list[float] | None = None
     sparse: SparseVector | None = None
     fields: dict[str, list[float]] = Field(default_factory=dict)
+    field_sparse: dict[str, SparseVector] = Field(default_factory=dict)
 
 
 class ChunkEmbeddings(Artifact):
