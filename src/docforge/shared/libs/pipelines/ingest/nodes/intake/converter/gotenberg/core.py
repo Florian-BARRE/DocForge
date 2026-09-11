@@ -121,12 +121,9 @@ class ConverterGotenbergNode(BaseConverterNode):
             return None
 
         # 2. POST the file (under the shared bounded retry); Gotenberg answers with the PDF bytes.
-        #    The pooled client is built OUTSIDE the retry loop so every attempt reuses the connection.
-        client = HttpClientPool.get(
-            base_url=config.base_url, timeout=config.timeout_seconds, auth=self._basic_auth()
-        )
-
-        async def _post() -> bytes:
+        #    The pooled client reuses the connection across attempts and self-heals a dead socket
+        #    left by a Gotenberg restart (connect-phase failure → evict + retry once on a fresh one).
+        async def _post(client: httpx.AsyncClient) -> bytes:
             response = await client.post(
                 route, files={"files": (upload_name, source.content, probe.mime_type)}
             )
@@ -134,7 +131,12 @@ class ConverterGotenbergNode(BaseConverterNode):
             return response.content
 
         content = await NetworkRetry.run(
-            _post,
+            lambda: HttpClientPool.run(
+                _post,
+                base_url=config.base_url,
+                timeout=config.timeout_seconds,
+                auth=self._basic_auth(),
+            ),
             max_retries=config.max_retries,
             retry_backoff_seconds=config.retry_backoff_seconds,
             label=f"converter '{self.KIND}'",
@@ -175,18 +177,19 @@ class ConverterGotenbergNode(BaseConverterNode):
 
         # POST under the SAME shared bounded retry as _convert — a transient Chromium-route blip must
         # not lose the view-only preview any more than it may lose the parser PDF. The pooled client
-        # is built OUTSIDE the retry loop so every attempt reuses the connection.
-        client = HttpClientPool.get(
-            base_url=config.base_url, timeout=config.timeout_seconds, auth=self._basic_auth()
-        )
-
-        async def _post() -> bytes:
+        # reuses the connection across attempts and self-heals a dead socket left by a restart.
+        async def _post(client: httpx.AsyncClient) -> bytes:
             response = await client.post(route, files=files)
             response.raise_for_status()
             return response.content
 
         content = await NetworkRetry.run(
-            _post,
+            lambda: HttpClientPool.run(
+                _post,
+                base_url=config.base_url,
+                timeout=config.timeout_seconds,
+                auth=self._basic_auth(),
+            ),
             max_retries=config.max_retries,
             retry_backoff_seconds=config.retry_backoff_seconds,
             label=f"converter '{self.KIND}' preview",

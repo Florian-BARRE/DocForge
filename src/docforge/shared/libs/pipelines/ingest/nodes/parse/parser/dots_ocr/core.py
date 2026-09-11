@@ -9,6 +9,9 @@
 # escalation head after standard docling, never in the default/light blob — the sidecar's VLM is
 # GPU-only, heavy, slow and optional (built lazily sidecar-side).
 
+# ====== Third-Party Library Imports ======
+import httpx
+
 # ====== Internal Project Imports ======
 from shared_libs.pipelines.nodes.http_pool import HttpClientPool
 from shared_libs.pipelines.nodes.openai_compat import EndpointReachability
@@ -84,10 +87,7 @@ class ParserDotsOcrNode(BaseParserNode):
         if config.api_key:
             headers["Authorization"] = f"Bearer {config.api_key}"
 
-        # A pooled client keeps the connection alive across retries — headers ride per-request.
-        client = HttpClientPool.get(base_url=config.base_url, timeout=config.timeout_seconds)
-
-        async def _post() -> dict:
+        async def _post(client: httpx.AsyncClient) -> dict:
             """One async call per document — raw PDF bytes in the body (the retryable operation)."""
             response = await client.post(
                 "/parse",
@@ -97,9 +97,12 @@ class ParserDotsOcrNode(BaseParserNode):
             response.raise_for_status()
             return response.json()
 
-        # 2. Run the call under the shared bounded retry; a non-transient error re-raises at once.
+        # 2. The pooled client keeps the connection alive across retries (headers ride per-request)
+        #    and self-heals a dead socket left by a sidecar restart; non-transient errors re-raise.
         payload = await NetworkRetry.run(
-            _post,
+            lambda: HttpClientPool.run(
+                _post, base_url=config.base_url, timeout=config.timeout_seconds
+            ),
             max_retries=config.max_retries,
             retry_backoff_seconds=config.retry_backoff_seconds,
             label=f"parser '{self.KIND}'",
