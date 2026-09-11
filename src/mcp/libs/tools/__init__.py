@@ -22,6 +22,7 @@ from . import (
     search,
     transfers,
 )
+from ._encoding import DEFAULT_MAX_INLINE_UPLOAD_BYTES
 
 # Every domain tool module, in catalogue order. Each exposes register(mcp, sdk).
 _MODULES = (
@@ -45,7 +46,12 @@ _MODULES = (
 _PATH_GUARDED_MODULES = (documents, transfers)
 
 
-def register_all(mcp: FastMCP, sdk: AsyncClient, path_guard: PathGuard) -> None:
+def register_all(
+    mcp: FastMCP,
+    sdk: AsyncClient,
+    path_guard: PathGuard,
+    max_inline_upload_bytes: int = DEFAULT_MAX_INLINE_UPLOAD_BYTES,
+) -> None:
     """
     Register every DocForge tool on the MCP server.
 
@@ -54,13 +60,16 @@ def register_all(mcp: FastMCP, sdk: AsyncClient, path_guard: PathGuard) -> None:
         sdk (AsyncClient): The DocForge API client injected into every tool.
         path_guard (PathGuard): Confines `file_path` tool arguments — passed only to the modules
             that take one (documents, transfers); every other module's signature is unchanged.
+        max_inline_upload_bytes (int): Decoded-size ceiling for the bytes-based upload tools
+            (`upload_document_bytes`, `import_collection_bytes`) — passed only to the same two
+            path-guarded modules, which are also the only ones with a `content_base64` argument.
     """
-    # 1. Delegate to each domain module's register(mcp, sdk[, path_guard])
+    # 1. Delegate to each domain module's register(mcp, sdk[, path_guard, max_inline_upload_bytes])
     for module in _MODULES:
         if module in _PATH_GUARDED_MODULES:
-            module.register(mcp, sdk, path_guard)
+            module.register(mcp, sdk, path_guard, max_inline_upload_bytes)
         else:
             module.register(mcp, sdk)
 
 
-__all__ = ["register_all"]
+__all__ = ["DEFAULT_MAX_INLINE_UPLOAD_BYTES", "register_all"]

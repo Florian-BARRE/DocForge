@@ -10,11 +10,18 @@ from docforge_sdk import AsyncClient
 # ====== Internal Project Imports ======
 from libs.server import build_mcp
 
-# 58 = health(1) + capabilities(1) + auth(5) + collections(12) + documents(5) + explorer(8) + search(1)
-#    + jobs(8) + audit(1) + blobs(1) + pipelines(6) + transfers(4) + corpus(4)
+# 66 = health(1) + capabilities(1) + auth(5) + collections(13) + documents(6) + explorer(8) + search(1)
+#    + jobs(13) + audit(1) + blobs(1) + pipelines(6) + transfers(5) + corpus(4)
 # collections went 10 -> 12 with collection_health + reingest_collection (finding 359, 2026-09).
 # 57 -> 58 with get_capabilities, wrapping GET /capabilities (deployment self-description).
-EXPECTED_TOOL_COUNT = 58
+# 58 -> 62 (2026-09, remote-LLM usability audit): upload_document_bytes (documents),
+# import_collection_bytes (transfers), wait_for_job + get_job_event_payload (jobs).
+# 62 -> 65 (2026-09, SRE jobs-observability wave): get_failure_breakdown, get_new_failures,
+# get_job_timeseries (jobs) — fleet/collection triage aggregates over sdk.jobs.
+# 65 -> 66: preview_pipeline (collections) — inline non-persisting ingestion dry-run on one document.
+# 66 -> 68: submit_preview_job + get_preview_job (collections) — async worker-side non-persisting
+# dry-run (covers every pipeline incl. docling) + its poll.
+EXPECTED_TOOL_COUNT = 68
 
 EXPECTED_TOOL_NAMES = {
     # health
@@ -34,6 +41,9 @@ EXPECTED_TOOL_NAMES = {
     "delete_collection",
     "collection_storage_footprint",
     "estimate_collection_cost",
+    "preview_pipeline",
+    "submit_preview_job",
+    "get_preview_job",
     "export_collection_snippet",
     "apply_collection_snippet",
     "get_collection_contract_schema",
@@ -41,6 +51,7 @@ EXPECTED_TOOL_NAMES = {
     "reingest_collection",
     # documents
     "upload_document",
+    "upload_document_bytes",
     "set_document_enabled",
     "get_document_markdown",
     "get_document_html",
@@ -64,8 +75,13 @@ EXPECTED_TOOL_NAMES = {
     "search_collection",
     # jobs
     "list_jobs",
+    "get_failure_breakdown",
+    "get_new_failures",
+    "get_job_timeseries",
     "get_job",
+    "wait_for_job",
     "get_job_events",
+    "get_job_event_payload",
     "get_live_workers",
     "cancel_job",
     "get_collection_cost",
@@ -87,6 +103,7 @@ EXPECTED_TOOL_NAMES = {
     # transfers
     "export_collection",
     "import_collection",
+    "import_collection_bytes",
     "get_transfer",
     "get_export_download_ref",
 }

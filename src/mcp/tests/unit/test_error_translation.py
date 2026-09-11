@@ -59,6 +59,32 @@ async def test_api_status_error_with_non_dict_body_is_stringified() -> None:
     assert "not found" in str(excinfo.value)
 
 
+async def test_pydantic_validation_error_building_a_typed_model_is_translated() -> None:
+    """
+    A malformed nested dict (here: create_collection's `fields`, built into FieldSpec at the tool
+    boundary) raises a bare pydantic ValidationError BEFORE any SDK call — must still surface as
+    an actionable ToolError, not FastMCP's generic unhandled-exception path.
+    """
+    sdk = AsyncClient("http://localhost:8000")
+    mcp = build_mcp(sdk)
+
+    with pytest.raises(ToolError) as excinfo:
+        await mcp.call_tool(
+            "create_collection",
+            {
+                "name": "demo",
+                "supported_formats": ["pdf"],
+                "max_file_size_bytes": 1_000_000,
+                # Missing the required `field_type` — FieldSpec(**field) raises ValidationError.
+                "fields": [{"field_name": "author"}],
+            },
+        )
+
+    message = str(excinfo.value)
+    assert "field_type" in message
+    assert "Invalid argument or response field(s)" in message
+
+
 async def test_connection_error_is_translated_too() -> None:
     """A network-level failure (no HTTP response at all) still yields a clear message."""
     sdk = _build_with_failing_get_collection(APIConnectionError("Connection refused"))

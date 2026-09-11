@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 # ====== Standard Library Imports ======
+import base64
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -21,6 +22,7 @@ from unittest.mock import AsyncMock
 import pytest
 from docforge_sdk import AsyncClient, TransferAccepted, TransferStatus
 from mcp.server.fastmcp import FastMCP
+from mcp.server.fastmcp.exceptions import ToolError
 
 # ====== Internal Project Imports ======
 from libs.path_guard import PathGuard, PathGuardError
@@ -155,6 +157,34 @@ async def test_import_collection_http_transport_no_inbox_configured_refused(
 
     with pytest.raises(PathGuardError):
         await fn(file_path=str(tmp_path / "bundle.dcexport"))
+
+    import_mock.assert_not_awaited()
+
+
+async def test_import_collection_bytes_decodes_base64_no_filesystem_touched() -> None:
+    mcp, sdk = _register_with_fake_sdk()
+    import_mock = AsyncMock(
+        return_value=TransferAccepted(transfer_id=TID, kind="import", status="pending")
+    )
+    sdk.transfers.import_collection = import_mock  # type: ignore[method-assign]
+    fn = _tool_fn(mcp, "import_collection_bytes")
+
+    result = await fn(
+        content_base64=base64.b64encode(b"dcexport-bytes").decode(), target_name="restored"
+    )
+
+    import_mock.assert_awaited_once_with(b"dcexport-bytes", target_name="restored")
+    assert result["kind"] == "import"
+
+
+async def test_import_collection_bytes_rejects_malformed_base64() -> None:
+    mcp, sdk = _register_with_fake_sdk()
+    import_mock = AsyncMock()
+    sdk.transfers.import_collection = import_mock  # type: ignore[method-assign]
+    fn = _tool_fn(mcp, "import_collection_bytes")
+
+    with pytest.raises(ToolError):
+        await fn(content_base64="not-base64!!")
 
     import_mock.assert_not_awaited()
 
