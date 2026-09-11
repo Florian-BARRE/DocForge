@@ -16,6 +16,9 @@ import { StorageMetricRow } from "./StorageMetricRow";
 
 interface StorageStoreBreakdownProps {
   label: string;
+  /** The raw product backing this store (S3/PostgreSQL/Qdrant) — surfaced only inside the
+   *  collapsed-by-default Breakdown disclosure, never in the always-visible header. */
+  technicalName: string;
   swatchColor: string;
   totalBytes: number;
   sharePercent: number;
@@ -27,7 +30,7 @@ interface StorageStoreBreakdownProps {
   emptyLabel: string;
 }
 
-export function StorageStoreBreakdown({ label, swatchColor, totalBytes, sharePercent, estimated, rows, note, emptyLabel }: StorageStoreBreakdownProps) {
+export function StorageStoreBreakdown({ label, technicalName, swatchColor, totalBytes, sharePercent, estimated, rows, note, emptyLabel }: StorageStoreBreakdownProps) {
   const header = (
     <div style={{ display: "flex", alignItems: "center", gap: t.space.s }}>
       <span style={{ width: 9, height: 9, borderRadius: t.radius.pill, background: swatchColor, flexShrink: 0 }} />
@@ -56,6 +59,7 @@ export function StorageStoreBreakdown({ label, swatchColor, totalBytes, sharePer
       {note && <div style={{ color: t.color.mute, fontSize: t.font.size.xs }}>{note}</div>}
 
       <AdvancedDisclosure summary="Breakdown">
+        <StorageMetricRow label="Storage engine" value={technicalName} />
         {rows.map((row) => <StorageMetricRow key={row.label} label={row.label} value={row.value} />)}
       </AdvancedDisclosure>
     </div>

@@ -6,11 +6,12 @@
 
 import { useEffect, useState } from "react";
 import type { CollectionPreset } from "../../../api/collections";
-import { fetchCollectionContractSchema } from "../../../api/collections";
-import type { JsonSchema } from "../../../api/types";
+import { fetchCollectionContractSchema, listCollections } from "../../../api/collections";
+import type { JsonSchema, ValidationIssue } from "../../../api/types";
 import { Button } from "../../../components/Button";
 import { ErrorState } from "../../../components/ErrorState";
 import { LoadingState } from "../../../components/LoadingState";
+import { humanizeFieldLabel } from "../../../components/schema-form/fieldLabels";
 import { SchemaForm } from "../../../components/schema-form/SchemaForm";
 import { theme } from "../../../theme";
 import type { WizardMode } from "./CollectionWizard";
@@ -40,13 +41,20 @@ interface StepIdentityProps {
   extra: Record<string, unknown>;
   onExtraChange: (extra: Record<string, unknown>) => void;
   onNext: () => void;
+  /** The collection's own id in edit mode — excluded from the duplicate-name check below so
+   *  keeping a collection's current name is never flagged as colliding with itself. */
+  excludeCollectionId?: string;
 }
 
 export function StepIdentity({
   mode, name, onNameChange, formats, onFormatsChange, tags, onTagsChange, maxSizeMb, onMaxSizeMbChange,
   jobTimeoutSeconds, onJobTimeoutSecondsChange, preset, onPresetChange, extra, onExtraChange, onNext,
+  excludeCollectionId,
 }: StepIdentityProps) {
   const [schema, setSchema] = useState<JsonSchema | null>(null);
+  // Best-effort client-side duplicate-name check (server is still the source of truth at submit) —
+  // an empty/unfetched list just means "no known collisions", never blocks the wizard.
+  const [existingCollections, setExistingCollections] = useState<{ id: string; name: string }[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
   // Shared with `MaxFileSizeField` below (see its `advanced` prop) so the whole Identity panel has
@@ -71,6 +79,21 @@ export function StepIdentity({
       cancelled = true;
     };
   }, [attempt]);
+
+  useEffect(() => {
+    let cancelled = false;
+    listCollections()
+      .then((result) => {
+        if (!cancelled) setExistingCollections(result.map((c) => ({ id: c.id, name: c.name })));
+      })
+      .catch(() => {
+        // Best-effort only — a failed fetch here just means no client-side duplicate hint; the
+        // backend still rejects a real collision at submit.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   if (error) return <ErrorState message={error} onRetry={() => setAttempt((a) => a + 1)} />;
   if (!schema) return <LoadingState label="loading collection contract…" />;
@@ -138,13 +161,24 @@ export function StepIdentity({
     }
   };
 
-  const valid = [...required].every((field) => {
+  const missingRequired = [...required].filter((field) => {
     const v = values[field];
-    if (v === undefined || v === null) return false;
-    if (typeof v === "string") return v.trim().length > 0;
-    if (Array.isArray(v)) return v.length > 0;
-    return true;
+    if (v === undefined || v === null) return true;
+    if (typeof v === "string") return v.trim().length === 0;
+    if (Array.isArray(v)) return v.length === 0;
+    return false;
   });
+
+  // 3. Client-side duplicate-name check — a same-name collection would otherwise only surface as a
+  //    generic error at final submit (StepReview), several steps away from the Name field itself.
+  const trimmedName = name.trim();
+  const duplicateName = trimmedName.length > 0
+    && existingCollections.some((c) => c.id !== excludeCollectionId && c.name.trim().toLowerCase() === trimmedName.toLowerCase());
+  const nameIssues: ValidationIssue[] = duplicateName
+    ? [{ code: "duplicate_name", location: "name", message: `A collection named "${trimmedName}" already exists.` }]
+    : [];
+
+  const valid = missingRequired.length === 0 && !duplicateName;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: theme.space.l, maxWidth: 480 }}>
@@ -173,6 +207,7 @@ export function StepIdentity({
           onAdvancedChange={setAdvanced}
           jsonMode={jsonMode}
           onJsonModeChange={setJsonMode}
+          issues={nameIssues}
         />
         {!jsonMode && (
           <>
@@ -190,10 +225,17 @@ export function StepIdentity({
         )}
         </div>
       </div>
-      <div>
+      <div style={{ display: "flex", flexDirection: "column", gap: theme.space.xs }}>
         <Button variant="primary" disabled={!valid} onClick={onNext}>
           Next — schema
         </Button>
+        {/* Duplicate-name is already rung + explained on the Name field itself (via the SchemaForm
+            `issues` prop below) — no need to repeat the same message a second time here. */}
+        {missingRequired.length > 0 && (
+          <span style={{ color: theme.color.dim, fontSize: theme.font.size.xs }}>
+            Required: {missingRequired.map(humanizeFieldLabel).join(", ")}
+          </span>
+        )}
       </div>
     </div>
   );

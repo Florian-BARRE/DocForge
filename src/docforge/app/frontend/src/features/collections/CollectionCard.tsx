@@ -146,7 +146,16 @@ export function CollectionCard({ collection, health, healthError, docCount, jobR
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 4 }}>
             <span style={{ width: 7, height: 7, borderRadius: t.radius.pill, background: TONE_DOT[verdict.tone] ?? t.color.mute, flexShrink: 0 }} />
-            <span style={{ color: t.color.dim, fontSize: t.font.size.s }} title={verdict.detail}>{verdict.label}</span>
+            {/* Parser engine name folded into this tooltip rather than its own permanent chip — a
+                technical engine label (e.g. "Parser · Docling") isn't the business-default vocabulary
+                the fleet grid otherwise keeps (see business-layer disclosure convention); still one
+                hover away for whoever needs it. */}
+            <span
+              style={{ color: t.color.dim, fontSize: t.font.size.s }}
+              title={parser ? `${verdict.detail} — Parser: ${humanizeProviderLabel("parser", parser)}` : verdict.detail}
+            >
+              {verdict.label}
+            </span>
           </div>
         </div>
         <OverflowMenu label={`Actions for ${collection.name}`}>
@@ -161,11 +170,6 @@ export function CollectionCard({ collection, health, healthError, docCount, jobR
       </div>
 
       <div style={{ display: "flex", alignItems: "center", gap: t.space.s, flexWrap: "wrap" }}>
-        {/* Steel, not orange — a parser badge is metadata, not "the one thing being worked" (brand.md
-            reserves forge orange for the single active/primary thing on screen). Humanized via the
-            shared provider-kind vocabulary so raw graph tokens (e.g. "granite_docling") never leak
-            onto the card. */}
-        {parser && <Chip tone="info">{humanizeProviderLabel("parser", parser)}</Chip>}
         <Chip tone="neutral">{formatsSummary(collection.supported_formats)}</Chip>
       </div>
 

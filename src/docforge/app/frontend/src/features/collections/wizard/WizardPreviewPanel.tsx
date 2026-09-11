@@ -3,6 +3,13 @@
 // Identity/Schema steps so the (fairly narrow) form card no longer leaves most of the page blank.
 // Read-only: reuses the same surface-2/mono "JSON view" look as JsonField/SchemaForm's own JSON
 // escape hatch, but this one only ever displays — editing happens through the actual form fields.
+//
+// DECISION (iteration-2 GUI campaign, "Shape" vs "Summary"): this panel deliberately shows the RAW
+// API payload, verbatim, for every field — e.g. `trace_verbosity: "shape"` even though
+// TraceVerbosityField's own control labels that same choice "Summary" for readability. Relabeling
+// the enum value itself (backend `shape` -> `summary`) would touch the stored blob/migration for a
+// cosmetic mismatch; leaving the raw JSON here is the correct call precisely BECAUSE this panel's
+// whole purpose is "the exact contract that will be submitted" — humanizing it would defeat that.
 
 import { theme } from "../../../theme";
 

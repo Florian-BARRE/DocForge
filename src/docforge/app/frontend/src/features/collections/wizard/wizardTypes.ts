@@ -6,14 +6,30 @@
 
 import type { Collection, CreateCollectionRequest, FieldSpec } from "../../../api/collections";
 
-const BYTES_PER_MB = 1024 * 1024;
+// Binary unit (1024*1024) — the size-limit control and every other surface that displays it label
+// this "MiB", not "MB" (decimal, 1e6), so the label matches the actual math.
+const BYTES_PER_MIB = 1024 * 1024;
 
 export function mbToBytes(mb: number): number {
-  return Math.round(mb * BYTES_PER_MB);
+  return Math.round(mb * BYTES_PER_MIB);
 }
 
+/** Rounded to 2 decimals — an arbitrary byte count rarely converts to a clean MiB value (e.g.
+ *  20_000_000 bytes -> 19.073486328125), and hundredths is all a size *limit* control needs. */
 export function bytesToMb(bytes: number): number {
-  return bytes / BYTES_PER_MB;
+  return Math.round((bytes / BYTES_PER_MIB) * 100) / 100;
+}
+
+/**
+ * The byte count to actually submit for the size-limit field — preserves the collection's EXACT
+ * stored bytes when the displayed (rounded) MiB value hasn't changed, only re-deriving from MiB
+ * when the user actually edited it. Without this, editing an existing collection re-derives bytes
+ * from the ROUNDED display value on every save — e.g. 20_000_000 bytes rounds to "19.07" MiB, and
+ * a no-op save (nothing touched) silently rewrites it to 19_996_344 bytes.
+ */
+export function resolveMaxFileSizeBytes(maxSizeMb: number, originalBytes: number | null): number {
+  if (originalBytes !== null && bytesToMb(originalBytes) === maxSizeMb) return originalBytes;
+  return mbToBytes(maxSizeMb);
 }
 
 /** One schema row being edited — `_key` is a stable React list key, stripped before submit. */
@@ -79,6 +95,7 @@ export function draftFromCollection(collection: Collection): {
   formats: string[];
   tags: string[];
   maxSizeMb: number;
+  maxSizeBytesOriginal: number;
   jobTimeoutSeconds: number | null;
   fields: DraftField[];
   extraContract: Record<string, unknown>;
@@ -88,6 +105,7 @@ export function draftFromCollection(collection: Collection): {
     formats: [...collection.supported_formats],
     tags: [...collection.tags],
     maxSizeMb: bytesToMb(collection.max_file_size_bytes),
+    maxSizeBytesOriginal: collection.max_file_size_bytes,
     jobTimeoutSeconds: collection.job_timeout_seconds,
     fields: collection.fields.map(toDraftField),
     extraContract: extraContractFromCollection(collection),
@@ -111,6 +129,9 @@ export interface WizardDraftSlices {
   formats: string[];
   tags: string[];
   maxSizeMb: number;
+  /** The collection's original stored bytes (edit mode only) — `null` when creating, since there is
+   *  no prior value to preserve. See `resolveMaxFileSizeBytes`. */
+  maxSizeBytesOriginal: number | null;
   jobTimeoutSeconds: number | null;
   fields: DraftField[];
 }
@@ -127,7 +148,7 @@ export function buildWizardPayload(draft: WizardDraftSlices): CreateCollectionRe
     name: draft.name.trim(),
     supported_formats: draft.formats,
     tags: draft.tags,
-    max_file_size_bytes: mbToBytes(draft.maxSizeMb),
+    max_file_size_bytes: resolveMaxFileSizeBytes(draft.maxSizeMb, draft.maxSizeBytesOriginal),
     job_timeout_seconds: draft.jobTimeoutSeconds,
     fields: draft.fields.map(toFieldSpec),
   };

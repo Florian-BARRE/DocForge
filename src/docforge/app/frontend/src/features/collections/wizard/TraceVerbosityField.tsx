@@ -12,7 +12,7 @@ import { SegmentedControl, type SegmentedOption } from "../../../components/Segm
 
 const OPTION_COPY: Record<string, { label: string; description: string }> = {
   shape: {
-    label: "Shape",
+    label: "Summary",
     description: "Default — keeps only a lightweight per-node input/output summary.",
   },
   full: {

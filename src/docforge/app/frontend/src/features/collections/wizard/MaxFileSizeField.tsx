@@ -9,6 +9,10 @@ import { NumberField } from "../../../components/schema-form/NumberField";
 import { theme } from "../../../theme";
 
 const MIN_MB = 1;
+// A UI-only sanity ceiling (mirrors MIN_MB's own precedent) — the backend contract itself declares
+// no upper bound on `max_file_size_bytes`, so this isn't a backend limit, just a guard against a
+// runaway value like "999999" being accepted as a real per-document upload cap.
+const MAX_MB = 10240;
 
 const inputStyle: React.CSSProperties = {
   background: theme.color.surface2,
@@ -45,7 +49,7 @@ export function MaxFileSizeField({ valueMb, onChange, advanced = false }: MaxFil
         </span>
         {advanced && (
           <span
-            title="integer >= 1"
+            title={`integer, ${MIN_MB}-${MAX_MB}`}
             style={{
               color: theme.color.mute, background: "transparent",
               border: `1px solid ${theme.color.line}`,
@@ -53,20 +57,21 @@ export function MaxFileSizeField({ valueMb, onChange, advanced = false }: MaxFil
               fontFamily: theme.font.mono, whiteSpace: "nowrap",
             }}
           >
-            ≥ {MIN_MB}
+            ≥ {MIN_MB} · ≤ {MAX_MB}
           </span>
         )}
       </div>
       <NumberField
         value={valueMb}
         min={MIN_MB}
+        max={MAX_MB}
         style={inputStyle}
-        suffix="MB"
-        ariaLabel="Max file size in megabytes, required"
-        onChange={(mb) => onChange(Math.max(MIN_MB, mb ?? MIN_MB))}
+        suffix="MiB"
+        ariaLabel="Max file size in mebibytes, required"
+        onChange={(mb) => onChange(Math.min(MAX_MB, Math.max(MIN_MB, mb ?? MIN_MB)))}
       />
       <div style={{ color: theme.color.dim, fontSize: theme.font.size.xs, lineHeight: 1.35 }}>
-        Documents larger than this are rejected at upload.
+        Documents larger than this are rejected at upload. Must be between {MIN_MB} and {MAX_MB} MiB.
       </div>
     </div>
   );

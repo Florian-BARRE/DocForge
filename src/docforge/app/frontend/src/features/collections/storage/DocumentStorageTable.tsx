@@ -20,12 +20,16 @@ interface DocumentStorageTableProps {
 }
 
 const STORE_COLOR: Record<StoreKey, string> = Object.fromEntries(STORAGE_STORES.map(({ key, color }) => [key, color])) as Record<StoreKey, string>;
+const STORE_META: Record<StoreKey, { label: string; technicalName: string }> =
+  Object.fromEntries(STORAGE_STORES.map(({ key, label, technicalName }) => [key, { label, technicalName }])) as Record<StoreKey, { label: string; technicalName: string }>;
 
-const COLUMNS: { key: SortKey; label: string; align: "left" | "right"; storeKey?: StoreKey }[] = [
+// Business label leads every header; the raw product name (S3/PostgreSQL/Qdrant) rides along only
+// as a native tooltip (`title`) — same "technical detail on hover" convention as the filename cell.
+const COLUMNS: { key: SortKey; label: string; title?: string; align: "left" | "right"; storeKey?: StoreKey }[] = [
   { key: "filename", label: "Document", align: "left" },
-  { key: "s3", label: "S3", align: "right", storeKey: "s3" },
-  { key: "postgres", label: "PostgreSQL", align: "right", storeKey: "postgres" },
-  { key: "qdrant", label: "Qdrant", align: "right", storeKey: "qdrant" },
+  { key: "s3", label: STORE_META.s3.label, title: STORE_META.s3.technicalName, align: "right", storeKey: "s3" },
+  { key: "postgres", label: STORE_META.postgres.label, title: STORE_META.postgres.technicalName, align: "right", storeKey: "postgres" },
+  { key: "qdrant", label: STORE_META.qdrant.label, title: STORE_META.qdrant.technicalName, align: "right", storeKey: "qdrant" },
   { key: "total", label: "Total", align: "right" },
 ];
 
@@ -73,9 +77,10 @@ export function DocumentStorageTable({ documents, collectionId, onNavigate }: Do
       <table style={{ borderCollapse: "collapse", width: "100%" }}>
         <thead>
           <tr style={{ borderBottom: `1px solid ${t.color.line}` }}>
-            {COLUMNS.map(({ key, label, align, storeKey }) => (
+            {COLUMNS.map(({ key, label, title, align, storeKey }) => (
               <th
                 key={key}
+                title={title}
                 onClick={() => toggleSort(key)}
                 style={{
                   textAlign: align, color: t.color.dim, fontSize: t.font.size.xs,

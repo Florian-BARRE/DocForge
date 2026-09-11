@@ -12,7 +12,12 @@ export type StoreKey = "s3" | "postgres" | "qdrant";
 
 export interface StoreMeta {
   key: StoreKey;
+  /** Business-facing name — what a non-engineer reads everywhere by default (legend, card header,
+   *  table column). Never the raw product name; that's `technicalName` below. */
   label: string;
+  /** The actual product backing this store (S3, PostgreSQL, Qdrant) — an engineer's detail, shown
+   *  only behind a technical disclosure/tooltip, never as the primary label. */
+  technicalName: string;
   color: string;
   /** What "0 B" means for THIS store — read instead of the Breakdown/estimated furniture when a
    *  store hasn't written anything yet (see `StorageStoreBreakdown`'s zero-state branch). */
@@ -20,9 +25,9 @@ export interface StoreMeta {
 }
 
 export const STORAGE_STORES: StoreMeta[] = [
-  { key: "s3", label: "S3", color: t.color.store.s3, emptyLabel: "no files stored" },
-  { key: "postgres", label: "PostgreSQL", color: t.color.store.postgres, emptyLabel: "no records stored" },
-  { key: "qdrant", label: "Qdrant", color: t.color.store.qdrant, emptyLabel: "no vectors indexed" },
+  { key: "s3", label: "Source files", technicalName: "S3", color: t.color.store.s3, emptyLabel: "no files stored" },
+  { key: "postgres", label: "Metadata", technicalName: "PostgreSQL", color: t.color.store.postgres, emptyLabel: "no records stored" },
+  { key: "qdrant", label: "Search index", technicalName: "Qdrant", color: t.color.store.qdrant, emptyLabel: "no vectors indexed" },
 ];
 
 /** A store's ON-DISK contribution off either the collection-level or a per-document storage payload.

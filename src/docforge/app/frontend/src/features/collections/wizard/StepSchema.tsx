@@ -25,9 +25,13 @@ const headStyle: React.CSSProperties = {
 };
 
 export function StepSchema({ mode, fields, onFieldsChange, onBack, onNext }: StepSchemaProps) {
-  const valid = fields.every((f) =>
-    f.field_name.trim().length > 0 && (f.field_type !== "enum" || Boolean(f.enum_values?.length)),
-  );
+  const invalidRows = fields
+    .map((f, i) => ({ f, i }))
+    .filter(({ f }) => f.field_name.trim().length === 0 || (f.field_type === "enum" && !f.enum_values?.length));
+  const valid = invalidRows.length === 0;
+  const invalidHint = invalidRows
+    .map(({ f, i }) => (f.field_name.trim().length === 0 ? `row ${i + 1} needs a name` : `row ${i + 1} ("${f.field_name}") needs at least one enum value`))
+    .join("; ");
 
   const updateAt = (index: number, field: DraftField) =>
     onFieldsChange(fields.map((f, i) => (i === index ? field : f)));
@@ -75,11 +79,14 @@ export function StepSchema({ mode, fields, onFieldsChange, onBack, onNext }: Ste
       <div>
         <Button onClick={() => onFieldsChange([...fields, blankField()])}>+ Add field</Button>
       </div>
-      <div style={{ display: "flex", gap: theme.space.s }}>
-        <Button onClick={onBack}>Back</Button>
-        <Button variant="primary" disabled={!valid} onClick={onNext}>
-          {fields.length === 0 ? "Skip — no metadata" : "Next — review"}
-        </Button>
+      <div style={{ display: "flex", flexDirection: "column", gap: theme.space.xs }}>
+        <div style={{ display: "flex", gap: theme.space.s }}>
+          <Button onClick={onBack}>Back</Button>
+          <Button variant="primary" disabled={!valid} onClick={onNext}>
+            {fields.length === 0 ? "Skip — no metadata" : "Next — review"}
+          </Button>
+        </div>
+        {!valid && <span style={{ color: theme.color.dim, fontSize: theme.font.size.xs }}>Fix before continuing: {invalidHint}</span>}
       </div>
     </div>
   );

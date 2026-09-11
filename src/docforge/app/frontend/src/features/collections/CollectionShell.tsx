@@ -1,10 +1,13 @@
 // ====== Code Summary ======
 // The collection workspace chrome — a header (name + contract summary + upload/edit actions) and a
-// TWO-LEVEL nav shared by every view nested under a collection. Level 1 is Overview | Corpus | Search
-// | Jobs; level 2 is the active section's sub-tabs (Corpus → Metadata · Ingestion pipeline · Documents;
-// Search → Search · Search pipeline; Overview and Jobs are leaves). A document's detail view is nested
-// under Corpus›Documents, so the nav stays visible while inspecting a document. Fetches the collection
-// only to render this chrome — each nested page still owns its own data fetch.
+// TWO-LEVEL nav shared by every view nested under a collection. Level 1 is Overview | Documents |
+// Ingestion | Search | Jobs; level 2 is the active section's sub-tabs (Documents → Metadata, its
+// document grid IS the section's own default landing content, not a repeated "Documents" sub-tab;
+// Search → Search pipeline, its query/hits view IS the section's own default landing content, not a
+// repeated "Search" sub-tab — round-4 audit's "IA redundancy" finding: a sub-tab must never just
+// echo its parent's own label). Overview, Ingestion and Jobs are leaves (no sub-tabs). A document's
+// detail view is nested under Documents, so the nav stays visible while inspecting a document.
+// Fetches the collection only to render this chrome — each nested page still owns its own data fetch.
 
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import { getCollection, type Collection } from "../../api/collections";
@@ -25,6 +28,7 @@ import { useDeleteCollection } from "./state/useDeleteCollection";
 import { BreadcrumbExtraContext } from "../../shell/collectionBreadcrumbExtra";
 import { ExportPanel } from "./transfer/ExportPanel";
 import { UploadPanel } from "./UploadPanel";
+import { bytesToMb } from "./wizard/wizardTypes";
 
 // Lets a nested page (namely the empty-collection Overview hero) hide the shell header's "Upload"
 // toggle so it never opens a second upload panel alongside a page's own inline one — see
@@ -50,46 +54,63 @@ export function useHideHeaderUpload(hide: boolean): void {
 }
 
 // A tab key — the caller passes the active one; the section (level-1 group) is derived from it.
+// `pipeline` used to live as a Corpus sub-tab ("Ingestion pipeline") — promoted to its own level-1
+// section, now labelled "Ingestion" (naive-user testing: 2/5 testers never found it buried under
+// Corpus, and the create wizard's own copy promised a top-level "Pipeline tab" that didn't exist;
+// round-4 audit: "Pipeline" read as ambiguous once a second, search-side pipeline also existed).
+// Same page (`CollectionPipelinePage` / `StageRailPage`), only its placement/label in the nav
+// changed. The internal keys below (`corpus`, `pipeline`, `documents`…) stay as-is — only the
+// user-facing `SECTION_ORDER`/`SUBTABS` labels moved — to avoid touching routing/view names.
 export type CollectionTabKey =
   | "overview"                                      // Overview (leaf)
-  | "metadata" | "pipeline" | "documents"          // Corpus
+  | "metadata" | "documents"                       // Documents section (internal key: corpus)
+  | "pipeline"                                      // Ingestion (leaf)
   | "search" | "search-pipeline"                   // Search
   | "jobs";                                         // Jobs (leaf)
 
-type Section = "overview" | "corpus" | "search" | "jobs";
+type Section = "overview" | "corpus" | "pipeline" | "search" | "jobs";
 
 const SECTION_ORDER: { key: Section; label: string }[] = [
   { key: "overview", label: "Overview" },
-  { key: "corpus", label: "Corpus" },
+  { key: "corpus", label: "Documents" },
+  { key: "pipeline", label: "Ingestion" },
   { key: "search", label: "Search" },
   { key: "jobs", label: "Jobs" },
 ];
 
 const SECTION_OF: Record<CollectionTabKey, Section> = {
   overview: "overview",
-  metadata: "corpus", pipeline: "corpus", documents: "corpus",
+  metadata: "corpus", documents: "corpus",
+  pipeline: "pipeline",
   search: "search", "search-pipeline": "search",
   jobs: "jobs",
 };
 
-// Level-2 sub-tabs per section — Overview and Jobs are leaf tabs (no sub-tabs).
+// Level-2 sub-tabs per section — Overview, Ingestion and Jobs are leaf tabs (no sub-tabs). Documents
+// and Search each keep exactly ONE sub-tab: their own primary content (the document grid; the query
+// runner) is what a user sees by DEFAULT on the section itself, so it never gets its own redundant
+// sub-tab button that would just repeat the section's own label ("Documents › Documents",
+// "Search › Search" — the round-4 audit's #5 finding). A lone sub-tab still renders (see the
+// `length > 0` gates below, not `> 1`) purely as a secondary way in to that one extra view.
 const SUBTABS: Record<Section, TabItem<CollectionTabKey>[]> = {
   overview: [],
   corpus: [
     { key: "metadata", label: "Metadata" },
-    { key: "pipeline", label: "Ingestion pipeline" },
-    { key: "documents", label: "Documents" },
   ],
+  pipeline: [],
   search: [
-    { key: "search", label: "Search" },
-    { key: "search-pipeline", label: "Search pipeline" },
+    // Deliberately French (per explicit product direction, round-4 audit) — distinguishes this
+    // search-side pipeline editor from the top-level "Ingestion" pipeline at a glance, even though
+    // the rest of this UI's copy is English; see the sub-tab's own page header/title for the same
+    // label.
+    { key: "search-pipeline", label: "Pipeline de recherche" },
   ],
   jobs: [],
 };
 
 // The landing tab when a level-1 section is clicked.
 const SECTION_DEFAULT: Record<Section, CollectionTabKey> = {
-  overview: "overview", corpus: "documents", search: "search", jobs: "jobs",
+  overview: "overview", corpus: "documents", pipeline: "pipeline", search: "search", jobs: "jobs",
 };
 
 function viewForTab(tab: CollectionTabKey, collectionId: string): View {
@@ -125,10 +146,10 @@ interface SectionTabProps {
   onKeyDown: (e: React.KeyboardEvent) => void;
 }
 
-// Same underline idiom as TabNav's sub-tabs (see components/TabNav.tsx) — the audit flagged a
-// filled orange PILL here stacked directly above TabNav's orange UNDERLINE sub-tabs on the same
-// page (Search section: "Search"/"Search pipeline") as two competing active-tab affordances. One
-// idiom now: text colour + a bottom border, the active one alone carrying the forge underline.
+// Same underline idiom as TabNav's sub-tabs (see components/TabNav.tsx) — an earlier audit flagged a
+// filled orange PILL here stacked directly above TabNav's orange UNDERLINE sub-tabs on the same page
+// as two competing active-tab affordances. One idiom now: text colour + a bottom border, the active
+// one alone carrying the forge underline.
 function SectionTab({ sectionKey, active, label, onClick, registerRef, onKeyDown }: SectionTabProps) {
   const [hover, setHover] = useState(false);
   const color = active ? t.color.accentSafe : hover ? t.color.text : t.color.dim;
@@ -216,14 +237,14 @@ export function CollectionShell({ collectionId, active, onNavigate, children }: 
       ];
 
   const section = SECTION_OF[active];
-  const maxSizeMb = (collection.max_file_size_bytes / (1024 * 1024)).toFixed(1);
-  const subtitle = `${collection.supported_formats.join(", ")} · ${maxSizeMb} MB max · `
+  const maxSizeMb = bytesToMb(collection.max_file_size_bytes);
+  const subtitle = `${collection.supported_formats.join(", ")} · ${maxSizeMb} MiB max · `
     + `${collection.fields.length} field${collection.fields.length === 1 ? "" : "s"}`;
 
   // The panel below is `aria-labelledby` whichever tab strip is actually "in charge" of it right
   // now — the level-2 sub-tabs when the section has any, otherwise the level-1 section tab itself
   // (Overview/Jobs are leaves with no sub-tabs).
-  const activeTabId = SUBTABS[section].length > 1 ? tabButtonId("collection-subtabs", active) : sectionTabId(section);
+  const activeTabId = SUBTABS[section].length > 0 ? tabButtonId("collection-subtabs", active) : sectionTabId(section);
 
   return (
     <div className="df-rise" style={{ height: "100%", display: "flex", flexDirection: "column", overflow: "hidden" }}>
@@ -285,9 +306,9 @@ export function CollectionShell({ collectionId, active, onNavigate, children }: 
           aria-label="Collection sections"
           style={{
             display: "flex", gap: t.space.l,
-            marginBottom: SUBTABS[section].length > 1 ? t.space.s : 0,
-            borderBottom: SUBTABS[section].length > 1 ? "none" : `1px solid ${t.color.line}`,
-            paddingBottom: SUBTABS[section].length > 1 ? 0 : t.space.s,
+            marginBottom: SUBTABS[section].length > 0 ? t.space.s : 0,
+            borderBottom: SUBTABS[section].length > 0 ? "none" : `1px solid ${t.color.line}`,
+            paddingBottom: SUBTABS[section].length > 0 ? 0 : t.space.s,
           }}
         >
           {SECTION_ORDER.map((s) => (
@@ -303,7 +324,7 @@ export function CollectionShell({ collectionId, active, onNavigate, children }: 
           ))}
         </div>
         {/* Level 2 — the active section's sub-tabs (Overview/Jobs have none). */}
-        {SUBTABS[section].length > 1 && (
+        {SUBTABS[section].length > 0 && (
           <TabNav
             tabs={SUBTABS[section]}
             active={active}
