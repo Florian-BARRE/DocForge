@@ -450,6 +450,21 @@ services:
       resources:
         # PP-StructureV3 loads ~7 CPU models (layout + OCRv5 + table_cls + SLANeXt/SLANet +
         # RT-DETR wired/wireless cell det) and a predict peaks several GB — 3g OOM-crash-loops it.
+        # This container ALSO lazily hosts PaddleOCR-VL-1.6 (0.9B VLM, libs/paddleocr_vl/service.py)
+        # on the first /vl-parse call — measured live on this VM (2026-09-10, cached weights, a
+        # trivial single-page PDF): idle-with-PP-Structure 1.8g -> transient load peak 11.5g ->
+        # steady-state (model never unloaded) 9.5g. A real multi-page document's predict() adds
+        # activation/image-token memory ON TOP of that steady-state, so 16g keeps real headroom over
+        # this container's OWN measured peak. DO NOT raise further: this VM's free/available RAM
+        # (`free -h`) collapsed from ~7.8g/13g to ~0.6g/6.3g during that single test, shared with
+        # OTHER unrelated tenants' production containers on this box — a higher ceiling would let
+        # paddle legally claim more of an already-thin shared pool and risks a HOST-level OOM (the
+        # likely cause of this service's one observed crash-restart, since paddle's OWN cgroup limit
+        # was never hit). The real fix is smaller footprint (e.g. call PaddleOcrVlService.unload()
+        # between escalation attempts) or a dedicated/GPU host for paddle-VL — both out of infra/compose
+        # scope. Concurrency is already minimal: WORKER_CONCURRENCY=1 (services/docforge/.env) plus
+        # each pipeline's own asyncio.Lock serialize every predict() to 1 at a time — no compose lever
+        # left to reduce concurrency further.
         limits:
           memory: 16g
         reservations:
