@@ -121,6 +121,10 @@ Backs the public `GET /capabilities` endpoint (outside `/api/v1`, unauthenticate
 |---|---|---|
 | `SEARCH_RUN_TIMEOUT_SECONDS` | `30.0` | Wall-clock cap for one inline search run. Guards a stuck/cold provider (a cold CPU embedder's first encode can breach a tight cap → 422). Raise on a slow/contended deployment. |
 | `SSE_POLL_INTERVAL_SECONDS` | `0.75` | Poll cadence for the live job SSE stream (poll-backed, no message bus). |
+| `PREVIEW_RUN_TIMEOUT_SECONDS` | `120.0` | Wall-clock cap for one inline pipeline dry-run (`POST /collections/{id}/pipeline/preview`). The preview runs the ingest graph synchronously in the request, so this bounds a slow parse/provider. |
+| `PREVIEW_MAX_BYTES` | `10485760` (10 MiB) | Hard body-size cap for a dry-run source (upload or existing doc). A larger source is a `422` — ingest it for the full pipeline instead. |
+| `PREVIEW_MAX_CHUNKS` | `20` | Ceiling on how many chunks a dry-run preview returns (the rest are only counted). |
+| `PREVIEW_CHUNK_TEXT_MAX_CHARS` | `2000` | Per-chunk text/context truncation ceiling in a dry-run preview. |
 | `SEARCH_MAX_DISABLED_DOC_EXCLUSIONS` | `2000` | Threshold at which hiding disabled documents flips strategy. Up to this many disabled documents, search excludes them with a `must_not document_id in {…}` clause; past it that clause would bloat every query, so the facade switches to the equivalent positive `document_id in {enabled}` inclusion (the smaller set on a mostly-archived collection). Purely a performance knob — results are identical either way. |
 
 ### Document grid & jobs list (app-only)
@@ -168,6 +172,11 @@ Backs the public `GET /capabilities` endpoint (outside `/api/v1`, unauthenticate
 | `WORKER_TRACE_RETENTION_DAYS` | `14` | Retention (days) for stored full-trace payloads, consumed by the `gc_trace_payloads` cron to prefix-delete a job's `trace/{job_id}/` object-store space once its jobs age past this. `0` = keep-forever: the cron is then **not registered** (same convention as the audit GC), so an out-of-box deployment never deletes trace payloads behind the operator's back. |
 | `WORKER_TRACE_GC_INTERVAL_MINUTES` | `60` | How often the trace-retention GC runs (minutes), plus once at startup. Only consulted when `WORKER_TRACE_RETENTION_DAYS > 0` (the cron is otherwise absent). Lower it to reclaim aged payloads more promptly; raise it to reduce object-store churn. |
 | `WORKER_TRACE_GC_BATCH_SIZE` | `500` | Maximum jobs whose payloads one GC pass reclaims — bounds a single sweep's work/round-trips so a large backlog of aged jobs is drained across successive runs rather than in one unbounded batch. Raise it to drain a big backlog faster, lower it to keep each pass lighter. |
+| `WORKER_PREVIEW_RUN_TIMEOUT_SECONDS` | `300.0` | Wall-clock cap for one worker-side dry-run preview job (`POST /collections/{id}/pipeline/preview/jobs`). The worker runs the FULL ingest graph (docling included) and persists NOTHING — the bounded report is returned as the arq job result. Higher than the inline `PREVIEW_RUN_TIMEOUT_SECONDS` since a real parse runs here. |
+| `WORKER_PREVIEW_MAX_CHUNKS` | `20` | Ceiling on how many chunks a worker preview returns (the client's `max_chunks` is clamped to this). |
+| `WORKER_PREVIEW_CHUNK_TEXT_MAX_CHARS` | `2000` | Per-chunk text/context truncation ceiling in a worker preview report — keeps the returned payload bounded (mirrors the app's `PREVIEW_CHUNK_TEXT_MAX_CHARS`). |
+| `WORKER_PREVIEW_MAX_BYTES` | `10485760` (10 MiB) | Size ceiling when a worker preview rehydrates an already-ingested document's original bytes — a larger original is refused rather than buffered whole (mirrors the app's `PREVIEW_MAX_BYTES`). |
+| `WORKER_PREVIEW_RESULT_TTL_SECONDS` | `1800.0` | TTL (seconds) the preview job's result is retained in Redis for the client to poll (`GET …/pipeline/preview/jobs/{preview_id}`). A preview is an interactive, throwaway artefact — short by design; past it, a poll is a 404. No DB table, no migration. |
 
 ### Worker liveness & stuck-job reaper
 
@@ -274,6 +283,8 @@ A pure HTTP client of the DocForge API — no DB/S3 secrets.
 | `MCP_API_TIMEOUT_S` | `60` | Outbound request timeout. |
 | `MCP_TRANSPORT` | `stdio` | `stdio` (local Claude Desktop/Code) \| `streamable-http` (container service). The shipped `.env.example` sets `streamable-http` for the compose service. |
 | `MCP_HOST` / `MCP_PORT` / `MCP_HTTP_PATH` | `0.0.0.0` / `9000` / `/mcp` | HTTP transport binding (`MCP_PORT` is the container-internal port, published on host `10048`). |
+| `MCP_UPLOAD_DIR` | *(unset)* | The ONLY local directory the `file_path` argument of the path-based `upload_document` / `import_collection` tools may resolve into over `streamable-http`. Unset → those path-based tools are refused over HTTP (no "read anything the container sees" fallback); ignored on stdio. Remote callers with only the file's bytes use `upload_document_bytes` / `import_collection_bytes` instead. |
+| `MCP_MAX_INLINE_UPLOAD_BYTES` | `104857600` (100 MiB) | Decoded-size ceiling for the `content_base64` argument of `upload_document_bytes` / `import_collection_bytes`. base64 decode materializes the whole payload in the MCP process before any server-side cap runs, so this bounds inline-upload memory; a larger file must be staged and sent via the path-based tool. |
 | `DOCFORGE_API_TOKEN` | *(unset)* | **stdio-only fallback.** Outbound bearer used only when running over stdio (no `Authorization` header exists there to forward). In `streamable-http` mode it is never used to serve a request — every incoming request MUST carry its own `Authorization: Bearer <docforge-api-key>`, or the MCP refuses it with 401. Never set this to `AUTH_ROOT_TOKEN` (or any root key) for a networked deployment. Auto-masked in logs. |
 
 > **Access control.** The MCP has no auth of its own — it forwards each caller's own DocForge API

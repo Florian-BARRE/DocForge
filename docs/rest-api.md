@@ -55,6 +55,7 @@ Everything is JSON in and JSON out, with two exceptions:
 | Pipelines (design) | `/api/v1/pipelines` | §9 |
 | Config snippets (granular export/import) | `/api/v1/collections/{collection_id}/snippets/{kind}` | §10 |
 | Cost estimate (dry-run) | `/api/v1/collections/{collection_id}/estimate` | §11 |
+| Pipeline preview (dry-run) | `/api/v1/collections/{collection_id}/pipeline/preview` | §11b |
 | Collection transfers (export/import bundles) | `/api/v1/collections/{id}/export`, `/api/v1/collections/import`, `/api/v1/transfers/{transfer_id}` | §12 |
 | Audit trail | `/api/v1/audit` | §13 |
 | Idempotency (request header) | `Idempotency-Key` on mutating routes | §14 |
@@ -341,18 +342,29 @@ the global default for that value.
 
 ### Discover the contract schema
 
-`GET /api/v1/collections/contract-schema` — capability `read`. Returns the **JSON Schema** of the
-collection identity/limits contract (`name`, `supported_formats`, `max_file_size_bytes`,
-`job_timeout_seconds`, `preset`) — the same model `POST /api/v1/collections` composes, so the two can
-never drift. A UI feeds it straight to a schema-driven form and a new scalar contract field surfaces
-with no client change.
+`GET /api/v1/collections/contract-schema` — capability `read`. Returns the **full discoverable
+vocabulary** of a collection contract, so a purely-HTTP client (e.g. the MCP) never has to guess a
+value and learn it was wrong at a `422`. Three parts, each serialized from the canonical server source
+(never a hand-copied literal):
+
+- `config_schema` — the **JSON Schema** of the identity/limits contract (`name`, `supported_formats`,
+  `max_file_size_bytes`, `job_timeout_seconds`, `preset`), the same model `POST /api/v1/collections`
+  composes, so the two can never drift. A UI feeds it straight to a schema-driven form.
+- `field_schema` — the **JSON Schema** of one metadata `FieldSpec`; its `$defs` carry the valid
+  `field_type` / `origin` / `scope` enum values the scalar contract omits.
+- `supported_format_tokens` — every upload format token a collection may declare in
+  `supported_formats` (e.g. `pdf`, `docx`, `md`).
 
 ```json
-{ "config_schema": { "title": "CollectionContractModel", "type": "object", "properties": { "...": {} } } }
+{
+  "config_schema": { "title": "CollectionContractModel", "type": "object", "properties": { "...": {} } },
+  "field_schema": { "title": "FieldSpecModel", "$defs": { "FieldType": { "enum": ["string", "integer", "..."] } } },
+  "supported_format_tokens": ["csv", "doc", "docx", "html", "jpeg", "md", "pdf", "png", "txt", "..."]
+}
 ```
 
-The metadata schema (`fields[]`) is **not** part of this document — it is described in "The metadata
-FieldSpec" above.
+The metadata schema (`fields[]`) is not part of `config_schema` — its shape and enum vocabulary are
+served in `field_schema` (and described in "The metadata FieldSpec" above).
 
 ### Create a collection
 
@@ -376,6 +388,25 @@ Returns the created `CollectionModel` (`201`). `409` on a name clash, `422` on a
 colliding vector slugs. `tags` is an optional list of free-form labels for grouping/filtering
 collections in the UI; omit it (or pass `[]`) to create the collection untagged. The response always
 carries `tags` (`[]` when untagged).
+
+**Business presets.** When you omit `pipeline`, the ingestion blob is seeded from the `preset`
+selector; `search_preset` seeds the collection's search blob. Each preset is a curated,
+validation-passing stock topology (not a new engine) with every provider-hosted stage OFF. Discover
+the available presets — name, label and rationale — from the design surface: `GET
+/api/v1/pipelines/ingest` and `GET /api/v1/pipelines/search` each return a `presets` array.
+
+- `preset` (ingestion, ignored when `pipeline` is set): `standard` (default full pipeline), `light`
+  (fast, local, enrichment-free core), `ocr_scan` (a local OCR pass for scanned/image documents),
+  `high_precision` (finer chunks for sharper hybrid retrieval).
+- `search_preset`: `hybrid` (default dense+sparse fusion), `hybrid_rerank` (hybrid then a
+  cross-encoder rerank), `dense_only` (pure semantic retrieval). Omitted → the stock hybrid default.
+
+```bash
+curl -sX POST http://localhost:10040/api/v1/collections \
+  -H "Content-Type: application/json" \
+  -d '{"name": "scans", "supported_formats": ["pdf"], "max_file_size_bytes": 52428800,
+       "preset": "ocr_scan", "search_preset": "dense_only"}'
+```
 
 ### Patch a collection
 
@@ -573,7 +604,11 @@ when none). A `0`-chunk run resolves to `done`-with-`warning_reason`, never `fai
 `DocumentDetail` adds `collection_id`, `mime_type`, `source_kind`, `source_hash`,
 `pdf_blob_hash`, `simhash`, `pipeline_version`, and a `metadata` array of resolved
 `{field_name, value, origin}` values (it also carries the same `chunk_count` and
-`warning_reason`).
+`warning_reason`). It further carries `failure_reason` (the failing job's error message on a
+`failed`/`cancelled` document — why it did not ingest; `null` when it did not fail) and
+`searchable` (a computed boolean — `true` only when the document is `enabled` AND fully ingested
+AND not known-empty; a `failed` or `0`-chunk document is never `searchable`, regardless of the
+`enabled` toggle, which reflects only the user's intent).
 
 `ChunkInfo` carries `id, chunk_index, text, token_count, is_indexed, role, enabled, strategy,
 parent_id, block_ids[], metadata[]`. Pages (`PageInfo`) reference a `render_blob_hash` you fetch
@@ -786,6 +821,9 @@ request a cancellation).
 | `GET` | `/api/v1/jobs/queue` | `read` | Backlog depth — `{pending, running}` |
 | `GET` | `/api/v1/jobs/cost?collection_id={id}` | `read` | A collection's paid text-gen roll-up (`CollectionCost`) |
 | `GET` | `/api/v1/jobs/stage-durations?collection_id={id}` | `read` | Average per-stage wall-clock — the ETA basis (`StageDurations`) |
+| `GET` | `/api/v1/jobs/failures/breakdown` | `read` | Failure aggregation over a window — top causes / by stage / by collection (`FailureBreakdown`) |
+| `GET` | `/api/v1/jobs/failures/new?since={ts}` | `read` | "X new failures since a cursor" signal — count + optional ids (`NewFailures`) |
+| `GET` | `/api/v1/jobs/timeseries` | `read` | Lightweight hourly job trends — done/failed/arrivals/backlog sparklines (`JobTimeseries`) |
 | `POST` | `/api/v1/jobs/{job_id}/cancel` | `write` | Request cancellation of a queued/running job (`CancelResult`) |
 
 > `collection_id` is **optional** on `GET /api/v1/jobs`. **Present** → scoped to that collection (and
@@ -794,13 +832,22 @@ request a cancellation).
 > `403` — the same gate `GET /api/v1/jobs/queue` applies to its fleet-wide counts. A **pending** job
 > has `worker_id: null` (arq assigns the worker at claim time — never fabricated).
 
-`GET /api/v1/jobs` is **paginated + filterable** (a collection — or the fleet — can hold thousands of
-job rows). Query params:
+`GET /api/v1/jobs` is **paginated + filterable + sortable** — the "All Jobs" triage view (a collection
+— or the fleet — can hold thousands of job rows). Query params:
 - `collection_id` (optional) — scope to one collection, or omit for fleet-wide (see the note above).
 - `status` (optional, **repeatable**) — filter to one or more of `pending`/`running`/`done`/`failed`/
   `cancelled` (e.g. `?status=pending&status=running`). Omit for all statuses.
-- `order` (optional) — `newest` (default, `created_at` DESC — the monitoring view) or `oldest`
-  (`created_at` ASC — **FIFO / "what runs next"**, typically paired with `status=pending`).
+- `stage` (optional) — filter to jobs in this stage (the node's `current_stage`). Omit for all stages.
+- `error_type` (optional) — filter to jobs with this structured failure class (e.g. `TimeoutError`,
+  `worker_killed`, `job_timeout_exceeded`). Omit for all.
+- `search` (optional) — case-insensitive **prefix** match on the job id **or** document id (paste a
+  full id or a leading fragment). Omit for no id search.
+- `created_after` / `created_before` (optional) — ISO-8601 instants bounding the creation-date range.
+- `sort` (optional) — the sort dimension: `created` (default), `duration` (wall-clock run time — a
+  still-running job by elapsed time, a queued one sorts last) or `status`.
+- `order` (optional) — the sort **direction** applied to `sort`: `newest` (default = DESC — newest /
+  longest / z-a, the monitoring view) or `oldest` (ASC — **FIFO / "what runs next"** for `created`,
+  typically paired with `status=pending`; shortest-first for `duration`; a-z for `status`).
 - `limit` (optional) — page size, clamped down to the server's `JOBS_MAX_PAGE_SIZE` (its default).
 - `offset` (optional) — rows to skip for paging.
 
@@ -814,9 +861,10 @@ A `JobStatus` carries `job_id, document_id, collection_id, status` (`queued`/`ru
 It also joins display labels (`document_filename`, `document_title`, `collection_name`, each `null`
 if the row is gone), a `cancel_requested` flag and a `stalled` flag (a RUNNING job idle past the
 stall threshold — an early wedge warning), the paid-generation roll-up (`total_prompt_tokens`,
-`total_completion_tokens`, `cost_usd`), the live fan-out counter (`items_done`/`items_total`, `null`
-outside a fan-out stage), and — only on a failed job — a failure breadcrumb (`failed_node_id`,
-`failed_node_kind`, `failed_item_index`, `error_type`).
+`total_completion_tokens`, `cost_usd`), `duration_seconds` (wall-clock run time — `finished_at −
+started_at` for a terminal job, elapsed time for a running one, `null` while queued), the live fan-out
+counter (`items_done`/`items_total`, `null` outside a fan-out stage), and — only on a failed job — a
+failure breadcrumb (`failed_node_id`, `failed_node_kind`, `failed_item_index`, `error_type`).
 
 ### Poll an ingestion to completion
 
@@ -890,6 +938,33 @@ remaining time.
 Both `cost` and `stage-durations` carry the collection in the **query string**, so the caller's
 collection scope is enforced on that value.
 
+### SRE observability — aggregation & trends (no Prometheus)
+
+These three endpoints give the UI what it needs to **aggregate** and **track over time** without the
+optional Prometheus/Grafana add-on — everything is derived in SQL from the `job` table. Each takes an
+optional `collection_id` and is gated exactly like `GET /jobs`: a named collection is scoped to the
+key, an omitted one is a **fleet-wide** read restricted to full-access keys.
+
+`GET /api/v1/jobs/failures/breakdown` — the "why is it breaking" panel. `window_hours` (default `24`,
+max `720`) sets the look-back; FAILED jobs **created** in that window are rolled up three ways, each
+ordered by descending count and bounded to the dominant causes. Returns a `FailureBreakdown`:
+`{ collection_id, window_hours, since, total_failed, by_error_type[], by_stage[], by_collection[] }`.
+`by_error_type`/`by_stage` are `{ label, count }` (a null group key surfaces as `"unknown"`);
+`by_collection` is `{ collection_id, collection_name, count }`.
+
+`GET /api/v1/jobs/failures/new?since={ts}` — the "X new failures since you last looked" signal. The
+client passes its last-seen cursor (`since`, ISO-8601); the count is keyed on the **failure instant**
+(`finished_at`), so a job created before the cursor but failing after it still counts. `include_ids`
+(default `false`) also returns the bounded id list (`limit`, default `50`, max `500`). Returns a
+`NewFailures`: `{ since, count, job_ids[], latest_failed_at }` — pass `latest_failed_at` as the next
+`since` to advance the cursor without double-counting.
+
+`GET /api/v1/jobs/timeseries` — lightweight in-product sparklines. `window_hours` (default `24`, max
+`168`) of **contiguous hourly buckets**, computed from the job rows: arrivals (`created`), successful
+completions (`done`), failures (`failed`) and a reconstructed end-of-hour `backlog` (queued + running).
+Returns a `JobTimeseries`: `{ collection_id, window_hours, bucket_seconds, buckets[] }` where each
+`TimeseriesBucket` is `{ bucket_start, created, done, failed, backlog }`, oldest first.
+
 ---
 
 ## 8. Blobs
@@ -917,7 +992,7 @@ on a collection's `pipeline`/`search`. All require `read`.
 | Method | Path | Purpose |
 |---|---|---|
 | `GET` | `/api/v1/pipelines` | Discover surfaces — one entry per pipeline (`ingest`, `search`) with its URLs |
-| `GET` | `/api/v1/pipelines/{key}` | Lean design payload: palette + default blob + issues (`?full=true` for advanced blocks) |
+| `GET` | `/api/v1/pipelines/{key}` | Lean design payload: palette + default blob + `presets` + issues (`?full=true` for advanced blocks) |
 | `POST` | `/api/v1/pipelines/{key}/inspect` | Build + validate + describe a posted blob |
 | `POST` | `/api/v1/pipelines/{key}/edit` | Apply graph operations server-side, then inspect the result |
 | `POST` | `/api/v1/pipelines/{key}/stages/view` | Stage view of a blob + validity (ingest-only) |
@@ -927,8 +1002,19 @@ on a collection's `pipeline`/`search`. All require `read`.
 today — an unknown OR non-stage pipeline key `404`s, and the discovery index omits the stage URLs
 for pipelines with no stage rail.
 
+The lean design payload also carries `presets` — the curated creation presets this pipeline offers
+(`[{name, label, description, is_default}]`). Their `name` is what a client passes as the create
+request's `preset` (ingest) / `search_preset` (search). Ingest offers `standard` (default), `light`,
+`ocr_scan`, `high_precision`; search offers `hybrid` (default), `hybrid_rerank`, `dense_only`.
+
 Design philosophy: a malformed/invalid blob is returned as **data** (`valid: false` + `issues`,
 or `build_error`/`edit_error`), never as an HTTP error — the editor renders the problems in place.
+
+`?full=true` fills the advanced `palette.mechanics` block, which is self-describing: alongside
+`conditions`/`binding_sources`/`containers`/`error_policies` it now carries `edit_operations` (every
+`/edit` `operations[]` variant) and `stage_actions` (every `/stages/apply` `action` variant), each a
+card with its discriminator `kind` + a `params_schema` derived from the model — so a client composes
+those payloads without guessing. `stage_actions` is empty for a pipeline with no stage rail (search).
 
 ```bash
 # Discover surfaces
@@ -1064,6 +1150,94 @@ curl -s -X POST http://localhost:10040/api/v1/collections/$CID/estimate \
 
 `404` when the collection is unknown; `422` when its stored pipeline blob is unreadable (mirrors
 the reingest error contract), or when both `document_ids` and `filter` are set.
+
+---
+
+## 11b. Pipeline preview (dry-run on one document)
+
+See **exactly what the ingestion pipeline would produce on ONE document — without ingesting the
+corpus and without persisting anything**. The ingest graph runs **inline** in the request (the same
+pure engine a real run uses), then the delivery is projected into a bounded report; **no document
+row, S3 object or Qdrant point is ever written**. This is the way to validate a pipeline change
+before applying it to a whole collection.
+
+| Method | Path | Cap | Returns |
+|---|---|---|---|
+| `POST` | `/api/v1/collections/{collection_id}/pipeline/preview` | `write` | A `PreviewResponse` — IR summary + first N chunks + cost + trace |
+
+The request is **`multipart/form-data`** (or form-urlencoded for the `document_id` path). Provide
+**exactly one** source:
+
+- `file` (upload) — the document bytes to dry-run; **or**
+- `document_id` (form field) — an already-ingested document (its original bytes are re-read from the
+  store, nothing is re-stored).
+
+Optional form fields:
+
+- `blob` — a candidate pipeline blob (JSON string) to preview **instead of** the collection's stored
+  pipeline (try a pipeline edit before saving it).
+- `metadata` — declared metadata (JSON object) for an uploaded source.
+- `max_chunks` — how many chunks to include in the report (capped server-side by `PREVIEW_MAX_CHUNKS`).
+
+**Interactive guardrails** (the run is synchronous): a short wall-clock cap
+(`PREVIEW_RUN_TIMEOUT_SECONDS`) and a body-size cap (`PREVIEW_MAX_BYTES`). An oversized source is a
+`422` — ingest it for the full pipeline instead.
+
+The response is a `PreviewResponse`:
+
+- `ok` — `true` when the run delivered a bundle; `false` when a node failed (the failure is **data**,
+  not an error status — see `failed_node_id` / `error` / the `trace`).
+- `ir` — a compact IR summary (title, language, page/block/figure counts, per-type block counts).
+- `chunk_count` + `chunks` — the total produced and the first N (text truncated to
+  `PREVIEW_CHUNK_TEXT_MAX_CHARS`, `chunks_truncated` flags the clip), each with role, heading path,
+  token count, pages and any generated metadata.
+- `vector_set_count` — how many chunk vector sets the embed stage produced.
+- `cost` — the run's **actual** metered spend on this document (prompt/completion tokens, USD cost or
+  null when unpriceable), priced against the collection's own rates.
+- `trace` — the full per-node execution trace (materialized path, status, score, timing, errors).
+- `warnings` — non-fatal notices (e.g. a clean run that produced 0 chunks).
+
+```bash
+# Dry-run an uploaded file against the collection's stored pipeline
+curl -s -X POST http://localhost:10040/api/v1/collections/$CID/pipeline/preview \
+  -F 'file=@/path/to/report.pdf' -F 'max_chunks=5'
+
+# Dry-run an already-ingested document with a candidate pipeline blob
+curl -s -X POST http://localhost:10040/api/v1/collections/$CID/pipeline/preview \
+  -F "document_id=$DID" -F "blob=$(cat candidate_blob.json)"
+```
+
+`404` when the collection or the named document is unknown; `422` on a bad/unbuildable blob, a
+missing/oversized source, or neither/both of `file` and `document_id`.
+
+### Asynchronous worker-side preview (covers every pipeline)
+
+The inline preview above runs in the **API process**, which does not carry the heavy parse
+dependencies (docling) — so it cannot preview the default/docling pipelines. The **async** variant
+enqueues a **worker** preview job that runs the full ingest graph with every dependency present (so
+it covers ALL pipelines), still persisting **nothing**: the bounded report is returned as the job
+result (kept in Redis with a TTL), never written to a table. Submit, then poll by the returned id.
+
+| Method | Path | Cap | Returns |
+|---|---|---|---|
+| `POST` | `/api/v1/collections/{collection_id}/pipeline/preview/jobs` | `write` | `PreviewJobAccepted` — `{preview_id, status}` (202) |
+| `GET` | `/api/v1/collections/{collection_id}/pipeline/preview/jobs/{preview_id}` | `write` | `PreviewJobResult` — `{preview_id, status, result, error}` |
+
+The submit body is the **same `multipart/form-data`** as the inline preview (`file` XOR
+`document_id`, optional `blob` / `metadata` / `max_chunks`). Uploaded bytes ride through the queue;
+an existing `document_id` is re-read worker-side from the store. Guardrails are the worker knobs
+`WORKER_PREVIEW_RUN_TIMEOUT_SECONDS` / `WORKER_PREVIEW_MAX_BYTES` / `WORKER_PREVIEW_MAX_CHUNKS`.
+
+`PreviewJobResult.status` is `pending` (queued) / `running` / `done` (the `result` is a
+`PreviewResponse`) / `failed` (the worker job itself crashed/timed out — distinct from a DATA
+failure, which is `done` with `result.ok = false`). Polling an unknown or expired id is a `404`.
+
+```bash
+# Submit an async worker preview of an already-ingested document, then poll it
+PID=$(curl -s -X POST http://localhost:10040/api/v1/collections/$CID/pipeline/preview/jobs \
+  -F "document_id=$DID" | jq -r .preview_id)
+curl -s http://localhost:10040/api/v1/collections/$CID/pipeline/preview/jobs/$PID | jq '.status, .result.chunk_count'
+```
 
 ---
 

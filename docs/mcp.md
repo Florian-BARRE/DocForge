@@ -65,11 +65,14 @@ vector space is fixed at creation), plus optional ingestion/search pipeline blob
 |---|---|
 | `list_collections` | List every collection with its full contract (schema, pipeline, search blobs). |
 | `get_collection` | Return one collection's full contract — including which fields are filterable/semantic/lexical. |
-| `create_collection` | Create a collection A-to-Z: `name`, `supported_formats`, `max_file_size_bytes`, `fields` (metadata schema), optional `pipeline` blob (omit for the product default). |
+| `create_collection` | Create a collection A-to-Z: `name`, `supported_formats`, `max_file_size_bytes`, `fields` (metadata schema), optional `pipeline` blob (omit for the product default) or `preset="light"` for a fast config-free pipeline, plus `job_timeout_seconds`/`trace_verbosity`. Call `get_collection_contract_schema` first for the exact enum vocabulary. |
 | `update_collection` | Patch identity/limits, the schema (diffed by `field_name` — omitted = removed), and/or the `pipeline`/`search` config blobs. Schema changes flip `needs_reindex`. |
 | `delete_collection` | Delete a collection (irreversible). |
 | `collection_storage_footprint` | Measure a collection's material footprint per store — S3 bytes exact (deduped), Postgres/Qdrant estimated — plus a per-document breakdown, heaviest first. |
 | `estimate_collection_cost` | Dry-run cost/volume projection before spending anything (`collection_id`, `scope="pending"`, `document_ids=None`, `filter=None`). Defaults to pending (not-yet-ingested) documents; pass `document_ids` to estimate a specific selection, or `filter` (same shape as the documents-grid filter) for a corpus slice — either one overrides `scope`. Per-stage token/page + dollar breakdown; unpriced models come back with a null cost, never fabricated. |
+| `preview_pipeline` | Dry-run the ingestion pipeline on ONE already-ingested document and get a bounded preview WITHOUT persisting anything (`collection_id`, `document_id`, optional `blob` candidate, `max_chunks`). Returns an IR summary, the first N chunks, the run's actual metered cost and the full execution trace; a failed node is data (`ok=false` + `failed_node_id` + trace), never an error. Inline/synchronous — cannot parse pipelines whose deps (docling) live only in the worker image. |
+| `submit_preview_job` | Submit an ASYNCHRONOUS worker-side dry-run preview on one document WITHOUT persisting anything (`collection_id`, `document_id`, optional `blob` candidate, `max_chunks`). The worker runs the FULL ingest graph with every dependency present (docling included), so it covers ALL pipelines — use it when `preview_pipeline` cannot. Returns a pollable `preview_id`. |
+| `get_preview_job` | Poll an asynchronous dry-run preview by its id (`collection_id`, `preview_id`). The bounded report appears in `result` once `status` is `done` (a failed node is data there — `result.ok=false`); `status` `failed` means the worker job itself crashed/timed out; an unknown/expired id is a 404. |
 | `export_collection_snippet` | Export one granular config facet (`collection_id`, `kind` ∈ `pipeline`\|`search`\|`schema`) as a portable `.dfsnippet` — secret-masked, config-only, synchronous (contrast with the async whole-collection `.dcexport`). |
 | `apply_collection_snippet` | Apply a `.dfsnippet` (`collection_id`, `kind`, `snippet`) onto this collection. Secrets from a different collection arrive masked and must be re-entered before the graph can run. |
 | `collection_health` | Zero-spend, on-demand provider-reachability sweep across the ingest AND search graphs, plus index/doc stats and a rolled-up verdict. No job enqueued, nothing billed. |
@@ -80,6 +83,7 @@ vector space is fixed at creation), plus optional ingestion/search pipeline blob
 | Tool | Purpose |
 |---|---|
 | `upload_document` | Upload a local file into a collection and enqueue ingestion (async — poll `get_job`/`get_document`). `metadata` is validated against the collection schema. |
+| `upload_document_bytes` | Upload by sending raw bytes (`content_base64`) instead of a server-local path — the remote-caller counterpart of `upload_document`, no filesystem/`MCP_UPLOAD_DIR` involved. |
 | `set_document_enabled` | Toggle a document's searchability (reversible, no re-ingest). |
 
 ### Explorer (read-only browse)
@@ -108,9 +112,14 @@ vector space is fixed at creation), plus optional ingestion/search pipeline blob
 
 | Tool | Purpose |
 |---|---|
-| `list_jobs` | A collection's ingestion jobs, newest first — includes `document_filename`, `collection_name`, `current_stage`, `cancel_requested`. |
+| `list_jobs` | A collection's ingestion jobs, newest first — includes `document_filename`, `collection_name`, `current_stage`, `cancel_requested`. Omit `collection_id` for a fleet-wide listing (full-access token only). |
+| `get_failure_breakdown` | Aggregate recent FAILED jobs over a look-back window — top causes, by stage, by collection. |
+| `get_new_failures` | Count (+ optionally list) jobs that FAILED since a cursor timestamp — the "N new failures since you last looked" signal. |
+| `get_job_timeseries` | Hourly job trends (created/done/failed + reconstructed backlog) over a look-back window. |
 | `get_job` | One ingestion job's live state — poll after an upload. |
+| `wait_for_job` | Block (server-side poll with backoff) until a job reaches done/failed/cancelled or `timeout_s` elapses (capped at 240s), then return its current status. |
 | `get_job_events` | The per-node execution trace (stage, status, timing, error), in order. |
+| `get_job_event_payload` | One stage-event's FULL raw input/output payload (`slot`) — only populated when the collection uses `trace_verbosity="full"`. |
 | `get_live_workers` | What every worker is doing right now, grouped by worker (each with `worker_name`). |
 | `cancel_job` | Stop a job — cooperative by default (running job stops at its next stage boundary), or `force=true` to terminate immediately. |
 
@@ -143,6 +152,7 @@ multi-GB) — `get_export_download_ref` instead points the caller at the REST do
 |---|---|
 | `export_collection` | Open an asynchronous export of a whole collection into a portable `.dcexport` bundle. Returns the transfer handle (202) — poll `get_transfer`. |
 | `import_collection` | Import a `.dcexport` bundle as a brand-new collection. `file_path` is read from the **MCP SERVER's own filesystem**, not the caller's local disk — a remote deployment must stage the bundle there first. Returns the transfer handle (202). |
+| `import_collection_bytes` | Import by sending the bundle's raw bytes (`content_base64`) instead of a server-local path — the remote-caller counterpart of `import_collection` (small/medium bundles only; a multi-GB bundle should still use the path-based tool via `MCP_UPLOAD_DIR`). |
 | `get_transfer` | Poll a transfer's live status — progress, stage, counts, error, and (done) the artifact: bundle `size_bytes`/`expires_at` for an export, the new `collection_id`/`collection_name` for an import. |
 | `get_export_download_ref` | For a done export, returns `size_bytes`/`expires_at` and the REST `download_path` to `GET` directly (or via `docforge_sdk`'s streaming `transfers.download_export`) — never the bundle bytes themselves. |
 
@@ -174,7 +184,7 @@ multi-GB) — `get_export_download_ref` instead points the caller at the REST do
 | `list_audit` | One keyset-paginated page of the audit trail, newest first — one row per mutating API action (who/what/target/outcome). Filter by actor (`actor_user_id`/`actor_key_id`), target (`target_type`+`target_id`), `correlation_id`, and an ISO-8601 time window (`created_from`/`created_to`); walk it with `cursor`. **ROOT / full-access keys only** (a collection-scoped key is rejected `403`). |
 
 
-**Total: 57 tools** across 13 sections.
+**Total: 68 tools** across 13 sections.
 
 ---
 
@@ -301,7 +311,7 @@ Add an entry to your client's MCP config (`.mcp.json`-style):
 }
 ```
 
-The client launches the process and speaks MCP over stdio; the model can then call any of the 57
+The client launches the process and speaks MCP over stdio; the model can then call any of the 65
 tools. (Use an absolute path to `entrypoint.py` if your client does not run from the repo root, and
 run it through `uv`/the project venv so `docforge_sdk` and `mcp` are importable.)
 
