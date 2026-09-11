@@ -365,6 +365,17 @@ class RunTranslator:
                 if item.sparse
                 else {}
             )
+            # The named per-field sparse vectors of the chunk's LEXICAL metadata fields, mirroring
+            # the dense meta vectors above — written under meta_<slug>_bm25 (the read side routes a
+            # lexical SearchTarget to exactly this name).
+            sparse.update(
+                {
+                    VectorNames.field_sparse(name): SparseVec(
+                        indices=vector.indices, values=vector.values
+                    )
+                    for name, vector in item.field_sparse.items()
+                }
+            )
             out.points.append(
                 QdrantPoint(
                     point_id=str(chunk_uuid),
