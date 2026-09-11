@@ -79,8 +79,9 @@ class Palette(BaseModel):
             ``FromRunInput`` binding can target. Advanced only: wiring the entry contract is a
             graph-editing concern.
         mechanics (MechanicsDescription | None): The graph-structure vocabulary (conditions,
-            binding sources, containers, error policies) — auto-derived from the base models.
-            Advanced only: it feeds edge/loop editors.
+            binding sources, containers, error policies) PLUS the mutation vocabularies (the
+            edit-operation and stage-action unions) — auto-derived from the base models. Advanced
+            only: it feeds edge/loop editors and the edit/stage-apply payload builders.
         artefacts (dict[str, ArtefactCard] | None): The slot-type vocabulary — every artefact
             model's docstring + JSON Schema, keyed by class name. Advanced only: it feeds the
             type-chip inspector.

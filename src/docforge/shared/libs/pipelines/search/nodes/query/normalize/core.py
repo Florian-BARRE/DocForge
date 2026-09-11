@@ -4,6 +4,9 @@
 # (top_k from the caller, candidate_k as an over-sample so rerank/post-process have a pool to work
 # on). Pure and deterministic — no store, no model. It is the entry node of the default search graph.
 
+# ====== Standard Library Imports ======
+from typing import Literal
+
 # ====== Third-Party Library Imports ======
 from pydantic import Field
 
@@ -11,9 +14,11 @@ from pydantic import Field
 from shared_libs.pipelines.base import ActionNode, NodeConfig, NodeInput, NodeOutput
 from shared_libs.pipelines.registry import NodeRegistry
 from shared_libs.public_models.search import (
+    CONTENT_FIELD,
     QueryFilters,
     QuerySpec,
     RawQuery,
+    SearchTarget,
     default_content_targets,
 )
 
@@ -21,6 +26,15 @@ from shared_libs.public_models.search import (
 class QueryNormalizeConfig(NodeConfig):
     """The over-sampling knobs of the retrieval depth (no model, no store)."""
 
+    content_modalities: Literal["hybrid", "semantic", "lexical"] = Field(
+        default="hybrid",
+        description="Which content axes a query with NO explicit search_targets searches. 'hybrid' "
+        "(default) — both the dense (semantic) and sparse (lexical) content vectors, fused. "
+        "'semantic' — the dense vector only (a dense-only collection, or a pure-meaning setup). "
+        "'lexical' — the sparse BM25 vector only. This shapes ONLY the default when the caller sends "
+        "no targets; an explicit per-query targets list always wins. The collection's embedder still "
+        "decides which axes actually exist, so selecting an unindexed axis degrades gracefully.",
+    )
     fold_case: bool = Field(
         default=False,
         description="Lower-case the query text. OFF by default: documents are embedded from their "
@@ -31,7 +45,10 @@ class QueryNormalizeConfig(NodeConfig):
     candidate_multiplier: int = Field(
         default=4,
         gt=0,
-        description="candidate_k = top_k × this (the retrieval over-sample factor).",
+        le=100,
+        description="candidate_k = top_k × this (the retrieval over-sample factor). Capped at 100: "
+        "beyond that candidate_k = top_k × multiplier explodes the retrieval pool with no recall "
+        "benefit (rerank/post-process saturate well before).",
     )
     candidate_floor: int = Field(
         default=100, gt=0, description="Minimum candidate_k, so a small top_k still yields a pool."
@@ -68,6 +85,24 @@ class QueryNormalizeNode(ActionNode):
     Consumes = QueryNormalizeConsumes
     Produces = QueryNormalizeProduces
 
+    def __default_targets(self) -> list[SearchTarget]:
+        """Build the content-target default for a target-less query from the configured modalities.
+
+        ``hybrid`` keeps the historical both-axes default; ``semantic``/``lexical`` narrow it to the
+        dense or sparse content vector so a preset (e.g. dense-only) can shape plain-query behaviour
+        without a new node. The collection's embedder still decides which axes truly exist.
+        """
+        config: QueryNormalizeConfig = self.config
+        if config.content_modalities == "hybrid":
+            return default_content_targets()
+        return [
+            SearchTarget(
+                field=CONTENT_FIELD,
+                semantic=config.content_modalities == "semantic",
+                lexical=config.content_modalities == "lexical",
+            )
+        ]
+
     async def run(self, data: QueryNormalizeConsumes) -> QueryNormalizeProduces:
         """
         Normalise the raw query into a QuerySpec.
@@ -89,8 +124,8 @@ class QueryNormalizeNode(ActionNode):
         candidate_k = max(top_k * config.candidate_multiplier, config.candidate_floor)
 
         # 3. Carry the caller's field × modality selection through; an empty list falls back to the
-        #    content default so a spec never reaches retrieval with zero targets to search.
-        targets = list(data.query.search_targets) or default_content_targets()
+        #    configured content default so a spec never reaches retrieval with zero targets to search.
+        targets = list(data.query.search_targets) or self.__default_targets()
 
         # 4. Assemble the retrieval-ready spec (filters/flags carried through untouched).
         spec = QuerySpec(

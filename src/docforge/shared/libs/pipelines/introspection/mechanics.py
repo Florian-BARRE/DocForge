@@ -18,6 +18,7 @@ from pydantic import BaseModel, Field
 from shared_libs.pipelines.base import Binding, Condition, ErrorPolicy, ForEach, Group
 from shared_libs.pipelines.build import GroupNodeBlob
 from shared_libs.pipelines.build.blob import ForEachNodeBlob
+from shared_libs.pipelines.edit.operations import EditOperation
 
 
 class MechanicCard(BaseModel):
@@ -32,6 +33,11 @@ class MechanicCard(BaseModel):
         name (str): Human label (the model class name).
         summary (str): One-line statement of what the variant does.
         how_it_works (str | None): Optional longer explanation (docstring body).
+        discriminator (str | None): Name of the tag field the client must send to select this
+            variant (e.g. ``"op"`` for an edit operation, ``"action"`` for a stage action), so a
+            payload is ``{<discriminator>: <kind>, **params}``. Derived from the source union's
+            ``Field(discriminator=…)`` — ``None`` for cards not built from a discriminated union
+            (containers, error policies), which a client never sends as a tagged payload.
         params_schema (dict): JSON Schema of the variant's editable parameters (discriminator
             removed) — drives the parameter form, like a node's config_schema.
     """
@@ -40,6 +46,7 @@ class MechanicCard(BaseModel):
     name: str
     summary: str
     how_it_works: str | None = None
+    discriminator: str | None = None
     params_schema: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -55,6 +62,12 @@ class MechanicsDescription(BaseModel):
         binding_sources (list[MechanicCard]): Every data-wiring source (the Binding union).
         containers (list[MechanicCard]): The structural nodes (foreach, group) and their knobs.
         error_policies (list[MechanicCard]): Every per-node failure stance.
+        edit_operations (list[MechanicCard]): Every graph-mutation the ``/edit`` endpoint accepts
+            (the EditOperation union) — one card per ``operations[]`` payload, so a client composes
+            them from the discriminator + params_schema instead of guessing. Pipeline-agnostic.
+        stage_actions (list[MechanicCard]): Every stage-rail action the ``/stages/apply`` endpoint
+            accepts (the StageAction union) — one card per ``action`` payload. Empty for a pipeline
+            with no stage rail (the stage layer is ingest-coupled today).
     """
 
     conditions: list[MechanicCard]
@@ -62,6 +75,8 @@ class MechanicsDescription(BaseModel):
     binding_sources: list[MechanicCard]
     containers: list[MechanicCard]
     error_policies: list[MechanicCard]
+    edit_operations: list[MechanicCard] = Field(default_factory=list)
+    stage_actions: list[MechanicCard] = Field(default_factory=list)
 
 
 class GraphMechanics:
@@ -98,6 +113,7 @@ class GraphMechanics:
             name=model.__name__,
             summary=summary,
             how_it_works=rest,
+            discriminator=discriminator,
             params_schema=schema,
         )
 
@@ -105,6 +121,15 @@ class GraphMechanics:
     def __union_members(alias: Any) -> tuple[type[BaseModel], ...]:
         """Return the member models of a `type X = Annotated[A | B | …, Field(...)]` alias."""
         return get_args(get_args(alias.__value__)[0])
+
+    @staticmethod
+    def __union_discriminator(alias: Any) -> str:
+        """Read the tag field name from a `type X = Annotated[…, Field(discriminator=…)]` alias.
+
+        Sourced from the union's own ``Field(discriminator=…)`` metadata so renaming the tag (or
+        adding a new union) needs no change here — the surfaced discriminator follows the source.
+        """
+        return get_args(alias.__value__)[1].discriminator
 
     @staticmethod
     def __root_schema(model: type[BaseModel]) -> dict[str, Any]:
@@ -164,20 +189,53 @@ class GraphMechanics:
         return cards
 
     @classmethod
-    def describe(cls) -> MechanicsDescription:
+    def union_cards(cls, alias: Any) -> list[MechanicCard]:
+        """
+        Describe every member of a discriminated-union alias, one card per variant.
+
+        The public seam a pipeline owner uses to surface its OWN vocabulary (e.g. the ingest
+        stage-action union) without this generic module importing that pipeline's models — the
+        caller passes the alias, the derivation (members AND discriminator name) stays
+        single-sourced here.
+
+        Args:
+            alias (Any): A ``type X = Annotated[A | B | …, Field(discriminator=…)]`` alias — the
+                tag field name is read from its own ``Field(discriminator=…)`` metadata.
+
+        Returns:
+            list[MechanicCard]: One card per union member — its tag, the discriminator key to send
+            it under, labels and params form.
+        """
+        discriminator = cls.__union_discriminator(alias)
+        return [cls.__card_from_model(m, discriminator) for m in cls.__union_members(alias)]
+
+    @classmethod
+    def describe(cls, stage_actions: Any = None) -> MechanicsDescription:
         """
         Build the full mechanics vocabulary from the base models.
 
+        Args:
+            stage_actions (Any): Optional StageAction union alias — passed by a pipeline that owns
+                a stage rail (ingest) so its ``/stages/apply`` vocabulary is surfaced too. Left None
+                by a pipeline with no stage rail (search), keeping ``stage_actions`` empty.
+
         Returns:
-            MechanicsDescription: Conditions (+ their priority), binding sources, containers
-            and error policies — each variant with its labels and params form.
+            MechanicsDescription: Conditions (+ their priority), binding sources, containers,
+            error policies, edit operations and — when a stage-action union is passed — stage
+            actions; each variant with its labels and params form.
         """
-        # 1. Conditions and bindings: auto-derived from their discriminated unions.
-        conditions = [cls.__card_from_model(m, "kind") for m in cls.__union_members(Condition)]
-        sources = [cls.__card_from_model(m, "source") for m in cls.__union_members(Binding)]
+        # 1. Conditions and bindings: auto-derived from their discriminated unions (members and
+        #    the discriminator name both read from the alias — no tag literal duplicated here).
+        conditions = cls.union_cards(Condition)
+        sources = cls.union_cards(Binding)
 
         # 2. Priority mirrors the engine's resolution order (most specific edge wins).
         priority = ["score_below", "when_equals", "on_success", "on_failure", "always"]
+
+        # 3. Mutation vocabularies: graph edits are pipeline-agnostic; stage actions belong to the
+        #    caller that owns a stage rail (passed in to keep this generic module ingest-free).
+        edit_operations = cls.union_cards(EditOperation)
+        stage_action_cards = cls.union_cards(stage_actions) if stage_actions else []
 
         return MechanicsDescription(
             conditions=conditions,
@@ -185,6 +243,8 @@ class GraphMechanics:
             binding_sources=sources,
             containers=cls.__container_cards(),
             error_policies=cls.__error_policy_cards(),
+            edit_operations=edit_operations,
+            stage_actions=stage_action_cards,
         )
 
 
