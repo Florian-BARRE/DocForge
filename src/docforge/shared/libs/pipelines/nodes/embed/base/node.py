@@ -134,6 +134,16 @@ class BaseEmbedderNode(ActionNode):
         the vlm/llm loops also follow (``max_retries=0`` → a single one-shot attempt, no retry and no
         split; ``max_retries=1`` → 2 attempts; ``max_retries=N`` → N+1). Every attempt is logged as
         ``attempt/total``, the "current of total attempts" convention shared across the families.
+
+        Timeout-splits-sooner rule: a client-side TIMEOUT on a MULTI-text batch is the "batch too
+        heavy" signal — on a single-threaded CPU embedder a ``ReadTimeout`` means the batch simply
+        could not finish inside ``timeout_seconds``. Retrying the IDENTICAL oversized batch only
+        stacks another request onto the still-busy server (amplification) and almost never succeeds;
+        it just delays the split that WOULD. So a timeout with ``len(texts) > 1`` goes straight to the
+        adaptive split after ONE attempt, skipping the remaining same-batch retries. The backoff-retry
+        budget is still spent in full for a NON-timeout transient (a 429/5xx/transport blip, which a
+        retry genuinely resolves) and for a single-text timeout (nothing left to split — the retry
+        budget is its only recourse before the terminal raise).
         """
         config: BaseEmbedConfig = self.config
         if config.max_retries == 0:
@@ -147,10 +157,18 @@ class BaseEmbedderNode(ActionNode):
                 if not self.__is_transient(error):
                     raise
                 last_error = error
+                # A timeout on a splittable batch means "too heavy" — split now rather than retry the
+                # same oversized batch (amplification); a one-text batch or a non-timeout transient
+                # keeps the full backoff-retry budget (see the timeout-splits-sooner rule above).
+                split_on_timeout = isinstance(error, httpx.TimeoutException) and len(texts) > 1
                 self.logger.warning(
                     f"Embedder '{self.KIND}' transient error on a {len(texts)}-text batch "
-                    f"(attempt {attempt}/{total_attempts}): {error!r}"
+                    f"(attempt {attempt}/{total_attempts}"
+                    f"{'; splitting now — timeout on a multi-text batch' if split_on_timeout else ''})"
+                    f": {error!r}"
                 )
+                if split_on_timeout:
+                    break
                 if attempt < total_attempts:
                     await asyncio.sleep(config.retry_backoff_seconds * attempt)
         # Retries exhausted — split and embed the halves independently, or surface the genuine error

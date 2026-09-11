@@ -327,22 +327,66 @@ async def test_blob_run_keeps_live_vectors_real_but_the_trace_strips_them() -> N
 
 @NodeRegistry.register("embed")
 class FlakyThenOk(BaseEmbedderNode):
-    """Dense hook that raises a transient timeout the first ``fail_times`` calls, then succeeds."""
+    """Dense hook that raises a transient error the first ``fail_times`` calls, then succeeds.
+
+    ``error`` is the transient raised while failing (default a ``ReadTimeout``) — so a test can pick
+    a TIMEOUT (splits a multi-text batch sooner) or a NON-timeout transient (keeps the retry budget).
+    """
 
     KIND = "test_embed_flaky_then_ok"
     NAME = "F"
     SUMMARY = "t"
     Config = BaseEmbedConfig
 
-    def __init__(self, *args, fail_times: int = 0, **kwargs) -> None:
+    def __init__(
+        self, *args, fail_times: int = 0, error: Exception | None = None, **kwargs
+    ) -> None:
         super().__init__(*args, **kwargs)
         self._fail_times = fail_times
+        self._error = (
+            error if error is not None else httpx.ReadTimeout("simulated transient timeout")
+        )
         self.calls = 0
 
     async def _embed_dense(self, texts: list[str]) -> list[list[float]]:
         self.calls += 1
         if self.calls <= self._fail_times:
-            raise httpx.ReadTimeout("simulated transient timeout")
+            raise self._error
+        return [[float(len(t))] for t in texts]
+
+
+def _http_503() -> httpx.HTTPStatusError:
+    """A transient 5xx status error (retried, NOT a timeout) — for the timeout-vs-5xx contrast."""
+    request = httpx.Request("POST", "http://embedder/embed")
+    return httpx.HTTPStatusError(
+        "service unavailable", request=request, response=httpx.Response(503, request=request)
+    )
+
+
+@NodeRegistry.register("embed")
+class SizedFlaky(BaseEmbedderNode):
+    """Dense hook that fails (a configurable transient) on batches larger than ``max_ok``.
+
+    Records how many attempts each batch SIZE received (``attempts_by_size``) so a test can prove how
+    many times the full oversized batch was retried before the adaptive split kicked in.
+    """
+
+    KIND = "test_embed_sized_flaky"
+    NAME = "F"
+    SUMMARY = "t"
+    Config = BaseEmbedConfig
+
+    def __init__(self, *args, max_ok: int = 2, error: Exception | None = None, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self._max_ok = max_ok
+        self._error = error if error is not None else httpx.ReadTimeout("too heavy")
+        self.attempts_by_size: dict[int, int] = {}
+
+    async def _embed_dense(self, texts: list[str]) -> list[list[float]]:
+        size = len(texts)
+        self.attempts_by_size[size] = self.attempts_by_size.get(size, 0) + 1
+        if size > self._max_ok:
+            raise self._error
         return [[float(len(t))] for t in texts]
 
 
@@ -386,18 +430,49 @@ class HardFail(BaseEmbedderNode):
 
 
 async def test_transient_error_is_retried_then_succeeds_without_losing_the_document() -> None:
-    # Two timeouts then success: the whole document still embeds — the old behaviour lost every
-    # vector on the first timeout. batch_size=8 keeps all five chunks in one batch (one retry chain).
+    # Two NON-timeout transient blips (a transport ConnectError) then success: the whole document
+    # still embeds — the old behaviour lost every vector on the first failure. batch_size=8 keeps all
+    # five chunks in one batch (one retry chain). A non-timeout transient is retried in place (a
+    # blip a retry genuinely resolves) rather than split — see the timeout-splits-sooner contrast below.
     node = FlakyThenOk(
         id="e",
         config=BaseEmbedConfig(
             model="m", batch_size=8, embed_sparse=False, retry_backoff_seconds=0.0
         ),
         fail_times=2,
+        error=httpx.ConnectError("simulated transient transport blip"),
     )
     out = await node.run(EmbedConsumes(chunks=CHUNKS, contract=CONTRACT))
     assert len(out.embeddings.items) == 5  # nothing dropped
-    assert node.calls == 3  # 2 transient failures + 1 success
+    assert node.calls == 3  # 2 transient failures + 1 success, all on the SAME batch (retried)
+
+
+async def test_timeout_on_a_multitext_batch_splits_sooner_than_a_5xx_retries() -> None:
+    # The amplification fix: a client TIMEOUT on a multi-text batch means "too heavy" — it must go
+    # straight to the adaptive split instead of burning the retry budget on the same oversized batch
+    # (which only stacks load on a busy CPU embedder). A 5xx on the SAME batch still retries in full.
+    cfg = dict(
+        model="m", batch_size=8, embed_sparse=False, max_retries=3, retry_backoff_seconds=0.0
+    )
+
+    # 1. Timeout: the full 5-text batch is attempted ONCE, then split (5 -> 2+3 -> 1+2) — no same-
+    #    batch retries. The document is never lost: every chunk still gets a vector via the halves.
+    timeout_node = SizedFlaky(
+        id="e", config=BaseEmbedConfig(**cfg), max_ok=2, error=httpx.ReadTimeout("too heavy")
+    )
+    out = await timeout_node.run(EmbedConsumes(chunks=CHUNKS, contract=CONTRACT))
+    assert len(out.embeddings.items) == 5
+    assert (
+        timeout_node.attempts_by_size[5] == 1
+    )  # split immediately — ONE attempt on the full batch
+
+    # 2. A 5xx on the same oversized batch burns the whole 1 + max_retries budget before the split.
+    status_node = SizedFlaky(id="e", config=BaseEmbedConfig(**cfg), max_ok=2, error=_http_503())
+    out = await status_node.run(EmbedConsumes(chunks=CHUNKS, contract=CONTRACT))
+    assert len(out.embeddings.items) == 5
+    assert status_node.attempts_by_size[5] == 4  # 1 initial + 3 retries, THEN the split
+    # The core property: a timeout reaches the split with strictly fewer same-batch attempts.
+    assert timeout_node.attempts_by_size[5] < status_node.attempts_by_size[5]
 
 
 async def test_persistent_large_batch_failure_splits_adaptively_until_it_succeeds() -> None:

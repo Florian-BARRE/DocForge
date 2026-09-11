@@ -477,6 +477,18 @@ lexical}` → `meta_<slug>_bm25` via `TargetVectorResolver`). ⚠️ **OFF par d
 Doc-scope sémantique/lexical : écrit hors du node embed, par le hook best-effort `MetaVectorSyncFacade` après
 `index()` (les points Qdrant sont des chunks).
 
+**Robustesse par batch (retry + split adaptatif)** : un batch transitoirement en échec ne perd jamais
+le document. Hérite `TimeoutRetryConfig` (`max_retries`=3, `retry_backoff_seconds`=1.5) — un transient
+(429/5xx/blip transport) est retenté en backoff exponentiel (`1 + max_retries` tentatives) puis, s'il
+échoue encore, le batch est **coupé en deux** et chaque moitié embeddée indépendamment (un batch plus
+petit passe sur un embedder CPU). `max_retries=0` = opt-out (une seule passe, ni retry ni split).
+**Règle timeout-splits-sooner** : un `httpx.TimeoutException` (client `ReadTimeout`) sur un batch
+**multi-texte** signifie « batch trop lourd » — retenter le MÊME batch ne fait qu'empiler de la charge
+sur un embedder CPU déjà saturé (amplification), alors il passe **directement au split après une seule
+tentative** au lieu de brûler le budget de retry ; un batch à 1 texte (rien à couper) ou un transient
+non-timeout garde le budget complet. La passe query (`encode_query_*`) n'est PAS wrappée (le caller
+borne son appel unique).
+
 **Échec = fatal** (pas de dégradation ici : un chunk sans vecteur est ininde­xable).
 
 **Trace compactée** (même doctrine que les bytes) : dans les records, une longue liste numérique devient
