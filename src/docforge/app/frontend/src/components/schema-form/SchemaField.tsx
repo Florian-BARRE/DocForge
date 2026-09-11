@@ -80,9 +80,14 @@ interface SchemaFieldProps {
    *  `default: …` suffix are hidden so the form reads like a normal form, not a schema dump. Flip
    *  via the form's own "Show technical details" toggle. */
   advanced?: boolean;
+  /** A validation issue tied to THIS field (see `fieldErrorMatch.ts`) — rings the control and shows
+   *  the message below it, regardless of `advanced`, so a save-blocking error is never silent. */
+  errorMessage?: string;
 }
 
-export function SchemaField({ name, prop, schema, value, required = false, onChange, advanced = false }: SchemaFieldProps) {
+export function SchemaField({
+  name, prop, schema, value, required = false, onChange, advanced = false, errorMessage,
+}: SchemaFieldProps) {
   // Hooks first, before any control-shape branching below — a stable id to pair the visible
   // <label> with whichever control this property resolves to, and the reveal toggle for a
   // secret-looking field (unused, harmlessly, by every other control shape).
@@ -94,6 +99,19 @@ export function SchemaField({ name, prop, schema, value, required = false, onCha
   // A `X | None` property (see `deref`) can always be explicitly cleared back to "unset".
   const nullable = Boolean(prop.anyOf?.some((branch) => branch.type === "null"));
   const ariaRequired = required || undefined;
+
+  // A client-side bounds message for any numeric field with a schema-declared min/max — derived
+  // straight from the schema (never a hardcoded per-field literal), so a value like `0` on a
+  // `gt=0` field never just silently fails validation with no visible reason. Server-side
+  // `errorMessage` (below) always wins when both are present.
+  let boundsMessage: string | undefined;
+  if ((resolved.type === "number" || resolved.type === "integer") && typeof current === "number") {
+    if (resolved.minimum !== undefined && current < resolved.minimum) boundsMessage = `Must be at least ${resolved.minimum}.`;
+    else if (resolved.exclusiveMinimum !== undefined && current <= resolved.exclusiveMinimum) boundsMessage = `Must be greater than ${resolved.exclusiveMinimum}.`;
+    else if (resolved.maximum !== undefined && current > resolved.maximum) boundsMessage = `Must be at most ${resolved.maximum}.`;
+    else if (resolved.exclusiveMaximum !== undefined && current >= resolved.exclusiveMaximum) boundsMessage = `Must be less than ${resolved.exclusiveMaximum}.`;
+  }
+  const effectiveError = errorMessage ?? boundsMessage;
 
   let control: JSX.Element;
   if (resolved.enum) {
@@ -237,11 +255,26 @@ export function SchemaField({ name, prop, schema, value, required = false, onCha
           </span>
         )}
       </label>
-      {/* 2. The control itself */}
-      {control}
+      {/* 2. The control itself — a red ring (box-shadow, not a border swap) when a validation issue
+         ties back to this field, so it reads on every control shape (input/select/switch/tags/json)
+         without needing per-branch styling. */}
+      <div
+        style={{
+          borderRadius: theme.radius.m,
+          boxShadow: effectiveError ? `0 0 0 2px ${theme.color.error}` : undefined,
+        }}
+      >
+        {control}
+      </div>
       {/* 3. Meaning, always visible (not a hover-only tooltip) — the raw `default: …` suffix only
          shows in advanced mode: an unset default so often reads as noise ("default: null") to a
-         normal user rather than useful information. */}
+         normal user rather than useful information. The error message (when present) always wins
+         top billing, in the error ink, above the help text. */}
+      {effectiveError && (
+        <div style={{ color: theme.color.error, fontSize: theme.font.size.xs, lineHeight: 1.35 }}>
+          ⚠ {effectiveError}
+        </div>
+      )}
       {(help || (advanced && resolved.default !== undefined)) && (
         <div style={{ color: theme.color.dim, fontSize: theme.font.size.xs, lineHeight: 1.35 }}>
           {help}

@@ -9,9 +9,10 @@
 
 import { useState } from "react";
 
-import type { JsonSchema, JsonSchemaProperty } from "../../api/types";
+import type { JsonSchema, JsonSchemaProperty, ValidationIssue } from "../../api/types";
 import { theme } from "../../theme";
 import { isAdvancedField } from "./advancedFields";
+import { fieldErrorMessage } from "./fieldErrorMatch";
 import { JsonField } from "./JsonField";
 import { deref, SchemaField } from "./SchemaField";
 
@@ -31,6 +32,10 @@ interface SchemaFormProps {
    *  live editors at once. Omit for the normal, self-contained case. */
   jsonMode?: boolean;
   onJsonModeChange?: (jsonMode: boolean) => void;
+  /** Build/inspect issues for the surface this form belongs to — matched per-field (best-effort, see
+   *  `fieldErrorMatch.ts`) to ring the offending control instead of leaving the error only in the
+   *  banner above the rail. Omit for forms with no server-side issue feed (e.g. none today). */
+  issues?: ValidationIssue[];
 }
 
 const toggleButtonStyle = (active: boolean): React.CSSProperties => ({
@@ -45,7 +50,7 @@ const toggleButtonStyle = (active: boolean): React.CSSProperties => ({
 });
 
 export function SchemaForm({
-  schema, values, onChange, columns = 2, advanced, onAdvancedChange, jsonMode, onJsonModeChange,
+  schema, values, onChange, columns = 2, advanced, onAdvancedChange, jsonMode, onJsonModeChange, issues = [],
 }: SchemaFormProps) {
   const properties = Object.entries(schema.properties ?? {});
   // Falls back to local state when the parent doesn't share its own (the common, self-contained
@@ -77,6 +82,7 @@ export function SchemaForm({
       value={values[name]}
       required={required.has(name)}
       advanced={isAdvanced}
+      errorMessage={fieldErrorMessage(issues, name)}
       onChange={(value) => onChange(name, value)}
     />
   );

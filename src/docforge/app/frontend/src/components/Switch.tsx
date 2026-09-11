@@ -1,15 +1,17 @@
 // ====== Code Summary ======
 // A theme-tokened on/off switch — the reversible enable/disable control shared by documents and
-// chunks in the explorer (and any future toggle). A styled button, not a native checkbox/switch.
+// chunks in the explorer, schema-driven boolean fields, and any future toggle. A styled button, not
+// a native checkbox/switch.
 //
-// ON reads steel (theme.color.dim), NOT forge orange. Per brand.md, forge marks the ONE thing being
-// worked (a running job, the active tab, a primary action) — a switch's "on" state is a static,
-// simultaneously-true-for-many-rows fact (many toggles are on at once across a form/list), so it is
-// decoration, not the active-one signal (2026-09 orange audit: this exact "on"=forge convention was
-// the audit's #1 finding, cascading into every stage-enable and per-config boolean). A switch that
-// can never be turned off (a required/locked stage) shares the same steel fill but adds a padlock
-// glyph in the knob, so "can't turn this off" still reads as a distinct fact from "this happens to
-// be on".
+// ON reads forge orange (theme.color.accent), matching `StageSwitch` (the stage-rail's own
+// enable/disable pill) byte-for-byte. The 2026-08 orange audit had moved this control's "on" state
+// to steel, reasoning that a simultaneously-true-for-many-rows fact shouldn't wear the "one active
+// thing" color — but the 2026-09 round-4 product audit (5-persona) measured the resulting split
+// (stage toggles orange, every other boolean switch steel) as the #1 inconsistency: users read two
+// different toggle languages for the same on/off gesture. Superseded: ONE toggle language, ON =
+// accent, everywhere. A switch that can never be turned off (a required/locked stage) keeps the
+// steel fill + padlock glyph in the knob — "can't turn this off" is a distinct fact from "this is
+// currently on", so it deliberately does NOT share the accent.
 
 import { theme } from "../theme";
 
@@ -56,7 +58,7 @@ export function Switch({ checked, onChange, disabled, locked, title, id }: Switc
       style={{
         width: WIDTH, height: HEIGHT, borderRadius: HEIGHT / 2,
         border: "none", padding: 2, position: "relative", flexShrink: 0,
-        background: checked || isLocked ? theme.color.dim : theme.color.lineStrong,
+        background: isLocked ? theme.color.dim : checked ? theme.color.accent : theme.color.line,
         cursor: isInteractive ? "pointer" : "not-allowed",
         opacity: disabled && !isLocked ? 0.6 : 1,
         transition: `background .2s ease`,
@@ -66,7 +68,7 @@ export function Switch({ checked, onChange, disabled, locked, title, id }: Switc
         style={{
           display: "flex", alignItems: "center", justifyContent: "center",
           width: KNOB, height: KNOB, borderRadius: "50%",
-          background: theme.color.onAccent, boxShadow: "0 1px 2px rgba(0,0,0,0.22)",
+          background: theme.color.onAccent, boxShadow: `0 1px 2px ${theme.color.knobShadow}`,
           transform: `translateX(${checked || isLocked ? WIDTH - KNOB - 4 : 0}px)`,
           transition: `transform .22s ${EASE}`,
         }}
