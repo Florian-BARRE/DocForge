@@ -11,7 +11,7 @@
 // rail. Carries a stable DOM id (`stageAnchorId`) so the minimap can jump-scroll and observe it.
 
 import { useEffect, useState } from "react";
-import type { Palette, StageView } from "../../api/types";
+import type { Palette, StageView, ValidationIssue } from "../../api/types";
 import { theme } from "../../theme";
 import type { StageRailActions } from "./actions";
 import { ChainSection } from "./ChainSection";
@@ -26,9 +26,12 @@ interface StageCardProps {
   stage: StageView;
   palette: Palette;
   actions: StageRailActions;
+  /** Current `/stages/view` (or `/apply`) issues for the whole ingest blob — see `SchemaForm`'s own
+   *  `issues` doc. */
+  issues?: ValidationIssue[];
 }
 
-export function StageCard({ stage, palette, actions }: StageCardProps) {
+export function StageCard({ stage, palette, actions, issues }: StageCardProps) {
   // Fixed stages (intake/deliver) never have a body (see the render gate below) — nothing to
   // collapse. A disabled stage also renders no body today, so there is nothing to expand into
   // until it's turned on; `collapsible` therefore doubles as "does this card even have a chevron".
@@ -108,10 +111,10 @@ export function StageCard({ stage, palette, actions }: StageCardProps) {
           {stage.kind === "provider" && !ownChain && (
             <>
               <ProviderPicker stage={stage} palette={palette} actions={actions} />
-              <StageConfigForm stage={stage} palette={palette} actions={actions} />
+              <StageConfigForm stage={stage} palette={palette} actions={actions} issues={issues} />
             </>
           )}
-          {stage.kind === "toggle" && <StageConfigForm stage={stage} palette={palette} actions={actions} />}
+          {stage.kind === "toggle" && <StageConfigForm stage={stage} palette={palette} actions={actions} issues={issues} />}
           {stage.kind === "stack" && <StackEditor stage={stage} palette={palette} actions={actions} />}
           {stage.kind !== "stack" && stage.chains.map((chain) => (
             <ChainSection key={chain.slot} stageKey={stage.key} chain={chain} palette={palette} actions={actions} />

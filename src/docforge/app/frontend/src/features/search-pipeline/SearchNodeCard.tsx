@@ -7,7 +7,7 @@
 
 import { useState, type ReactNode } from "react";
 import { findNodeCard, hasConfigFields } from "../../components/schema-form/paletteLookup";
-import type { ActionBlob, Palette } from "../../api/types";
+import type { ActionBlob, Palette, ValidationIssue } from "../../api/types";
 import { NodeConfigForm } from "./NodeConfigForm";
 import { SearchStageFrame } from "./SearchStageFrame";
 import { StepNumberBadge } from "./StepNumberBadge";
@@ -20,9 +20,11 @@ interface SearchNodeCardProps {
   /** Extra content nested below this step's own config form — used to fold the query-transform
    *  toggle into the `normalize` step instead of giving it its own unnumbered sibling card. */
   extra?: ReactNode;
+  /** Current `/inspect` issues for the whole search blob — see `SchemaForm`'s own `issues` doc. */
+  issues?: ValidationIssue[];
 }
 
-export function SearchNodeCard({ step, node, palette, onChangeConfig, extra }: SearchNodeCardProps) {
+export function SearchNodeCard({ step, node, palette, onChangeConfig, extra, issues }: SearchNodeCardProps) {
   const [expanded, setExpanded] = useState(true);
   const card = findNodeCard(palette, node.family, node.kind);
   const configurable = hasConfigFields(card);
@@ -38,7 +40,7 @@ export function SearchNodeCard({ step, node, palette, onChangeConfig, extra }: S
       expanded={expanded}
       onToggleExpand={() => setExpanded((v) => !v)}
     >
-      {configurable && <NodeConfigForm node={node} palette={palette} onChange={onChangeConfig} />}
+      {configurable && <NodeConfigForm node={node} palette={palette} onChange={onChangeConfig} issues={issues} />}
       {extra}
     </SearchStageFrame>
   );

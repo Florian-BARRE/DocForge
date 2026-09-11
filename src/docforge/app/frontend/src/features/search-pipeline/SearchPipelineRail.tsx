@@ -8,7 +8,7 @@
 // is handed straight to the caller-owned edit functions.
 
 import { Fragment } from "react";
-import type { ActionBlob, GroupBlob, Palette } from "../../api/types";
+import type { ActionBlob, GroupBlob, Palette, ValidationIssue } from "../../api/types";
 import { StageConnector } from "../stage-rail/StageConnector";
 import { SearchNodeCard } from "./SearchNodeCard";
 import { SearchQueryCard } from "./SearchQueryCard";
@@ -28,11 +28,13 @@ interface SearchPipelineRailProps {
   onChangeNodeConfig: (nodeId: string, field: string, value: unknown) => void;
   onSelectQueryTransform: (kind: QueryTransformKind | null) => void;
   onToggleRerank: (next: boolean) => void;
+  /** Current `/inspect` issues for the whole search blob — see `SchemaForm`'s own `issues` doc. */
+  issues?: ValidationIssue[];
 }
 
 export function SearchPipelineRail({
   blob, palette, railNodes, hasAnchor, hasQueryAnchor, queryKind, queryConfig,
-  onChangeNodeConfig, onSelectQueryTransform, onToggleRerank,
+  onChangeNodeConfig, onSelectQueryTransform, onToggleRerank, issues,
 }: SearchPipelineRailProps) {
   const queryExtra = (
     <SearchQueryCard
@@ -68,6 +70,7 @@ export function SearchPipelineRail({
             palette={palette}
             onChangeConfig={(field, value) => onChangeNodeConfig(node.id, field, value)}
             extra={node.id === QUERY_ANCHOR_ID ? queryExtra : undefined}
+            issues={issues}
           />
           {node.id === RERANK_ANCHOR_ID && (
             <>

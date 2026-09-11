@@ -17,10 +17,14 @@ interface StageRailHeaderProps {
   onSave?: () => void;
   saving: boolean;
   saveError: string | null;
+  /** Toggles the "Test on a sample" dry-run panel — only offered when the rail is collection-scoped
+   *  (see StageRailPage's `collectionId` prop). */
+  onTogglePreview?: () => void;
+  previewOpen?: boolean;
 }
 
 export function StageRailHeader({
-  valid, busy, debouncePending, issueCount, onSave, saving, saveError,
+  valid, busy, debouncePending, issueCount, onSave, saving, saveError, onTogglePreview, previewOpen,
 }: StageRailHeaderProps) {
   const savePending = saving || busy || debouncePending;
   return (
@@ -41,20 +45,28 @@ export function StageRailHeader({
         {busy ? "applying…" : valid ? "valid" : `${issueCount} issue${issueCount === 1 ? "" : "s"}`}
       </Chip>
       {saveError && <span style={{ color: theme.color.error, fontSize: theme.font.size.s }}>{saveError}</span>}
-      {onSave && (
-        <Button
-          variant="primary"
-          onClick={onSave}
-          disabled={savePending || !valid}
-          title={
-            !valid ? "Fix every issue before saving"
-              : debouncePending ? "Waiting for pending edits to apply"
-                : undefined
-          }
-          style={{ marginLeft: "auto" }}
-        >
-          {saving ? "saving…" : "Save pipeline"}
-        </Button>
+      {(onSave || onTogglePreview) && (
+        <div style={{ marginLeft: "auto", display: "flex", gap: theme.space.s }}>
+          {onTogglePreview && (
+            <Button variant="secondary" onClick={onTogglePreview}>
+              {previewOpen ? "Hide sample test" : "Test on a sample"}
+            </Button>
+          )}
+          {onSave && (
+            <Button
+              variant="primary"
+              onClick={onSave}
+              disabled={savePending || !valid}
+              title={
+                !valid ? "Fix every issue before saving"
+                  : debouncePending ? "Waiting for pending edits to apply"
+                    : undefined
+              }
+            >
+              {saving ? "saving…" : "Save"}
+            </Button>
+          )}
+        </div>
       )}
     </div>
   );

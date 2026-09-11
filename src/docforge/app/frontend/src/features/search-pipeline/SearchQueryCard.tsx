@@ -2,8 +2,9 @@
 // The query-understanding step of the search rail — an OFF-by-default, mutually-exclusive choice of
 // one LLM query transform (rewrite | HyDE) spliced between normalize and encode (topology edit, see
 // blobOps.setQueryTransform). Drawn like an ingestion stage: a segmented Off/Rewrite/HyDE selector
-// in the frame, greyed when off; when on, its provider config (endpoint, model, key, temperature)
-// is revealed inline. Forge orange marks the ONE active transform — "Off" reads as steel, not work.
+// in the frame; when on, its provider config (endpoint, model, key, temperature) is revealed inline.
+// The active segment (including "Off") is always forge accent, matching every other segmented
+// control's active-choice language in the app (see toggle-language-unification-2026-09).
 
 import { useState } from "react";
 import type { Palette } from "../../api/types";
@@ -98,7 +99,10 @@ export function SearchQueryCard({ active, config, palette, onSelect, onChangeCon
     >
       {OPTIONS.map((option) => {
         const selected = active === option.value;
-        const isWork = selected && option.value !== null; // orange only for the ONE active transform
+        // The active segment is always the accent — same "active choice = forge orange" language as
+        // every other segmented control (SegmentedControl.tsx's Summary/Full-style bordered pill), not
+        // just the two options that happen to trigger a paid call. See toggle-language-unification-2026-09:
+        // consistency of gesture beats "accent = the one active thing" purism for a repeated control.
         return (
           <button
             key={option.label}
@@ -110,8 +114,8 @@ export function SearchQueryCard({ active, config, palette, onSelect, onChangeCon
               cursor: "pointer", border: "none",
               borderRadius: t.radius.pill, padding: "4px 12px",
               fontFamily: t.font.family, fontSize: t.font.size.s, fontWeight: 600,
-              background: isWork ? t.color.accent : selected ? t.color.surface3 : "transparent",
-              color: isWork ? t.color.onAccent : selected ? t.color.text : t.color.dim,
+              background: selected ? t.color.accent : "transparent",
+              color: selected ? t.color.onAccent : t.color.dim,
               transition: "background .15s ease, color .15s ease",
             }}
           >

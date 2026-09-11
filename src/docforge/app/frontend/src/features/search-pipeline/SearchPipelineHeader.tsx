@@ -1,8 +1,8 @@
 // ====== Code Summary ======
 // The search editor's slim action toolbar: live validity + Reset/Save, nothing else. Deliberately
-// NOT a titled banner — the collection name and the "Search pipeline" label already live in the
-// shell's page header and sub-tab, so repeating them here made a redundant third bar. Sticks to the
-// top of the editor's scroll area, aligned to the content column.
+// NOT a titled banner — the collection name and the "Pipeline de recherche" label already live in
+// the shell's page header and sub-tab (see CollectionShell's SUBTABS), so repeating them here made a
+// redundant third bar. Sticks to the top of the editor's scroll area, aligned to the content column.
 
 import { Button } from "../../components/Button";
 import { Chip } from "../../components/Chip";

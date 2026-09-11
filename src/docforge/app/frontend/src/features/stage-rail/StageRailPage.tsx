@@ -11,11 +11,12 @@
 // `useStageRailPage` — this component is pure render, plus the thin viewport-tracking wiring the
 // minimap needs (`useActiveStageKey`), which is presentation-only (never touches the blob).
 
-import { Fragment, useMemo, useRef } from "react";
+import { Fragment, useMemo, useRef, useState } from "react";
 import { ErrorState } from "../../components/ErrorState";
 import { LoadingState } from "../../components/LoadingState";
 import { theme } from "../../theme";
 import { NoticesBar } from "./NoticesBar";
+import { PipelinePreviewPanel } from "./preview/PipelinePreviewPanel";
 import { IngestScopeBanner } from "./ScopeBanner";
 import { StageCard } from "./StageCard";
 import { StageConnector } from "./StageConnector";
@@ -24,7 +25,11 @@ import { StageRailMinimap } from "./StageRailMinimap";
 import { useActiveStageKey } from "./state/useActiveStageKey";
 import { useStageRailPage, type UseStageRailPageProps } from "./state/useStageRailPage";
 
-export type StageRailPageProps = UseStageRailPageProps;
+export interface StageRailPageProps extends UseStageRailPageProps {
+  /** When set, offers the "Test on a sample" dry-run panel — the collection this rail is testing
+   *  against (the product-default/standalone rail has no collection to preview a document against). */
+  collectionId?: string;
+}
 
 export function StageRailPage(props: StageRailPageProps) {
   const rail = useStageRailPage(props);
@@ -34,6 +39,7 @@ export function StageRailPage(props: StageRailPageProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const stageKeys = useMemo(() => (rail.stages ?? []).map((s) => s.key), [rail.stages]);
   const activeStageKey = useActiveStageKey(stageKeys, scrollRef);
+  const [previewOpen, setPreviewOpen] = useState(false);
 
   if (rail.loadError) return <ErrorState message={rail.loadError} onRetry={rail.retryLoad} />;
   if (!rail.palette || !rail.stages) return <LoadingState label="loading pipeline stages…" />;
@@ -59,7 +65,14 @@ export function StageRailPage(props: StageRailPageProps) {
             onSave={props.onSave ? rail.handleSave : undefined}
             saving={rail.saving}
             saveError={rail.saveError}
+            onTogglePreview={props.collectionId ? () => setPreviewOpen((open) => !open) : undefined}
+            previewOpen={previewOpen}
           />
+          {previewOpen && props.collectionId && rail.blob && (
+            <div style={{ marginTop: theme.space.m }}>
+              <PipelinePreviewPanel collectionId={props.collectionId} blob={rail.blob} />
+            </div>
+          )}
           {(rail.notices.length > 0 || rail.issues.length > 0 || rail.applyError) && (
             <div style={{ display: "flex", flexDirection: "column", gap: theme.space.xs, margin: `${theme.space.m}px 0` }}>
               <NoticesBar notices={rail.notices} issues={rail.issues} />
@@ -72,7 +85,7 @@ export function StageRailPage(props: StageRailPageProps) {
             {stages.map((stage, index) => (
               <Fragment key={stage.key}>
                 {index > 0 && <StageConnector />}
-                <StageCard stage={stage} palette={palette} actions={rail.actions} />
+                <StageCard stage={stage} palette={palette} actions={rail.actions} issues={rail.issues} />
               </Fragment>
             ))}
           </div>

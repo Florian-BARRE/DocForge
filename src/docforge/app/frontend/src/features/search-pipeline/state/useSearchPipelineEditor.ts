@@ -4,6 +4,7 @@
 // rail-node list — extracted out of `SearchPipelineEditor` so that component stays pure render.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { issuesFromBuildError } from "../../../api/http";
 import { getDesign, inspect, listPipelineDesigns } from "../../../api/pipelines";
 import type { GroupBlob, Palette, ValidationIssue } from "../../../api/types";
 import { useToast } from "../../../shell/toast";
@@ -62,7 +63,7 @@ export function useSearchPipelineEditor({ initialBlob, onSave, onResetToDefault 
         setBlob(seedBlob);
         setSavedBlob(seedBlob);
         setValid(result.valid);
-        setIssues(result.build_error ? [{ code: "build_error", location: "blob", message: result.build_error }] : result.issues);
+        setIssues(result.build_error ? issuesFromBuildError(result.build_error) : result.issues);
       })
       .catch((error) => {
         // Discovery / initial load is fatal (nothing to edit yet) — the whole chain, including the
@@ -95,7 +96,7 @@ export function useSearchPipelineEditor({ initialBlob, onSave, onResetToDefault 
       .then((result) => {
         if (blobLatestRef.current !== target) return; // a newer edit already superseded this check
         setValid(result.valid);
-        setIssues(result.build_error ? [{ code: "build_error", location: "blob", message: result.build_error }] : result.issues);
+        setIssues(result.build_error ? issuesFromBuildError(result.build_error) : result.issues);
       })
       .catch((error) => {
         if (error instanceof DOMException && error.name === "AbortError") return;

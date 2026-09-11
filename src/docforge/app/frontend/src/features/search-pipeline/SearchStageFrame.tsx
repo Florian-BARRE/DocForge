@@ -25,6 +25,11 @@ interface SearchStageFrameProps {
   summary?: string;
   /** A muted right-aligned caption (e.g. "read-only"). */
   rightNote?: string;
+  /** A short caveat banner (amber, same warnSoft treatment as the ingestion StageCard's own
+   *  `stage.notes`) — e.g. "ships off, local CPU not recommended". Unlike ingestion, the search
+   *  blob's `/pipelines/search` view has no backend-computed per-stage notes field today, so this
+   *  is a client-side static string the caller supplies. */
+  note?: string;
   /** Dims the card + hides the accent edge when a toggleable step is off. */
   enabled?: boolean;
   /** This card's stable rail position — set as the card's DOM id (`stageAnchorId`) so the search
@@ -40,7 +45,7 @@ interface SearchStageFrameProps {
 }
 
 export function SearchStageFrame({
-  left, title, tag, summary, rightNote, enabled = true, anchorKey, collapsible = false, expanded = true, onToggleExpand, children,
+  left, title, tag, summary, rightNote, note, enabled = true, anchorKey, collapsible = false, expanded = true, onToggleExpand, children,
 }: SearchStageFrameProps) {
   const showBody = Boolean(children) && (!collapsible || expanded);
 
@@ -94,6 +99,16 @@ export function SearchStageFrame({
           )}
         </div>
         {summary && <div style={{ color: t.color.dim, fontSize: t.font.size.s, marginTop: 2 }}>{summary}</div>}
+        {note && (
+          <div
+            style={{
+              color: t.color.warn, background: t.color.warnSoft, borderRadius: t.radius.m,
+              padding: `${t.space.xs}px ${t.space.s}px`, fontSize: t.font.size.s, marginTop: t.space.xs,
+            }}
+          >
+            ⚠ {note}
+          </div>
+        )}
       </div>
       {/* Placed explicitly in column 2 so it lines up under the title regardless of the left slot's width. */}
       {showBody && <div style={{ gridColumn: 2 }}>{children}</div>}
