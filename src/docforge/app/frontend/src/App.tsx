@@ -2,7 +2,7 @@
 // The composition root: owns the current View and dispatches to the one matching page. Hand-
 // rolled routing (no router dependency) — a plain useState<View> is enough for this app's depth.
 
-import { lazy, Suspense, useState } from "react";
+import { lazy, Suspense, useCallback, useState } from "react";
 import { AuthKeysPage } from "./features/auth/AuthKeysPage";
 import { KeyDetailPage } from "./features/auth/KeyDetailPage";
 import { CollectionDetailPage } from "./features/collections/CollectionDetailPage";
@@ -43,21 +43,32 @@ export function App() {
   const [view, setView] = useState<View>(() => parseViewFromHash(window.location.hash));
   useUrlSync(view, setView);
   // Owned here (not inside Sidebar) because the spacer below needs the SAME pin state Sidebar
-  // renders with — a pinned sidebar REFLOWS the page (reserves its full expanded width) while a
-  // transient hover/focus expansion only overlays it (see Sidebar.tsx), so App must know which one
-  // is happening to size its spacer correctly.
+  // renders with, to size its initial width before Sidebar's own effect reports in.
   const { pinned, togglePinned } = useSidebarPin();
+  // Mirrors Sidebar's actual rendered width for ANY reason it expanded — hover, focus, or pin —
+  // via `onExpandedChange`, so the spacer below always reserves the full width and content is
+  // pushed, never partially covered. (A `position: fixed` rail that's wider than this spacer used
+  // to clip a sliver of content at rest — the iteration-2 sidebar-overlap regression.)
+  const [sidebarWidth, setSidebarWidth] = useState(() => (pinned ? SIDEBAR_EXPANDED_WIDTH : SIDEBAR_RAIL_WIDTH));
+  const onSidebarExpandedChange = useCallback((expanded: boolean) => {
+    setSidebarWidth(expanded ? SIDEBAR_EXPANDED_WIDTH : SIDEBAR_RAIL_WIDTH);
+  }, []);
 
   return (
     <ToastProvider>
     <div style={{ height: "100%", display: "flex" }}>
-      <Sidebar view={view} onNavigate={setView} pinned={pinned} onTogglePin={togglePinned} />
-      {/* Reserves the rail's width in normal flow: the collapsed 72px rail while unpinned (a
-          hover/focus expansion is `position: fixed` and overlays content instead of reflowing it),
-          or the full 240px once pinned — pinning is a deliberate persistent state, so content must
-          never sit masked underneath it. */}
+      <Sidebar
+        view={view}
+        onNavigate={setView}
+        pinned={pinned}
+        onTogglePin={togglePinned}
+        onExpandedChange={onSidebarExpandedChange}
+      />
+      {/* Reserves the rail's current width in normal flow — always in lockstep with the `<nav>`'s
+          own rendered width (see onSidebarExpandedChange above), so content is pushed by the FULL
+          width whenever the sidebar expands, never left partially underneath it. */}
       <div style={{
-        width: pinned ? SIDEBAR_EXPANDED_WIDTH : SIDEBAR_RAIL_WIDTH, flexShrink: 0,
+        width: sidebarWidth, flexShrink: 0,
         transition: "width .16s cubic-bezier(0.22, 1, 0.36, 1)",
       }} />
       <div style={{ flex: 1, minWidth: 0, minHeight: 0 }}>

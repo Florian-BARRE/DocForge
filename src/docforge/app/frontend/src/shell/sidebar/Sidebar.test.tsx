@@ -1,22 +1,41 @@
 // ====== Code Summary ======
 // Render smoke-test for the global Sidebar nav — the replacement for the removed TopBar. Covers the
 // behaviors the task spec calls out explicitly: mounts collapsed with zero throw, expands on
-// hover/focus (revealing page labels hidden while collapsed) as a TRANSIENT overlay that collapses
-// back on mouseleave/Escape, stays expanded+reflow-flagged while pinned, English labels (no more
-// French, no more redundant health shortcuts), and the Collections section's soft "where am I" cue
-// while inside a collection-scoped view.
+// hover/focus (revealing page labels hidden while collapsed) and REFLOWS the content-reserving
+// spacer on a wide viewport (hover/focus included, not just a pin — see the "reflows on hover"
+// test below, the fix for a measured top-level-route clipping regression: landing on Home/
+// Collections via a sidebar click leaves the cursor resting inside the rail, so a non-reflowing
+// hover overlay clipped the page title underneath it), collapses back on mouseleave/Escape, stays
+// expanded+reflow-flagged while pinned, English labels (no more French, no more redundant health
+// shortcuts), and the Collections section's soft "where am I" cue while inside a collection-scoped
+// view. The transient overlay+scrim treatment now only exists on a compact/touch viewport, where a
+// pin is the sole way to expand (hover/focus never trigger there) and there's no room to reflow.
 
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { Navigate, View } from "../view";
 import { Sidebar } from "./Sidebar";
+import { useSidebarCompact } from "./useSidebarCompact";
+
+// Real jsdom has no `matchMedia`, so `useSidebarCompact` always resolves `false` there — mock it so
+// the compact-viewport branch (FIX-B: pin must OVERLAY, never push, on a narrow/touch screen) is
+// actually exercisable. Defaults to `false` (desktop) so every pre-existing test below is unaffected.
+vi.mock("./useSidebarCompact", () => ({ useSidebarCompact: vi.fn(() => false) }));
 
 function renderSidebar(props: Partial<Parameters<typeof Sidebar>[0]> = {}) {
   const onNavigate: Navigate = props.onNavigate ?? vi.fn();
   const onTogglePin = props.onTogglePin ?? vi.fn();
   const view: View = props.view ?? { name: "collections" };
   const pinned = props.pinned ?? false;
-  render(<Sidebar view={view} onNavigate={onNavigate} pinned={pinned} onTogglePin={onTogglePin} />);
+  render(
+    <Sidebar
+      view={view}
+      onNavigate={onNavigate}
+      pinned={pinned}
+      onTogglePin={onTogglePin}
+      onExpandedChange={props.onExpandedChange}
+    />,
+  );
   return { onNavigate, onTogglePin };
 }
 
@@ -87,12 +106,16 @@ describe("Sidebar", () => {
     expect(scrim).toHaveStyle({ opacity: "0" });
   });
 
-  it("shows the transient scrim only while hover/focus-expanded and unpinned", () => {
-    renderSidebar({ pinned: false });
+  it("reflows (no scrim) on hover on a wide viewport — the top-level-route clipping fix", () => {
+    const onExpandedChange = vi.fn();
+    renderSidebar({ pinned: false, onExpandedChange });
     const nav = screen.getByRole("navigation", { name: "Global navigation" });
     expect(screen.getByTestId("sidebar-scrim")).toHaveStyle({ opacity: "0" });
     fireEvent.mouseEnter(nav);
-    expect(screen.getByTestId("sidebar-scrim")).toHaveStyle({ opacity: "1" });
+    // No transient overlay: the caller's content-reserving spacer is told to widen, exactly like a
+    // pin, so a page's own centered content is never partially covered by the rendered rail.
+    expect(screen.getByTestId("sidebar-scrim")).toHaveStyle({ opacity: "0" });
+    expect(onExpandedChange).toHaveBeenCalledWith(true);
   });
 
   it("navigates to a page's view on click", () => {
@@ -135,5 +158,40 @@ describe("Sidebar", () => {
     const { onTogglePin } = renderSidebar();
     fireEvent.click(screen.getByLabelText("API token"));
     expect(onTogglePin).toHaveBeenCalledTimes(1);
+  });
+
+  it("on a compact viewport, a pin OVERLAYS with a scrim instead of reflowing (FIX-B)", () => {
+    vi.mocked(useSidebarCompact).mockReturnValue(true);
+    const onExpandedChange = vi.fn();
+    renderSidebar({ pinned: true, onExpandedChange });
+    // Still expanded (the page tree renders) — pinning stays the way in on a compact viewport too.
+    expect(screen.getByText("All")).toBeInTheDocument();
+    // …but as an overlay: the scrim shows, and the caller's content-reserving spacer is never told
+    // to widen (would push content off the right edge of a narrow screen — the FIX-B regression).
+    expect(screen.getByTestId("sidebar-scrim")).toHaveStyle({ opacity: "1" });
+    expect(onExpandedChange).toHaveBeenCalledWith(false);
+    expect(onExpandedChange).not.toHaveBeenCalledWith(true);
+  });
+
+  it("on a wide viewport, a pin still reflows (no scrim, spacer told to widen) — desktop unaffected", () => {
+    vi.mocked(useSidebarCompact).mockReturnValue(false);
+    const onExpandedChange = vi.fn();
+    renderSidebar({ pinned: true, onExpandedChange });
+    expect(screen.getByTestId("sidebar-scrim")).toHaveStyle({ opacity: "0" });
+    expect(onExpandedChange).toHaveBeenCalledWith(true);
+  });
+
+  // Regression guard for a reported "pin doesn't push at exactly 1440px" repro: reflow is gated
+  // SOLELY by `isCompact` (Sidebar.tsx: `reflow = expanded && !isCompact`), which itself is a single
+  // CSS media query — `(max-width: 640px), (pointer: coarse)` in useSidebarCompact.ts — with no
+  // second/duplicate width comparison anywhere in the reflow path. So every non-compact width,
+  // 641px through 1440px and beyond, is one uniform branch; live-verified at exactly 1440x900
+  // against the running dev container (spacer=240, content starts at x=240, page title unclipped).
+  it("reflows at any non-compact width, not just >1440 — no off-by-one at the desktop boundary", () => {
+    vi.mocked(useSidebarCompact).mockReturnValue(false);
+    const onExpandedChange = vi.fn();
+    renderSidebar({ pinned: true, onExpandedChange });
+    expect(onExpandedChange).toHaveBeenCalledWith(true);
+    expect(onExpandedChange).not.toHaveBeenCalledWith(false);
   });
 });
