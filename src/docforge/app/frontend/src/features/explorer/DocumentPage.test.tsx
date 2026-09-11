@@ -40,7 +40,17 @@ const warnedDocument: DocumentDetail = {
   enabled: true,
   chunk_count: 0,
   warning_reason: "No chunks were produced — every page was classified as boilerplate.",
+  failure_reason: null,
+  searchable: false,
   metadata: [],
+};
+
+const failedDocument: DocumentDetail = {
+  ...warnedDocument,
+  status: "failed",
+  warning_reason: null,
+  failure_reason: "PipelineRunError: pipeline run failed: parse: ValueError: Corrupt PDF stream.",
+  searchable: false,
 };
 
 describe("DocumentPage — done-with-warning document", () => {
@@ -74,5 +84,27 @@ describe("DocumentPage — done-with-warning document", () => {
     const statusChips = screen.getAllByText("done");
     expect(statusChips).toHaveLength(2);
     for (const chip of statusChips) expect(chip.closest("span")?.getAttribute("title")).toBe("Completed with a warning");
+  });
+});
+
+describe("DocumentPage — failed document", () => {
+  it("renders the failure banner with a humanized reason and a not-searchable badge", async () => {
+    vi.mocked(getDocument).mockResolvedValue(failedDocument);
+    vi.mocked(getDocumentPages).mockResolvedValue([]);
+
+    expect(() =>
+      render(
+        <ToastProvider>
+          <DocumentPage collectionId="col-1" documentId="doc-1" onNavigate={vi.fn()} />
+        </ToastProvider>,
+      ),
+    ).not.toThrow();
+
+    await waitFor(() => expect(screen.getByRole("heading", { name: "empty-scan.pdf" })).toBeInTheDocument());
+
+    expect(screen.getByText("Ingestion failed")).toBeInTheDocument();
+    // The chained "PipelineRunError: ...: ValueError: " prefix is stripped down to the useful tail.
+    expect(screen.getByText("Corrupt PDF stream.")).toBeInTheDocument();
+    expect(screen.getByText("no")).toBeInTheDocument();
   });
 });

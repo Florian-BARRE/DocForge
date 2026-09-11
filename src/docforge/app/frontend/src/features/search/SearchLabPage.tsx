@@ -14,6 +14,7 @@ import { theme } from "../../theme";
 import { SearchExampleQueries } from "./SearchExampleQueries";
 import { SearchFilterBuilder } from "./SearchFilterBuilder";
 import { SearchQueryBar } from "./SearchQueryBar";
+import { SearchRestHint } from "./SearchRestHint";
 import { SearchResultSkeleton } from "./SearchResultSkeleton";
 import { SearchResultsList } from "./SearchResultsList";
 import { buildSearchIn, DEFAULT_TARGET_SELECTION, SearchTargetPicker, type TargetSelection } from "./SearchTargetPicker";
@@ -34,6 +35,10 @@ export function SearchLabPage({ collectionId }: SearchLabPageProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<SearchErrorInfo | null>(null);
   const [response, setResponse] = useState<SearchResponse | null>(null);
+  // The very first query against a collection compiles the search graph cold (several seconds) —
+  // every later query reuses it (sub-second). Tracked so the loading state can call this out only
+  // once per page visit instead of implying every search is slow.
+  const [hasSearchedOnce, setHasSearchedOnce] = useState(false);
   // `null` = not yet known (kept as "has documents" until it resolves, so the picker never flashes
   // disabled then enabled). Best-effort, mirrors the collection fetch below.
   const [hasDocuments, setHasDocuments] = useState<boolean | null>(null);
@@ -88,7 +93,10 @@ export function SearchLabPage({ collectionId }: SearchLabPageProps) {
     })
       .then(setResponse)
       .catch((e) => setError(classifySearchError(e)))
-      .finally(() => setLoading(false));
+      .finally(() => {
+        setLoading(false);
+        setHasSearchedOnce(true);
+      });
   };
 
   return (
@@ -117,20 +125,32 @@ export function SearchLabPage({ collectionId }: SearchLabPageProps) {
         </div>
 
         {/* A permanent config/auth fault (424) must NOT offer "retry" — only transient/timeout do. */}
-        {error && (
+        {error && !loading && (
           <ErrorState
             message={error.message}
             onRetry={error.kind === "config" ? undefined : runSearch}
           />
         )}
-        {!error && response && <SearchResultsList response={response} />}
-        {/* Pre-search state — sits exactly where the hit-card column will render, left-aligned like
-            the rest of this page. Teaches with clickable example queries and previews the layout
-            with a skeleton instead of leaving the space bare. */}
-        {!error && !response && !loading && (
+        {/* Loading state — the ONLY place the skeleton renders now (it used to sit at rest and
+            never resolve, and this real load had no affordance at all). The first query per
+            collection compiles the search graph cold (several seconds); later ones are sub-second. */}
+        {loading && (
+          <div style={{ display: "flex", flexDirection: "column", gap: theme.space.s }}>
+            {!hasSearchedOnce && (
+              <div style={{ color: theme.color.dim, fontSize: theme.font.size.s }}>
+                Warming up the search pipeline for this collection — the first query can take a few seconds.
+              </div>
+            )}
+            <SearchResultSkeleton />
+          </div>
+        )}
+        {!loading && !error && response && <SearchResultsList response={response} />}
+        {/* Resting state — sits exactly where the hit-card column will render, left-aligned like
+            the rest of this page. Teaches with clickable example queries and a static (non-loading) hint. */}
+        {!loading && !error && !response && (
           <div style={{ display: "flex", flexDirection: "column", gap: theme.space.l }}>
             <SearchExampleQueries onSelect={setQuery} />
-            <SearchResultSkeleton />
+            <SearchRestHint />
           </div>
         )}
       </div>

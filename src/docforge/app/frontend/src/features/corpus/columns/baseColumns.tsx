@@ -57,6 +57,28 @@ export function buildBaseColumns({ onOpen, onEnabledChanged, supportedFormats }:
         />
       ),
     },
+    // Deliberately placed early (right after Status) rather than trailing the column set: it's the
+    // one interactive control in this whole grid (a toggle, not read-only data), so it must stay
+    // reachable within the always-visible leading columns — the grid's own MIN_TABLE_WIDTH floor
+    // routinely overflows a typical viewport once metadata columns are added, and the row-actions
+    // column pinned `position: sticky; right: 0` (CorpusTable.tsx) unavoidably overlaps whatever
+    // trailing column sits at that overflow boundary at scrollLeft=0 — a read-only column (e.g.
+    // Language, now trailing) degrading there is a cosmetic nit; an unreachable ENABLED toggle
+    // was a MAJOR usability regression (iteration-2 GUI campaign finding).
+    {
+      id: "enabled",
+      accessorKey: "enabled",
+      header: "Enabled",
+      size: 90,
+      meta: { filterKind: "bool", group: "document" },
+      cell: ({ row }) => (
+        <CorpusEnabledToggle
+          documentId={row.original.id}
+          enabled={row.original.enabled}
+          onChanged={(enabled) => onEnabledChanged(row.original.id, enabled)}
+        />
+      ),
+    },
     {
       id: "format",
       accessorKey: "format",
@@ -109,10 +131,12 @@ export function buildBaseColumns({ onOpen, onEnabledChanged, supportedFormats }:
       id: "created_at",
       accessorKey: "created_at",
       header: "Created",
-      size: 170,
+      // Wide enough for the mono locale timestamp (e.g. "9/10/2026, 10:30:04 PM") to clear the
+      // sticky actions column without clipping.
+      size: 200,
       // Its dateRange filter stacks its two inputs vertically, so this only needs to fit one native
       // date value's own width, not two side by side.
-      minSize: 120,
+      minSize: 150,
       meta: { filterKind: "dateRange", mono: true, group: "document" },
       cell: ({ row }) => formatDateTime(row.original.created_at),
     },
@@ -131,20 +155,6 @@ export function buildBaseColumns({ onOpen, onEnabledChanged, supportedFormats }:
       size: 110,
       meta: { filterKind: "listIn", group: "document" },
       cell: ({ row }) => row.original.language ?? "—",
-    },
-    {
-      id: "enabled",
-      accessorKey: "enabled",
-      header: "Enabled",
-      size: 90,
-      meta: { filterKind: "bool", group: "document" },
-      cell: ({ row }) => (
-        <CorpusEnabledToggle
-          documentId={row.original.id}
-          enabled={row.original.enabled}
-          onChanged={(enabled) => onEnabledChanged(row.original.id, enabled)}
-        />
-      ),
     },
   ];
 }

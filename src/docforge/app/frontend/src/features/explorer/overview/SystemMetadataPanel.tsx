@@ -71,7 +71,12 @@ export function SystemMetadataPanel({ document, pages }: SystemMetadataPanelProp
           <FactLabel>Status</FactLabel>
           <DocumentStatusChip status={document.status} hasWarning={!!document.warning_reason} />
         </div>
-        <Fact label="Searchable" value={document.enabled ? "enabled" : "disabled"} />
+        <div>
+          <FactLabel>Searchable</FactLabel>
+          <Chip tone={document.searchable ? "ok" : "dim"} title={!document.enabled ? "Disabled by the searchable toggle" : undefined}>
+            {document.searchable ? "yes" : "no"}
+          </Chip>
+        </div>
         {document.warning_reason && (
           <div>
             <FactLabel>Warning</FactLabel>

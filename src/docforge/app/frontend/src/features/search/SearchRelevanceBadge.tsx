@@ -1,10 +1,9 @@
 // ====== Code Summary ======
-// Human-readable relevance badge for one hit — a coarse High/Medium/Low bucket (SearchHitCard used
-// to show the raw fused score in bold accent, which reads as a "% match" it isn't). The raw score
-// stays available for power users behind a "details" toggle, in mono, alongside the same explainer
-// this used to carry as a tooltip.
+// Human-readable relevance badge for one hit — a coarse High/Medium/Low bucket PLUS the raw numeric
+// score shown by default (in mono, de-emphasized — never the bold accent treatment, so it doesn't
+// read as a "% match" it isn't) right next to it. A power user (RAG engineer persona) needs the
+// number without an extra click; the bucket stays as the plain-English complement for everyone else.
 
-import { useState } from "react";
 import { Chip, type ChipTone } from "../../components/Chip";
 import { theme } from "../../theme";
 import { relevanceBucket } from "./searchRelevance";
@@ -37,38 +36,22 @@ interface SearchRelevanceBadgeProps {
 }
 
 export function SearchRelevanceBadge({ score, topScore }: SearchRelevanceBadgeProps) {
-  const [showDetails, setShowDetails] = useState(false);
   const bucket = relevanceBucket(score, topScore);
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-        <Chip tone={BUCKET_TONE[bucket]} title="Relevance bucket, derived from this result set's top score — not a raw similarity percentage.">
-          {BUCKET_LABEL[bucket]}
-        </Chip>
-        <button
-          type="button"
-          onClick={() => setShowDetails((prev) => !prev)}
-          style={{
-            background: "none", border: "none", padding: 0, cursor: "pointer",
-            color: theme.color.mute, fontSize: theme.font.size.xs, textDecoration: "underline",
-            textUnderlineOffset: 2,
-          }}
-        >
-          {showDetails ? "hide score" : "technical score"}
-        </button>
-      </div>
-      {showDetails && (
-        <span
-          title={SCORE_TOOLTIP}
-          style={{
-            fontFamily: theme.font.mono, fontSize: theme.font.size.xs, color: theme.color.dim,
-            cursor: "help", whiteSpace: "nowrap",
-          }}
-        >
-          raw score {score.toFixed(4)}
-        </span>
-      )}
+    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+      <Chip tone={BUCKET_TONE[bucket]} title="Relevance bucket, derived from this result set's top score — not a raw similarity percentage.">
+        {BUCKET_LABEL[bucket]}
+      </Chip>
+      <span
+        title={SCORE_TOOLTIP}
+        style={{
+          fontFamily: theme.font.mono, fontSize: theme.font.size.xs, color: theme.color.dim,
+          cursor: "help", whiteSpace: "nowrap",
+        }}
+      >
+        score {score.toFixed(4)}
+      </span>
     </div>
   );
 }

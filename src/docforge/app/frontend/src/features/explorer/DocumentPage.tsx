@@ -64,7 +64,6 @@ export function DocumentPage({ collectionId, documentId, onNavigate }: DocumentP
   // doesn't refire every render. Contributed only once the filename is known; cleared (via the
   // hook's own cleanup) on unmount or while `document` is still loading.
   const breadcrumbExtra = useMemo<BreadcrumbItem[]>(() => [
-    { label: "Corpus", view: { name: "collection-documents", collectionId } },
     { label: "Documents", view: { name: "collection-documents", collectionId } },
     { label: document?.filename ?? "" },
   ], [collectionId, document?.filename]);
@@ -130,7 +129,9 @@ export function DocumentPage({ collectionId, documentId, onNavigate }: DocumentP
         aria-labelledby={tabButtonId("document-tabs", activeTab)}
         style={{ marginTop: theme.space.m, flex: 1, minHeight: 0 }}
       >
-        {activeTab === "overview" && <OverviewTab document={document} pages={tabs.pages} />}
+        {activeTab === "overview" && (
+          <OverviewTab document={document} pages={tabs.pages} collectionId={collectionId} onNavigate={onNavigate} />
+        )}
         {activeTab === "pages" &&
           (tabs.pagesError ? (
             <ErrorState message={tabs.pagesError} onRetry={tabs.loadPages} />

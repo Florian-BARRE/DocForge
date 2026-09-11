@@ -30,6 +30,8 @@ const baseDocument: DocumentDetail = {
   enabled: true,
   chunk_count: 42,
   warning_reason: null,
+  failure_reason: null,
+  searchable: true,
   metadata: [],
 };
 

@@ -11,10 +11,17 @@ interface ActionsColumnArgs {
   onReingested: () => void;
 }
 
+// Visually empty (the row's own buttons already carry the meaning) but still a real accessible
+// name for the column, not a blank header a screen reader announces as nothing.
+const hiddenHeaderStyle: React.CSSProperties = {
+  position: "absolute", width: 1, height: 1, padding: 0, margin: -1,
+  overflow: "hidden", clip: "rect(0,0,0,0)", whiteSpace: "nowrap", border: 0,
+};
+
 export function buildActionsColumn({ onDelete, onReingested }: ActionsColumnArgs): ColumnDef<DocumentGridRow> {
   return {
     id: "__actions",
-    header: "",
+    header: () => <span style={hiddenHeaderStyle}>Actions</span>,
     enableSorting: false,
     enableResizing: false,
     size: 140,
