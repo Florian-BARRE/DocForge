@@ -9,7 +9,8 @@
     "test": "vitest run",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "gen:types": "openapi-typescript $OPENAPI_URL -o src/api/generated.ts --enum --alphabetize"
+    "gen:types": "openapi-typescript $OPENAPI_URL -o src/api/generated.ts --enum --alphabetize",
+    "check:generated-types": "node scripts/check-generated-types.mjs"
   },
   "dependencies": {
     "@tanstack/react-table": "^8.21.3",

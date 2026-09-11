@@ -79,6 +79,12 @@ export interface DocumentDetail {
   chunk_count: number | null;
   /** Non-fatal warning on a DONE document (e.g. a 0-chunk run); null when none. */
   warning_reason: string | null;
+  /** Why ingestion did not succeed (the failing job's error), surfaced on a failed/cancelled
+   *  document; null when it did not fail. */
+  failure_reason: string | null;
+  /** Whether the document is actually retrievable right now — enabled AND fully ingested AND not
+   *  known-empty. A failed or 0-chunk document is never searchable, regardless of `enabled`. */
+  searchable: boolean;
 }
 
 /** One page's geometry, routing and its render blob reference. */

@@ -326,6 +326,12 @@ export interface StageApplyResponse {
   issues: ValidationIssue[];
   /** What the compiler did beyond the literal action (dependency cascades, ignored no-ops). */
   notices: string[];
+  /** Set when the recompiled blob cannot build (e.g. a config value violates the node's own schema
+   *  bounds) — same shape/contract as `StageViewResponse.build_error`; the caller runs it through
+   *  `issuesFromBuildError` instead of the (then-empty) `issues` array. Was missing from this
+   *  hand-mirrored type though the backend always sends it — root cause of the ingestion editor's
+   *  "0 issues" badge while Save was correctly disabled (see `useStageRailPage`). */
+  build_error: string | null;
 }
 
 /** The discriminated union of every stage-level mutation the rail can send — ONE per `/apply`

@@ -36,6 +36,10 @@ export interface JobStatus {
   updated_at: string;
   /** A RUNNING job idle past the stall threshold — an early wedge warning before the reaper fails it. */
   stalled: boolean;
+  /** Wall-clock run time in seconds: finished_at − started_at for a terminal job, or now − started_at
+   *  for a still-running one. Null while the job is queued (never started) — the sortable "duration"
+   *  column of the triage view. */
+  duration_seconds: number | null;
   /** Running total of prompt tokens billed across this job's paid text-gen calls. */
   total_prompt_tokens: number;
   /** Running total of completion tokens billed across this job's paid text-gen calls. */
@@ -196,14 +200,30 @@ export interface JobPage {
 }
 
 /** Sort order for the jobs list: `newest` = created_at DESC (default), `oldest` = created_at ASC
- *  (FIFO — the "what runs next" order, typically paired with `status: ["pending"]`). */
+ *  (FIFO — the "what runs next" order, typically paired with `status: ["pending"]`). Also the
+ *  DIRECTION applied to `sort` (duration: longest/shortest-first; status: z-a/a-z). */
 export type JobOrder = "newest" | "oldest";
+
+/** Sort dimension for the jobs list triage view — `created` (default), `duration` (wall-clock run
+ *  time — a queued job sorts last), or `status`. */
+export type JobSort = "created" | "duration" | "status";
 
 /** Query filters for `GET /jobs`. Omit `collectionId` for a FLEET-WIDE listing (full-access keys
  *  only) — the "All Jobs" management view. `status` is repeatable (any subset of the job statuses). */
 export interface JobListParams {
   collectionId?: string;
   status?: JobStatusValue[];
+  /** Filter to jobs in this stage (the node's current_stage) — the triage "stage" facet. */
+  stage?: string;
+  /** Filter to jobs with this structured failure class (e.g. "TimeoutError") — the "error class" facet. */
+  errorType?: string;
+  /** Case-insensitive PREFIX match on the job id OR the document id. */
+  search?: string;
+  /** Keep only jobs created at or after this instant (ISO-8601) — the date-range start. */
+  createdAfter?: string;
+  /** Keep only jobs created at or before this instant (ISO-8601) — the date-range end. */
+  createdBefore?: string;
+  sort?: JobSort;
   order?: JobOrder;
   limit?: number;
   offset?: number;
@@ -213,12 +233,19 @@ export interface JobListParams {
  * List one bounded page of jobs — a collection's, or (with no `collectionId`) the whole fleet's.
  *
  * Returns the BOUNDED, paginated envelope (`{total, limit, offset, jobs}`) verbatim so a caller can
- * drive a pager. `status` filters by one or more job statuses; `order` picks newest-first (default)
- * or oldest-first/FIFO. The page size is server-clamped to `JOBS_MAX_PAGE_SIZE`.
+ * drive a pager. `status`/`stage`/`errorType`/`search`/`createdAfter`/`createdBefore` are additive
+ * triage facets; `sort` picks the dimension (created/duration/status) and `order` its direction
+ * (newest-first default). The page size is server-clamped to `JOBS_MAX_PAGE_SIZE`.
  */
 export async function listJobsPage(params: JobListParams = {}): Promise<JobPage> {
   const query = new URLSearchParams();
   if (params.collectionId) query.set("collection_id", params.collectionId);
+  if (params.stage) query.set("stage", params.stage);
+  if (params.errorType) query.set("error_type", params.errorType);
+  if (params.search) query.set("search", params.search);
+  if (params.createdAfter) query.set("created_after", params.createdAfter);
+  if (params.createdBefore) query.set("created_before", params.createdBefore);
+  if (params.sort) query.set("sort", params.sort);
   if (params.order) query.set("order", params.order);
   if (params.limit !== undefined) query.set("limit", String(params.limit));
   if (params.offset !== undefined) query.set("offset", String(params.offset));
@@ -306,6 +333,106 @@ export function getWorkersLive(): Promise<WorkersLive> {
 export function getQueueDepth(collectionId?: string): Promise<QueueDepth> {
   const query = collectionId ? `?collection_id=${encodeURIComponent(collectionId)}` : "";
   return apiFetch(`${BASE}/queue${query}`);
+}
+
+/** One failure-breakdown bucket — a cause/stage label and how many failed jobs carry it. `"unknown"`
+ *  is a real value (the literal the backend emits for a null group key), not an absence marker. */
+export interface FailureBucket {
+  label: string;
+  count: number;
+}
+
+/** One failure-breakdown bucket grouped by collection. */
+export interface CollectionFailureBucket {
+  collection_id: string;
+  collection_name: string | null;
+  count: number;
+}
+
+/** Failure aggregation over a time window — the "why is it breaking" panel's data. */
+export interface FailureBreakdown {
+  collection_id: string | null;
+  window_hours: number;
+  since: string;
+  total_failed: number;
+  by_error_type: FailureBucket[];
+  by_stage: FailureBucket[];
+  by_collection: CollectionFailureBucket[];
+}
+
+export interface FailureBreakdownParams {
+  collectionId?: string;
+  /** Look-back window in hours (default 24, max 720/30d). */
+  windowHours?: number;
+}
+
+/** Aggregate recent failures into top causes, by stage and by collection — the "why it breaks" panel. */
+export function getFailureBreakdown(params: FailureBreakdownParams = {}): Promise<FailureBreakdown> {
+  const query = new URLSearchParams();
+  if (params.collectionId) query.set("collection_id", params.collectionId);
+  if (params.windowHours !== undefined) query.set("window_hours", String(params.windowHours));
+  const qs = query.toString();
+  return apiFetch<FailureBreakdown>(`${BASE}/failures/breakdown${qs ? `?${qs}` : ""}`);
+}
+
+/** The "X new failures since you last looked" signal's response. */
+export interface NewFailures {
+  since: string;
+  count: number;
+  /** Ids of the new failures, newest first (bounded); populated only when `includeIds` was passed. */
+  job_ids: string[];
+  /** The newest failure's finish time — pass this back as the next `since` cursor. Null when `count` is 0. */
+  latest_failed_at: string | null;
+}
+
+export interface NewFailuresParams {
+  /** The client's last-seen cursor (ISO-8601) — only jobs that FAILED strictly after this count. */
+  since: string;
+  collectionId?: string;
+  includeIds?: boolean;
+  limit?: number;
+}
+
+/** Report how many jobs have failed since a cursor — the "X new failures since you last looked" badge. */
+export function getNewFailures(params: NewFailuresParams): Promise<NewFailures> {
+  const query = new URLSearchParams();
+  query.set("since", params.since);
+  if (params.collectionId) query.set("collection_id", params.collectionId);
+  if (params.includeIds !== undefined) query.set("include_ids", String(params.includeIds));
+  if (params.limit !== undefined) query.set("limit", String(params.limit));
+  return apiFetch<NewFailures>(`${BASE}/failures/new?${query.toString()}`);
+}
+
+/** One hourly bucket of the job trends — arrivals, completions and reconstructed backlog. */
+export interface TimeseriesBucket {
+  bucket_start: string;
+  created: number;
+  done: number;
+  failed: number;
+  backlog: number;
+}
+
+/** Lightweight job trends — contiguous hourly buckets computed from the job table (no Prometheus). */
+export interface JobTimeseries {
+  collection_id: string | null;
+  window_hours: number;
+  bucket_seconds: number;
+  buckets: TimeseriesBucket[];
+}
+
+export interface JobTimeseriesParams {
+  collectionId?: string;
+  /** Hours of history as hourly buckets (default 24, max 168/7d — the server cap). */
+  windowHours?: number;
+}
+
+/** Return lightweight hourly job trends — done/h, failed/h, arrivals and backlog — for in-product sparklines. */
+export function getJobTimeseries(params: JobTimeseriesParams = {}): Promise<JobTimeseries> {
+  const query = new URLSearchParams();
+  if (params.collectionId) query.set("collection_id", params.collectionId);
+  if (params.windowHours !== undefined) query.set("window_hours", String(params.windowHours));
+  const qs = query.toString();
+  return apiFetch<JobTimeseries>(`${BASE}/timeseries${qs ? `?${qs}` : ""}`);
 }
 
 /** Callbacks the live job stream drives — one per new stage event, one per status snapshot change. */

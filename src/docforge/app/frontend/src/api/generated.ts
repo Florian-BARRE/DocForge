@@ -524,6 +524,95 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/collections/{collection_id}/pipeline/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview Pipeline
+         * @description Dry-run the ingestion pipeline on ONE document and return a bounded preview — NOTHING is persisted.
+         *
+         *     Runs the INGEST graph inline (the same pure engine a real run uses) against either an uploaded
+         *     file OR an already-ingested ``document_id``, optionally with a candidate ``blob`` instead of the
+         *     collection's stored pipeline. Returns an IR summary, the first N chunks, the run's ACTUAL metered
+         *     cost, and the full execution trace. No document row, S3 object or Qdrant point is written. The run
+         *     is bounded by the interactive guardrails (PREVIEW_RUN_TIMEOUT_SECONDS wall-clock cap + PREVIEW_MAX_BYTES
+         *     body cap). A node that fails is DATA (ok=false + the trace showing where it died), never a 500.
+         *
+         *     Returns:
+         *         PreviewResponse: The bounded dry-run report (404 unknown collection/document; 422 on a bad
+         *         blob, a missing/oversized source, or neither/both of file and document_id supplied).
+         */
+        post: operations["preview_pipeline_api_v1_collections__collection_id__pipeline_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/collections/{collection_id}/pipeline/preview/jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Submit Preview Job
+         * @description Submit an ASYNCHRONOUS worker-side dry-run preview — returns a pollable id, persists NOTHING.
+         *
+         *     Unlike the inline ``/pipeline/preview`` fast-lane (which runs in the API process and cannot parse
+         *     pipelines whose deps — docling — live only in the worker image), this enqueues a WORKER preview
+         *     job that runs the full ingest graph with every dependency present, so it covers ALL pipelines. The
+         *     uploaded bytes (capped at PREVIEW_MAX_BYTES) ride through the queue; an existing ``document_id`` is
+         *     rehydrated worker-side from the store. The worker writes nothing durable and RETURNS the bounded
+         *     report as the job result (kept in Redis with a TTL). Poll ``/pipeline/preview/jobs/{preview_id}``.
+         *
+         *     Returns:
+         *         PreviewJobAccepted: The preview id + initial status (202); 404 unknown collection/document;
+         *         422 on a bad blob, a missing/oversized source, or neither/both of file and document_id.
+         */
+        post: operations["submit_preview_job_api_v1_collections__collection_id__pipeline_preview_jobs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/collections/{collection_id}/pipeline/preview/jobs/{preview_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Preview Job
+         * @description Poll an asynchronous dry-run preview by its id — the bounded report appears once status is 'done'.
+         *
+         *     A failed NODE is DATA: status 'done' with ``result.ok`` = false (never a 500). 'failed' is reserved
+         *     for the rare case the worker job itself crashed/timed out. An unknown or expired id is a 404.
+         *
+         *     Returns:
+         *         PreviewJobResult: status + (the report when done); 404 when the collection is out of scope or
+         *         the preview id is unknown/expired.
+         */
+        get: operations["get_preview_job_api_v1_collections__collection_id__pipeline_preview_jobs__preview_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/collections/{collection_id}/reingest": {
         parameters: {
             query?: never;
@@ -660,13 +749,17 @@ export interface paths {
         };
         /**
          * Get Contract Schema
-         * @description Discover the collection identity/limits contract as JSON Schema — the schema-driven UI form.
+         * @description Discover the FULL collection-contract vocabulary — nothing has to be guessed.
          *
-         *     Mirrors a node's ``config_schema`` face so a new scalar contract field auto-surfaces in the UI
-         *     with zero frontend change (the frontend feeds it straight to its existing ``SchemaForm``).
+         *     Serves three things, each straight from the canonical server source it validates against (never a
+         *     hand-copied literal): ``config_schema`` (the identity/limits scalar contract, mirroring a node's
+         *     ``config_schema`` so a new scalar field auto-surfaces in the UI), ``field_schema`` (one metadata
+         *     ``FieldSpec`` — its ``$defs`` carry the ``field_type``/``origin``/``scope`` enums), and
+         *     ``supported_format_tokens`` (the accepted upload tokens). A purely-HTTP client (e.g. the MCP)
+         *     thus learns every valid value from the API instead of discovering it was wrong at a 422.
          *
          *     Returns:
-         *         CollectionContractSchemaResponse: The ``model_json_schema()`` of the identity/limits contract.
+         *         CollectionContractSchemaResponse: The identity/limits schema + the field/format vocabulary.
          */
         get: operations["get_contract_schema_api_v1_collections_contract_schema_get"];
         put?: never;
@@ -741,7 +834,8 @@ export interface paths {
          * @description Return one document's full facts and its resolved document-level metadata.
          *
          *     Returns:
-         *         DocumentDetail: Facts + metadata (field names joined from the schema); 404 when unknown.
+         *         DocumentDetail: Facts + metadata (field names joined from the schema), plus the failure
+         *         reason for a non-successful run; 404 when unknown.
          */
         get: operations["get_document_api_v1_documents__document_id__get"];
         put?: never;
@@ -975,13 +1069,14 @@ export interface paths {
          * List Jobs
          * @description Return one page of jobs — a collection's, or (with no ``collection_id``) the whole fleet's.
          *
-         *     Powers both the per-collection monitoring table and the fleet-wide "All Jobs" view. ``collection_id``
-         *     is OPTIONAL: present scopes to that collection, omitted lists across every collection and is
-         *     FULL-ACCESS only (a collection-scoped key must name a collection it owns — the same gate ``GET
-         *     /jobs/queue`` applies to its fleet-wide counts, so a scoped key can never read cross-tenant rows).
-         *     ``status`` filters by one or more job statuses (default = all). ``order`` defaults to newest-first
-         *     (created_at DESC); pass ``order=oldest`` for FIFO/oldest-first — the "what runs next" ordering the
-         *     UI needs, typically with ``status=pending``. The list is BOUNDED (``limit`` clamped to
+         *     Powers both the per-collection monitoring table and the fleet-wide "All Jobs" triage view.
+         *     ``collection_id`` is OPTIONAL: present scopes to that collection, omitted lists across every
+         *     collection and is FULL-ACCESS only (a collection-scoped key must name a collection it owns — the
+         *     same gate ``GET /jobs/queue`` applies, so a scoped key can never read cross-tenant rows). The
+         *     triage facets are all optional and additive: ``status`` (one or more), ``stage`` (current node),
+         *     ``error_type`` (failure class), ``search`` (prefix-match the job/document id) and the
+         *     ``created_after``/``created_before`` date range. ``sort`` picks the dimension (created / duration /
+         *     status) and ``order`` its direction (newest=DESC). The list is BOUNDED (``limit`` clamped to
          *     ``JOBS_MAX_PAGE_SIZE``) and carries the total so the UI can page; the row join adds the document
          *     filename + collection name (no second round-trip).
          *
@@ -1158,6 +1253,63 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/jobs/failures/breakdown": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Failure Breakdown
+         * @description Aggregate recent failures into top causes, by stage and by collection — the "why it breaks" panel.
+         *
+         *     Rolls up the window's FAILED jobs three ways (structured error class, the stage/node they died in,
+         *     and collection), each ordered by descending count and bounded to the dominant causes, so an
+         *     operator sees "5 Docling OOMs in collection X" instead of five unrelated rows. Scoped exactly like
+         *     ``GET /jobs``: a named ``collection_id`` is gated by the key's scope, a fleet-wide one is
+         *     full-access only.
+         *
+         *     Returns:
+         *         FailureBreakdown: The window + total and the three descending, bounded groupings.
+         */
+        get: operations["failure_breakdown_api_v1_jobs_failures_breakdown_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/jobs/failures/new": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * New Failures
+         * @description Report how many jobs have failed since a cursor — the "X new failures since you last looked" badge.
+         *
+         *     Keyed on the FAILURE instant (``finished_at``), so a job created before the cursor but failing
+         *     after it still counts — the "new since" semantics a created-at filter would miss. Returns the count
+         *     plus the newest failure time (the next cursor to pass), and the bounded id list when ``include_ids``
+         *     is set. Scoped exactly like ``GET /jobs``.
+         *
+         *     Returns:
+         *         NewFailures: The count, the newest failure time, and the optional bounded id list.
+         */
+        get: operations["new_failures_api_v1_jobs_failures_new_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/jobs/queue": {
         parameters: {
             query?: never;
@@ -1203,6 +1355,33 @@ export interface paths {
          *         StageDurations: Stage id → average wall-clock seconds.
          */
         get: operations["stage_durations_api_v1_jobs_stage_durations_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/jobs/timeseries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Job Timeseries
+         * @description Return lightweight hourly job trends — done/h, failed/h, arrivals and backlog — from the job table.
+         *
+         *     In-product sparklines without Prometheus: arrivals (created/h), successful completions (done/h),
+         *     failures (failed/h) and a reconstructed end-of-hour backlog depth, as contiguous hourly buckets
+         *     across the window. Scoped exactly like ``GET /jobs``.
+         *
+         *     Returns:
+         *         JobTimeseries: The contiguous hourly series (oldest bucket first).
+         */
+        get: operations["job_timeseries_api_v1_jobs_timeseries_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1457,6 +1636,31 @@ export interface paths {
          *         when the transfer is not a downloadable export.
          */
         get: operations["download_transfer_api_v1_transfers__transfer_id__download_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/capabilities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Capabilities
+         * @description Report what this deployment can do right now (public, no auth — mirrors /health placement).
+         *
+         *     Returns:
+         *         CapabilitiesResponse: Running version, auth state, derived GPU presence, the infra stores +
+         *         optional sidecars (cached reachability + what each unlocks), and the available pipeline kinds
+         *         per family.
+         */
+        get: operations["capabilities_capabilities_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1821,6 +2025,64 @@ export interface components {
              */
             target_name?: string | null;
         };
+        /** Body_preview_pipeline_api_v1_collections__collection_id__pipeline_preview_post */
+        Body_preview_pipeline_api_v1_collections__collection_id__pipeline_preview_post: {
+            /**
+             * Blob
+             * @description Optional candidate pipeline blob (JSON) to preview.
+             */
+            blob?: string | null;
+            /**
+             * Document Id
+             * @description An existing document to dry-run (omit to upload).
+             */
+            document_id?: string | null;
+            /**
+             * File
+             * @description The document to dry-run (omit to use document_id).
+             */
+            file?: string | null;
+            /**
+             * Max Chunks
+             * @description How many preview chunks to return (capped).
+             */
+            max_chunks?: number | null;
+            /**
+             * Metadata
+             * @description Declared metadata for an UPLOADED source (JSON object).
+             * @default {}
+             */
+            metadata: string;
+        };
+        /** Body_submit_preview_job_api_v1_collections__collection_id__pipeline_preview_jobs_post */
+        Body_submit_preview_job_api_v1_collections__collection_id__pipeline_preview_jobs_post: {
+            /**
+             * Blob
+             * @description Optional candidate pipeline blob (JSON) to preview.
+             */
+            blob?: string | null;
+            /**
+             * Document Id
+             * @description An existing document to dry-run (omit to upload).
+             */
+            document_id?: string | null;
+            /**
+             * File
+             * @description The document to dry-run (omit to use document_id).
+             */
+            file?: string | null;
+            /**
+             * Max Chunks
+             * @description How many preview chunks to return (capped).
+             */
+            max_chunks?: number | null;
+            /**
+             * Metadata
+             * @description Declared metadata for an UPLOADED source (JSON object).
+             * @default {}
+             */
+            metadata: string;
+        };
         /** Body_upload_document_api_v1_documents_post */
         Body_upload_document_api_v1_documents_post: {
             /**
@@ -2100,11 +2362,116 @@ export interface components {
             status: string;
         };
         /**
+         * CapabilitiesResponse
+         * @description The deployment capabilities snapshot returned by GET /capabilities.
+         *
+         *     Attributes:
+         *         version (str): The running app/image version (``FASTAPI_APP_VERSION``, falling back to the
+         *             pinned ``DOCFORGE_TAG``).
+         *         auth_enabled (bool): Whether API-key bearer auth gates ``/api/v1`` on this deployment.
+         *         gpu_present (bool | None): True when any reachable sidecar reports device ``"cuda"``; False when
+         *             reachable sidecars report only non-cuda devices; None when no device info is available.
+         *         services (list[ServiceInfo]): The infra stores + optional sidecars, with reachability + what
+         *             each unlocks.
+         *         capabilities (CapabilityMatrix): The available pipeline kinds per family.
+         */
+        CapabilitiesResponse: {
+            /**
+             * Auth Enabled
+             * @description Whether API-key bearer auth gates /api/v1.
+             */
+            auth_enabled: boolean;
+            /** @description Available pipeline kinds per family. */
+            capabilities: components["schemas"]["CapabilityMatrix"];
+            /**
+             * Gpu Present
+             * @description True if any reachable sidecar reports device 'cuda'; None when unknown.
+             */
+            gpu_present?: boolean | null;
+            /**
+             * Services
+             * @description Infra stores + optional sidecars.
+             */
+            services?: components["schemas"]["ServiceInfo"][];
+            /**
+             * Version
+             * @description Running app/image version (FASTAPI_APP_VERSION / DOCFORGE_TAG).
+             */
+            version: string;
+        };
+        /**
          * Capability
          * @description A coarse action class an endpoint requires of the calling key.
          * @enum {string}
          */
         Capability: Capability;
+        /**
+         * CapabilityMatrix
+         * @description The available pipeline kinds per family — 'what can this deployment do NOW'.
+         *
+         *     Each list holds the SELECTABLE kinds of that family whose requirement is satisfied: in-worker or
+         *     per-collection-key kinds are always listed; a sidecar-gated kind is listed only while its sidecar
+         *     is reachable. ``metagen`` has no selectable provider kinds of its own (it delegates to the ``llm``
+         *     family), so it is legitimately empty.
+         *
+         *     Attributes:
+         *         parsers (list[str]): Available ``parser`` kinds.
+         *         ocr (list[str]): Available ``ocr`` kinds.
+         *         embed (list[str]): Available ``embed`` kinds.
+         *         chunkers (list[str]): Available ``chunker`` kinds.
+         *         vlm (list[str]): Available ``vlm`` kinds.
+         *         llm (list[str]): Available ``llm`` kinds.
+         *         rerank (list[str]): Available ``rerank`` kinds.
+         *         contextualize (list[str]): Available ``contextualize`` kinds.
+         *         metagen (list[str]): Available ``metagen`` kinds (delegates to ``llm``; usually empty).
+         */
+        CapabilityMatrix: {
+            /**
+             * Chunkers
+             * @description Available chunker kinds.
+             */
+            chunkers?: string[];
+            /**
+             * Contextualize
+             * @description Available contextualize kinds.
+             */
+            contextualize?: string[];
+            /**
+             * Embed
+             * @description Available embed kinds.
+             */
+            embed?: string[];
+            /**
+             * Llm
+             * @description Available llm kinds.
+             */
+            llm?: string[];
+            /**
+             * Metagen
+             * @description Available metagen kinds.
+             */
+            metagen?: string[];
+            /**
+             * Ocr
+             * @description Available ocr kinds.
+             */
+            ocr?: string[];
+            /**
+             * Parsers
+             * @description Available parser kinds.
+             */
+            parsers?: string[];
+            /**
+             * Rerank
+             * @description Available rerank kinds.
+             */
+            rerank?: string[];
+            /**
+             * Vlm
+             * @description Available vlm kinds.
+             */
+            vlm?: string[];
+        };
         /**
          * ChainSpec
          * @description A fallback chain's canonical state — its family and its ordered steps.
@@ -2334,15 +2701,25 @@ export interface components {
         };
         /**
          * CollectionContractSchemaResponse
-         * @description The JSON Schema of the collection identity/limits contract — the discovery payload.
+         * @description The full DISCOVERABLE vocabulary of a collection contract — no value has to be guessed.
          *
          *     Mirrors a node's ``config_schema`` face: ``config_schema`` is the raw
          *     ``CollectionContractModel.model_json_schema()`` the frontend hands to its existing
          *     ``SchemaForm`` unchanged, so a new scalar contract field auto-surfaces in the UI with zero
-         *     frontend change.
+         *     frontend change. Beyond that identity/limits form, a purely-HTTP client (e.g. the MCP, which
+         *     cannot introspect the server's domain models) also needs the vocabulary the scalar schema does
+         *     NOT carry: the ``field_type``/``origin``/``scope`` enums of a metadata field, and the set of
+         *     accepted ``supported_formats`` tokens. Both are served here, straight from the canonical server
+         *     source, so an LLM never invents ``"str"`` or ``"pdf"`` and only learns it was wrong at a 422.
          *
          *     Attributes:
          *         config_schema (dict[str, Any]): JSON Schema of the editable identity/limits contract.
+         *         field_schema (dict[str, Any]): JSON Schema of one metadata ``FieldSpec`` (carries the
+         *             ``field_type``/``origin``/``scope`` enums in its ``$defs``) — the vocabulary of the
+         *             ``fields[]`` the scalar contract deliberately omits.
+         *         supported_format_tokens (list[str]): Every upload format token a collection may declare in
+         *             ``supported_formats`` (e.g. ``"pdf"``, ``"docx"``, ``"md"``), from the pipeline's own
+         *             content-detection table.
          */
         CollectionContractSchemaResponse: {
             /**
@@ -2352,6 +2729,18 @@ export interface components {
             config_schema: {
                 [key: string]: unknown;
             };
+            /**
+             * Field Schema
+             * @description JSON Schema of one metadata FieldSpec — carries the field_type/origin/scope enums the identity/limits contract omits.
+             */
+            field_schema: {
+                [key: string]: unknown;
+            };
+            /**
+             * Supported Format Tokens
+             * @description Every upload format token a collection may declare in supported_formats (e.g. 'pdf', 'docx', 'md').
+             */
+            supported_format_tokens: string[];
         };
         /**
          * CollectionCost
@@ -2416,6 +2805,27 @@ export interface components {
              * @enum {string}
              */
             scope: CollectionEstimateRequestScope;
+        };
+        /**
+         * CollectionFailureBucket
+         * @description One failure-breakdown bucket grouped by collection — id, name and failure count.
+         */
+        CollectionFailureBucket: {
+            /**
+             * Collection Id
+             * @description The collection the failures belong to.
+             */
+            collection_id: string;
+            /**
+             * Collection Name
+             * @description The collection's name (None when the collection row is gone).
+             */
+            collection_name?: string | null;
+            /**
+             * Count
+             * @description Number of failed jobs in this collection over the window.
+             */
+            count: number;
         };
         /**
          * CollectionHealthResponse
@@ -2796,9 +3206,14 @@ export interface components {
             } | null;
             /**
              * Preset
-             * @description Stock-blob selector used ONLY when ``pipeline`` is omitted: 'standard' (the default full pipeline) or 'light' (a fast, local, free core — no figure enrich, contextualise or metagen). An explicit ``pipeline`` always wins over this.
+             * @description Stock INGESTION-blob selector used ONLY when ``pipeline`` is omitted. 'standard' (the default full pipeline), 'light' (a fast, local, free core — no figure enrich, contextualise or metagen), 'ocr_scan' (a local OCR pass for scanned/image documents) or 'high_precision' (finer chunks for sharper hybrid retrieval). Every preset keeps provider-hosted stages off. Discover the full list (label + rationale) via GET /pipelines/ingest → presets. An explicit ``pipeline`` always wins over this.
              */
             preset?: CreateCollectionRequestPresetAnyOf0 | null;
+            /**
+             * Search Preset
+             * @description Stock SEARCH-blob selector applied at creation. 'hybrid' (the default dense+sparse fusion), 'hybrid_rerank' (hybrid then a cross-encoder rerank) or 'dense_only' (pure semantic retrieval). Omitted → the stock hybrid default (stored as {}). Discover the full list (label + rationale) via GET /pipelines/search → presets.
+             */
+            search_preset?: CreateCollectionRequestSearch_presetAnyOf0 | null;
             /**
              * Supported Formats
              * @description Accepted upload extensions (e.g. pdf).
@@ -2946,6 +3361,11 @@ export interface components {
              */
             enabled: boolean;
             /**
+             * Failure Reason
+             * @description Why ingestion did not succeed (the failing job's error message), surfaced on a failed/cancelled document so the detail page can explain it; None when it did not fail.
+             */
+            failure_reason?: string | null;
+            /**
              * File Size
              * @description Original size in bytes.
              */
@@ -2995,6 +3415,11 @@ export interface components {
              * @description Pipeline config identity the run used.
              */
             pipeline_version: string;
+            /**
+             * Searchable
+             * @description Whether the document is actually retrievable RIGHT NOW — enabled AND fully ingested (status done) AND not known-empty. A failed or 0-chunk document is never searchable, regardless of the 'enabled' toggle (which is only the user's intent).
+             */
+            searchable: boolean;
             /**
              * Simhash
              * @description Near-duplicate signature (or None).
@@ -3622,6 +4047,69 @@ export interface components {
             id: string;
             /** Transitions */
             transitions?: components["schemas"]["Transition"][];
+        };
+        /**
+         * FailureBreakdown
+         * @description Failure aggregation over a time window — the "why is it breaking" panel.
+         *
+         *     Three roll-ups of the window's FAILED jobs, each ordered by descending count and bounded to the
+         *     dominant causes: by structured error class, by the stage/node the job died in, and by collection.
+         *     Failures are attributed by the job's creation time (the indexed column), so the window is "jobs
+         *     created in the last N hours that failed".
+         */
+        FailureBreakdown: {
+            /**
+             * By Collection
+             * @description Top failures by collection, biggest first (present on a fleet-wide breakdown).
+             */
+            by_collection?: components["schemas"]["CollectionFailureBucket"][];
+            /**
+             * By Error Type
+             * @description Top failure causes by structured error class, biggest first.
+             */
+            by_error_type?: components["schemas"]["FailureBucket"][];
+            /**
+             * By Stage
+             * @description Top failures by the stage/node the job died in (current_stage), biggest first.
+             */
+            by_stage?: components["schemas"]["FailureBucket"][];
+            /**
+             * Collection Id
+             * @description The collection scoped to, or None for a fleet-wide breakdown.
+             */
+            collection_id?: string | null;
+            /**
+             * Since
+             * Format: date-time
+             * @description The window start instant (now − window_hours).
+             */
+            since: string;
+            /**
+             * Total Failed
+             * @description Total failed jobs in the window (the panel headline).
+             */
+            total_failed: number;
+            /**
+             * Window Hours
+             * @description The window width in hours the breakdown was computed over.
+             */
+            window_hours: number;
+        };
+        /**
+         * FailureBucket
+         * @description One failure-breakdown bucket — a cause/stage label and how many failed jobs carry it.
+         */
+        FailureBucket: {
+            /**
+             * Count
+             * @description Number of failed jobs in this bucket over the window.
+             */
+            count: number;
+            /**
+             * Label
+             * @description The bucket's value — an error class (by_error_type), a stage/node id (by_stage), or the literal 'unknown' when the underlying column was null (unattributed failure).
+             */
+            label: string;
         };
         /**
          * FamilyCatalog
@@ -4454,13 +4942,18 @@ export interface components {
              */
             document_title?: string | null;
             /**
+             * Duration Seconds
+             * @description Wall-clock run time in seconds: finished_at − started_at for a terminal job, or now − started_at for a still-running one (the elapsed time). None while the job is queued (never started). The sortable 'duration' column of the triage view.
+             */
+            duration_seconds?: number | null;
+            /**
              * Error
              * @description Failure detail when status=failed.
              */
             error?: string | null;
             /**
              * Error Type
-             * @description Exception class name of the failure (e.g. 'TimeoutError').
+             * @description Structured cause of the failure. Usually the raising exception's class name (e.g. 'TimeoutError'); the reaper also attributes 'worker_killed' (the worker process was lost — crash/OOM-kill) and 'job_timeout_exceeded' (a stage wedged past the job's timeout on a live worker). Set only on a failed job.
              */
             error_type?: string | null;
             /**
@@ -4534,6 +5027,36 @@ export interface components {
              * @description Last progress/lifecycle write (freezes on a wedge).
              */
             updated_at: string;
+        };
+        /**
+         * JobTimeseries
+         * @description Lightweight job trends — contiguous hourly buckets computed from the job table (no Prometheus).
+         *
+         *     Each bucket carries the hour's arrivals (created), successful completions (done/h), failures
+         *     (failed/h) and a reconstructed end-of-hour backlog depth — enough for in-product sparklines
+         *     without any external timeseries store. The buckets are contiguous and ascending over the window.
+         */
+        JobTimeseries: {
+            /**
+             * Bucket Seconds
+             * @description Bucket width in seconds (3600 — hourly).
+             */
+            bucket_seconds: number;
+            /**
+             * Buckets
+             * @description Contiguous hourly buckets, oldest first, one per hour across the window.
+             */
+            buckets?: components["schemas"]["TimeseriesBucket"][];
+            /**
+             * Collection Id
+             * @description The collection scoped to, or None for a fleet-wide series.
+             */
+            collection_id?: string | null;
+            /**
+             * Window Hours
+             * @description The window width in hours the series spans.
+             */
+            window_hours: number;
         };
         /**
          * JobTrace
@@ -4637,10 +5160,17 @@ export interface components {
          *         name (str): Human label (the model class name).
          *         summary (str): One-line statement of what the variant does.
          *         how_it_works (str | None): Optional longer explanation (docstring body).
+         *         discriminator (str | None): Name of the tag field the client must send to select this
+         *             variant (e.g. ``"op"`` for an edit operation, ``"action"`` for a stage action), so a
+         *             payload is ``{<discriminator>: <kind>, **params}``. Derived from the source union's
+         *             ``Field(discriminator=…)`` — ``None`` for cards not built from a discriminated union
+         *             (containers, error policies), which a client never sends as a tagged payload.
          *         params_schema (dict): JSON Schema of the variant's editable parameters (discriminator
          *             removed) — drives the parameter form, like a node's config_schema.
          */
         MechanicCard: {
+            /** Discriminator */
+            discriminator?: string | null;
             /** How It Works */
             how_it_works?: string | null;
             /** Kind */
@@ -4666,6 +5196,12 @@ export interface components {
          *         binding_sources (list[MechanicCard]): Every data-wiring source (the Binding union).
          *         containers (list[MechanicCard]): The structural nodes (foreach, group) and their knobs.
          *         error_policies (list[MechanicCard]): Every per-node failure stance.
+         *         edit_operations (list[MechanicCard]): Every graph-mutation the ``/edit`` endpoint accepts
+         *             (the EditOperation union) — one card per ``operations[]`` payload, so a client composes
+         *             them from the discriminator + params_schema instead of guessing. Pipeline-agnostic.
+         *         stage_actions (list[MechanicCard]): Every stage-rail action the ``/stages/apply`` endpoint
+         *             accepts (the StageAction union) — one card per ``action`` payload. Empty for a pipeline
+         *             with no stage rail (the stage layer is ingest-coupled today).
          */
         MechanicsDescription: {
             /** Binding Sources */
@@ -4676,8 +5212,12 @@ export interface components {
             conditions: components["schemas"]["MechanicCard"][];
             /** Containers */
             containers: components["schemas"]["MechanicCard"][];
+            /** Edit Operations */
+            edit_operations?: components["schemas"]["MechanicCard"][];
             /** Error Policies */
             error_policies: components["schemas"]["MechanicCard"][];
+            /** Stage Actions */
+            stage_actions?: components["schemas"]["MechanicCard"][];
         };
         /**
          * MetadataFilter
@@ -4741,6 +5281,38 @@ export interface components {
              * @description Output/completion price, USD per 1M tokens.
              */
             output: number;
+        };
+        /**
+         * NewFailures
+         * @description The "X new failures since you last looked" signal — a count (and optional ids) past a cursor.
+         *
+         *     The client passes its last-seen timestamp; this returns how many jobs have FAILED since (keyed on
+         *     the failure instant, so a job created earlier but failing after the cursor still counts) and the
+         *     newest failure time so the client can advance its cursor. ``job_ids`` is populated only when the
+         *     caller opted in, bounded so the signal never returns an unbounded list.
+         */
+        NewFailures: {
+            /**
+             * Count
+             * @description Jobs that failed strictly after the cursor.
+             */
+            count: number;
+            /**
+             * Job Ids
+             * @description Ids of the new failures, newest first (bounded); empty unless the caller asked for them (include_ids) or there are none.
+             */
+            job_ids?: string[];
+            /**
+             * Latest Failed At
+             * @description The newest failure's finish time — the value to pass as the next 'since' cursor (None when there are no new failures).
+             */
+            latest_failed_at?: string | null;
+            /**
+             * Since
+             * Format: date-time
+             * @description The last-seen cursor the count was computed against.
+             */
+            since: string;
         };
         "NodeBlob-Input": components["schemas"]["ActionNodeBlob"] | components["schemas"]["GroupNodeBlob-Input"] | components["schemas"]["ForEachNodeBlob-Input"];
         "NodeBlob-Output": components["schemas"]["ActionNodeBlob"] | components["schemas"]["GroupNodeBlob-Output"] | components["schemas"]["ForEachNodeBlob-Output"];
@@ -4928,8 +5500,9 @@ export interface components {
          *             ``FromRunInput`` binding can target. Advanced only: wiring the entry contract is a
          *             graph-editing concern.
          *         mechanics (MechanicsDescription | None): The graph-structure vocabulary (conditions,
-         *             binding sources, containers, error policies) — auto-derived from the base models.
-         *             Advanced only: it feeds edge/loop editors.
+         *             binding sources, containers, error policies) PLUS the mutation vocabularies (the
+         *             edit-operation and stage-action unions) — auto-derived from the base models. Advanced
+         *             only: it feeds edge/loop editors and the edit/stage-apply payload builders.
          *         artefacts (dict[str, ArtefactCard] | None): The slot-type vocabulary — every artefact
          *             model's docstring + JSON Schema, keyed by class name. Advanced only: it feeds the
          *             type-chip inspector.
@@ -4949,7 +5522,7 @@ export interface components {
          * PipelineDesignResponse
          * @description Everything the product UI needs to open the design surface in one call.
          *
-         *     The default payload is LEAN: family catalogue + blob + issues. The advanced blocks
+         *     The default payload is LEAN: family catalogue + blob + presets + issues. The advanced blocks
          *     (``palette.run_inputs`` / ``mechanics`` / ``artefacts``) are only filled when the request
          *     asks for the full surface (``?full=true``); the described tree of a blob is served by the
          *     advanced ``/inspect`` and ``/edit`` endpoints, never here.
@@ -4957,6 +5530,8 @@ export interface components {
          *     Attributes:
          *         palette (Palette): Every available block (per family); advanced blocks when ``full``.
          *         blob (GroupNodeBlob): The editable pipeline — the single source of truth the UI mutates.
+         *         presets (list[PipelinePreset]): The curated creation presets this pipeline offers (name +
+         *             label + rationale) — the starting points a new collection can pick instead of the blob.
          *         issues (list[ValidationIssue]): Validation problems of the blob (empty when healthy).
          */
         PipelineDesignResponse: {
@@ -4965,6 +5540,8 @@ export interface components {
             /** Issues */
             issues?: components["schemas"]["ValidationIssue"][];
             palette: components["schemas"]["Palette"];
+            /** Presets */
+            presets?: components["schemas"]["PipelinePreset"][];
         };
         /**
          * PipelineIndexResponse
@@ -4973,6 +5550,39 @@ export interface components {
         PipelineIndexResponse: {
             /** Pipelines */
             pipelines?: components["schemas"]["PipelineSurface"][];
+        };
+        /**
+         * PipelinePreset
+         * @description One creation preset a pipeline facade offers — a curated, validation-passing stock blob.
+         *
+         *     Attributes:
+         *         name (str): The machine name posted as the creation ``preset`` / ``search_preset`` selector.
+         *         label (str): The human label a UI renders for the choice.
+         *         description (str): Why this preset exists and when to pick it (the rationale).
+         *         is_default (bool): True for the preset a fresh collection gets when none is selected.
+         */
+        PipelinePreset: {
+            /**
+             * Description
+             * @description Why this preset exists and when to pick it.
+             */
+            description: string;
+            /**
+             * Is Default
+             * @description True for the preset selected when none is given.
+             * @default false
+             */
+            is_default: boolean;
+            /**
+             * Label
+             * @description Human label a UI renders for the choice.
+             */
+            label: string;
+            /**
+             * Name
+             * @description Machine name posted as the creation preset selector.
+             */
+            name: string;
         };
         /**
          * PipelineSurface
@@ -5057,6 +5667,314 @@ export interface components {
              * @description Sum of every bucket.
              */
             total_bytes: number;
+        };
+        /**
+         * PreviewChunk
+         * @description One previewed retrieval unit — text truncated to the preview ceiling, never the full chunk.
+         */
+        PreviewChunk: {
+            /**
+             * Chunk Id
+             * @description Stable chunk identifier within the document.
+             */
+            chunk_id: string;
+            /**
+             * Context
+             * @description Retrieval context accumulated by contextualize (truncated).
+             */
+            context: string;
+            /**
+             * Generated Meta
+             * @description Chunk-scope generated metadata (per contract).
+             */
+            generated_meta: {
+                [key: string]: unknown;
+            };
+            /**
+             * Heading Path
+             * @description Section ancestry, top-down.
+             */
+            heading_path: string[];
+            /**
+             * Ordinal
+             * @description Reading-order position among the document's chunks.
+             */
+            ordinal: number;
+            /**
+             * Page End
+             * @description Last source page covered (0-indexed).
+             */
+            page_end: number;
+            /**
+             * Page Start
+             * @description First source page covered (0-indexed).
+             */
+            page_start: number;
+            /**
+             * Role
+             * @description Structural role (body / header-footer / toc / boilerplate).
+             */
+            role: string;
+            /**
+             * Text
+             * @description The raw chunk text, truncated to the preview character ceiling.
+             */
+            text: string;
+            /**
+             * Text Truncated
+             * @description True when the raw text was clipped for the preview.
+             */
+            text_truncated: boolean;
+            /**
+             * Token Count
+             * @description Token count of the full (untruncated) chunk text.
+             */
+            token_count: number;
+        };
+        /**
+         * PreviewCost
+         * @description The dry-run's ACTUAL metered spend on this one document, priced against the collection's rates.
+         */
+        PreviewCost: {
+            /**
+             * Completion Tokens
+             * @description Total output tokens billed across the run's paid calls.
+             */
+            completion_tokens: number;
+            /**
+             * Cost Usd
+             * @description Total USD cost, or null when no paid leaf had a known rate (tokens still shown).
+             */
+            cost_usd: number | null;
+            /**
+             * Priced Call Count
+             * @description Number of paid leaf calls that carried usage.
+             */
+            priced_call_count: number;
+            /**
+             * Prompt Tokens
+             * @description Total input tokens billed across the run's paid calls.
+             */
+            prompt_tokens: number;
+        };
+        /**
+         * PreviewIrSummary
+         * @description A compact summary of the canonical IR a dry-run produced (the full IR is never returned).
+         */
+        PreviewIrSummary: {
+            /**
+             * Block Count
+             * @description Total number of IR blocks in reading order.
+             */
+            block_count: number;
+            /**
+             * Block Type Counts
+             * @description Count of blocks per block type (e.g. {'paragraph': 42, 'figure': 3}).
+             */
+            block_type_counts: {
+                [key: string]: number;
+            };
+            /**
+             * Figure Count
+             * @description Number of FIGURE blocks in the IR.
+             */
+            figure_count: number;
+            /**
+             * File Size
+             * @description Size of the original source bytes.
+             */
+            file_size: number;
+            /**
+             * Language
+             * @description Dominant ISO 639-1 language code (empty when undetected).
+             */
+            language: string;
+            /**
+             * Page Count
+             * @description Total page count of the parsed document.
+             */
+            page_count: number;
+            /**
+             * Source Format
+             * @description Detected source format token (pdf, docx, html, txt, …).
+             */
+            source_format: string;
+            /**
+             * Source Hash
+             * @description Content-addressing hash of the original bytes.
+             */
+            source_hash: string;
+            /**
+             * Title
+             * @description Parser-extracted document title (empty when unavailable).
+             */
+            title: string;
+        };
+        /**
+         * PreviewJobAccepted
+         * @description Acknowledgement of an asynchronous (worker-side) dry-run preview submission.
+         */
+        PreviewJobAccepted: {
+            /**
+             * Preview Id
+             * @description The pollable preview id — GET the result endpoint with it until status is terminal.
+             */
+            preview_id: string;
+            /**
+             * Status
+             * @description The initial job status (always 'pending' right after submit).
+             */
+            status: string;
+        };
+        /**
+         * PreviewJobResult
+         * @description A poll of an asynchronous dry-run preview — its coarse status plus the report once complete.
+         */
+        PreviewJobResult: {
+            /**
+             * Error
+             * @description The reason the worker job itself failed (status 'failed'), else null.
+             */
+            error?: string | null;
+            /**
+             * Preview Id
+             * @description The preview id being polled.
+             */
+            preview_id: string;
+            /** @description The bounded dry-run report, present only when status is 'done' (else null). A failed NODE is DATA here: status 'done' with result.ok = false. */
+            result?: components["schemas"]["PreviewResponse"] | null;
+            /**
+             * Status
+             * @description Coarse job state: pending (queued) / running / done (result present) / failed (the worker job itself crashed — distinct from a DATA failure, which is a done result with ok=false).
+             * @enum {string}
+             */
+            status: PreviewJobResultStatus;
+        };
+        /**
+         * PreviewResponse
+         * @description The bounded dry-run report — what an ingestion WOULD produce on one document, nothing persisted.
+         */
+        PreviewResponse: {
+            /**
+             * Chunk Count
+             * @description Total chunks the run produced (the preview returns the first N).
+             */
+            chunk_count: number;
+            /**
+             * Chunks
+             * @description The first N chunks, in reading order (text truncated).
+             */
+            chunks: components["schemas"]["PreviewChunk"][];
+            /**
+             * Chunks Truncated
+             * @description True when chunk_count exceeds the returned chunk list.
+             */
+            chunks_truncated: boolean;
+            /** @description The run's actual metered spend on this document. */
+            cost: components["schemas"]["PreviewCost"];
+            /**
+             * Error
+             * @description The failure reason when ok is false (else null).
+             */
+            error?: string | null;
+            /**
+             * Failed Node Id
+             * @description The deepest node that raised, when the run failed (else null).
+             */
+            failed_node_id?: string | null;
+            /**
+             * Failed Node Kind
+             * @description The failing node's kind, when the run failed (else null).
+             */
+            failed_node_kind?: string | null;
+            /** @description The produced IR summary, or null when the run failed before parsing. */
+            ir: components["schemas"]["PreviewIrSummary"] | null;
+            /**
+             * Ok
+             * @description True when the run delivered a RunBundle; false when a node failed (see error/trace).
+             */
+            ok: boolean;
+            /**
+             * Source Filename
+             * @description The previewed source's filename.
+             */
+            source_filename: string;
+            /**
+             * Trace
+             * @description The full per-node execution trace, roots first.
+             */
+            trace: components["schemas"]["PreviewTraceNode"][];
+            /**
+             * Vector Set Count
+             * @description Number of chunk vector sets the embed stage produced.
+             */
+            vector_set_count: number;
+            /**
+             * Warnings
+             * @description Non-fatal notices (e.g. 0 chunks).
+             */
+            warnings?: string[];
+        };
+        /**
+         * PreviewTraceNode
+         * @description One node of the execution trace, flattened to materialized-path coordinates (no raw payloads).
+         */
+        PreviewTraceNode: {
+            /**
+             * Depth
+             * @description 0 for a root stage, +1 per nesting level.
+             */
+            depth: number;
+            /**
+             * Duration Ms
+             * @description Wall-clock execution time in milliseconds.
+             */
+            duration_ms: number;
+            /**
+             * Error Message
+             * @description Exception message when the node failed (else null).
+             */
+            error_message: string | null;
+            /**
+             * Error Type
+             * @description Exception class name when the node failed (else null).
+             */
+            error_type: string | null;
+            /**
+             * Item Index
+             * @description Enclosing ForEach item index (null outside a fan-out).
+             */
+            item_index: number | null;
+            /**
+             * Kind
+             * @description The node's kind (resolves its labels/schema in the registry).
+             */
+            kind: string;
+            /**
+             * Node Id
+             * @description Identifier of the executed node.
+             */
+            node_id: string;
+            /**
+             * Node Path
+             * @description Materialized path (root = bare id, nested = dotted path).
+             */
+            node_path: string;
+            /**
+             * Parent Path
+             * @description The parent node's path (null for a root stage).
+             */
+            parent_path: string | null;
+            /**
+             * Score
+             * @description Quality score of a scored node (null otherwise).
+             */
+            score: number | null;
+            /**
+             * Status
+             * @description Outcome: success / failed / skipped.
+             */
+            status: string;
         };
         /**
          * ProbeStatus
@@ -5593,6 +6511,54 @@ export interface components {
              * @default false
              */
             semantic: boolean;
+        };
+        /**
+         * ServiceInfo
+         * @description One infra store or optional sidecar of the deployment.
+         *
+         *     Attributes:
+         *         name (str): Stable service name (compose service / network alias).
+         *         role (str): Short role label (e.g. ``"vector"``, ``"embed"``, ``"parse-ocr"``).
+         *         reachable (bool): For a sidecar, whether its short-cached ``/health`` probe currently passes;
+         *             for an infra store, whether it is configured (declared, not live-probed — see ``detail``).
+         *         device (str | None): The compute device the sidecar reports at ``/health`` (``"cuda"``/``"cpu"``)
+         *             when it exposes one; ``None`` when unknown or not applicable (stores).
+         *         provides (list[str]): The capability ids (``"family:kind"``) this service enables — empty for
+         *             infra stores (they carry no pipeline capability).
+         *         detail (str | None): Optional short note (e.g. why a sidecar is not reachable, or that a store
+         *             is declared-not-probed).
+         */
+        ServiceInfo: {
+            /**
+             * Detail
+             * @description Optional short status note.
+             */
+            detail?: string | null;
+            /**
+             * Device
+             * @description Device the sidecar reports at /health ('cuda'/'cpu'); None when unknown.
+             */
+            device?: string | null;
+            /**
+             * Name
+             * @description Stable service name (compose service / network alias).
+             */
+            name: string;
+            /**
+             * Provides
+             * @description Capability ids ('family:kind') this service enables (empty for infra stores).
+             */
+            provides?: string[];
+            /**
+             * Reachable
+             * @description Sidecar: /health probe currently passes. Store: configured (declared, not probed).
+             */
+            reachable: boolean;
+            /**
+             * Role
+             * @description Short role label (e.g. 'vector', 'embed', 'parse-ocr').
+             */
+            role: string;
         };
         /**
          * SetAfter
@@ -6161,6 +7127,38 @@ export interface components {
              * @description Exact match.
              */
             eq?: string | null;
+        };
+        /**
+         * TimeseriesBucket
+         * @description One hourly bucket of the job trends — arrivals, completions and reconstructed backlog.
+         */
+        TimeseriesBucket: {
+            /**
+             * Backlog
+             * @description Instantaneous backlog (queued + running) at the END of this hour, reconstructed from the cumulative arrivals/completions plus the pre-window baseline.
+             */
+            backlog: number;
+            /**
+             * Bucket Start
+             * Format: date-time
+             * @description The bucket's start instant (a UTC hour boundary).
+             */
+            bucket_start: string;
+            /**
+             * Created
+             * @description Jobs created (arrived) during this hour.
+             */
+            created: number;
+            /**
+             * Done
+             * @description Jobs that completed successfully during this hour.
+             */
+            done: number;
+            /**
+             * Failed
+             * @description Jobs that failed during this hour.
+             */
+            failed: number;
         };
         /**
          * TransferAccepted
@@ -7370,6 +8368,108 @@ export interface operations {
             };
         };
     };
+    preview_pipeline_api_v1_collections__collection_id__pipeline_preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                collection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_preview_pipeline_api_v1_collections__collection_id__pipeline_preview_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreviewResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    submit_preview_job_api_v1_collections__collection_id__pipeline_preview_jobs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                collection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_submit_preview_job_api_v1_collections__collection_id__pipeline_preview_jobs_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreviewJobAccepted"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_preview_job_api_v1_collections__collection_id__pipeline_preview_jobs__preview_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                collection_id: string;
+                preview_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreviewJobResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     reingest_collection_api_v1_collections__collection_id__reingest_post: {
         parameters: {
             query?: never;
@@ -7947,12 +9047,24 @@ export interface operations {
             query?: {
                 /** @description Scope to one collection. Omit for a FLEET-WIDE listing (full-access keys only) — the 'All Jobs' management view. */
                 collection_id?: string | null;
+                /** @description Keep only jobs created at or after this instant (ISO-8601) — the date-range start. */
+                created_after?: string | null;
+                /** @description Keep only jobs created at or before this instant (ISO-8601) — the date-range end. */
+                created_before?: string | null;
+                /** @description Filter to jobs with this structured failure class (e.g. 'TimeoutError', 'worker_killed', 'job_timeout_exceeded') — the triage 'error class' facet. Omit for all. */
+                error_type?: string | null;
                 /** @description Page size, clamped down to JOBS_MAX_PAGE_SIZE. Defaults to that ceiling. */
                 limit?: number;
                 /** @description Rows to skip for paging. */
                 offset?: number;
-                /** @description Sort by creation time: 'newest' = created_at DESC (default, the monitoring view); 'oldest' = created_at ASC — the FIFO 'what runs next' order (pair with status=pending for the queued backlog in claim order). */
+                /** @description Sort DIRECTION applied to ``sort``: 'newest' = DESC (newest / longest / z-a — the monitoring default); 'oldest' = ASC — FIFO/oldest-first for sort=created (the 'what runs next' order, pair with status=pending), shortest-first for duration, a-z for status. */
                 order?: PathsApiV1JobsGetParametersQueryOrder;
+                /** @description Search box: case-insensitive PREFIX match on the job id OR the document id (paste a full id or a leading fragment). Omit for no id search. */
+                search?: string | null;
+                /** @description Sort dimension: 'created' (default, by creation time), 'duration' (wall-clock run time — a still-running job by elapsed time, a queued one sorts last) or 'status'. */
+                sort?: PathsApiV1JobsGetParametersQuerySort;
+                /** @description Filter to jobs in this stage (the node's current_stage) — the triage 'stage' facet. Omit for all stages. */
+                stage?: string | null;
                 /** @description Filter to these job statuses (repeat the param to pass several). Omit for all. */
                 status?: PathsApiV1JobsGetParametersQueryStatusAnyOf0[] | null;
             };
@@ -8175,6 +9287,78 @@ export interface operations {
             };
         };
     };
+    failure_breakdown_api_v1_jobs_failures_breakdown_get: {
+        parameters: {
+            query?: {
+                /** @description Scope the breakdown to one collection. Omit for a FLEET-WIDE breakdown (full-access keys only). */
+                collection_id?: string | null;
+                /** @description Look-back window in hours: failures of jobs created in the last N hours are aggregated (default 24h, max 30 days). */
+                window_hours?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FailureBreakdown"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    new_failures_api_v1_jobs_failures_new_get: {
+        parameters: {
+            query: {
+                /** @description Scope to one collection. Omit for a FLEET-WIDE signal (full-access keys only). */
+                collection_id?: string | null;
+                /** @description Also return the ids of the new failures (newest first, bounded) so the client can deep-link each; omit for just the count. */
+                include_ids?: boolean;
+                /** @description Maximum failure ids returned when include_ids is set. */
+                limit?: number;
+                /** @description The client's last-seen cursor (ISO-8601): only jobs that FAILED strictly after this are counted. */
+                since: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NewFailures"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     queue_depth_api_v1_jobs_queue_get: {
         parameters: {
             query?: {
@@ -8224,6 +9408,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StageDurations"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    job_timeseries_api_v1_jobs_timeseries_get: {
+        parameters: {
+            query?: {
+                /** @description Scope the series to one collection. Omit for a FLEET-WIDE series (full-access keys only). */
+                collection_id?: string | null;
+                /** @description How many hours of history to return as hourly buckets (default 24h, max 7 days). */
+                window_hours?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobTimeseries"];
                 };
             };
             /** @description Validation Error */
@@ -8512,6 +9730,26 @@ export interface operations {
             };
         };
     };
+    capabilities_capabilities_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CapabilitiesResponse"];
+                };
+            };
+        };
+    };
 }
 export enum PathsApiV1CollectionsCollection_idSnippetsKindGetParametersPathKind {
     pipeline = "pipeline",
@@ -8526,6 +9764,11 @@ export enum PathsApiV1CollectionsCollection_idSnippetsKindPostParametersPathKind
 export enum PathsApiV1JobsGetParametersQueryOrder {
     newest = "newest",
     oldest = "oldest"
+}
+export enum PathsApiV1JobsGetParametersQuerySort {
+    created = "created",
+    duration = "duration",
+    status = "status"
 }
 export enum PathsApiV1JobsGetParametersQueryStatusAnyOf0 {
     pending = "pending",
@@ -8578,7 +9821,14 @@ export enum CollectionSnippetKind {
 }
 export enum CreateCollectionRequestPresetAnyOf0 {
     standard = "standard",
-    light = "light"
+    light = "light",
+    ocr_scan = "ocr_scan",
+    high_precision = "high_precision"
+}
+export enum CreateCollectionRequestSearch_presetAnyOf0 {
+    hybrid = "hybrid",
+    hybrid_rerank = "hybrid_rerank",
+    dense_only = "dense_only"
 }
 export enum CreateCollectionRequestTrace_verbosity {
     shape = "shape",
@@ -8684,6 +9934,12 @@ export enum OnFailureKind {
 }
 export enum OnSuccessKind {
     on_success = "on_success"
+}
+export enum PreviewJobResultStatus {
+    pending = "pending",
+    running = "running",
+    done = "done",
+    failed = "failed"
 }
 export enum ProbeStatus {
     ok = "ok",
