@@ -6,8 +6,8 @@
 
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactElement } from "react";
-import { describe, expect, it, vi } from "vitest";
-import type { JobPage, JobStatus, WorkersLive } from "../../api/jobs";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { FailureBreakdown, JobPage, JobStatus, JobTimeseries, NewFailures, WorkersLive } from "../../api/jobs";
 import type { Navigate } from "../../shell/view";
 import { ToastProvider } from "../../shell/toast";
 import { AllJobsPage } from "./AllJobsPage";
@@ -22,9 +22,24 @@ vi.mock("../../api/jobs", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../api/jobs")>()),
   listJobsPage: vi.fn(),
   getWorkersLive: vi.fn(),
+  getFailureBreakdown: vi.fn(),
+  getJobTimeseries: vi.fn(),
+  getNewFailures: vi.fn(),
+}));
+vi.mock("../../api/collections", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../api/collections")>()),
+  listCollections: vi.fn(),
 }));
 
-const { listJobsPage, getWorkersLive } = await import("../../api/jobs");
+const { listJobsPage, getWorkersLive, getFailureBreakdown, getJobTimeseries, getNewFailures } = await import("../../api/jobs");
+const { listCollections } = await import("../../api/collections");
+
+const emptyBreakdown: FailureBreakdown = {
+  collection_id: null, window_hours: 24, since: "2026-01-01T00:00:00Z", total_failed: 0,
+  by_error_type: [], by_stage: [], by_collection: [],
+};
+const emptyTimeseries: JobTimeseries = { collection_id: null, window_hours: 24, bucket_seconds: 3600, buckets: [] };
+const noNewFailures: NewFailures = { since: "2026-01-01T00:00:00Z", count: 0, job_ids: [], latest_failed_at: null };
 
 function jobFixture(overrides: Partial<JobStatus>): JobStatus {
   return {
@@ -44,6 +59,7 @@ function jobFixture(overrides: Partial<JobStatus>): JobStatus {
     finished_at: null,
     updated_at: "2026-01-01T00:00:00Z",
     stalled: false,
+    duration_seconds: null,
     total_prompt_tokens: 0,
     total_completion_tokens: 0,
     cost_usd: 0,
@@ -60,6 +76,13 @@ function jobFixture(overrides: Partial<JobStatus>): JobStatus {
 const emptyWorkers: WorkersLive = { workers: [] };
 
 describe("AllJobsPage", () => {
+  beforeEach(() => {
+    vi.mocked(getFailureBreakdown).mockResolvedValue(emptyBreakdown);
+    vi.mocked(getJobTimeseries).mockResolvedValue(emptyTimeseries);
+    vi.mocked(getNewFailures).mockResolvedValue(noNewFailures);
+    vi.mocked(listCollections).mockResolvedValue([]);
+  });
+
   it("mounts through loading -> loaded on the default 'All' tab, showing an honest '—' worker (never fabricated)", async () => {
     const allPage: JobPage = { total: 1, limit: 25, offset: 0, jobs: [jobFixture({ status: "pending" })] };
     vi.mocked(listJobsPage).mockResolvedValue(allPage);

@@ -10,6 +10,7 @@
 import type { JobStatus } from "../../api/jobs";
 import { theme } from "../../theme";
 import { FailedNodeBreadcrumb } from "./FailedNodeBreadcrumb";
+import { humanizeJobError } from "./jobErrorHumanize";
 
 interface JobFailureBannerProps {
   job: JobStatus;
@@ -38,7 +39,7 @@ export function JobFailureBanner({ job }: JobFailureBannerProps) {
         <span style={{ fontSize: theme.font.size.xs, color: theme.color.mute }}>attempt {job.attempt}</span>
       </div>
       <FailedNodeBreadcrumb job={job} />
-      {job.error && <div style={{ color: theme.color.text, fontSize: theme.font.size.s }}>{job.error}</div>}
+      {job.error && <div style={{ color: theme.color.text, fontSize: theme.font.size.s }}>{humanizeJobError(job.error)}</div>}
     </div>
   );
 }

@@ -5,15 +5,22 @@
 // view has no notion of a settled batch (jobs keep arriving from every collection).
 
 import { useEffect, useState } from "react";
-import { listJobsPage, type JobOrder, type JobPage, type JobStatus, type JobStatusValue } from "../../../api/jobs";
+import { listJobsPage, type JobOrder, type JobPage, type JobSort, type JobStatus, type JobStatusValue } from "../../../api/jobs";
 
 const POLL_MS = 4000;
 
 interface UseJobsFleetPageArgs {
   status?: JobStatusValue[];
   order: JobOrder;
+  sort?: JobSort;
   limit: number;
   offset: number;
+  collectionId?: string;
+  stage?: string;
+  errorType?: string;
+  search?: string;
+  createdAfter?: string;
+  createdBefore?: string;
 }
 
 interface UseJobsFleetPageResult {
@@ -22,18 +29,20 @@ interface UseJobsFleetPageResult {
   patchJob: (jobId: string, patch: Partial<JobStatus>) => void;
 }
 
-export function useJobsFleetPage({ status, order, limit, offset }: UseJobsFleetPageArgs): UseJobsFleetPageResult {
+export function useJobsFleetPage({
+  status, order, sort, limit, offset, collectionId, stage, errorType, search, createdAfter, createdBefore,
+}: UseJobsFleetPageArgs): UseJobsFleetPageResult {
   const [page, setPage] = useState<JobPage | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     let timer: number | undefined;
-    // A tab/page change must show its OWN loading state, not the previous page's stale rows.
+    // A tab/page/filter change must show its OWN loading state, not the previous page's stale rows.
     setPage(null);
 
     const load = () => {
-      listJobsPage({ status, order, limit, offset })
+      listJobsPage({ status, order, sort, limit, offset, collectionId, stage, errorType, search, createdAfter, createdBefore })
         .then((data) => {
           if (cancelled) return;
           setPage(data);
@@ -50,7 +59,7 @@ export function useJobsFleetPage({ status, order, limit, offset }: UseJobsFleetP
 
     return () => { cancelled = true; window.clearTimeout(timer); };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `status` is a fresh array each render; join it into a stable key instead.
-  }, [status?.join(","), order, limit, offset]);
+  }, [status?.join(","), order, sort, limit, offset, collectionId, stage, errorType, search, createdAfter, createdBefore]);
 
   const patchJob = (jobId: string, patch: Partial<JobStatus>) => {
     setPage((prev) =>

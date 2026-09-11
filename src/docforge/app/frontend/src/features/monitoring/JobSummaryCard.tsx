@@ -8,6 +8,7 @@ import type { JobStatus } from "../../api/jobs";
 import { Chip } from "../../components/Chip";
 import { theme } from "../../theme";
 import { ItemProgressChip } from "./ItemProgressChip";
+import { humanizeJobError } from "./jobErrorHumanize";
 import { ProgressBar } from "./ProgressBar";
 import { humanizeStageId } from "./stageLabels";
 
@@ -74,7 +75,7 @@ export function JobSummaryCard({
         <div style={{ marginTop: theme.space.s }}>
           {/* A cancelled job's `error` is just the cancellation detail, not a failure — never the
               error-red token for it (brand.md: cancelled reads as a deliberate stop, not a failure). */}
-          <div style={{ color: theme.color.skip, fontSize: theme.font.size.xs }}>{job.error}</div>
+          <div style={{ color: theme.color.skip, fontSize: theme.font.size.xs }}>{humanizeJobError(job.error)}</div>
         </div>
       )}
     </div>
