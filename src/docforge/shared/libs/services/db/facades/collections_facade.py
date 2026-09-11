@@ -7,6 +7,7 @@
 
 # ====== Standard Library Imports ======
 import uuid
+from datetime import UTC, datetime
 
 # ====== Internal Project Imports ======
 from loggerplusplus import LoggerClass
@@ -15,7 +16,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared_libs.services.db.postgresql import PostgresClient
 from shared_libs.services.db.postgresql.apis import BlobApi, CollectionApi, JobApi
-from shared_libs.services.db.postgresql.tables import Collection, ConfigVersion, MetadataField
+from shared_libs.services.db.postgresql.tables import (
+    Collection,
+    ConfigVersion,
+    JobStatus,
+    MetadataField,
+)
 from shared_libs.services.db.qdrant import QdrantClient, QdrantCollectionApi
 from shared_libs.services.db.s3 import S3Client, S3ObjectApi
 
@@ -474,13 +480,58 @@ class CollectionsFacade(LoggerClass):
             schema_reindex_required=schema_reindex,
         )
 
+    async def _cancel_active_jobs(self, collection_id: uuid.UUID) -> int:
+        """
+        Force every in-flight job of a collection to CANCELLED — run BEFORE the cascade delete.
+
+        A delete cascade removes the ``job`` rows (and the collection's documents) while a worker may
+        still be mid-run, inserting ``job_stage_event`` rows and, at its persist phase, document/chunk
+        rows — all FK-referencing the about-to-vanish rows, which raises an IntegrityError in the
+        worker. Cancelling first closes that race at the source: the CONDITIONAL ``mark_terminal``
+        transition flips each live job to CANCELLED and raises ``cancel_requested``, so a live worker
+        aborts its run gracefully at its next stage boundary — before it writes anything the cascade
+        will delete (no wasted compute, no crash). Committed in its OWN transaction so the worker can
+        actually OBSERVE the flag; the cascade follows. Idempotent: a job that already went terminal
+        no longer matches the live-status guard (a clean no-op).
+
+        Args:
+            collection_id (uuid.UUID): The collection whose in-flight jobs are stopped.
+
+        Returns:
+            int: The number of live jobs transitioned to CANCELLED.
+        """
+        # 1. List + conditionally terminate the live jobs in one committed transaction.
+        cancelled = 0
+        now = datetime.now(UTC)
+        async with self._postgres.session() as session:
+            for job in await JobApi.list_active_for_collection(session, collection_id):
+                terminated = await JobApi.mark_terminal(
+                    session,
+                    job.id,
+                    status=JobStatus.CANCELLED,
+                    reason="collection deleted — ingestion cancelled",
+                    finished_at=now,
+                )
+                if terminated is not None:
+                    cancelled += 1
+        # 2. Report how many runs were stopped (the worker aborts each at its next stage boundary).
+        if cancelled:
+            self.logger.info(
+                f"Cancelled {cancelled} in-flight job(s) before deleting collection {collection_id}"
+            )
+        return cancelled
+
     async def delete(self, collection_id: uuid.UUID) -> bool:
         """
-        Delete a collection everywhere — Qdrant first, PG cascade, then the filtered blob purge.
+        Delete a collection everywhere — in-flight jobs cancelled, Qdrant, PG cascade, blob purge.
 
         Returns:
             bool: Whether the collection existed.
         """
+        # 0. Stop in-flight work FIRST so a live worker aborts before the cascade deletes the rows its
+        #    mid-run inserts reference (else an FK IntegrityError in the worker). Committed on its own
+        #    so the worker observes the cancel flag; a vanished job at its next boundary is a stop too.
+        await self._cancel_active_jobs(collection_id)
         # 1. Drop the derived index first — an orphan Qdrant point would break search hydration.
         await QdrantCollectionApi.drop(
             self._qdrant.raw, DatabaseHelpers.qdrant_collection_name(collection_id)

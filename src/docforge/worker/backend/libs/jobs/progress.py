@@ -16,6 +16,7 @@ from time import monotonic
 
 # ====== Third-Party Library Imports ======
 from loggerplusplus import LoggerClass
+from sqlalchemy.exc import IntegrityError
 
 # ====== Internal Project Imports (worker) ======
 from backend.context import CONTEXT
@@ -105,6 +106,24 @@ class JobProgressRecorder(LoggerClass):
         """Coarse 0-99 completion from finished root stages (100 is reserved for mark_done)."""
         return min(99, int(self._done * 100 / self._total))
 
+    async def __record_event_tolerant(self, event: JobStageEvent) -> JobStageEvent | None:
+        """Insert a stage-event row, tolerating a job deleted mid-run (returns None instead of raising).
+
+        A collection delete cascade can remove the ``job`` row WHILE this run is still live (the
+        cancel-first stop has not yet been observed at a stage boundary). A stage-event insert then
+        FK-fails with an IntegrityError — which would crash the progress callback for a job that no
+        longer exists. The run is ending anyway (its next boundary stops it, the vanished-job probe is
+        a stop), so the lost trace row is irrelevant: swallow it cleanly rather than raise.
+        """
+        try:
+            return await CONTEXT.database.jobs.record_event(event)
+        except IntegrityError:
+            self.logger.info(
+                f"Skipping stage-event for stage '{event.stage}' — job {self._job_id} vanished "
+                f"mid-run (collection deleted); the run stops at its next boundary"
+            )
+            return None
+
     async def __start_stage(self, event: ProgressEvent) -> None:
         """Open a running stage-event row and set the job's current stage + item counter."""
         now = datetime.now(UTC)
@@ -135,7 +154,7 @@ class JobProgressRecorder(LoggerClass):
         #    parent) so the post-run persist_execution_tree matches it by (job_id, node_path) and
         #    fills its score in place instead of inserting a duplicate root row.
         self._started[node_id] = now
-        row = await CONTEXT.database.jobs.record_event(
+        row = await self.__record_event_tolerant(
             JobStageEvent(
                 job_id=self._job_id,
                 stage=node_id,
@@ -148,8 +167,10 @@ class JobProgressRecorder(LoggerClass):
                 parent_path=None,
             )
         )
-        self._open_event_id = row.id
-        self._open_stage = node_id
+        # A None row means the job vanished mid-run (collection deleted): leave no open event to
+        # finalize; the run stops at its next boundary (the vanished-job probe is a stop signal).
+        self._open_event_id = row.id if row is not None else None
+        self._open_stage = node_id if row is not None else None
 
         # 3. The job row shows what is running NOW.
         await CONTEXT.database.jobs.set_progress(
@@ -217,7 +238,7 @@ class JobProgressRecorder(LoggerClass):
             self._open_event_id = None
             self._open_stage = None
         else:
-            await CONTEXT.database.jobs.record_event(
+            await self.__record_event_tolerant(
                 JobStageEvent(
                     job_id=self._job_id,
                     stage=node_id,

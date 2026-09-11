@@ -379,9 +379,20 @@ class JobApi:
 
     @staticmethod
     async def is_cancel_requested(session: AsyncSession, job_id: uuid.UUID) -> bool:
-        """Cheap read of a job's cancel flag — the worker's between-stages cancellation probe."""
-        result = await session.execute(select(Job.cancel_requested).where(Job.id == job_id))
-        return bool(result.scalar_one_or_none())
+        """Cheap read of a job's stop signal — the worker's between-stages cancellation probe.
+
+        True on either of two stop conditions: the ``cancel_requested`` flag is set, OR the job row no
+        longer exists. A VANISHED row means the collection (and so the job, via cascade) was deleted
+        mid-run — the worker must stop BEFORE its persist phase writes document/chunk rows the cascade
+        is about to remove (an FK IntegrityError). A missing row is therefore a stop, never a "keep
+        going": the worker only ever probes a job it is actively running, so the id cannot be spurious.
+        """
+        result = await session.execute(select(Job.id, Job.cancel_requested).where(Job.id == job_id))
+        row = result.first()
+        # The job row is gone (collection deleted mid-run, cascade) — stop the run cleanly.
+        if row is None:
+            return True
+        return bool(row.cancel_requested)
 
     @staticmethod
     async def mark_terminal(
@@ -1011,6 +1022,31 @@ class JobApi:
     ) -> list[uuid.UUID]:
         """Return every job id of a collection — the ids whose trace payloads a collection delete purges."""
         result = await session.execute(select(Job.id).where(Job.collection_id == collection_id))
+        return list(result.scalars().all())
+
+    @staticmethod
+    async def list_active_for_collection(
+        session: AsyncSession, collection_id: uuid.UUID
+    ) -> list[Job]:
+        """Return a collection's live (PENDING or RUNNING) jobs — the in-flight runs a delete must stop.
+
+        A collection delete cancels these FIRST so a live worker aborts its run gracefully at its next
+        stage boundary, before the cascade removes the rows its mid-run inserts reference. Terminal
+        jobs (DONE/FAILED/CANCELLED) are already over, so they never qualify.
+
+        Args:
+            session (AsyncSession): The active DB session.
+            collection_id (uuid.UUID): The collection whose in-flight jobs are listed.
+
+        Returns:
+            list[Job]: The collection's PENDING/RUNNING jobs (empty when none are in flight).
+        """
+        result = await session.execute(
+            select(Job).where(
+                Job.collection_id == collection_id,
+                Job.status.in_([JobStatus.PENDING, JobStatus.RUNNING]),
+            )
+        )
         return list(result.scalars().all())
 
     @staticmethod
