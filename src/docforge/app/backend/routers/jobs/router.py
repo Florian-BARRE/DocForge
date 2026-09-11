@@ -4,6 +4,7 @@
 
 # ====== Standard Library Imports ======
 import uuid
+from datetime import UTC, datetime, timedelta
 from typing import Literal
 
 # ====== Third-Party Library Imports ======
@@ -18,15 +19,25 @@ from shared_libs.services.db.postgresql.tables import JobStatus as JobStatusEnum
 from ...context import CONTEXT
 from ...libs.auth import AuthPrincipal, AuthzGuard, Capability, require
 from ...utils.error_handling import auto_handle_errors
-from .helpers import CancelAction, JobCancellationHelpers, WorkersLiveHelpers
+from .helpers import (
+    CancelAction,
+    FailureBreakdownHelpers,
+    JobCancellationHelpers,
+    JobScopeHelpers,
+    JobTrendsHelpers,
+    WorkersLiveHelpers,
+)
 from .models import (
     CancelResult,
     CollectionCost,
+    FailureBreakdown,
     JobEvent,
     JobEventPayload,
     JobPage,
     JobStatus,
+    JobTimeseries,
     JobTrace,
+    NewFailures,
     QueueDepth,
     StageDurations,
     WorkersLive,
@@ -48,11 +59,39 @@ async def list_jobs(
         default=None,
         description="Filter to these job statuses (repeat the param to pass several). Omit for all.",
     ),
+    stage: str | None = Query(
+        default=None,
+        description="Filter to jobs in this stage (the node's current_stage) — the triage 'stage' "
+        "facet. Omit for all stages.",
+    ),
+    error_type: str | None = Query(
+        default=None,
+        description="Filter to jobs with this structured failure class (e.g. 'TimeoutError', "
+        "'worker_killed', 'job_timeout_exceeded') — the triage 'error class' facet. Omit for all.",
+    ),
+    search: str | None = Query(
+        default=None,
+        description="Search box: case-insensitive PREFIX match on the job id OR the document id "
+        "(paste a full id or a leading fragment). Omit for no id search.",
+    ),
+    created_after: datetime | None = Query(
+        default=None,
+        description="Keep only jobs created at or after this instant (ISO-8601) — the date-range start.",
+    ),
+    created_before: datetime | None = Query(
+        default=None,
+        description="Keep only jobs created at or before this instant (ISO-8601) — the date-range end.",
+    ),
+    sort: Literal["created", "duration", "status"] = Query(
+        default="created",
+        description="Sort dimension: 'created' (default, by creation time), 'duration' (wall-clock "
+        "run time — a still-running job by elapsed time, a queued one sorts last) or 'status'.",
+    ),
     order: Literal["newest", "oldest"] = Query(
         default="newest",
-        description="Sort by creation time: 'newest' = created_at DESC (default, the monitoring "
-        "view); 'oldest' = created_at ASC — the FIFO 'what runs next' order (pair with "
-        "status=pending for the queued backlog in claim order).",
+        description="Sort DIRECTION applied to ``sort``: 'newest' = DESC (newest / longest / z-a — "
+        "the monitoring default); 'oldest' = ASC — FIFO/oldest-first for sort=created (the 'what runs "
+        "next' order, pair with status=pending), shortest-first for duration, a-z for status.",
     ),
     limit: int = Query(
         default=RUNTIME_CONFIG.JOBS_MAX_PAGE_SIZE,
@@ -65,13 +104,14 @@ async def list_jobs(
     """
     Return one page of jobs — a collection's, or (with no ``collection_id``) the whole fleet's.
 
-    Powers both the per-collection monitoring table and the fleet-wide "All Jobs" view. ``collection_id``
-    is OPTIONAL: present scopes to that collection, omitted lists across every collection and is
-    FULL-ACCESS only (a collection-scoped key must name a collection it owns — the same gate ``GET
-    /jobs/queue`` applies to its fleet-wide counts, so a scoped key can never read cross-tenant rows).
-    ``status`` filters by one or more job statuses (default = all). ``order`` defaults to newest-first
-    (created_at DESC); pass ``order=oldest`` for FIFO/oldest-first — the "what runs next" ordering the
-    UI needs, typically with ``status=pending``. The list is BOUNDED (``limit`` clamped to
+    Powers both the per-collection monitoring table and the fleet-wide "All Jobs" triage view.
+    ``collection_id`` is OPTIONAL: present scopes to that collection, omitted lists across every
+    collection and is FULL-ACCESS only (a collection-scoped key must name a collection it owns — the
+    same gate ``GET /jobs/queue`` applies, so a scoped key can never read cross-tenant rows). The
+    triage facets are all optional and additive: ``status`` (one or more), ``stage`` (current node),
+    ``error_type`` (failure class), ``search`` (prefix-match the job/document id) and the
+    ``created_after``/``created_before`` date range. ``sort`` picks the dimension (created / duration /
+    status) and ``order`` its direction (newest=DESC). The list is BOUNDED (``limit`` clamped to
     ``JOBS_MAX_PAGE_SIZE``) and carries the total so the UI can page; the row join adds the document
     filename + collection name (no second round-trip).
 
@@ -79,35 +119,41 @@ async def list_jobs(
         JobPage: total + limit/offset echo + the page of jobs, in the requested order.
     """
     # 1. Scope exactly as GET /jobs/queue does: a named collection passes the collection-scope gate; a
-    #    fleet-wide call (no collection_id) is full-access only — a scoped key must name a collection it
-    #    owns (403 otherwise), so it can never read cross-tenant fleet-wide rows.
-    if collection_id is not None:
-        AuthzGuard.assert_collection_scope(principal, str(collection_id))
-    elif AuthzGuard.scoped_collections(principal) is not None:
-        raise HTTPException(
-            status_code=403,
-            detail="collection_id is required for a collection-scoped key (fleet-wide job listing is "
-            "restricted to full-access keys).",
-        )
+    #    fleet-wide call (no collection_id) is full-access only (a scoped key is 403).
+    JobScopeHelpers.assert_fleet_or_scoped(principal, collection_id)
 
     # 2. Clamp the page size so a client can never demand an unbounded scan of the job table.
     page_size = min(limit, RUNTIME_CONFIG.JOBS_MAX_PAGE_SIZE)
 
     # 3. Normalise the request filters for the data layer: the status literals map to the enum, and
-    #    'oldest' selects the FIFO (created_at ASC) sort.
+    #    'newest' selects DESC (FIFO/oldest-first otherwise).
     statuses = [JobStatusEnum(value) for value in status] if status else None
     newest_first = order == "newest"
 
-    # 4. One bounded page + its matching total, under the same optional collection+status predicate;
-    #    the join carries the display names so the table shows "what is ingesting" in one call. A
-    #    pending job's worker_id is NULL (arq assigns at claim) — never fabricated by this read.
-    total = await CONTEXT.database.jobs.count_jobs(collection_id, statuses)
+    # 4. One bounded page + its matching total, under the SAME triage predicate (so total agrees with
+    #    the page); the join carries the display names so the table shows "what is ingesting" in one
+    #    call. A pending job's worker_id is NULL (arq assigns at claim) — never fabricated by this read.
+    total = await CONTEXT.database.jobs.count_jobs(
+        collection_id,
+        statuses,
+        stage=stage,
+        error_type=error_type,
+        search=search,
+        created_after=created_after,
+        created_before=created_before,
+    )
     jobs = await CONTEXT.database.jobs.list_jobs_with_names(
         collection_id=collection_id,
         statuses=statuses,
         limit=page_size,
         offset=offset,
         newest_first=newest_first,
+        sort_by=sort,
+        stage=stage,
+        error_type=error_type,
+        search=search,
+        created_after=created_after,
+        created_before=created_before,
     )
     return JobPage(
         total=total,
@@ -239,6 +285,133 @@ async def queue_depth(
     # 2. One grouped count read yields both numbers.
     pending, running = await CONTEXT.database.jobs.queue_depth(collection_id)
     return QueueDepth(pending=pending, running=running)
+
+
+@router.get("/failures/breakdown", response_model=FailureBreakdown)
+@auto_handle_errors
+async def failure_breakdown(
+    collection_id: uuid.UUID | None = Query(
+        default=None,
+        description="Scope the breakdown to one collection. Omit for a FLEET-WIDE breakdown "
+        "(full-access keys only).",
+    ),
+    window_hours: int = Query(
+        default=24,
+        ge=1,
+        le=720,
+        description="Look-back window in hours: failures of jobs created in the last N hours are "
+        "aggregated (default 24h, max 30 days).",
+    ),
+    principal: AuthPrincipal = Depends(require(Capability.READ)),
+) -> FailureBreakdown:
+    """
+    Aggregate recent failures into top causes, by stage and by collection — the "why it breaks" panel.
+
+    Rolls up the window's FAILED jobs three ways (structured error class, the stage/node they died in,
+    and collection), each ordered by descending count and bounded to the dominant causes, so an
+    operator sees "5 Docling OOMs in collection X" instead of five unrelated rows. Scoped exactly like
+    ``GET /jobs``: a named ``collection_id`` is gated by the key's scope, a fleet-wide one is
+    full-access only.
+
+    Returns:
+        FailureBreakdown: The window + total and the three descending, bounded groupings.
+    """
+    # 1. Same fleet-vs-scoped gate the listing uses — a scoped key can never aggregate cross-tenant.
+    JobScopeHelpers.assert_fleet_or_scoped(principal, collection_id)
+
+    # 2. The window start (kept to the minute; created_at-indexed on the data layer).
+    since = datetime.now(UTC) - timedelta(hours=window_hours)
+
+    # 3. One grouped read set → the panel model (null group keys surface as 'unknown').
+    aggregates = await CONTEXT.database.jobs.failure_breakdown(since, collection_id)
+    return FailureBreakdownHelpers.build(aggregates, collection_id, window_hours, since)
+
+
+@router.get("/failures/new", response_model=NewFailures)
+@auto_handle_errors
+async def new_failures(
+    since: datetime = Query(
+        description="The client's last-seen cursor (ISO-8601): only jobs that FAILED strictly after "
+        "this are counted."
+    ),
+    collection_id: uuid.UUID | None = Query(
+        default=None,
+        description="Scope to one collection. Omit for a FLEET-WIDE signal (full-access keys only).",
+    ),
+    include_ids: bool = Query(
+        default=False,
+        description="Also return the ids of the new failures (newest first, bounded) so the client "
+        "can deep-link each; omit for just the count.",
+    ),
+    limit: int = Query(
+        default=50,
+        ge=1,
+        le=500,
+        description="Maximum failure ids returned when include_ids is set.",
+    ),
+    principal: AuthPrincipal = Depends(require(Capability.READ)),
+) -> NewFailures:
+    """
+    Report how many jobs have failed since a cursor — the "X new failures since you last looked" badge.
+
+    Keyed on the FAILURE instant (``finished_at``), so a job created before the cursor but failing
+    after it still counts — the "new since" semantics a created-at filter would miss. Returns the count
+    plus the newest failure time (the next cursor to pass), and the bounded id list when ``include_ids``
+    is set. Scoped exactly like ``GET /jobs``.
+
+    Returns:
+        NewFailures: The count, the newest failure time, and the optional bounded id list.
+    """
+    # 1. Same fleet-vs-scoped gate as the listing/breakdown.
+    JobScopeHelpers.assert_fleet_or_scoped(principal, collection_id)
+
+    # 2. The count + the newest failure time (the cursor the client advances to).
+    count, latest = await CONTEXT.database.jobs.count_failed_since(since, collection_id)
+
+    # 3. The ids only when asked — bounded so the signal never returns an unbounded list.
+    job_ids: list[str] = []
+    if include_ids and count:
+        ids = await CONTEXT.database.jobs.list_failed_since(since, collection_id, limit)
+        job_ids = [str(job_id) for job_id in ids]
+    return NewFailures(since=since, count=count, job_ids=job_ids, latest_failed_at=latest)
+
+
+@router.get("/timeseries", response_model=JobTimeseries)
+@auto_handle_errors
+async def job_timeseries(
+    collection_id: uuid.UUID | None = Query(
+        default=None,
+        description="Scope the series to one collection. Omit for a FLEET-WIDE series (full-access "
+        "keys only).",
+    ),
+    window_hours: int = Query(
+        default=24,
+        ge=1,
+        le=168,
+        description="How many hours of history to return as hourly buckets (default 24h, max 7 days).",
+    ),
+    principal: AuthPrincipal = Depends(require(Capability.READ)),
+) -> JobTimeseries:
+    """
+    Return lightweight hourly job trends — done/h, failed/h, arrivals and backlog — from the job table.
+
+    In-product sparklines without Prometheus: arrivals (created/h), successful completions (done/h),
+    failures (failed/h) and a reconstructed end-of-hour backlog depth, as contiguous hourly buckets
+    across the window. Scoped exactly like ``GET /jobs``.
+
+    Returns:
+        JobTimeseries: The contiguous hourly series (oldest bucket first).
+    """
+    # 1. Same fleet-vs-scoped gate as the listing.
+    JobScopeHelpers.assert_fleet_or_scoped(principal, collection_id)
+
+    # 2. Floor the window start to the hour so the first bucket is whole (the DB truncates to the hour).
+    now = datetime.now(UTC)
+    since = (now - timedelta(hours=window_hours)).replace(minute=0, second=0, microsecond=0)
+
+    # 3. Three cheap reads → contiguous, gap-free hourly buckets with a reconstructed backlog.
+    aggregates = await CONTEXT.database.jobs.job_timeseries(since, collection_id)
+    return JobTrendsHelpers.assemble(aggregates, collection_id, window_hours, since, now)
 
 
 @router.get("/{job_id}/events", response_model=JobTrace)

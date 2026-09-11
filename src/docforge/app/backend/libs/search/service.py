@@ -27,7 +27,6 @@ from shared_libs.public_models.search import (
     RawQuery,
     SearchResult,
     SearchTarget,
-    default_content_targets,
 )
 from shared_libs.services.db import Database
 
@@ -181,13 +180,15 @@ class SearchService(LoggerClass):
         # 3. Construct the read port scoped to this collection (exclusion baked into the facade).
         read_port = CollectionReadPortImpl(self._database, collection_id)
 
-        # 4. Assemble the search run-input the graph binds by FromRunInput. None targets fall back
-        #    to the content default so an untouched query behaves exactly as before targets existed.
+        # 4. Assemble the search run-input the graph binds by FromRunInput. When the caller named no
+        #    targets we pass an EMPTY list through, so the normalize node owns the content-target
+        #    default (its content_modalities config — the dense_only preset's seam). For the stock
+        #    'hybrid' config that default is both axes, exactly as before targets existed.
         run_input = {
             "query": RawQuery(
                 text=query,
                 top_k=top_k,
-                search_targets=search_targets or default_content_targets(),
+                search_targets=search_targets or [],
                 flags={},
             ),
             "filters": QueryFilters(filters=filters or {}),

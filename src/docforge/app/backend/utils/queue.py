@@ -11,6 +11,7 @@ import asyncio
 from arq import create_pool
 from arq.connections import ArqRedis, RedisSettings
 from arq.constants import default_queue_name
+from arq.jobs import Job, JobStatus
 from loggerplusplus import LoggerClass
 
 # ====== Internal Project Imports ======
@@ -138,6 +139,95 @@ class QueueClient(LoggerClass):
             **self.__correlation_kwargs(),
         )
         self.logger.info(f"Enqueued import from {s3_key} (transfer {transfer_id})")
+
+    async def enqueue_preview(
+        self,
+        preview_id: str,
+        collection_id: str,
+        document_id: str | None,
+        content: bytes | None,
+        declared_meta: dict,
+        filename: str,
+        blob_override: dict | None,
+        max_chunks: int | None,
+    ) -> None:
+        """
+        Enqueue one NON-PERSISTENT dry-run preview — the worker runs the full graph and keeps the
+        bounded report as the arq job result (polled by ``get_preview_result``), writing nothing.
+
+        The uploaded bytes (already size-capped at the endpoint) ride THROUGH the queue so the general
+        case works without any S3 staging or a transient DB table — the result lives only in Redis
+        under ``preview_id`` with a short TTL. As with every enqueue call, no reserved arq control
+        kwarg rides as a task arg: ``_job_id`` sets the pollable id and is the sole control kwarg.
+
+        Args:
+            preview_id (str): The pollable preview id — also the arq ``_job_id`` (keys the result).
+            collection_id (str): The collection whose contract + pipeline the run uses.
+            document_id (str | None): An already-ingested document to dry-run (XOR ``content``).
+            content (bytes | None): Uploaded source bytes (already capped) — None for a document id.
+            declared_meta (dict): Caller-declared metadata for the uploaded-bytes case.
+            filename (str): The uploaded file's name (used only with ``content``).
+            blob_override (dict | None): A candidate pipeline blob to preview instead of the stored one.
+            max_chunks (int | None): How many preview chunks to return (clamped by the worker ceiling).
+        """
+        pool = await self.__get_pool()
+        await pool.enqueue_job(
+            "preview_pipeline",
+            preview_id,
+            collection_id,
+            document_id,
+            content,
+            declared_meta,
+            filename,
+            blob_override,
+            max_chunks,
+            _job_id=preview_id,
+            **self.__correlation_kwargs(),
+        )
+        self.logger.info(
+            f"Enqueued preview {preview_id} for collection {collection_id} "
+            f"(document_id={document_id}, uploaded={content is not None})"
+        )
+
+    async def get_preview_result(self, preview_id: str) -> tuple[str, dict | None, str | None]:
+        """
+        Poll a preview job: map its arq job state to a coarse status + the result when complete.
+
+        The preview task never raises (a failed node / bad blob is DATA — ok=false in the returned
+        report), so a completed job resolves to ``("done", <PreviewResponse dict>, None)``. A job
+        whose worker was hard-killed (arq job_timeout / SIGTERM) can still complete unsuccessfully —
+        that surfaces as ``("failed", None, <reason>)`` rather than a crash. An unknown/expired id is
+        ``("not_found", None, None)`` (the TTL elapsed or the id never existed).
+
+        Args:
+            preview_id (str): The preview/job id returned at submission.
+
+        Returns:
+            tuple[str, dict | None, str | None]: ``(status, result_dict | None, error | None)`` where
+                status is one of pending / running / done / failed / not_found.
+        """
+        # 1. One Redis round-trip for the coarse job state.
+        pool = await self.__get_pool()
+        job = Job(preview_id, pool)
+        status = await job.status()
+
+        # 2. Not yet terminal: map queued/deferred → pending, in-progress → running.
+        if status == JobStatus.not_found:
+            return "not_found", None, None
+        if status in (JobStatus.deferred, JobStatus.queued):
+            return "pending", None, None
+        if status == JobStatus.in_progress:
+            return "running", None, None
+
+        # 3. Complete: read the stored result. Our task returns the report dict on success; an
+        #    unsuccessful completion (hard kill / timeout) carries the failure object instead.
+        info = await job.result_info()
+        if info is None:
+            # Terminal flag set but the result entry is not readable yet — treat as still running.
+            return "running", None, None
+        if info.success and isinstance(info.result, dict):
+            return "done", info.result, None
+        return "failed", None, f"{info.result}"
 
     async def enqueue_backfill(self, collection_id: str) -> None:
         """

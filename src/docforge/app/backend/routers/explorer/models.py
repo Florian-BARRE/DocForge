@@ -87,6 +87,16 @@ class DocumentDetail(BaseModel):
         default=None,
         description="Non-fatal warning on a DONE document (e.g. a 0-chunk run); None when none.",
     )
+    failure_reason: str | None = Field(
+        default=None,
+        description="Why ingestion did not succeed (the failing job's error message), surfaced on a "
+        "failed/cancelled document so the detail page can explain it; None when it did not fail.",
+    )
+    searchable: bool = Field(
+        description="Whether the document is actually retrievable RIGHT NOW — enabled AND fully "
+        "ingested (status done) AND not known-empty. A failed or 0-chunk document is never searchable, "
+        "regardless of the 'enabled' toggle (which is only the user's intent).",
+    )
     metadata: list[MetadataValue] = Field(
         default_factory=list, description="Document-level values (declared and generated)."
     )

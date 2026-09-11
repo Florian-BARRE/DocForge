@@ -6,16 +6,18 @@
 # precise message. Non-route logic lives in helpers.py (pure) and store_sync.py (store follow-through).
 
 # ====== Standard Library Imports ======
+import json
 import uuid
 
 # ====== Third-Party Library Imports ======
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 
 # ====== Internal Project Imports ======
 from config import RUNTIME_CONFIG
 from shared_libs.pipelines.blob_secrets import restore_blob_secrets
 from shared_libs.pipelines.ingest import BlobNormalizationError, BlobNormalizer
 from shared_libs.pipelines.ingest.estimate import CostEstimate
+from shared_libs.public_models import SourceDocument
 from shared_libs.services.db.facades import CollectionUpdateSpec, DuplicateCollectionNameError
 from shared_libs.services.db.postgresql.tables import Collection
 
@@ -26,18 +28,26 @@ from ...libs.corpus import DocumentFilter, DocumentSelector, DocumentSelectorRes
 from ...libs.estimate import CollectionEstimateRequest, EstimateInputError
 from ...libs.health import CollectionHealthResponse
 from ...libs.logsafe import LogSafeHelpers
+from ...libs.preview import (
+    PreviewGraphError,
+    PreviewInputError,
+    PreviewResponse,
+    PreviewSourceResolver,
+)
 from ...libs.reingest import BulkReingestAccepted, BulkReingestRequest, BulkReingestService
 from ...utils.error_handling import auto_handle_errors
 from ...utils.pipeline_validation import PipelineBlobValidator
+from ...utils.upload_reader import UploadReader
 from .blob_helpers import CollectionBlobHelpers
 from .helpers import CollectionHelpers
 from .models import (
-    CollectionContractModel,
     CollectionContractSchemaResponse,
     CollectionListItem,
     CollectionModel,
     CollectionStorageResponse,
     CreateCollectionRequest,
+    PreviewJobAccepted,
+    PreviewJobResult,
     UpdateCollectionRequest,
 )
 from .store_sync import CollectionStoreSync
@@ -104,18 +114,20 @@ async def list_collections(
 @auto_handle_errors
 async def get_contract_schema() -> CollectionContractSchemaResponse:
     """
-    Discover the collection identity/limits contract as JSON Schema — the schema-driven UI form.
+    Discover the FULL collection-contract vocabulary — nothing has to be guessed.
 
-    Mirrors a node's ``config_schema`` face so a new scalar contract field auto-surfaces in the UI
-    with zero frontend change (the frontend feeds it straight to its existing ``SchemaForm``).
+    Serves three things, each straight from the canonical server source it validates against (never a
+    hand-copied literal): ``config_schema`` (the identity/limits scalar contract, mirroring a node's
+    ``config_schema`` so a new scalar field auto-surfaces in the UI), ``field_schema`` (one metadata
+    ``FieldSpec`` — its ``$defs`` carry the ``field_type``/``origin``/``scope`` enums), and
+    ``supported_format_tokens`` (the accepted upload tokens). A purely-HTTP client (e.g. the MCP)
+    thus learns every valid value from the API instead of discovering it was wrong at a 422.
 
     Returns:
-        CollectionContractSchemaResponse: The ``model_json_schema()`` of the identity/limits contract.
+        CollectionContractSchemaResponse: The identity/limits schema + the field/format vocabulary.
     """
-    # 1. The schema is derived from the SAME model CreateCollectionRequest composes — no drift.
-    return CollectionContractSchemaResponse(
-        config_schema=CollectionContractModel.model_json_schema()
-    )
+    # 1. Every part is derived from the SAME models the create/upload path validates against — no drift.
+    return CollectionHelpers.contract_schema()
 
 
 @router.get(
@@ -234,6 +246,313 @@ async def estimate_collection(
     return estimate
 
 
+def _parse_preview_blob(blob: str | None) -> dict | None:
+    """Parse the optional candidate blob form field (a JSON object) — a 422 on malformed input."""
+    # 1. No candidate → preview the collection's own stored pipeline (None tells the service so).
+    if blob is None or blob.strip() == "":
+        return None
+    # 2. A present candidate must be a JSON object; anything else is a caller fault, not a 500.
+    try:
+        parsed = json.loads(blob)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=422, detail=f"blob is not valid JSON: {exc}")
+    if not isinstance(parsed, dict):
+        raise HTTPException(status_code=422, detail="blob must be a JSON object.")
+    return parsed
+
+
+@router.post(
+    "/{collection_id}/pipeline/preview",
+    response_model=PreviewResponse,
+    dependencies=[Depends(require(Capability.WRITE))],
+)
+@auto_handle_errors
+async def preview_pipeline(
+    request: Request,
+    collection_id: uuid.UUID,
+    principal: AuthPrincipal = Depends(require(Capability.WRITE)),
+    file: UploadFile | None = File(
+        None, description="The document to dry-run (omit to use document_id)."
+    ),
+    document_id: str | None = Form(
+        None, description="An existing document to dry-run (omit to upload)."
+    ),
+    blob: str | None = Form(
+        None, description="Optional candidate pipeline blob (JSON) to preview."
+    ),
+    metadata: str = Form(
+        "{}", description="Declared metadata for an UPLOADED source (JSON object)."
+    ),
+    max_chunks: int | None = Form(None, description="How many preview chunks to return (capped)."),
+) -> PreviewResponse:
+    """
+    Dry-run the ingestion pipeline on ONE document and return a bounded preview — NOTHING is persisted.
+
+    Runs the INGEST graph inline (the same pure engine a real run uses) against either an uploaded
+    file OR an already-ingested ``document_id``, optionally with a candidate ``blob`` instead of the
+    collection's stored pipeline. Returns an IR summary, the first N chunks, the run's ACTUAL metered
+    cost, and the full execution trace. No document row, S3 object or Qdrant point is written. The run
+    is bounded by the interactive guardrails (PREVIEW_RUN_TIMEOUT_SECONDS wall-clock cap + PREVIEW_MAX_BYTES
+    body cap). A node that fails is DATA (ok=false + the trace showing where it died), never a 500.
+
+    Returns:
+        PreviewResponse: The bounded dry-run report (404 unknown collection/document; 422 on a bad
+        blob, a missing/oversized source, or neither/both of file and document_id supplied).
+    """
+    # 1. The collection must exist and be in the caller's scope (WRITE — a preview consumes provider spend).
+    collection = await CONTEXT.database.collections.get(collection_id)
+    if collection is None:
+        raise HTTPException(status_code=404, detail=f"Collection {collection_id} not found.")
+    AuthzGuard.assert_collection_scope(principal, str(collection_id))
+
+    # 2. Exactly one source: an uploaded file XOR an existing document id.
+    if (file is None) == (document_id is None):
+        raise HTTPException(
+            status_code=422, detail="Provide exactly one of 'file' or 'document_id'."
+        )
+
+    # 3. Parse the optional candidate blob (JSON object) + resolve the chunk ceiling.
+    blob_override = _parse_preview_blob(blob)
+    ceiling = CONTEXT.RUNTIME_CONFIG.PREVIEW_MAX_CHUNKS
+    effective_max_chunks = ceiling if max_chunks is None else max(0, min(max_chunks, ceiling))
+    size_cap = min(collection.max_file_size_bytes, CONTEXT.RUNTIME_CONFIG.PREVIEW_MAX_BYTES)
+
+    # 4. Build the SourceDocument: an uploaded body (read under the preview cap) or a rehydrated doc.
+    try:
+        source = await _resolve_preview_source(
+            file, document_id, metadata, collection_id, collection, request, size_cap
+        )
+    except PreviewInputError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+    # 5. Dry-run inline (no persistence). A bad blob is a 422; a failed node is DATA in the response.
+    try:
+        result = await CONTEXT.preview_service.preview(
+            collection_id,
+            source,
+            max_chunks=effective_max_chunks,
+            blob_override=blob_override,
+            collection=collection,
+        )
+    except (PreviewGraphError, BlobNormalizationError) as exc:
+        raise HTTPException(status_code=422, detail=f"Collection {collection_id}: {exc}")
+    if result is None:
+        raise HTTPException(status_code=404, detail=f"Collection {collection_id} not found.")
+    return result
+
+
+async def _resolve_preview_source(
+    file: UploadFile | None,
+    document_id: str | None,
+    metadata: str,
+    collection_id: uuid.UUID,
+    collection: Collection,
+    request: Request,
+    size_cap: int,
+) -> SourceDocument:
+    """
+    Build the dry-run SourceDocument from an uploaded file or an existing document — reads only.
+
+    Raises:
+        HTTPException: 422 on a bad document id / metadata JSON; 404 on an unknown/foreign document.
+        PreviewInputError: Oversized body or missing stored bytes (mapped to 422 by the caller).
+    """
+    # 1. Uploaded bytes: read under the preview size cap, no storage. Declared meta is optional JSON.
+    if file is not None:
+        UploadReader.reject_oversized_body(request, size_cap)
+        content, _ = await UploadReader.read_capped(file, size_cap)
+        try:
+            declared = json.loads(metadata)
+        except json.JSONDecodeError as exc:
+            raise HTTPException(status_code=422, detail=f"metadata is not valid JSON: {exc}")
+        if not isinstance(declared, dict):
+            raise HTTPException(status_code=422, detail="metadata must be a JSON object.")
+        return SourceDocument(
+            filename=file.filename or "upload", content=content, declared_meta=declared
+        )
+
+    # 2. Existing document: it must exist AND belong to this collection (no cross-collection peek).
+    try:
+        doc_uuid = uuid.UUID(str(document_id))
+    except ValueError:
+        raise HTTPException(
+            status_code=422, detail=f"document_id '{document_id}' is not a valid UUID."
+        )
+    document = await CONTEXT.database.documents.get(doc_uuid)
+    if document is None or document.collection_id != collection.id:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Document {document_id} not found in collection {collection_id}.",
+        )
+    return await PreviewSourceResolver(CONTEXT.database).from_document(document, size_cap)
+
+
+@router.post(
+    "/{collection_id}/pipeline/preview/jobs",
+    response_model=PreviewJobAccepted,
+    status_code=202,
+    dependencies=[Depends(require(Capability.WRITE))],
+)
+@auto_handle_errors
+async def submit_preview_job(
+    request: Request,
+    collection_id: uuid.UUID,
+    principal: AuthPrincipal = Depends(require(Capability.WRITE)),
+    file: UploadFile | None = File(
+        None, description="The document to dry-run (omit to use document_id)."
+    ),
+    document_id: str | None = Form(
+        None, description="An existing document to dry-run (omit to upload)."
+    ),
+    blob: str | None = Form(
+        None, description="Optional candidate pipeline blob (JSON) to preview."
+    ),
+    metadata: str = Form(
+        "{}", description="Declared metadata for an UPLOADED source (JSON object)."
+    ),
+    max_chunks: int | None = Form(None, description="How many preview chunks to return (capped)."),
+) -> PreviewJobAccepted:
+    """
+    Submit an ASYNCHRONOUS worker-side dry-run preview — returns a pollable id, persists NOTHING.
+
+    Unlike the inline ``/pipeline/preview`` fast-lane (which runs in the API process and cannot parse
+    pipelines whose deps — docling — live only in the worker image), this enqueues a WORKER preview
+    job that runs the full ingest graph with every dependency present, so it covers ALL pipelines. The
+    uploaded bytes (capped at PREVIEW_MAX_BYTES) ride through the queue; an existing ``document_id`` is
+    rehydrated worker-side from the store. The worker writes nothing durable and RETURNS the bounded
+    report as the job result (kept in Redis with a TTL). Poll ``/pipeline/preview/jobs/{preview_id}``.
+
+    Returns:
+        PreviewJobAccepted: The preview id + initial status (202); 404 unknown collection/document;
+        422 on a bad blob, a missing/oversized source, or neither/both of file and document_id.
+    """
+    # 1. The collection must exist and be in the caller's scope (WRITE — a preview consumes spend).
+    collection = await CONTEXT.database.collections.get(collection_id)
+    if collection is None:
+        raise HTTPException(status_code=404, detail=f"Collection {collection_id} not found.")
+    AuthzGuard.assert_collection_scope(principal, str(collection_id))
+
+    # 2. Exactly one source: an uploaded file XOR an existing document id.
+    if (file is None) == (document_id is None):
+        raise HTTPException(
+            status_code=422, detail="Provide exactly one of 'file' or 'document_id'."
+        )
+
+    # 3. Parse the optional candidate blob (JSON object).
+    blob_override = _parse_preview_blob(blob)
+    size_cap = min(collection.max_file_size_bytes, CONTEXT.RUNTIME_CONFIG.PREVIEW_MAX_BYTES)
+
+    # 4. Resolve the source payload carried to the worker: uploaded bytes read under the cap, OR an
+    #    existing document id validated to exist in this collection (the worker rehydrates its bytes).
+    content, declared, filename, resolved_document_id = await _resolve_preview_submission(
+        file, document_id, metadata, collection, request, size_cap
+    )
+
+    # 5. Enqueue the worker preview job keyed by a fresh preview id, then return it for polling.
+    preview_id = uuid.uuid4().hex
+    await CONTEXT.queue.enqueue_preview(
+        preview_id,
+        str(collection_id),
+        resolved_document_id,
+        content,
+        declared,
+        filename,
+        blob_override,
+        max_chunks,
+    )
+    return PreviewJobAccepted(preview_id=preview_id, status="pending")
+
+
+@router.get(
+    "/{collection_id}/pipeline/preview/jobs/{preview_id}",
+    response_model=PreviewJobResult,
+    dependencies=[Depends(require(Capability.WRITE))],
+)
+@auto_handle_errors
+async def get_preview_job(
+    collection_id: uuid.UUID,
+    preview_id: str,
+    principal: AuthPrincipal = Depends(require(Capability.WRITE)),
+) -> PreviewJobResult:
+    """
+    Poll an asynchronous dry-run preview by its id — the bounded report appears once status is 'done'.
+
+    A failed NODE is DATA: status 'done' with ``result.ok`` = false (never a 500). 'failed' is reserved
+    for the rare case the worker job itself crashed/timed out. An unknown or expired id is a 404.
+
+    Returns:
+        PreviewJobResult: status + (the report when done); 404 when the collection is out of scope or
+        the preview id is unknown/expired.
+    """
+    # 1. Scope the collection (the id is in the path; a preview is a WRITE-scoped operation).
+    collection = await CONTEXT.database.collections.get(collection_id)
+    if collection is None:
+        raise HTTPException(status_code=404, detail=f"Collection {collection_id} not found.")
+    AuthzGuard.assert_collection_scope(principal, str(collection_id))
+
+    # 2. Read the arq job state + result (the result is the PreviewResponse dict when complete).
+    status, result, error = await CONTEXT.queue.get_preview_result(preview_id)
+    if status == "not_found":
+        raise HTTPException(status_code=404, detail=f"Preview {preview_id} not found or expired.")
+    return PreviewJobResult(
+        preview_id=preview_id,
+        status=status,
+        result=PreviewResponse(**result) if result is not None else None,
+        error=error,
+    )
+
+
+async def _resolve_preview_submission(
+    file: UploadFile | None,
+    document_id: str | None,
+    metadata: str,
+    collection: Collection,
+    request: Request,
+    size_cap: int,
+) -> tuple[bytes | None, dict, str, str | None]:
+    """
+    Resolve a worker-preview submission's payload: uploaded bytes OR a validated existing document id.
+
+    For an uploaded file the bytes are read under the preview size cap and carried to the worker on the
+    queue (no storage). For an existing document id, the document is validated to exist in THIS
+    collection here (fail-fast 404 at submit) but its bytes are NOT read — the worker rehydrates them.
+
+    Returns:
+        tuple[bytes | None, dict, str, str | None]: (content | None, declared_meta, filename,
+            document_id | None).
+
+    Raises:
+        HTTPException: 422 on a bad document id / metadata JSON / oversized body; 404 on an
+            unknown/foreign document.
+    """
+    # 1. Uploaded bytes: read under the preview cap, no storage. Declared meta is optional JSON.
+    if file is not None:
+        UploadReader.reject_oversized_body(request, size_cap)
+        content, _ = await UploadReader.read_capped(file, size_cap)
+        try:
+            declared = json.loads(metadata)
+        except json.JSONDecodeError as exc:
+            raise HTTPException(status_code=422, detail=f"metadata is not valid JSON: {exc}")
+        if not isinstance(declared, dict):
+            raise HTTPException(status_code=422, detail="metadata must be a JSON object.")
+        return content, declared, file.filename or "upload", None
+
+    # 2. Existing document: it must exist AND belong to this collection (no cross-collection peek).
+    try:
+        doc_uuid = uuid.UUID(str(document_id))
+    except ValueError:
+        raise HTTPException(
+            status_code=422, detail=f"document_id '{document_id}' is not a valid UUID."
+        )
+    document = await CONTEXT.database.documents.get(doc_uuid)
+    if document is None or document.collection_id != collection.id:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Document {document_id} not found in collection {collection.id}.",
+        )
+    return None, {}, document.filename, str(doc_uuid)
+
+
 @router.post(
     "",
     response_model=CollectionModel,
@@ -264,6 +583,12 @@ async def create_collection(
         request.pipeline or CollectionBlobHelpers.preset_blob(request.preset)
     )
 
+    # 1b. Resolve the SEARCH blob from its preset: the default (or omitted) keeps the {} stock-default
+    #     sentinel; a non-default preset is a real search graph, validated exactly as an explicit one.
+    search_blob = CollectionBlobHelpers.search_preset_blob(request.search_preset)
+    if search_blob:
+        CollectionHelpers.validate_search_blob(search_blob)
+
     # 2. Name unicity — explicit 409, not a driver error.
     if await CONTEXT.database.collections.get_by_name(request.name) is not None:
         raise HTTPException(status_code=409, detail=f"Collection '{request.name}' already exists.")
@@ -283,7 +608,7 @@ async def create_collection(
                 job_timeout_seconds=request.job_timeout_seconds,
                 trace_verbosity=request.trace_verbosity,
                 pipeline=blob,
-                search={},
+                search=search_blob,
             ),
             rows,
         )

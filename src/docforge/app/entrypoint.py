@@ -15,6 +15,7 @@ from backend.libs.estimate import CostEstimateService
 from backend.libs.health import CollectionHealthService
 from backend.libs.logbridge import UvicornLogBridge
 from backend.libs.metrics import MetricsService
+from backend.libs.preview import PreviewService
 from backend.libs.search import SearchService
 from backend.utils.queue import QueueClient
 from config import RUNTIME_CONFIG  # MUST be first — registers backend/libs/ on sys.path
@@ -100,6 +101,16 @@ def _build_app() -> FastAPI:
     # 3c-bis. Pre-hoc cost estimate — on-demand token/$/volume preview of an ingestion (no job, no
     #         spend). Reads the collection's config + cheap document stats and runs the pure estimator.
     CONTEXT.estimate_service = CostEstimateService(CONTEXT.database)
+
+    # 3c-ter. Pipeline dry-run preview — runs the ingest graph INLINE on one document and returns a
+    #         bounded report (IR summary + first N chunks + actual cost + execution trace) WITHOUT
+    #         persisting anything. Reuses the pure engine (builder/validator/FlowEngine); the worker's
+    #         persistence boundary is simply not attached. Bounded by the PREVIEW_* interactive caps.
+    CONTEXT.preview_service = PreviewService(
+        CONTEXT.database,
+        timeout_seconds=RUNTIME_CONFIG.PREVIEW_RUN_TIMEOUT_SECONDS,
+        chunk_text_max_chars=RUNTIME_CONFIG.PREVIEW_CHUNK_TEXT_MAX_CHARS,
+    )
 
     # 3d. Metrics — refreshes the ops infra gauges (arq queue depth, job/worker counts) at scrape
     #     time and renders the Prometheus exposition (HTTP series fed passively by the middleware).

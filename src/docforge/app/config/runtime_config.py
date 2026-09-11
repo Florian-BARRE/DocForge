@@ -95,6 +95,17 @@ class RUNTIME_CONFIG(EnvConfigLoader):
     # it on a slow/contended deployment; the default stays snappy.
     SEARCH_RUN_TIMEOUT_SECONDS: float = env("SEARCH_RUN_TIMEOUT_SECONDS", cast=float, default=30.0)
 
+    # ───── Pipeline dry-run preview (inline, synchronous — the interactive guardrails) ─────
+    # A preview runs the INGEST graph inline on ONE document without persisting anything, so it is
+    # bounded tightly: a short wall-clock cap on the run, a hard body-size cap (a big PDF + LLM stages
+    # would make the request hang), a ceiling on how many chunks come back, and a per-chunk text clip.
+    PREVIEW_RUN_TIMEOUT_SECONDS: float = env(
+        "PREVIEW_RUN_TIMEOUT_SECONDS", cast=float, default=120.0
+    )
+    PREVIEW_MAX_BYTES: int = env("PREVIEW_MAX_BYTES", cast=int, default=10 * 1024 * 1024)
+    PREVIEW_MAX_CHUNKS: int = env("PREVIEW_MAX_CHUNKS", cast=int, default=20)
+    PREVIEW_CHUNK_TEXT_MAX_CHARS: int = env("PREVIEW_CHUNK_TEXT_MAX_CHARS", cast=int, default=2000)
+
     # SSE poll cadence for the live job stream (poll-backed, no message bus). Short by design; kept
     # injectable so unit tests drive the generator with a zero interval.
     SSE_POLL_INTERVAL_SECONDS: float = env("SSE_POLL_INTERVAL_SECONDS", cast=float, default=0.75)

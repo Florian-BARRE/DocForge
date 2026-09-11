@@ -151,6 +151,7 @@ async def get_pipeline_design(key: str, full: bool = False) -> PipelineDesignRes
     return PipelineDesignResponse(
         palette=facade.palette(full=full),
         blob=blob,
+        presets=facade.presets(),
         issues=issues,
     )
 

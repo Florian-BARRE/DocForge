@@ -28,6 +28,7 @@ if TYPE_CHECKING:
     from .libs.estimate import CostEstimateService
     from .libs.health import CollectionHealthService
     from .libs.metrics import MetricsService
+    from .libs.preview import PreviewService
     from .libs.search import SearchService
     from .utils.queue import QueueClient
 
@@ -67,6 +68,11 @@ class CONTEXT:
     # ── Cost estimate (on-demand, zero-spend pre-hoc token/$/volume preview of an ingestion) ──
     # Backs POST /collections/{id}/estimate — reads config + cheap doc stats, runs the pure estimator.
     estimate_service: CostEstimateService
+
+    # ── Pipeline dry-run preview (on-demand, NON-persisting inline ingestion run on one document) ──
+    # Backs POST /collections/{id}/pipeline/preview — runs the ingest graph inline (no DB/S3/Qdrant
+    # write) and returns an IR summary + first N chunks + actual cost + execution trace.
+    preview_service: PreviewService
 
     # ── Metrics (Prometheus /metrics — infra-gauge refresh + exposition rendering) ──
     # Backs GET /metrics; the HTTP request series are fed passively by HttpMetricsMiddleware.
