@@ -23,9 +23,12 @@ function KeyGlyph() {
 interface CreatedKeyModalProps {
   createdKey: CreatedApiKey;
   onClose: () => void;
+  /** True when this reveal follows a rotation (a new secret replacing a revoked one), not a brand
+   *  new key — the heading is the only thing that differs. */
+  rotated?: boolean;
 }
 
-export function CreatedKeyModal({ createdKey, onClose }: CreatedKeyModalProps) {
+export function CreatedKeyModal({ createdKey, onClose, rotated }: CreatedKeyModalProps) {
   const [copied, setCopied] = useState(false);
   const titleId = useId();
   const panelRef = useFocusTrap<HTMLDivElement>(onClose);
@@ -68,7 +71,7 @@ export function CreatedKeyModal({ createdKey, onClose }: CreatedKeyModalProps) {
             <KeyGlyph />
           </span>
           <h2 id={titleId} style={{ fontFamily: theme.font.display, fontSize: theme.font.size.xl, fontWeight: 700, color: theme.color.text, margin: 0 }}>
-            Key created — "{createdKey.name}"
+            {rotated ? "Key rotated" : "Key created"} — "{createdKey.name}"
           </h2>
         </div>
         <div

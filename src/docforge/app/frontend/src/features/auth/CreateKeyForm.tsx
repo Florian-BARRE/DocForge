@@ -36,6 +36,14 @@ export interface KeyFormPayload {
   expires_at: string | null;
 }
 
+// Least-privilege UI default for a FRESH key (mode="create", no `initial`): unchecked "full access"
+// + a bounded expiry, so an operator must explicitly opt into unrestricted, never-expiring access
+// rather than getting it by default. "Rotate" mode never uses this — it always receives `initial`
+// mirroring the source key's own current settings. This is a product-level safety default, not a
+// mirror of a backend default (the backend itself defaults to unrestricted/never-expiring — see
+// `CreateKeyRequest` in app/backend/routers/auth/models.py, whose fields are all optional/null).
+const DEFAULT_KEY_EXPIRY_DAYS = 90;
+
 interface CreateKeyFormProps {
   mode?: "create" | "rotate";
   initial?: CreateKeyFormInitial;
@@ -47,10 +55,12 @@ interface CreateKeyFormProps {
 
 export function CreateKeyForm({ mode = "create", initial, onSubmitOverride, onCreated, onCancel }: CreateKeyFormProps) {
   const [name, setName] = useState(initial?.name ?? "");
-  const [fullAccess, setFullAccess] = useState(initial?.fullAccess ?? true);
+  const [fullAccess, setFullAccess] = useState(initial?.fullAccess ?? false);
   const [capabilities, setCapabilities] = useState<ApiCapability[]>(initial?.capabilities ?? ["read"]);
   const [collectionsScope, setCollectionsScope] = useState<CollectionsScope>(initial?.collectionsScope ?? "all");
-  const [expiry, setExpiry] = useState<ExpiryChoice>(initial?.expiry ?? { kind: "never" });
+  const [expiry, setExpiry] = useState<ExpiryChoice>(
+    initial?.expiry ?? { kind: "preset", days: DEFAULT_KEY_EXPIRY_DAYS },
+  );
   const [collections, setCollections] = useState<Collection[] | null>(null);
   const [collectionsError, setCollectionsError] = useState<string | null>(null);
   const toast = useToast();
