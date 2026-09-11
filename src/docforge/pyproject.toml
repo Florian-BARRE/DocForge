@@ -111,7 +111,7 @@ worker = [
     # docling pulls transformers transitively with NO upper bound; uv resolves the latest (5.x),
     # whose AutoProcessor API breaks docling 2.108 (ModuleNotFoundError at parse). Pin to 4.x.
     # The <5 cap is also CVE-relevant (a deliberate security pin), not only an API-compat guard.
-    "transformers>=4.46,<5",
+    "transformers>=5.16.1,<6",
     "pillow>=12.3.0,<13",
     "pypdfium2>=5.13.0,<6",
     "rapidocr-onnxruntime>=1.4.4,<2",
