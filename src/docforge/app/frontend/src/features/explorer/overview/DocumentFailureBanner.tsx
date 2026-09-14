@@ -47,7 +47,7 @@ export function DocumentFailureBanner({ document, collectionId, onNavigate }: Do
           {isFailed ? "Ingestion failed" : "Ingestion cancelled"}
         </span>
         <button
-          onClick={() => onNavigate({ name: "collection-jobs", collectionId })}
+          onClick={() => onNavigate({ name: "collection-activity", collectionId })}
           style={{
             background: "none", border: `1px solid ${tone.border}`, color: tone.strong,
             borderRadius: theme.radius.s, padding: "4px 10px", fontSize: theme.font.size.xs, cursor: "pointer",

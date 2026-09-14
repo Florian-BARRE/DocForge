@@ -68,7 +68,7 @@ function BreadcrumbSegment({ item, isLast, onNavigate }: { item: BreadcrumbItem;
 }
 
 /**
- * Render a clickable "where am I" trail, e.g. Collections / {collection} / Corpus / Documents / {file}.
+ * Render a clickable "where am I" trail, e.g. Collections / {collection} / Documents / {file}.
  *
  * Every item but the last is a link; the last is the current page and carries `aria-current="page"`.
  */

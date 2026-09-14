@@ -56,13 +56,13 @@ export function OverviewStatStrip({ collection, docs, fields, health, jobs, coll
           label="Jobs"
           value={jobs ? jobs.length.toLocaleString() : "…"}
           sub={jobs ? `${pendingJobs} pending · ${runningJobs} running · ${doneJobs}/${jobs.length} done` : undefined}
-          onClick={() => onNavigate({ name: "collection-jobs", collectionId })}
+          onClick={() => onNavigate({ name: "collection-activity", collectionId })}
         />
         <StatChip
           label="Metadata fields"
           value={fields.length}
           sub={`${requiredFields} required`}
-          onClick={() => onNavigate({ name: "collection-metadata", collectionId })}
+          onClick={() => onNavigate({ name: "collection-schema", collectionId })}
         />
         <StatChip
           label="Indexed vectors"
@@ -74,19 +74,19 @@ export function OverviewStatStrip({ collection, docs, fields, health, jobs, coll
           label="Formats"
           value={collection.supported_formats.length}
           sub={collection.supported_formats.join(", ")}
-          onClick={() => onNavigate({ name: "collection-pipeline", collectionId })}
+          onClick={() => onNavigate({ name: "collection-pipelines", collectionId })}
         />
         <StatChip
           label="Max file"
           value={`${maxSizeMb} MiB`}
           sub="per upload"
-          onClick={() => onNavigate({ name: "collection-edit", collectionId })}
+          onClick={() => onNavigate({ name: "collection-settings", collectionId })}
         />
       </div>
       {/* A rarely-relevant technical knob — a footnote, not a stat tile, so it doesn't compete with
           the strip above for attention. Still a click-through to where it's edited. */}
       <button
-        onClick={() => onNavigate({ name: "collection-edit", collectionId })}
+        onClick={() => onNavigate({ name: "collection-settings", collectionId })}
         title="Whole-ingest-job wall-clock job timeout"
         style={{
           display: "inline-flex", alignItems: "baseline", gap: t.space.xs, marginBottom: t.space.xl,

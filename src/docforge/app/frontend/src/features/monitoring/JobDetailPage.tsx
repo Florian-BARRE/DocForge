@@ -54,7 +54,7 @@ export function JobDetailPage({ jobId, collectionId, onNavigate }: JobDetailPage
             items={[
               { label: "Collections", view: { name: "collections" } },
               { label: job.collection_name ?? "Collection", view: { name: "collection", collectionId } },
-              { label: "Jobs", view: { name: "collection-jobs", collectionId } },
+              { label: "Jobs", view: { name: "collection-activity", collectionId } },
               { label: jobDisplayName(job) },
             ]}
             onNavigate={onNavigate}

@@ -39,7 +39,7 @@ describe("Breadcrumb", () => {
   it("renders a mid-trail segment with no view as plain text, not a link", () => {
     render(
       <Breadcrumb
-        items={[{ label: "Admin" }, { label: "API Keys", view: { name: "api-keys" } }, { label: "prod-key" }]}
+        items={[{ label: "Admin" }, { label: "Settings", view: { name: "settings" } }, { label: "prod-key" }]}
         onNavigate={vi.fn()}
       />,
     );

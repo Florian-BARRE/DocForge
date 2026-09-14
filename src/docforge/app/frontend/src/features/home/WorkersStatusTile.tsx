@@ -48,7 +48,7 @@ export function WorkersStatusTile({ onNavigate }: WorkersStatusTileProps) {
       label="Busy / alive workers"
       tone={busyCount > 0 ? "accent" : "neutral"}
       caption={`${workers.length - aliveCount} offline`}
-      onClick={() => onNavigate({ name: "workers" })}
+      onClick={() => onNavigate({ name: "fleet" })}
     />
   );
 }

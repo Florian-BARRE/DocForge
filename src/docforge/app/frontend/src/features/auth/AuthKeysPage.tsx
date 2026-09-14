@@ -1,8 +1,9 @@
 // ====== Code Summary ======
-// The "API Keys" page: list of stored keys, an active/revoked/all filter, and the create + rotate
-// flows (both driven by the same CreateKeyForm). A page remount refetches (see App.tsx's routing
-// convention), so navigating away/back after a mutation always shows fresh data — this page also
-// refetches explicitly after each mutation since it stays mounted while they happen.
+// The "Keys" content of Settings: list of stored keys, an active/revoked/all filter, and the
+// create + rotate flows (both driven by the same CreateKeyForm). Embedded under SettingsPage
+// (which owns the page-level TopContentBar + Keys|Audit|Deployment tabs) — this component renders
+// content only. Stays mounted across mutations (create/revoke/rotate), so it refetches explicitly
+// after each one rather than relying on a remount.
 
 import { useEffect, useState } from "react";
 import { listKeys, rotateKey, type ApiKeyInfo, type CreatedApiKey } from "../../api/auth";
@@ -10,7 +11,6 @@ import { listCollections } from "../../api/collections";
 import { Button } from "../../components/Button";
 import { ErrorState } from "../../components/ErrorState";
 import { LoadingState } from "../../components/LoadingState";
-import { PageHeader } from "../../components/PageHeader";
 import { TabNav } from "../../components/TabNav";
 import type { Navigate } from "../../shell/view";
 import { theme } from "../../theme";
@@ -77,12 +77,15 @@ export function AuthKeysPage({ onNavigate }: AuthKeysPageProps) {
   });
 
   return (
-    <div className="df-rise" style={{ padding: theme.space.xl, overflowY: "auto", height: "100%", maxWidth: 1200, margin: "0 auto", width: "100%" }}>
-      <PageHeader
-        title="API Keys"
-        subtitle={keys ? `${totalCount} key${totalCount === 1 ? "" : "s"} — bearer authentication for the API` : " "}
-        actions={!writesDisabled && !showCreate && !rotatingKey && <Button variant="primary" onClick={() => setShowCreate(true)}>+ New key</Button>}
-      />
+    <div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: theme.space.s, flexWrap: "wrap", marginBottom: theme.space.m }}>
+        <span style={{ color: theme.color.dim, fontSize: theme.font.size.s }}>
+          {keys ? `${totalCount} key${totalCount === 1 ? "" : "s"} — bearer authentication for the API` : " "}
+        </span>
+        {!writesDisabled && !showCreate && !rotatingKey && (
+          <Button variant="primary" onClick={() => setShowCreate(true)}>+ New key</Button>
+        )}
+      </div>
 
       {writesDisabled && <AuthOffBanner />}
 

@@ -1,6 +1,6 @@
 // ====== Code Summary ======
 // The one shared delete-collection request path — calls DELETE, surfaces a success/error toast,
-// and reports whether it worked so each call site (dashboard card, detail header, edit-form danger
+// and reports whether it worked so each call site (dashboard card overflow menu, Settings ▸ Danger
 // zone) can drive its own confirm UI and post-delete navigation/refresh without duplicating the
 // request/toast plumbing.
 

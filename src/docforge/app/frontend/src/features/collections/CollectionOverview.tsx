@@ -88,7 +88,7 @@ export function CollectionOverview({ collectionId, onNavigate }: Props) {
                 collectionId={collectionId}
                 fields={collection.fields}
                 onUploaded={(jobId, count) =>
-                  onNavigate(count > 1 ? { name: "collection-jobs", collectionId } : { name: "job", collectionId, jobId })
+                  onNavigate(count > 1 ? { name: "collection-activity", collectionId } : { name: "job", collectionId, jobId })
                 }
               />
               <div style={{ color: t.color.dim, fontSize: t.font.size.s }}>

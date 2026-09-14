@@ -80,7 +80,7 @@ export function KeyDetailPage({ keyId, onNavigate }: KeyDetailPageProps) {
 
   const apiKey = keys.find((k) => k.id === keyId);
   if (!apiKey) {
-    return <ErrorState message="Key not found — it may have been deleted." onRetry={() => onNavigate({ name: "api-keys" })} />;
+    return <ErrorState message="Key not found — it may have been deleted." onRetry={() => onNavigate({ name: "settings" })} />;
   }
 
   const revoked = Boolean(apiKey.revoked_at);
@@ -96,8 +96,8 @@ export function KeyDetailPage({ keyId, onNavigate }: KeyDetailPageProps) {
         eyebrow={
           <Breadcrumb
             items={[
-              { label: "Admin" },
-              { label: "API Keys", view: { name: "api-keys" } },
+              { label: "Deployment", view: { name: "overview" } },
+              { label: "Settings", view: { name: "settings" } },
               { label: apiKey.name },
             ]}
             onNavigate={onNavigate}
@@ -116,7 +116,7 @@ export function KeyDetailPage({ keyId, onNavigate }: KeyDetailPageProps) {
             apiKey={apiKey}
             writesDisabled={writesDisabled}
             rotating={rotating}
-            onRevoked={() => onNavigate({ name: "api-keys" })}
+            onRevoked={() => onNavigate({ name: "settings" })}
             onStartRotate={() => setRotating(true)}
           />
         }
@@ -161,7 +161,7 @@ export function KeyDetailPage({ keyId, onNavigate }: KeyDetailPageProps) {
         <CreatedKeyModal
           createdKey={createdKey}
           rotated
-          onClose={() => { setCreatedKey(null); onNavigate({ name: "api-keys" }); }}
+          onClose={() => { setCreatedKey(null); onNavigate({ name: "settings" }); }}
         />
       )}
     </div>

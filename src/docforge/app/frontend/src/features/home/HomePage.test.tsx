@@ -1,12 +1,13 @@
 // ====== Code Summary ======
-// Render smoke-test for HomePage, the new default landing — mounts through loading -> loaded for
-// its independently-fetched tiles (collections fleet, workers, recent failures) without throwing,
-// and covers a click-through from the "Need attention" tile to the Collections preset view.
+// Render smoke-test for HomePage, the fleet cockpit — mounts through loading -> loaded for its
+// independently-fetched LINK tiles (collections fleet, workers, queue, recent failures) without
+// throwing, and covers click-throughs from the "Need attention" tile (Collections preset) and the
+// recent-failures tile (Activity ▸ Failures).
 
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { Collection, CollectionHealth } from "../../api/collections";
-import type { QueueDepth, WorkersLive } from "../../api/jobs";
+import type { FailureBreakdown, QueueDepth, WorkersLive } from "../../api/jobs";
 import type { Navigate } from "../../shell/view";
 import { HomePage } from "./HomePage";
 
@@ -25,12 +26,12 @@ vi.mock("../../api/jobs", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../api/jobs")>()),
   getQueueDepth: vi.fn(),
   getWorkersLive: vi.fn(),
-  listJobsPage: vi.fn(),
+  getFailureBreakdown: vi.fn(),
 }));
 
 const { listCollections, getCollectionHealth } = await import("../../api/collections");
 const { queryDocuments } = await import("../../api/corpus");
-const { getQueueDepth, getWorkersLive, listJobsPage } = await import("../../api/jobs");
+const { getQueueDepth, getWorkersLive, getFailureBreakdown } = await import("../../api/jobs");
 
 const collection: Collection = {
   id: "col-1", name: "Contracts", supported_formats: ["pdf"], max_file_size_bytes: 1000,
@@ -47,6 +48,10 @@ const downHealth: CollectionHealth = {
 
 const emptyQueue: QueueDepth = { pending: 0, running: 0 };
 const emptyWorkers: WorkersLive = { workers: [] };
+const emptyBreakdown: FailureBreakdown = {
+  collection_id: null, window_hours: 24, since: "2026-01-01T00:00:00Z", total_failed: 0,
+  by_error_type: [], by_stage: [], by_collection: [],
+};
 
 describe("HomePage", () => {
   it("mounts through loading -> loaded across its independent tiles without throwing", async () => {
@@ -55,15 +60,18 @@ describe("HomePage", () => {
     vi.mocked(queryDocuments).mockResolvedValue({ total: 3, limit: 1, offset: 0, rows: [] });
     vi.mocked(getQueueDepth).mockResolvedValue(emptyQueue);
     vi.mocked(getWorkersLive).mockResolvedValue(emptyWorkers);
-    vi.mocked(listJobsPage).mockResolvedValue({ total: 0, limit: 5, offset: 0, jobs: [] });
+    vi.mocked(getFailureBreakdown).mockResolvedValue(emptyBreakdown);
 
     const onNavigate: Navigate = vi.fn();
     expect(() => render(<HomePage onNavigate={onNavigate} />)).not.toThrow();
 
     await waitFor(() => expect(screen.getByText("1", { exact: true })).toBeInTheDocument());
-    expect(screen.getByText("No recent failures")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText("Recent failures")).toBeInTheDocument());
 
     fireEvent.click(screen.getByText("Need attention"));
     expect(onNavigate).toHaveBeenCalledWith({ name: "collections", health: "attention" });
+
+    fireEvent.click(screen.getByText("Recent failures"));
+    expect(onNavigate).toHaveBeenCalledWith({ name: "activity", tab: "failures" });
   });
 });

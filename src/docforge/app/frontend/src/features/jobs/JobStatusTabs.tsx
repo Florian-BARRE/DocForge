@@ -1,5 +1,5 @@
 // ====== Code Summary ======
-// The five fleet-status tabs for AllJobsPage — a segmented filter (not distinct panels), same
+// The five fleet-status tabs for Activity ▸ Jobs — a segmented filter (not distinct panels), same
 // pattern as CollectionsToolbar's health filter / Auth Keys' Active-Revoked-All.
 
 import { TabNav } from "../../components/TabNav";

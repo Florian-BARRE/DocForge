@@ -103,11 +103,11 @@ export function healthFixTarget(
   switch (health.verdict) {
     case "down":
       return health.search.buildable
-        ? { label: "Configure query embedder", view: { name: "collection-search-pipeline", collectionId } }
-        : { label: "Fix search pipeline", view: { name: "collection-search-pipeline", collectionId } };
+        ? { label: "Configure query embedder", view: { name: "collection-pipelines", collectionId, stage: "search" } }
+        : { label: "Fix search pipeline", view: { name: "collection-pipelines", collectionId, stage: "search" } };
 
     case "ingest_unavailable":
-      return { label: "Fix ingestion pipeline", view: { name: "collection-pipeline", collectionId } };
+      return { label: "Fix ingestion pipeline", view: { name: "collection-pipelines", collectionId, stage: "ingestion" } };
 
     case "degraded": {
       const down = [...health.ingest.providers, ...health.search.providers].find(
@@ -115,12 +115,12 @@ export function healthFixTarget(
       );
       if (!down) return null;
       return down.side === "ingest"
-        ? { label: "Fix ingestion pipeline", view: { name: "collection-pipeline", collectionId } }
-        : { label: "Fix search pipeline", view: { name: "collection-search-pipeline", collectionId } };
+        ? { label: "Fix ingestion pipeline", view: { name: "collection-pipelines", collectionId, stage: "ingestion" } }
+        : { label: "Fix search pipeline", view: { name: "collection-pipelines", collectionId, stage: "search" } };
     }
 
     case "empty":
-      return hasUnindexedDocs ? { label: "Check jobs", view: { name: "collection-jobs", collectionId } } : null;
+      return hasUnindexedDocs ? { label: "Check jobs", view: { name: "collection-activity", collectionId } } : null;
 
     default:
       return null;

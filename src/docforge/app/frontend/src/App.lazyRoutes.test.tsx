@@ -57,18 +57,18 @@ describe("App — lazy route Suspense boundary", () => {
 
     render(
       <ToastProvider>
-        <Suspense fallback={<LoadingState label="loading corpus…" />}>
+        <Suspense fallback={<LoadingState label="loading documents…" />}>
           <LazyCorpusPage collectionId="col-1" onNavigate={vi.fn()} />
         </Suspense>
       </ToastProvider>,
     );
 
     // The Suspense fallback is what renders before the dynamic import resolves.
-    expect(screen.getByText("loading corpus…")).toBeInTheDocument();
+    expect(screen.getByText("loading documents…")).toBeInTheDocument();
 
     // Once the chunk resolves, CorpusPage itself takes over (past its own "loading collection…"
     // step) and the Suspense fallback is gone for good.
     await waitFor(() => expect(screen.getByText("No documents yet")).toBeInTheDocument());
-    expect(screen.queryByText("loading corpus…")).not.toBeInTheDocument();
+    expect(screen.queryByText("loading documents…")).not.toBeInTheDocument();
   });
 });

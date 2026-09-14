@@ -218,7 +218,7 @@ export function CorpusPage({ collectionId, onNavigate }: CorpusPageProps) {
         <EmptyState
           icon="↑"
           title="No documents yet"
-          subtitle="Upload one to populate this collection's corpus — the Overview tab has the upload panel."
+          subtitle="Upload one to populate this collection's documents — the Overview tab has the upload panel."
           action={
             <Button onClick={() => onNavigate({ name: "collection", collectionId })}>
               Upload a document
