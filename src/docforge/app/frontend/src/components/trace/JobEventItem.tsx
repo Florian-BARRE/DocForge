@@ -1,11 +1,16 @@
 // ====== Code Summary ======
-// One entry of the job's per-node execution tree: stage, status, duration (or the error/note the
+// One entry of a job's per-node execution tree: stage, status, duration (or the error/note the
 // worker attached as `detail`), and — for a nested node — its indent (`depth`) and ForEach
 // `item_index`. Each item carries its own left rail segment + a status-colored node marker, so
-// stacking them (JobDetailPage) reads as one continuous vertical timeline; a nested node's rail
-// segment is additionally inset per `depth` so the tree shape (group children, ForEach item
-// instances) is legible under its parent stage. `depth`/`node_path` are null on legacy rows
-// (pre-tree) — those render flat at depth 0, same as before.
+// stacking them (JobDetailPage, or the document explorer's Trace tab) reads as one continuous
+// vertical timeline; a nested node's rail segment is additionally inset per `depth` so the tree
+// shape (group children, ForEach item instances) is legible under its parent stage. `depth`/
+// `node_path` are null on legacy rows (pre-tree) — those render flat at depth 0, same as before.
+//
+// Shared under components/trace/ (not features/monitoring/) because it is consumed by two
+// feature slices — monitoring's JobDetailPage and explorer's document Trace tab — per this repo's
+// feature-slice-isolation convention (shared cross-feature UI lives in components/, never
+// cross-imported between feature directories).
 //
 // A node that captured any input/output trace data (a shape summary and/or a fetchable full
 // payload) gets an expand toggle — JobEventDetail renders the summary + lazy payload buttons

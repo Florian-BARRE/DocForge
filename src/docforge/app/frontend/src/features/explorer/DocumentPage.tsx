@@ -24,6 +24,7 @@ import { IRTab } from "./ir/IRTab";
 import { LayoutTab } from "./layout/LayoutTab";
 import { OverviewTab } from "./overview/OverviewTab";
 import { PagesTab } from "./pages/PagesTab";
+import { TraceTab } from "./trace/TraceTab";
 import { useDocumentTabs, type DocumentTabKey } from "./state/useDocumentTabs";
 
 // The former "Overview"/collection-shell-tab collision is gone (collection nav now lives in the
@@ -180,6 +181,13 @@ export function DocumentPage({ collectionId, documentId, onNavigate }: DocumentP
           ) : (
             <LoadingState label="loading chunks…" />
           ))}
+        {activeTab === "trace" && (
+          <TraceTab
+            provenance={tabs.provenance}
+            error={tabs.provenanceError}
+            onRetry={tabs.loadProvenance}
+          />
+        )}
       </div>
 
       {tabs.boxLightbox && (

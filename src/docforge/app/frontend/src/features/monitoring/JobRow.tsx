@@ -4,11 +4,11 @@
 
 import { useState, type ReactNode } from "react";
 import type { JobStatus } from "../../api/jobs";
+import { JobStatusChip } from "../../components/trace/JobStatusChip";
 import { theme } from "../../theme";
 import { ItemProgressChip } from "./ItemProgressChip";
 import { JobCancelControl } from "./JobCancelControl";
 import { JobIdentity } from "./JobIdentity";
-import { JobStatusChip } from "./JobStatusChip";
 import { humanizeJobError } from "./jobErrorHumanize";
 import { ProgressBar } from "./ProgressBar";
 

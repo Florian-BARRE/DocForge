@@ -14,7 +14,7 @@ import type { OverlayBox } from "../../../components/PageBoxOverlay";
 import { useToast } from "../../../shell/toast";
 import { displayPage } from "../format";
 
-export type DocumentTabKey = "overview" | "pages" | "layout" | "ir" | "chunks";
+export type DocumentTabKey = "overview" | "pages" | "layout" | "ir" | "chunks" | "trace";
 
 export interface BoxLightboxState {
   renderBlobHash: string | null;
@@ -99,6 +99,10 @@ export function useDocumentTabs(documentId: string, activeTab: DocumentTabKey) {
       if (pages === null && !pagesError) loadPages();
       if (ir === null && !irError) loadIr();
     }
+    // The Trace tab renders the same provenance envelope the Layout tab warms — its `stages` field
+    // IS a job's full execution trace (see api/explorer.ts's DocumentProvenance doc comment), so no
+    // separate job-trace fetch is needed here.
+    if (activeTab === "trace" && provenance === null && !provenanceError) loadProvenance();
     // Deliberately reacting only to the tab/document — the load* functions themselves are stable
     // enough for this effect's purpose (avoid a re-run loop on every render).
     // eslint-disable-next-line react-hooks/exhaustive-deps
