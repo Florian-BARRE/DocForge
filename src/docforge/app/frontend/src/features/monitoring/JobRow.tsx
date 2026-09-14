@@ -1,6 +1,6 @@
 // ====== Code Summary ======
-// One job's compact summary row — reused by both JobsPage (a collection's jobs) and WorkerCard
-// (a worker's currently running jobs), since both work off the same JobStatus shape.
+// One job's compact summary row — reused by both JobFleetList (the Activity tabs' job lists) and
+// WorkerCard (a worker's currently running jobs), since both work off the same JobStatus shape.
 
 import { useState, type ReactNode } from "react";
 import type { JobStatus } from "../../api/jobs";

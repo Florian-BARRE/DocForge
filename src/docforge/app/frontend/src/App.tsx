@@ -16,7 +16,7 @@ import { CollectionWizard } from "./features/collections/wizard/CollectionWizard
 import { HomePage } from "./features/home/HomePage";
 import { ActivityPage } from "./features/jobs/ActivityPage";
 import { JobDetailPage } from "./features/monitoring/JobDetailPage";
-import { JobsPage } from "./features/monitoring/JobsPage";
+import { CollectionActivityTab } from "./features/jobs/CollectionActivityTab";
 import { WorkersPanel } from "./features/monitoring/WorkersPanel";
 import { SearchLabPage } from "./features/search/SearchLabPage";
 import { ErrorBoundary } from "./shell/ErrorBoundary";
@@ -118,7 +118,7 @@ export function App() {
         )}
         {view.name === "collection-activity" && (
           <CollectionShell collectionId={view.collectionId} onNavigate={setView}>
-            <JobsPage collectionId={view.collectionId} onNavigate={setView} />
+            <CollectionActivityTab collectionId={view.collectionId} onNavigate={setView} />
           </CollectionShell>
         )}
         {view.name === "collection-documents" && (

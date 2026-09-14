@@ -2,7 +2,7 @@
 // The human-readable anchor for a job row: the document filename leads (Archivo, the name a user
 // actually recognizes), with the collection name, current stage, and both ids (job/document) as
 // secondary mono metadata underneath — ids stay visible, just demoted. Reused by JobRow (so both
-// JobsPage and WorkerCard get it) and JobDetailPage's header.
+// the Activity tabs' JobFleetList and WorkerCard get it) and JobDetailPage's header.
 
 import { jobDisplayName, type JobStatus } from "../../api/jobs";
 import { theme } from "../../theme";

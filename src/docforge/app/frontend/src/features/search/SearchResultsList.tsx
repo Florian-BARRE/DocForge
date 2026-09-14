@@ -3,7 +3,9 @@
 
 import type { SearchResponse } from "../../api/search";
 import { theme } from "../../theme";
+import { SearchDiagnosticsPanel } from "./SearchDiagnosticsPanel";
 import { SearchHitCard } from "./SearchHitCard";
+import { scoreKindLabel } from "./scoreKindLabel";
 
 interface SearchResultsListProps {
   response: SearchResponse;
@@ -17,6 +19,7 @@ export function SearchResultsList({ response }: SearchResultsListProps) {
   // Results are returned ranked highest-first, so the first hit's score is the result set's own
   // top — every hit's relevance bucket is computed relative to it (see searchRelevance.ts).
   const topScore = response.hits[0]?.score ?? 0;
+  const scoreLabel = scoreKindLabel(response.score_kind);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: theme.space.s }}>
@@ -35,9 +38,16 @@ export function SearchResultsList({ response }: SearchResultsListProps) {
         </div>
       )}
 
-      <div style={{ color: theme.color.dim, fontSize: theme.font.size.s }}>
-        <strong style={{ color: theme.color.text }}>{response.hits.length}</strong> result{response.hits.length === 1 ? "" : "s"} for{" "}
-        <em style={{ color: theme.color.text, fontStyle: "normal", fontWeight: 600 }}>“{response.query}”</em>
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: theme.space.m }}>
+        <div style={{ color: theme.color.dim, fontSize: theme.font.size.s }}>
+          <strong style={{ color: theme.color.text }}>{response.hits.length}</strong> result{response.hits.length === 1 ? "" : "s"} for{" "}
+          <em style={{ color: theme.color.text, fontStyle: "normal", fontWeight: 600 }}>“{response.query}”</em>
+        </div>
+        {scoreLabel && (
+          <span style={{ color: theme.color.mute, fontSize: theme.font.size.xs, fontFamily: theme.font.mono }}>
+            scores: {scoreLabel}
+          </span>
+        )}
       </div>
 
       {response.hits.length === 0 && (
@@ -49,6 +59,8 @@ export function SearchResultsList({ response }: SearchResultsListProps) {
       {response.hits.map((hit) => (
         <SearchHitCard key={hit.chunk_id} hit={hit} topScore={topScore} />
       ))}
+
+      <SearchDiagnosticsPanel debugInfo={response.debug_info} cost={response.cost} />
     </div>
   );
 }

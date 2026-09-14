@@ -3,8 +3,8 @@
 // pagination window changes. `filter`/`sort` are expected to be memoized by the caller (CorpusPage
 // derives them from state) so an unrelated re-render doesn't spuriously refetch. Also self-polls
 // every `POLL_MS` while any row on the current page is still pending/processing — mirrors
-// `JobsPage`'s idiom, so an active ingest job's status advances live in the grid too, not just
-// on the Jobs tab.
+// the Activity tab's idiom, so an active ingest job's status advances live in the grid too, not
+// just on the Jobs tab.
 
 import { useCallback, useEffect, useState } from "react";
 import { queryDocuments, type DocumentFilter, type DocumentGridRow, type DocumentSort } from "../../api/corpus";
