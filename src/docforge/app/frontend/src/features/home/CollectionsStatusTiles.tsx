@@ -11,8 +11,9 @@ import { StatTile } from "../../components/StatTile";
 import type { Navigate } from "../../shell/view";
 import { useCollectionsFleet, type FleetEntry } from "../collections/state/useCollectionsFleet";
 
-/** Mirrors CollectionsToolbar's own "attention" bucket (down/degraded/ingest_unavailable). */
-function needsAttention(entry: FleetEntry): boolean {
+/** Mirrors CollectionsToolbar's own "attention" bucket (down/degraded/ingest_unavailable) — also
+ *  reused by NeedsAttentionPanel, which lists these same entries out in full below the tile row. */
+export function needsAttention(entry: FleetEntry): boolean {
   const verdict = entry.health?.verdict;
   return verdict === "down" || verdict === "degraded" || verdict === "ingest_unavailable";
 }

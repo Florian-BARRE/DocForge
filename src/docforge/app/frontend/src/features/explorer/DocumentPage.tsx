@@ -36,6 +36,7 @@ const TABS: { key: DocumentTabKey; label: string }[] = [
   { key: "layout", label: "Layout" },
   { key: "ir", label: "IR" },
   { key: "chunks", label: "Chunks" },
+  { key: "trace", label: "Trace" },
 ];
 
 interface DocumentPageProps {

@@ -9,7 +9,9 @@ import { TopContentBar } from "../../shell/TopContentBar";
 import type { Navigate } from "../../shell/view";
 import { theme } from "../../theme";
 import { CollectionsStatusTiles } from "./CollectionsStatusTiles";
+import { NeedsAttentionPanel } from "./NeedsAttentionPanel";
 import { QueueStatusTile } from "./QueueStatusTile";
+import { RecentActivityPanel } from "./RecentActivityPanel";
 import { RecentFailuresTile } from "./RecentFailuresTile";
 import { WorkersStatusTile } from "./WorkersStatusTile";
 
@@ -19,7 +21,7 @@ interface HomePageProps {
 
 export function HomePage({ onNavigate }: HomePageProps) {
   return (
-    <div className="df-rise" style={{ padding: theme.space.xl, overflowY: "auto", height: "100%", maxWidth: 1200, margin: "0 auto", width: "100%" }}>
+    <div className="df-rise" style={{ padding: theme.space.xl, overflowY: "auto", height: "100%", maxWidth: 1440, margin: "0 auto", width: "100%" }}>
       <TopContentBar
         page="Overview"
         subtitle="The fleet at a glance — every tile routes into its own canonical page for the detail."
@@ -27,11 +29,16 @@ export function HomePage({ onNavigate }: HomePageProps) {
         onNavigate={onNavigate}
       />
 
-      <div style={{ display: "flex", flexWrap: "wrap", gap: theme.space.l }}>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: theme.space.l, marginBottom: theme.space.l }}>
         <CollectionsStatusTiles onNavigate={onNavigate} />
         <WorkersStatusTile onNavigate={onNavigate} />
         <QueueStatusTile onNavigate={onNavigate} />
         <RecentFailuresTile onNavigate={onNavigate} />
+      </div>
+
+      <div style={{ display: "flex", flexWrap: "wrap", gap: theme.space.l }}>
+        <NeedsAttentionPanel onNavigate={onNavigate} />
+        <RecentActivityPanel onNavigate={onNavigate} />
       </div>
     </div>
   );
