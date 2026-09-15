@@ -26,6 +26,7 @@ import { useCommandPaletteHotkey } from "./shell/command-palette/useCommandPalet
 import { Sidebar, SIDEBAR_EXPANDED_WIDTH, SIDEBAR_RAIL_WIDTH } from "./shell/sidebar/Sidebar";
 import { useSidebarExpanded } from "./shell/sidebar/useSidebarExpanded";
 import { ToastProvider } from "./shell/toast";
+import { theme } from "./theme";
 import { parseViewFromHash } from "./shell/urlSync";
 import { useUrlSync } from "./shell/useUrlSync";
 import type { View } from "./shell/view";
@@ -82,7 +83,11 @@ export function App() {
         width: sidebarWidth, flexShrink: 0,
         transition: "width .16s cubic-bezier(0.22, 1, 0.36, 1)",
       }} />
-      <div style={{ flex: 1, minWidth: 0, minHeight: 0 }}>
+      {/* A horizontal gutter so page content clears the rail's right border with breathing room
+          (pages add their own inner padding on top) instead of sitting flush against the sidebar —
+          fixes the "sidebar and content too tight" report. Horizontal only, so height:100% pages
+          (CollectionShell) keep their full vertical box. */}
+      <div style={{ flex: 1, minWidth: 0, minHeight: 0, padding: `0 ${theme.space.l}px` }}>
       {/* Keyed by view.name so navigating away (shell nav, or the fallback's own action) always
           remounts a fresh boundary — a crashed view never keeps blocking an unrelated route. */}
       <ErrorBoundary key={view.name} onReset={() => setView({ name: "overview" })}>
