@@ -9,8 +9,9 @@
 //
 // Layout-view boxes: thin solid outline per block (type colour) with a small number tab ABOVE a corner
 // (never inside, never over the box's own text); chunk grouping boxes draw as a DASHED container in the
-// distinct chunk-outline colour, labelled "Chunk N" above the corner. The forge accent marks the active
-// one; the rest dim.
+// distinct chunk-outline colour. Idle, a chunk box already carries a subtle outlined "Cn" tag (never a
+// blank dashed rectangle a user has to guess at) — the active one gets the bolder filled "Chunk N" tab
+// instead. The forge accent marks the active one; the rest dim.
 
 import { BlobImage } from "./BlobImage";
 import { theme } from "../theme";
@@ -111,8 +112,10 @@ export function PageBoxOverlay({ renderBlobHash, width, height, boxes, alt, styl
         let boxShadow = "none";
         if (isGroup) {
           // Outline only — the dashed chunk container never fills its background (it would tint the
-          // page content it encloses); the forge accent on its border is enough when active.
-          border = `${box.active ? 2 : 1.25}px dashed ${stroke}`;
+          // page content it encloses); the forge accent on its border is enough when active. Idle
+          // weight bumped from 1.25 -> 1.5px so a document's chunking reads as discoverable at rest,
+          // not just on hover/selection.
+          border = `${box.active ? 2 : 1.5}px dashed ${stroke}`;
         } else if (box.color) {
           border = `${box.active ? 2 : 1}px solid ${stroke}`;
           if (box.active) {
@@ -171,11 +174,24 @@ export function PageBoxOverlay({ renderBlobHash, width, height, boxes, alt, styl
                   fontSize: theme.font.size.xs,
                   lineHeight: 1.45,
                   padding: "0 4px",
-                  color: theme.color.onAccent,
-                  background: stroke,
-                  borderRadius: isLayout ? `${theme.radius.s}px ${theme.radius.s}px 0 0` : theme.radius.s,
                   whiteSpace: "nowrap",
-                  boxShadow: isLayout ? theme.shadow.sm : "none",
+                  // A chunk box's IDLE label is a subtle outlined chip (never a loud filled tab a
+                  // user has to click into to even discover the document IS chunked) — the ACTIVE
+                  // chunk, and every block label, keep the bolder filled tab.
+                  ...(isGroup && !box.active
+                    ? {
+                        color: stroke,
+                        background: theme.color.panel,
+                        border: `1px solid ${stroke}`,
+                        borderRadius: `${theme.radius.s}px ${theme.radius.s}px 0 0`,
+                        opacity: 0.9,
+                      }
+                    : {
+                        color: theme.color.onAccent,
+                        background: stroke,
+                        borderRadius: isLayout ? `${theme.radius.s}px ${theme.radius.s}px 0 0` : theme.radius.s,
+                        boxShadow: isLayout ? theme.shadow.sm : "none",
+                      }),
                 }}
               >
                 {box.label}

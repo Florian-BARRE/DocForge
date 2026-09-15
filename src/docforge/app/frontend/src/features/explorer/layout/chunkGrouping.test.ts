@@ -6,7 +6,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { ChunkInfo, IRBlock, PageInfo } from "../../../api/explorer";
-import { buildPageGroups } from "./chunkGrouping";
+import { buildPageGroups, pageBlocksLackLayout } from "./chunkGrouping";
 
 function page(n: number): PageInfo {
   return { page_number: n, width: null, height: null, is_scanned: false, language: null, render_blob_hash: null };
@@ -83,5 +83,29 @@ describe("buildPageGroups", () => {
     expect(numbers).toContain(1);
     expect(numbers).toContain(2);
     expect(numbers).not.toContain(9);
+  });
+});
+
+describe("pageBlocksLackLayout", () => {
+  it("flags a page-less parse (html/md) where every block shares the synthetic full-page bbox", () => {
+    const blocks = [block("a", 1, 0), block("b", 1, 1), block("c", 1, 2)];
+    expect(pageBlocksLackLayout(blocks)).toBe(true);
+  });
+
+  it("does NOT flag a single full-page block (a legitimate whole-page image)", () => {
+    expect(pageBlocksLackLayout([block("a", 1, 0)])).toBe(false);
+  });
+
+  it("does NOT flag a page with real, distinct positioned boxes", () => {
+    const real = [
+      { ...block("a", 1, 0), bbox: [0.1, 0.1, 0.5, 0.2] },
+      { ...block("b", 1, 1), bbox: [0.1, 0.3, 0.5, 0.4] },
+    ];
+    expect(pageBlocksLackLayout(real)).toBe(false);
+  });
+
+  it("does NOT flag when at least one block has a real bbox amid full-page ones", () => {
+    const mixed = [block("a", 1, 0), { ...block("b", 1, 1), bbox: [0.1, 0.1, 0.5, 0.2] }];
+    expect(pageBlocksLackLayout(mixed)).toBe(false);
   });
 });

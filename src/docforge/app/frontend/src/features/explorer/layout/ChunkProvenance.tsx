@@ -79,13 +79,15 @@ export function ChunkProvenance({ chunkText, members, enrichmentsByBlock, tables
               style={{
                 display: "flex",
                 gap: theme.space.xs,
-                fontSize: theme.font.size.s,
+                // Bumped from `s` (12px) to `m` (13px) with a taller line-height — a chunk holding a
+                // lot of prose must read comfortably, not as a cramped strip (brand.md body ~13.5px).
+                fontSize: theme.font.size.m,
                 color: theme.color.text,
                 borderLeft: `3px solid ${hue}`,
                 background: emphasised ? theme.color.accentSoft : `color-mix(in srgb, ${style.color} 6%, transparent)`,
                 borderRadius: `0 ${theme.radius.s}px ${theme.radius.s}px 0`,
-                padding: `3px ${theme.space.s}px`,
-                lineHeight: 1.45,
+                padding: `${theme.space.xs}px ${theme.space.s}px`,
+                lineHeight: 1.55,
               }}
             >
               <span

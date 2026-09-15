@@ -106,3 +106,30 @@ export function unionBbox(bboxes: number[][], pad = 0.004): number[] {
   const y1 = Math.max(...bboxes.map((b) => b[3])) + pad;
   return [x0, y0, x1, y1];
 }
+
+const FULL_PAGE_BBOX_EPS = 0.001;
+
+/** True when a bbox is (within a tight epsilon) the synthetic whole-page box `[0,0,1,1]`. */
+function isFullPageBbox(bbox: number[]): boolean {
+  return (
+    Math.abs(bbox[0]) < FULL_PAGE_BBOX_EPS &&
+    Math.abs(bbox[1]) < FULL_PAGE_BBOX_EPS &&
+    Math.abs(bbox[2] - 1) < FULL_PAGE_BBOX_EPS &&
+    Math.abs(bbox[3] - 1) < FULL_PAGE_BBOX_EPS
+  );
+}
+
+/**
+ * True when a page's blocks carry NO real positional layout — every one of them reports the same
+ * synthetic full-page box `[0,0,1,1]`, the page-less parser fallback stamped on every block of an
+ * html/md source with no positional data at all (`DoclingMapper._synthetic_provenance`,
+ * `shared/libs/pipelines/ingest/nodes/parse/parser/docling/mapper.py`). Drawing a block/chunk box
+ * per such block would just stack indistinguishable full-page rectangles on top of each other — the
+ * Layout view instead skips boxes for that page and shows an honest note (PageGroupRow).
+ *
+ * A single full-page block (one image genuinely covering the whole page) is legitimate and NOT
+ * flagged — only 2+ blocks sharing the exact same full-page box means the boxes are meaningless.
+ */
+export function pageBlocksLackLayout(blocks: { bbox: number[] }[]): boolean {
+  return blocks.length > 1 && blocks.every((b) => isFullPageBbox(b.bbox));
+}
