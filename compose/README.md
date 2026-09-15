@@ -12,11 +12,11 @@ compose/
     compose.gpu.yml                 # -gpu images + `gpus: all` for worker/bge_server/paddle_server
     compose.dev.yml                  # local build + source mounts + hot reload + Vite frontend
     compose.proxy.yml                 # OPTIONAL — Caddy TLS front door (add-on, not baked into scenarios)
-    compose.telemetry.yml              # OPTIONAL — Prometheus + Loki + Promtail + Grafana (add-on)
+    compose.telemetry.yml              # OPTIONAL — Prometheus + Loki + Alloy + Grafana (add-on)
   compose.dev-cpu.yml  compose.dev-gpu.yml  compose.prod-cpu.yml  compose.prod-gpu.yml   # ready-made scenario files
   README.md                  # this file
 
-services/telemetry/          # config for the telemetry overlay (prometheus.yml, loki/promtail
+services/telemetry/          # config for the telemetry overlay (prometheus.yml, loki/alloy
                               # configs, grafana provisioning + starter dashboard) — a SIBLING of
                               # compose/ at the repo root, not a subdirectory of it (same home as
                               # services/caddy, services/docforge, etc.)
@@ -45,7 +45,7 @@ it starts only the data-plane stores).
 # project-root .env:
 docker compose -f compose/compose.prod-cpu.yml -f compose/overlays/compose.proxy.yml --profile full up -d
 
-# Observability stack (Prometheus/Loki/Promtail/Grafana):
+# Observability stack (Prometheus/Loki/Alloy/Grafana):
 docker compose -f compose/compose.prod-cpu.yml -f compose/overlays/compose.telemetry.yml --profile full up -d
 
 # Both, on any scenario:
@@ -70,8 +70,8 @@ stack exactly as before.
 |---|---|---|
 | `grafana` | Provisioned with both datasources + a starter "DocForge — API & Worker Overview" dashboard (request rate, p95 latency, error rate, arq queue depth, job counts, live workers). | `10050` |
 | `prometheus` | Scrapes `docforge_app:8000/metrics` **over `docforge_net`** — not the published host port. | `10051` |
-| `loki` | Log storage/index, receives from promtail. | `10052` |
-| `promtail` | Tails every container's Docker log (`docker_sd_configs` against the read-only `docker.sock` + `/var/lib/docker/containers` mounts) and ships to loki. | — (no host port) |
+| `loki` | Log storage/index, receives from alloy. | `10052` |
+| `alloy` | Tails every container's Docker log (`discovery.docker` against the read-only `docker.sock` + `/var/lib/docker/containers` mounts) and ships to loki. | — (no host port) |
 
 Chosen because `10040`–`10049` are already used by the core stack (see the ports table in
 `docs/configuration.md`) — `10050`–`10052` are the next free slots inside the VM firewall's

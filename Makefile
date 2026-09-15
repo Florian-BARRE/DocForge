@@ -43,7 +43,7 @@ up-dev-cpu-proxy:
 up-dev-gpu-proxy:
 	$(COMPOSE) -f $(SCENARIO_DIR)/compose.dev-gpu.yml -f $(PROXY) $(PROFILE) up -d --build
 
-# ── + telemetry add-on (Prometheus/Loki/Promtail/Grafana) ───────────────────
+# ── + telemetry add-on (Prometheus/Loki/Alloy/Grafana) ───────────────────
 up-prod-cpu-telemetry:
 	$(COMPOSE) -f $(SCENARIO_DIR)/compose.prod-cpu.yml -f $(TELEMETRY) $(PROFILE) up -d
 

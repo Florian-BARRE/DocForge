@@ -311,7 +311,7 @@ flowchart LR
     subgraph ADDON["compose/overlays/compose.telemetry.yml — optional add-on"]
         PROM["prometheus<br/>:10051"]
         LOKI["loki<br/>:10052"]
-        PTAIL["promtail<br/>tails every container's Docker log"]
+        PTAIL["alloy<br/>tails every container's Docker log"]
         GRAF["grafana<br/>:10050, admin login in services/telemetry/.env"]
     end
     METRICS["docforge_app:8000/metrics<br/>unauthenticated — reached only over docforge_net,<br/>never through the public :10040 port"]
@@ -325,6 +325,6 @@ flowchart LR
 `prometheus` scrapes `/metrics` on the internal network specifically because that endpoint is
 **unauthenticated** by design (`METRICS_ENABLED`, see [`docs/configuration.md`](configuration.md)) —
 routing the scrape through `docforge_net` instead of the published host port keeps it off any public
-interface. `promtail` discovers containers via the read-only Docker socket and tails their JSON-file
+interface. `alloy` discovers containers via the read-only Docker socket (discovery.docker) and tails their JSON-file
 logs into `loki`; `grafana` is provisioned with both datasources plus a starter dashboard (request
 rate, p95 latency, error rate, arq queue depth, job counts, live workers).

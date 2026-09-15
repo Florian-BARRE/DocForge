@@ -17,9 +17,13 @@
 # What this adds:
 #   - prometheus: scrapes docforge_app:8000/metrics over the internal docforge_net (NOT
 #     the published host port — /metrics is unauthenticated, see docs/configuration.md).
-#   - loki + promtail: promtail tails every container's Docker json-file log (via
-#     docker_sd_configs against the read-only docker.sock + /var/lib/docker/containers
-#     mounts) and ships it to loki.
+#   - loki + alloy: Grafana Alloy (the successor to Promtail) tails every container's Docker
+#     json-file log (via discovery.docker against the read-only docker.sock + /var/lib/docker/
+#     containers mounts) and ships it to loki. Config: services/telemetry/alloy/config.alloy.
+#   - remote collectors: prometheus runs with --web.enable-remote-write-receiver and loki's push
+#     API is open on the internal net, so a REMOTE Alloy on another host can ship its metrics/logs
+#     into this stack; dashboards use datasource template variables (DS_PROMETHEUS/DS_LOKI) so an
+#     operator can point them at a local or a remote Prometheus/Loki without editing panels.
 #   - grafana: provisioned with both datasources + five dashboards
 #     (services/telemetry/grafana/dashboards/*.json) — docforge-overview (Control Tower: request
 #     rate, p95 latency, error rate, arq queue depth, job counts, live workers), docforge-api
@@ -51,6 +55,14 @@ services:
   prometheus:
     image: prom/prometheus:v2.54.1
     container_name: docforge-prometheus
+    # Explicit command so we can enable the remote-write RECEIVER: a REMOTE Grafana Alloy running
+    # on another host can `prometheus.remote_write` its metrics INTO this Prometheus (the in-stack
+    # scrape config still runs; remote series arrive alongside, distinguished by their own labels).
+    # Keep the two default paths the bare image sets, then add the receiver flag.
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --web.enable-remote-write-receiver
     volumes:
       - ../services/telemetry/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - docforge_prometheus_data:/prometheus
@@ -98,31 +110,38 @@ services:
     networks:
       - docforge_net
 
-  # ── Promtail — tails every container's Docker log and ships it to loki ──────
-  promtail:
-    image: grafana/promtail:2.9.8
-    container_name: docforge-promtail
-    command: ["-config.file=/etc/promtail/promtail-config.yml"]
+  # ── Alloy — collects every container's Docker log and ships it to loki (replaces Promtail) ──
+  # Grafana Alloy is the supported successor to Promtail (Promtail is now feature-frozen/EOL). It
+  # discovers containers on this host's Docker socket, tails their json-file logs, and writes to
+  # loki — same job Promtail did, in Alloy's config language (services/telemetry/alloy/config.alloy).
+  alloy:
+    image: grafana/alloy:v1.5.1
+    container_name: docforge-alloy
+    # `run <config>`; `--storage.path` is where Alloy keeps its own WAL/positions (needs a writable
+    # volume so log positions survive a restart, like Promtail's positions.yaml did). The HTTP
+    # server (health + optional debug UI) binds inside the container only — not published to the host.
+    command:
+      - run
+      - --server.http.listen-addr=0.0.0.0:12345
+      - --storage.path=/var/lib/alloy/data
+      - /etc/alloy/config.alloy
     volumes:
-      - ../services/telemetry/promtail-config.yml:/etc/promtail/promtail-config.yml:ro
-      # Read-only: promtail only ever reads container logs, never writes to the Docker state dir.
+      - ../services/telemetry/alloy/config.alloy:/etc/alloy/config.alloy:ro
+      # Read-only: Alloy only reads container logs, never writes to the Docker state dir.
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
-      # Read-only: needed for docker_sd_configs container discovery (name/label relabeling) —
-      # promtail never starts/stops/inspects-with-write anything through this socket.
+      # Read-only: needed for discovery.docker container discovery (name/label relabeling) —
+      # Alloy never starts/stops/inspects-with-write anything through this socket.
       - /var/run/docker.sock:/var/run/docker.sock:ro
-    # /ready on promtail's own HTTP server (services/telemetry/promtail-config.yml's
-    # server.http_listen_port) — same busybox wget the prometheus/loki probes above use.
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:9080/ready || exit 1"]
-      interval: 15s
-      timeout: 5s
-      retries: 5
+      - docforge_alloy_data:/var/lib/alloy/data
+    # No container healthcheck: the grafana/alloy image ships no wget/curl, and nothing in this
+    # overlay depends_on alloy being *healthy* (grafana waits on prometheus+loki, not alloy). Alloy
+    # exposes /-/ready on :12345 for an operator probe; log delivery is verified against Loki instead.
     depends_on:
       loki:
         condition: service_healthy
     deploy:
       resources:
-        # Tails Docker container logs and forwards to loki — no local storage, light footprint.
+        # Tails Docker container logs and forwards to loki — light footprint, small on-disk WAL.
         limits:
           memory: 256m
     restart: unless-stopped
@@ -171,3 +190,4 @@ volumes:
   docforge_prometheus_data:
   docforge_loki_data:
   docforge_grafana_data:
+  docforge_alloy_data:

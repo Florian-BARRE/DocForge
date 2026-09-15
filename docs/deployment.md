@@ -19,7 +19,7 @@ repo root is still the production default.
 | `compose/compose.dev-cpu.yml` | Local dev — `compose.base.yml` + `overlays/compose.dev.yml` (hot reload + publishes the store ports to `localhost` for inspection). |
 | `compose/compose.dev-gpu.yml` | Local dev on a GPU-equipped machine. |
 | `compose/overlays/compose.proxy.yml` | **Optional add-on** (layered with an extra `-f`, never baked into a scenario file) — opt-in Caddy TLS front door (auto-HTTPS) for hosts with no proxy/LB already terminating TLS. Off by default; see [PROD-HARDENING.md §8](PROD-HARDENING.md#8-optional-tls-reverse-proxy). |
-| `compose/overlays/compose.telemetry.yml` | **Optional add-on** — Prometheus + Loki + Promtail + Grafana. See [compose/README.md](../compose/README.md#the-telemetry-stack). |
+| `compose/overlays/compose.telemetry.yml` | **Optional add-on** — Prometheus + Loki + Alloy + Grafana. See [compose/README.md](../compose/README.md#the-telemetry-stack). |
 
 See [compose/README.md](../compose/README.md) for the full usage matrix, the Makefile targets,
 and the `include:` merge-order gotcha (why overlays are listed *before* `compose.base.yml` in each

@@ -1,0 +1,68 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// Grafana Alloy config for the DocForge telemetry overlay — the successor to Promtail
+// (services/telemetry/promtail-config.yml, now removed). It discovers every container on this
+// Docker host via the socket (discovery.docker — needs the read-only docker.sock mount on the
+// overlay's alloy service), keeps ONLY the docforge compose project's containers, tails each
+// one's json-file log (under /var/lib/docker/containers, also read-only mounted) and ships it to
+// loki. Same labels Promtail produced (container, compose_service) plus a static `host` origin
+// label so a REMOTE Alloy's logs are distinguishable in Loki/Grafana.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// 1. Discover every container on the local Docker daemon.
+discovery.docker "containers" {
+  host             = "unix:///var/run/docker.sock"
+  refresh_interval = "5s"
+}
+
+// 2. SCOPE TO THE DOCFORGE STACK ONLY — this VM runs other projects (stockstream, portainer,
+//    pgadmin, …); drop every container that is NOT part of the `docforge` compose project so
+//    their logs never leak into DocForge's Loki. Remove/widen the `keep` rule for VM-wide logging.
+//    The remaining rules turn Docker's discovery metadata into the log labels (same as Promtail's
+//    relabel_configs): container name (strip the leading '/'), and the compose service name.
+discovery.relabel "docforge" {
+  targets = discovery.docker.containers.targets
+
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_project"]
+    regex         = "docforge"
+    action        = "keep"
+  }
+
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    regex         = "/(.*)"
+    target_label  = "container"
+  }
+
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+    target_label  = "compose_service"
+  }
+}
+
+// 3. Tail the json-file logs of the kept containers. A static `host` label marks the origin of
+//    these lines — this local collector stamps "docforge-local"; a REMOTE Alloy shipping into the
+//    same Loki sets its own host value, so dashboards can filter by source. Override at deploy
+//    time with the ALLOY_HOST env var (falls back to "docforge-local" when unset).
+loki.source.docker "containers" {
+  host       = "unix:///var/run/docker.sock"
+  targets    = discovery.relabel.docforge.output
+  labels     = {
+    host = coalesce(sys.env("ALLOY_HOST"), "docforge-local"),
+  }
+  forward_to = [loki.process.docker.receiver]
+}
+
+// 4. Parse the standard Docker json log envelope (rewrites the line to its content, sets the
+//    stream=stdout|stderr label and the entry timestamp) — Promtail did this implicitly.
+loki.process "docker" {
+  stage.docker {}
+  forward_to = [loki.write.local.receiver]
+}
+
+// 5. Ship to Loki's push API (same endpoint Promtail used).
+loki.write "local" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}

@@ -1,5 +1,5 @@
 {
-  "title": "DocForge — API & HTTP",
+  "title": "DocForge \u2014 API & HTTP",
   "uid": "docforge-api",
   "tags": [
     "docforge"
@@ -31,12 +31,31 @@
   "templating": {
     "list": [
       {
+        "current": {
+          "selected": false,
+          "text": "Prometheus",
+          "value": "docforge-prometheus"
+        },
+        "hide": 0,
+        "includeAll": false,
+        "label": "Prometheus source",
+        "multi": false,
+        "name": "DS_PROMETHEUS",
+        "options": [],
+        "query": "prometheus",
+        "queryValue": "",
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "type": "datasource"
+      },
+      {
         "name": "route",
         "label": "Route",
         "type": "query",
         "datasource": {
           "type": "prometheus",
-          "uid": "docforge-prometheus"
+          "uid": "${DS_PROMETHEUS}"
         },
         "query": "label_values(docforge_http_requests_total, path)",
         "regex": "/^\\/.+/",
@@ -55,7 +74,7 @@
         "type": "query",
         "datasource": {
           "type": "prometheus",
-          "uid": "docforge-prometheus"
+          "uid": "${DS_PROMETHEUS}"
         },
         "query": "label_values(docforge_http_requests_total, method)",
         "multi": true,
@@ -89,7 +108,7 @@
       "type": "stat",
       "datasource": {
         "type": "prometheus",
-        "uid": "docforge-prometheus"
+        "uid": "${DS_PROMETHEUS}"
       },
       "gridPos": {
         "h": 4,
@@ -125,7 +144,7 @@
       "type": "stat",
       "datasource": {
         "type": "prometheus",
-        "uid": "docforge-prometheus"
+        "uid": "${DS_PROMETHEUS}"
       },
       "gridPos": {
         "h": 4,
@@ -180,7 +199,7 @@
       "type": "stat",
       "datasource": {
         "type": "prometheus",
-        "uid": "docforge-prometheus"
+        "uid": "${DS_PROMETHEUS}"
       },
       "gridPos": {
         "h": 4,
@@ -248,7 +267,7 @@
       "type": "stat",
       "datasource": {
         "type": "prometheus",
-        "uid": "docforge-prometheus"
+        "uid": "${DS_PROMETHEUS}"
       },
       "gridPos": {
         "h": 4,
@@ -284,7 +303,7 @@
       "type": "timeseries",
       "datasource": {
         "type": "prometheus",
-        "uid": "docforge-prometheus"
+        "uid": "${DS_PROMETHEUS}"
       },
       "gridPos": {
         "h": 8,
@@ -364,7 +383,7 @@
       "type": "timeseries",
       "datasource": {
         "type": "prometheus",
-        "uid": "docforge-prometheus"
+        "uid": "${DS_PROMETHEUS}"
       },
       "gridPos": {
         "h": 8,
@@ -411,7 +430,7 @@
       "type": "timeseries",
       "datasource": {
         "type": "prometheus",
-        "uid": "docforge-prometheus"
+        "uid": "${DS_PROMETHEUS}"
       },
       "gridPos": {
         "h": 8,
@@ -454,7 +473,7 @@
       "type": "timeseries",
       "datasource": {
         "type": "prometheus",
-        "uid": "docforge-prometheus"
+        "uid": "${DS_PROMETHEUS}"
       },
       "gridPos": {
         "h": 8,
@@ -482,7 +501,7 @@
       "type": "heatmap",
       "datasource": {
         "type": "prometheus",
-        "uid": "docforge-prometheus"
+        "uid": "${DS_PROMETHEUS}"
       },
       "gridPos": {
         "h": 9,
@@ -531,7 +550,7 @@
       "type": "bargauge",
       "datasource": {
         "type": "prometheus",
-        "uid": "docforge-prometheus"
+        "uid": "${DS_PROMETHEUS}"
       },
       "gridPos": {
         "h": 8,
@@ -569,7 +588,7 @@
       "type": "bargauge",
       "datasource": {
         "type": "prometheus",
-        "uid": "docforge-prometheus"
+        "uid": "${DS_PROMETHEUS}"
       },
       "gridPos": {
         "h": 8,
@@ -607,7 +626,7 @@
       "type": "timeseries",
       "datasource": {
         "type": "prometheus",
-        "uid": "docforge-prometheus"
+        "uid": "${DS_PROMETHEUS}"
       },
       "gridPos": {
         "h": 9,
@@ -635,7 +654,7 @@
       "type": "timeseries",
       "datasource": {
         "type": "prometheus",
-        "uid": "docforge-prometheus"
+        "uid": "${DS_PROMETHEUS}"
       },
       "gridPos": {
         "h": 8,
@@ -669,7 +688,7 @@
       "type": "timeseries",
       "datasource": {
         "type": "prometheus",
-        "uid": "docforge-prometheus"
+        "uid": "${DS_PROMETHEUS}"
       },
       "gridPos": {
         "h": 8,
@@ -716,7 +735,7 @@
       "type": "table",
       "datasource": {
         "type": "prometheus",
-        "uid": "docforge-prometheus"
+        "uid": "${DS_PROMETHEUS}"
       },
       "gridPos": {
         "h": 9,

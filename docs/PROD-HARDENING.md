@@ -296,7 +296,7 @@ refresh per scrape). The endpoint is **unauthenticated** — never expose it pub
 - Behind `compose/overlays/compose.proxy.yml`, do not route it through Caddy's public site block; scrape it
   over `docforge_net` directly (`http://docforge_app:8000/metrics`) from a Prometheus that also lives
   on that network, or restrict it at the OS firewall if scraping from outside the Docker network.
-- DocForge ships an **optional** turnkey Prometheus/Loki/Promtail/Grafana stack —
+- DocForge ships an **optional** turnkey Prometheus/Loki/Alloy/Grafana stack —
   `compose/overlays/compose.telemetry.yml`, layered the same way as the proxy add-on:
   ```bash
   docker compose -f compose/compose.prod-cpu.yml -f compose/overlays/compose.telemetry.yml --profile full up -d
