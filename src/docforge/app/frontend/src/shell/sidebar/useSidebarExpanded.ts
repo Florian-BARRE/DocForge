@@ -13,12 +13,26 @@ import { useEffect, useState } from "react";
 
 const STORAGE_KEY = "docforge_sidebar_expanded";
 
+// Same breakpoint the rail's overlay/reflow logic uses (useSidebarCompact). With no stored choice
+// yet, default EXPANDED on desktop but COLLAPSED on a compact/touch viewport — an expanded rail is an
+// overlay+scrim there (Sidebar.tsx), so defaulting it open would cover the whole app on first load.
+function defaultExpanded(): boolean {
+  try {
+    if (typeof window !== "undefined" && typeof window.matchMedia === "function") {
+      return !window.matchMedia("(max-width: 640px), (pointer: coarse)").matches;
+    }
+  } catch {
+    // matchMedia unavailable — fall through to the desktop default.
+  }
+  return true;
+}
+
 function readPersisted(): boolean {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    return raw === null ? true : raw === "1";
+    return raw === null ? defaultExpanded() : raw === "1";
   } catch {
-    return true;
+    return defaultExpanded();
   }
 }
 

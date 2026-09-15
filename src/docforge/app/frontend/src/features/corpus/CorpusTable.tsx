@@ -21,6 +21,7 @@ import { GroupHeaderRow } from "./GroupHeaderRow";
 import { ScrollEdgeFade } from "./ScrollEdgeFade";
 import { TableHeaderCell, type DropSide } from "./TableHeaderCell";
 import { isPinnedColumn, PINNED_LAST_COLUMN_ID } from "./types";
+import { useCompactViewport } from "./useCompactViewport";
 import { useTrailingScrollFade } from "./useTrailingScrollFade";
 
 interface CorpusTableProps {
@@ -88,6 +89,11 @@ export function CorpusTable({ table, loading }: CorpusTableProps) {
   // The sticky actions column no longer scrolls away, so the actual "more columns off-screen"
   // crop boundary now sits just before it, not at the container's true right edge.
   const actionsWidth = table.getColumn(PINNED_LAST_COLUMN_ID)?.getSize() ?? 0;
+  // On a compact/touch viewport the actions column is NOT pinned: an opaque ~140px sticky column is a
+  // large fraction of a narrow grid and floats over the data columns scrolling under it (reads as a
+  // misplaced white panel on the right). There it scrolls into view like any other column instead.
+  const isCompact = useCompactViewport();
+  const pinActions = !isCompact;
 
   const onHeaderDragStart = (columnId: string) => setDrag({ sourceId: columnId, overId: null, side: "after" });
 
@@ -161,7 +167,7 @@ export function CorpusTable({ table, loading }: CorpusTableProps) {
           ))}
         </colgroup>
         <thead style={{ position: "sticky", top: 0, zIndex: 5, background: theme.color.surface }}>
-          <GroupHeaderRow columns={visibleColumns} />
+          <GroupHeaderRow columns={visibleColumns} pinActions={pinActions} />
           {table.getHeaderGroups().map((headerGroup) => (
             <tr key={headerGroup.id}>
               {headerGroup.headers.map((header) => (
@@ -178,7 +184,7 @@ export function CorpusTable({ table, loading }: CorpusTableProps) {
                   onAutoFit={onAutoFit}
                   onResizeStep={onResizeStep}
                   onReorderStep={onReorderStep}
-                  sticky={header.column.id === PINNED_LAST_COLUMN_ID}
+                  sticky={pinActions && header.column.id === PINNED_LAST_COLUMN_ID}
                 />
               ))}
             </tr>
@@ -217,7 +223,7 @@ export function CorpusTable({ table, loading }: CorpusTableProps) {
                       // opaque background (the row's own bg comes from the `df-row-hover` class on
                       // the <tr>, which doesn't reach a sticky-repositioned descendant once other
                       // cells have scrolled out from underneath it).
-                      ...(cell.column.id === PINNED_LAST_COLUMN_ID
+                      ...(pinActions && cell.column.id === PINNED_LAST_COLUMN_ID
                         ? { position: "sticky", right: 0, background: theme.color.surface, borderLeft: `1px solid ${theme.color.line}` }
                         : {}),
                     }}
@@ -231,7 +237,7 @@ export function CorpusTable({ table, loading }: CorpusTableProps) {
           {rows.length > 0 && paddingBottom > 0 && <tr aria-hidden style={{ height: paddingBottom }} />}
         </tbody>
       </table>
-      <ScrollEdgeFade visible={canScrollRight} inset={actionsWidth} />
+      <ScrollEdgeFade visible={canScrollRight} inset={pinActions ? actionsWidth : 0} />
     </div>
   );
 }

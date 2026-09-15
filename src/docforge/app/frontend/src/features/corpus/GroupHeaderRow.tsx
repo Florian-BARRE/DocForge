@@ -23,7 +23,7 @@ interface GroupRun {
 
 // The pinned select/actions columns are structural chrome (no `meta.group`) — each renders as its
 // own empty spanning cell, never coalesced with a neighbouring data run.
-function buildGroupRuns(columns: Column<DocumentGridRow, unknown>[]): GroupRun[] {
+function buildGroupRuns(columns: Column<DocumentGridRow, unknown>[], pinActions: boolean): GroupRun[] {
   const runs: GroupRun[] = [];
   for (const column of columns) {
     const pinned = isPinnedColumn(column.id);
@@ -32,7 +32,7 @@ function buildGroupRuns(columns: Column<DocumentGridRow, unknown>[]): GroupRun[]
     if (!pinned && last && last.group === group) {
       last.span += 1;
     } else {
-      runs.push({ group, span: 1, firstColumnId: column.id, sticky: column.id === PINNED_LAST_COLUMN_ID });
+      runs.push({ group, span: 1, firstColumnId: column.id, sticky: pinActions && column.id === PINNED_LAST_COLUMN_ID });
     }
   }
   return runs;
@@ -40,10 +40,13 @@ function buildGroupRuns(columns: Column<DocumentGridRow, unknown>[]): GroupRun[]
 
 interface GroupHeaderRowProps {
   columns: Column<DocumentGridRow, unknown>[];
+  /** Whether the row-actions column is pinned sticky (desktop) — false on a compact viewport, where
+   *  its chrome cell must scroll with the rest instead of floating opaque over the data. */
+  pinActions: boolean;
 }
 
-export function GroupHeaderRow({ columns }: GroupHeaderRowProps) {
-  const runs = buildGroupRuns(columns);
+export function GroupHeaderRow({ columns, pinActions }: GroupHeaderRowProps) {
+  const runs = buildGroupRuns(columns, pinActions);
 
   return (
     <tr>
