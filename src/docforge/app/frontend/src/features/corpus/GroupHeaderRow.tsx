@@ -12,18 +12,17 @@ import type { Column } from "@tanstack/react-table";
 import type { DocumentGridRow } from "../../api/corpus";
 import { theme } from "../../theme";
 import { GROUP_HEADER_INFO } from "./columns/columnGroups";
-import { isPinnedColumn, PINNED_LAST_COLUMN_ID, type ColumnGroup } from "./types";
+import { isPinnedColumn, type ColumnGroup } from "./types";
 
 interface GroupRun {
   group: ColumnGroup | null;
   span: number;
   firstColumnId: string;
-  sticky: boolean;
 }
 
-// The pinned select/actions columns are structural chrome (no `meta.group`) — each renders as its
-// own empty spanning cell, never coalesced with a neighbouring data run.
-function buildGroupRuns(columns: Column<DocumentGridRow, unknown>[], pinActions: boolean): GroupRun[] {
+// The select/actions columns are structural chrome (no `meta.group`) — each renders as its own empty
+// spanning cell, never coalesced with a neighbouring data run.
+function buildGroupRuns(columns: Column<DocumentGridRow, unknown>[]): GroupRun[] {
   const runs: GroupRun[] = [];
   for (const column of columns) {
     const pinned = isPinnedColumn(column.id);
@@ -32,7 +31,7 @@ function buildGroupRuns(columns: Column<DocumentGridRow, unknown>[], pinActions:
     if (!pinned && last && last.group === group) {
       last.span += 1;
     } else {
-      runs.push({ group, span: 1, firstColumnId: column.id, sticky: pinActions && column.id === PINNED_LAST_COLUMN_ID });
+      runs.push({ group, span: 1, firstColumnId: column.id });
     }
   }
   return runs;
@@ -40,13 +39,10 @@ function buildGroupRuns(columns: Column<DocumentGridRow, unknown>[], pinActions:
 
 interface GroupHeaderRowProps {
   columns: Column<DocumentGridRow, unknown>[];
-  /** Whether the row-actions column is pinned sticky (desktop) — false on a compact viewport, where
-   *  its chrome cell must scroll with the rest instead of floating opaque over the data. */
-  pinActions: boolean;
 }
 
-export function GroupHeaderRow({ columns, pinActions }: GroupHeaderRowProps) {
-  const runs = buildGroupRuns(columns, pinActions);
+export function GroupHeaderRow({ columns }: GroupHeaderRowProps) {
+  const runs = buildGroupRuns(columns);
 
   return (
     <tr>
@@ -56,12 +52,7 @@ export function GroupHeaderRow({ columns, pinActions }: GroupHeaderRowProps) {
             <th
               key={run.firstColumnId}
               aria-hidden
-              style={{
-                padding: 0, borderBottom: `1px solid ${theme.color.lineStrong}`,
-                ...(run.sticky
-                  ? { position: "sticky", right: 0, background: theme.color.surface, borderLeft: `1px solid ${theme.color.line}`, zIndex: 1 }
-                  : {}),
-              }}
+              style={{ padding: 0, borderBottom: `1px solid ${theme.color.lineStrong}` }}
             />
           );
         }
