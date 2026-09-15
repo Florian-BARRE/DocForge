@@ -1,19 +1,20 @@
 // ====== Code Summary ======
 // One ROW of the Layout view — usually a single page, but when a chunk spans a page boundary the two
-// (or more) pages it bridges share a row so the transition is inspected whole. Read LEFT → RIGHT (or
-// TOP → BOTTOM once the row stacks — see below):
+// (or more) pages it bridges share a row so the transition is inspected whole. Read LEFT → RIGHT,
+// ALWAYS side by side, on every viewport (a responsive vertical stack was tried and rejected — on a
+// tall text-heavy page it pushed the IR/chunk lanes far below the fold, effectively hiding them):
 //   • PAGE   — every page render in the row, stacked, each block boxed/numbered/coloured by IR type,
 //     with a dashed chunk-outline-coloured container box per chunk (the spanning chunk's outline
 //     appears on BOTH pages, showing it continue across). Every box is clickable. Sized by the shared
 //     page-zoom control (pageZoom.ts) rather than a fixed viewport-height cap.
-//   • GRAPH  — the connected IR↔chunk flow (IrChunkGraph): every IR block in reading order, tied by a
-//     Sankey ribbon to the chunk it was folded into.
+//   • GRAPH  — the connected IR↔chunk flow (IrChunkGraph): the IR-blocks lane sits close to the page
+//     (small gap, capped width — it's a supporting lane, not the main subject) and the chunk lane
+//     sits comfortably wide on the far right, tied by a Sankey ribbon.
 // Selection (a block or a chunk) is shared across both regions and every page in the row.
 //
-// RESPONSIVE: side-by-side needs the page column PLUS the graph's own minimum width (its fixed-width
-// chunk column + connector) to both fit without squeezing the chunk column into an unreadable sliver
-// that then scrolls sideways — below `ROW_STACK_BREAKPOINT_PX` the row STACKS instead (page on top,
-// full width; graph below, full width, its chunk column rendered at its real size).
+// NARROW VIEWPORTS: the three lanes never stack and the page body never scrolls sideways — the graph
+// (IR + chunk lanes) has its OWN horizontal scroll wrapper (IrChunkGraph) once its fixed total width
+// no longer fits its grid track; the page lane shrinks within its own `minmax` band first.
 
 import { useMemo, useState } from "react";
 
@@ -24,7 +25,6 @@ import { displayPage } from "../format";
 import { blockStyle } from "./blockColors";
 import { pageBlocksLackLayout, unionBbox } from "./chunkGrouping";
 import { IrChunkGraph } from "./IrChunkGraph";
-import { shouldStackColumns } from "./layoutBreakpoint";
 import { computeTargetWidthPx, type PageZoomState } from "./pageZoom";
 import { useContainerWidth } from "./useContainerWidth";
 
@@ -44,17 +44,23 @@ interface PageGroupRowProps {
 
 type Selection = { kind: "block" | "chunk"; id: string };
 
-// Below this, the page column can no longer sit beside the graph without squeezing its fixed-width
-// chunk column — see layoutBreakpoint.ts.
-const CHUNK_WIDTH_COMPACT = 384; // side-by-side — unchanged historical width
-const CHUNK_WIDTH_WIDE = 460; // stacked — the graph gets the full row, give its cards more measure
-// A sane pre-measurement default (before the column's ResizeObserver reports in) — close to the
-// compact chunk column's historical visual width, avoids a jarring first-paint jump.
-const DEFAULT_COLUMN_WIDTH_PX = 560;
+// The page render is the important element — readable, roomy, but capped well short of hogging the
+// row so the IR/chunk lanes always have real room beside it (feedback: the previous 620px max left
+// too little for the other two lanes at normal viewport widths).
+const PAGE_COLUMN_MIN_PX = 360;
+const PAGE_COLUMN_MAX_PX = 480;
+// A sane pre-measurement default (before the column's ResizeObserver reports in), within the band
+// above — avoids a jarring first-paint jump once the real measurement lands.
+const DEFAULT_COLUMN_WIDTH_PX = 440;
+// The IR-blocks lane is a SUPPORTING lane, not the main subject — capped narrower than before and
+// pulled close to the page (see the row's `gap` below) so the extracted IR reads as sitting right
+// next to its source image, per feedback.
+const IR_COLUMN_WIDTH_PX = 300;
+// The chunk lane, on the right, gets a comfortable, readable width.
+const CHUNK_COLUMN_WIDTH_PX = 384;
 
 export function PageGroupRow({ pages, blocks, enrichmentsByBlock, tablesByBlock, chunkByBlockId, parseChain, rowId, pageZoom }: PageGroupRowProps) {
   const [selected, setSelected] = useState<Selection | null>(null);
-  const [rowRef, rowWidth] = useContainerWidth<HTMLElement>();
   const [pageColRef, pageColWidth] = useContainerWidth<HTMLDivElement>();
 
   const selectBlock = (id: string) =>
@@ -98,7 +104,8 @@ export function PageGroupRow({ pages, blocks, enrichmentsByBlock, tablesByBlock,
   // A page whose blocks carry no real positional layout (a page-less html/md parse — see
   // chunkGrouping.ts) would only draw indistinguishable full-page boxes on top of each other; this
   // set flags those pages so `boxesByPage` skips them and the render below shows an honest note
-  // instead of a confusing stack of rectangles.
+  // instead of a confusing stack of rectangles. The IR/chunk lanes still render beside the page as
+  // usual in that case — only the on-page boxes are withheld.
   const noLayoutPages = useMemo(() => {
     const set = new Set<number>();
     for (const page of pages) {
@@ -175,27 +182,25 @@ export function PageGroupRow({ pages, blocks, enrichmentsByBlock, tablesByBlock,
     return map;
   }, [pages, blocks, chunkByBlockId, activeChunkId, selectedBlockId, hasSelection, indexByBlockId, noLayoutPages]);
 
-  // Below the breakpoint, neither the page column nor the graph's fixed-width chunk column have room
-  // to render at a legible size side by side — stack them instead, each at the row's full width.
-  const stacked = shouldStackColumns(rowWidth);
-  const chunkWidth = stacked ? CHUNK_WIDTH_WIDE : CHUNK_WIDTH_COMPACT;
   const columnWidthPx = pageColWidth || DEFAULT_COLUMN_WIDTH_PX;
 
   return (
     <section
       id={rowId}
-      ref={rowRef}
       style={{
         display: "grid",
-        // The page render is the primary subject — its column is sized so the image FILLS it (width
-        // then binds, no dead strip beside a height-capped image), while still leaving the IR↔chunk
-        // graph more than its min-width so it never has to scroll sideways. Below the breakpoint the
-        // two stack into a single full-width column instead (grid auto-flow already stacks rows).
-        gridTemplateColumns: stacked ? "1fr" : "minmax(420px, 620px) minmax(0, 1fr)",
-        gap: theme.space.l,
-        // Multi-page group, side-by-side: stretch the page column to the graph's height so the page
-        // renders SPREAD down beside the blocks they belong to. Stacked or single-page: top-aligned.
-        alignItems: !stacked && pages.length > 1 ? "stretch" : "start",
+        // ALWAYS side by side — page column, then the graph (IR + chunk lanes). The page column is
+        // readable but capped so the graph keeps real room beside it; the graph itself never grows
+        // past its own fixed total width (IrChunkGraph), so a wide viewport doesn't inflate the IR
+        // lane, and a narrow one scrolls the graph horizontally WITHIN itself, never the row/page.
+        gridTemplateColumns: `minmax(${PAGE_COLUMN_MIN_PX}px, ${PAGE_COLUMN_MAX_PX}px) minmax(0, 1fr)`,
+        // Tight on purpose — the IR lane should read as sitting close to its source page, not floating
+        // in a wide gutter (feedback: "bring it CLOSER to the page image").
+        gap: theme.space.s,
+        // Multi-page group: stretch the page column to the graph's height so the page renders SPREAD
+        // down beside the blocks they belong to (justify below) instead of pooling the empty space in
+        // one dead block bottom-left. Single page: keep it top-aligned so its lone render can stick.
+        alignItems: pages.length > 1 ? "stretch" : "start",
         borderTop: `1px solid ${theme.color.line}`,
         paddingTop: theme.space.l,
         // Clear the sticky page navigator when scrolled to via a nav chip.
@@ -206,11 +211,9 @@ export function PageGroupRow({ pages, blocks, enrichmentsByBlock, tablesByBlock,
       <div
         ref={pageColRef}
         style={
-          stacked
-            ? { display: "flex", flexDirection: "column", gap: theme.space.m }
-            : pages.length > 1
-              ? { display: "flex", flexDirection: "column", justifyContent: "space-between", gap: theme.space.m }
-              : { position: "sticky", top: theme.space.m, display: "flex", flexDirection: "column", gap: theme.space.m }
+          pages.length > 1
+            ? { display: "flex", flexDirection: "column", justifyContent: "space-between", gap: theme.space.m }
+            : { position: "sticky", top: theme.space.m, display: "flex", flexDirection: "column", gap: theme.space.m }
         }
       >
         {pages.map((page) => {
@@ -253,7 +256,8 @@ export function PageGroupRow({ pages, blocks, enrichmentsByBlock, tablesByBlock,
         </span>
       </div>
 
-      {/* GRAPH — the connected IR ↔ chunk flow (continuous across the row's pages). */}
+      {/* GRAPH — the connected IR ↔ chunk flow (continuous across the row's pages). Always beside the
+          page, never below it — see IrChunkGraph for its own fixed width + horizontal scroll. */}
       <IrChunkGraph
         blocks={blocks}
         chunks={chunksInRow}
@@ -263,7 +267,8 @@ export function PageGroupRow({ pages, blocks, enrichmentsByBlock, tablesByBlock,
         selectedBlockId={selectedBlockId}
         activeChunkId={activeChunkId}
         parseChain={parseChain}
-        chunkWidth={chunkWidth}
+        irWidth={IR_COLUMN_WIDTH_PX}
+        chunkWidth={CHUNK_COLUMN_WIDTH_PX}
         onSelectBlock={selectBlock}
         onSelectChunk={selectChunk}
       />

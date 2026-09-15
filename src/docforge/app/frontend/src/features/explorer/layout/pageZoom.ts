@@ -47,9 +47,9 @@ function clamp(value: number, min: number, max: number): number {
 
 /**
  * The target image WIDTH (px) for a page, given the current zoom state and the page's own
- * intrinsic size. `columnWidthPx` is the measured available width of the page column (or the full
- * row width once stacked) — the ceiling for "fit" sizing; a zoom step can push the result past it
- * (the caller then scrolls the page horizontally within its own wrapper).
+ * intrinsic size. `columnWidthPx` is the measured available width of the page column — the ceiling
+ * for "fit" sizing; a zoom step can push the result past it (the caller then scrolls the page
+ * horizontally within its own wrapper).
  */
 export function computeTargetWidthPx(
   zoom: PageZoomState,

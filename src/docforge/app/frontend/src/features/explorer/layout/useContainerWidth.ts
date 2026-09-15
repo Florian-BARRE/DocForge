@@ -1,8 +1,7 @@
 // ====== Code Summary ======
 // Measures an element's own content width via ResizeObserver — the same width-tracking pattern
-// CorpusTable uses for its scroll wrapper, generalised here so the Layout tab's row can both decide
-// when to stack (layoutBreakpoint.ts) and size its page-zoom "fit" baseline off live measurements
-// instead of wiring one bespoke observer per concern.
+// CorpusTable uses for its scroll wrapper, generalised here so PageGroupRow can size its page-zoom
+// "fit" baseline (pageZoom.ts) off the page column's live measured width.
 
 import { useEffect, useRef, useState, type RefObject } from "react";
 
