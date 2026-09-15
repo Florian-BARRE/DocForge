@@ -48,9 +48,22 @@ export interface SearchHitModel {
   block_locations?: BlockLocationModel[];
 }
 
+/** The run's priced search-time LLM spend (query rewrite / HyDE) — mirrors `SearchCostModel`. */
+export interface SearchCostModel {
+  prompt_tokens: number;
+  completion_tokens: number;
+  /** Null when a paid call's model has no known rate (tokens still shown, cost reads "—"). */
+  cost_usd: number | null;
+  call_count: number;
+}
+
 export interface SearchResponse {
   query: string;
   hits: SearchHitModel[];
+  /** What every hit's `score` represents — 'rrf_fusion' (default), 'dbsf_fusion', or 'cross_encoder_rerank'. */
+  score_kind?: string;
+  /** The run's priced paid-LLM spend, or absent/null when the run made no paid call. */
+  cost?: SearchCostModel | null;
   debug_info: Record<string, unknown> | null;
 }
 

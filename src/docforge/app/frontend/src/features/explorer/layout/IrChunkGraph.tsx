@@ -19,8 +19,7 @@ import { ChunkPlacementColumn } from "./ChunkPlacementColumn";
 import { IrBlocksColumn } from "./IrBlocksColumn";
 import { useIrChunkPlacement } from "./useIrChunkPlacement";
 
-const CHUNK_WIDTH = 384;
-const CONNECTOR = 64; // px — the strand-bundle zone between the two columns (tight; ribbons still read)
+const CONNECTOR = 48; // px — the strand-bundle zone between the two lanes (tight; ribbons still read)
 
 interface IrChunkGraphProps {
   blocks: IRBlock[];
@@ -31,6 +30,11 @@ interface IrChunkGraphProps {
   selectedBlockId: string | null;
   activeChunkId: string | null;
   parseChain: { kind: string; status: string }[];
+  /** The IR-blocks lane's own width (px) — a fixed, capped value (not "whatever space is left") so
+   *  it stays a compact SUPPORTING lane beside the page even on a wide viewport. */
+  irWidth: number;
+  /** The chunk lane's own width (px) — comfortable/readable, on the far right. */
+  chunkWidth: number;
   onSelectBlock: (blockId: string) => void;
   onSelectChunk: (chunkId: string) => void;
 }
@@ -44,6 +48,8 @@ export function IrChunkGraph({
   selectedBlockId,
   activeChunkId,
   parseChain,
+  irWidth,
+  chunkWidth,
   onSelectBlock,
   onSelectChunk,
 }: IrChunkGraphProps) {
@@ -70,12 +76,15 @@ export function IrChunkGraph({
   // Draw inactive bands first so an active chunk's coloured ribbon always sits on top.
   const orderedBands = placement ? [...placement.bands].sort((a, b) => Number(a.active) - Number(b.active)) : [];
 
-  // The two columns reserve a fixed width (CHUNK_WIDTH + CONNECTOR) that can exceed a narrow
-  // viewport — this wrapper scrolls HORIZONTALLY WITHIN ITSELF when that happens, rather than
-  // overflowing into the page body (which must never scroll sideways).
+  // FIXED total width (never `minWidth`/1fr-stretch) — this is what keeps the IR lane a compact,
+  // capped supporting lane instead of ballooning to fill whatever space a wide viewport's grid track
+  // leaves it. Below that width (a narrow viewport/grid track) this wrapper scrolls HORIZONTALLY
+  // WITHIN ITSELF, rather than overflowing into the page body (which must never scroll sideways) or
+  // stacking the lanes (rejected — it hid the graph entirely below a tall page render).
+  const totalWidth = irWidth + CONNECTOR + chunkWidth;
   return (
     <div style={{ overflowX: "auto" }}>
-      <div ref={containerRef} style={{ position: "relative", minWidth: CONNECTOR + CHUNK_WIDTH + 180, minHeight: placement?.height ?? undefined }}>
+      <div ref={containerRef} style={{ position: "relative", width: totalWidth, minHeight: placement?.height ?? undefined }}>
         <svg
           style={{ position: "absolute", inset: 0, width: "100%", height: placement?.height ?? 0, pointerEvents: "none", overflow: "visible", zIndex: 0 }}
           aria-hidden="true"
@@ -105,7 +114,7 @@ export function IrChunkGraph({
           selectedBlockId={selectedBlockId}
           activeChunkId={activeChunkId}
           parseChain={parseChain}
-          marginRight={CONNECTOR + CHUNK_WIDTH}
+          marginRight={CONNECTOR + chunkWidth}
           onSelectBlock={onSelectBlock}
         />
 
@@ -119,7 +128,7 @@ export function IrChunkGraph({
           placement={placement}
           selectedBlockId={selectedBlockId}
           activeChunkId={activeChunkId}
-          width={CHUNK_WIDTH}
+          width={chunkWidth}
           onSelectChunk={onSelectChunk}
         />
       </div>

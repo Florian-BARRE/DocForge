@@ -61,6 +61,9 @@ export function buildMetadataColumns(fields: FieldSpec[]): ColumnDef<DocumentGri
         header: headerFor(field),
         meta: {
           group: field.origin,
+          filterable: field.filterable,
+          semantic: field.semantic,
+          lexical: field.lexical,
           ...(filterKind ? { filterKind, enumOptions: field.enum_values ?? undefined } : {}),
         },
         accessorFn: (row) => row.metadata[field.field_name],

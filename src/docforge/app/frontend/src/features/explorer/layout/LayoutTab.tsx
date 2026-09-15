@@ -17,7 +17,9 @@ import { BlockTypeLegend } from "./BlockTypeLegend";
 import { buildChunkByBlockId, buildPageGroups } from "./chunkGrouping";
 import { PageGroupRow } from "./PageGroupRow";
 import { PageScrubber, type PageScrubEntry } from "./PageScrubber";
+import { PageZoomControl } from "./PageZoomControl";
 import { PARSER_KINDS } from "./parserKinds";
+import { usePageZoom } from "./usePageZoom";
 
 /** Anchor id + short label ("3" or "3–4") for a page group, shared by the scrubber and its row. */
 function pageGroupNav(group: { pages: { page_number: number }[] }): PageScrubEntry {
@@ -92,6 +94,10 @@ export function LayoutTab({ ir, pages, chunks, provenance, error, chunksError, o
   // render (once for the scrubber, once per row for its own anchor id).
   const pageGroupNavs = useMemo(() => pageGroups.map(pageGroupNav), [pageGroups]);
 
+  // ONE shared page-zoom setting for the whole document (persisted per-viewer, not per-row) — every
+  // PageGroupRow below reads the same `zoom` value, replacing the old fixed `86vh` cap.
+  const pageZoom = usePageZoom();
+
   if (error) return <ErrorState message={error} onRetry={onRetry} />;
   if (ir === null || pages === null) return <LoadingState label="loading layout…" />;
   if (pageGroups.length === 0) {
@@ -140,7 +146,10 @@ export function LayoutTab({ ir, pages, chunks, provenance, error, chunksError, o
         </div>
       )}
       <PageScrubber entries={pageGroupNavs} />
-      <BlockTypeLegend />
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: theme.space.s }}>
+        <BlockTypeLegend />
+        <PageZoomControl {...pageZoom} />
+      </div>
       {pageGroups.map((group, index) => (
         <PageGroupRow
           key={group.pages[0].page_number}
@@ -151,6 +160,7 @@ export function LayoutTab({ ir, pages, chunks, provenance, error, chunksError, o
           tablesByBlock={tablesByBlock}
           chunkByBlockId={chunkByBlockId}
           parseChain={parseChain}
+          pageZoom={pageZoom.zoom}
         />
       ))}
     </div>

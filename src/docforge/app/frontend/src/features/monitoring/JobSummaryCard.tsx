@@ -6,11 +6,11 @@
 
 import type { JobStatus } from "../../api/jobs";
 import { Chip } from "../../components/Chip";
+import { humanizeStageId } from "../../components/trace/stageLabels";
 import { theme } from "../../theme";
 import { ItemProgressChip } from "./ItemProgressChip";
 import { humanizeJobError } from "./jobErrorHumanize";
 import { ProgressBar } from "./ProgressBar";
-import { humanizeStageId } from "./stageLabels";
 
 interface JobSummaryCardProps {
   job: JobStatus;

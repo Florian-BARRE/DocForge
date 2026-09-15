@@ -1,16 +1,18 @@
 // ====== Code Summary ======
-// Render smoke-test for AllJobsPage — mounts through loading -> loaded on the default "All" tab
-// (the full fleet queue, newest-first, no status filter; worker column shows the honest "—", never
-// a fabricated id) and covers switching to Pending (FIFO oldest-first) and Running (worker column
-// joins the live worker feed instead).
+// Render smoke-test for ActivityPage's Jobs section (the default tab) — mounts through loading ->
+// loaded on the default "All" status filter (the full fleet queue, newest-first, no status filter;
+// worker column shows the honest "—", never a fabricated id) and covers switching to Pending (FIFO
+// oldest-first) and Running (worker column joins the live worker feed instead). Failures/Trends
+// sections have their own coverage (FailureBreakdownPanel.test.tsx, JobTrendsPanel.test.tsx,
+// NewFailuresBanner.test.tsx) — this file only exercises the Jobs tab ActivityPage renders by default.
 
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { FailureBreakdown, JobPage, JobStatus, JobTimeseries, NewFailures, WorkersLive } from "../../api/jobs";
+import type { JobPage, JobStatus, WorkersLive } from "../../api/jobs";
 import type { Navigate } from "../../shell/view";
 import { ToastProvider } from "../../shell/toast";
-import { AllJobsPage } from "./AllJobsPage";
+import { ActivityPage } from "./ActivityPage";
 
 // JobRow renders JobCancelControl, which calls useToast() unconditionally — needs a real provider
 // (see agent-memory/frontend/quality-gate-lint-test.md's ToastProvider harness gotcha).
@@ -22,24 +24,14 @@ vi.mock("../../api/jobs", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../api/jobs")>()),
   listJobsPage: vi.fn(),
   getWorkersLive: vi.fn(),
-  getFailureBreakdown: vi.fn(),
-  getJobTimeseries: vi.fn(),
-  getNewFailures: vi.fn(),
 }));
 vi.mock("../../api/collections", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../api/collections")>()),
   listCollections: vi.fn(),
 }));
 
-const { listJobsPage, getWorkersLive, getFailureBreakdown, getJobTimeseries, getNewFailures } = await import("../../api/jobs");
+const { listJobsPage, getWorkersLive } = await import("../../api/jobs");
 const { listCollections } = await import("../../api/collections");
-
-const emptyBreakdown: FailureBreakdown = {
-  collection_id: null, window_hours: 24, since: "2026-01-01T00:00:00Z", total_failed: 0,
-  by_error_type: [], by_stage: [], by_collection: [],
-};
-const emptyTimeseries: JobTimeseries = { collection_id: null, window_hours: 24, bucket_seconds: 3600, buckets: [] };
-const noNewFailures: NewFailures = { since: "2026-01-01T00:00:00Z", count: 0, job_ids: [], latest_failed_at: null };
 
 function jobFixture(overrides: Partial<JobStatus>): JobStatus {
   return {
@@ -75,11 +67,8 @@ function jobFixture(overrides: Partial<JobStatus>): JobStatus {
 
 const emptyWorkers: WorkersLive = { workers: [] };
 
-describe("AllJobsPage", () => {
+describe("ActivityPage (Jobs tab)", () => {
   beforeEach(() => {
-    vi.mocked(getFailureBreakdown).mockResolvedValue(emptyBreakdown);
-    vi.mocked(getJobTimeseries).mockResolvedValue(emptyTimeseries);
-    vi.mocked(getNewFailures).mockResolvedValue(noNewFailures);
     vi.mocked(listCollections).mockResolvedValue([]);
   });
 
@@ -89,7 +78,7 @@ describe("AllJobsPage", () => {
     vi.mocked(getWorkersLive).mockResolvedValue(emptyWorkers);
 
     const onNavigate: Navigate = vi.fn();
-    expect(() => renderWithProviders(<AllJobsPage onNavigate={onNavigate} />)).not.toThrow();
+    expect(() => renderWithProviders(<ActivityPage tab="jobs" onNavigate={onNavigate} />)).not.toThrow();
 
     expect(screen.getByText("loading jobs…")).toBeInTheDocument();
     await waitFor(() => expect(screen.getByText("report.pdf")).toBeInTheDocument());
@@ -105,7 +94,7 @@ describe("AllJobsPage", () => {
     vi.mocked(listJobsPage).mockResolvedValue(pendingPage);
     vi.mocked(getWorkersLive).mockResolvedValue(emptyWorkers);
 
-    renderWithProviders(<AllJobsPage onNavigate={vi.fn()} />);
+    renderWithProviders(<ActivityPage tab="jobs" onNavigate={vi.fn()} />);
     await waitFor(() => expect(screen.getByText("report.pdf")).toBeInTheDocument());
     fireEvent.click(screen.getByText("Pending"));
 
@@ -124,7 +113,7 @@ describe("AllJobsPage", () => {
       workers: [{ worker_id: "w1", worker_name: "worker-a", alive: true, busy: true, last_seen: null, started_at: null, max_jobs: null, cpu_percent: null, mem_mb: null, mem_percent: null, jobs: [runningJob] }],
     });
 
-    renderWithProviders(<AllJobsPage onNavigate={vi.fn()} />);
+    renderWithProviders(<ActivityPage tab="jobs" onNavigate={vi.fn()} />);
     fireEvent.click(screen.getByText("Running"));
 
     await waitFor(() => expect(screen.getByText("report.pdf")).toBeInTheDocument());

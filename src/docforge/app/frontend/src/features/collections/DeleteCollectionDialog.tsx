@@ -1,11 +1,10 @@
 // ====== Code Summary ======
 // Modal confirm for deleting a whole collection — names the collection so a misclick never wipes
 // the wrong one, and requires an explicit confirm click (no type-to-confirm; matches the strength
-// of the existing edit-form Danger Zone confirm, see wizard/DangerZone.tsx). This is the shared
-// confirm UI for the two newly-discoverable delete entry points (dashboard card overflow menu,
-// collection detail header overflow menu); both drive it with `state/useDeleteCollection`. Danger
-// Zone keeps its own inline (non-modal) confirm — same underlying hook, different presentation
-// since it already lives on a dedicated settings screen. Portaled to `document.body`: several page
+// of the Settings ▸ Danger zone confirm, see settings/DangerZone.tsx). This is the confirm UI for
+// the dashboard card's overflow-menu delete entry point (CollectionCard.tsx) — driven by the same
+// `state/useDeleteCollection` hook Danger Zone uses, which keeps its own inline (non-modal) confirm
+// instead since it already lives on a dedicated settings screen. Portaled to `document.body`: several page
 // wrappers in this app carry the `df-rise` entrance CSS animation, which silently confines an
 // in-tree `position: fixed` overlay to that ancestor's box in Chromium (see PageBoxLightbox.tsx).
 

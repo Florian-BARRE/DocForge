@@ -6,9 +6,10 @@
 // per rendered cell, so dragging stays smooth under virtualization), and header drag-and-drop
 // reordering is owned here since it needs `table.setColumnOrder`. The row-actions column
 // ("__actions") is pinned `position: sticky; right: 0` in both the header and body so it survives
-// horizontal scroll instead of being cropped past the viewport at a wide column count (see
-// TableHeaderCell's matching header-cell treatment). Per-column filters live in the separate,
-// toggleable CorpusFilterPanel, not in this table.
+// horizontal scroll. The row-actions column ("__actions") is NOT pinned/frozen: an opaque pinned
+// column floats over the data columns that have not yet scrolled into view and reads as a stray white
+// panel on the right (reported twice) — it is a plain trailing column, reached by scrolling right like
+// any other. Per-column filters live in the separate, toggleable CorpusFilterPanel, not in this table.
 
 import { flexRender, type Table } from "@tanstack/react-table";
 import { useVirtualizer } from "@tanstack/react-virtual";
@@ -17,9 +18,10 @@ import type { DocumentGridRow } from "../../api/corpus";
 import { LoadingState } from "../../components/LoadingState";
 import { theme } from "../../theme";
 import { autoFitColumnWidth } from "./columnAutoFit";
+import { GroupHeaderRow } from "./GroupHeaderRow";
 import { ScrollEdgeFade } from "./ScrollEdgeFade";
 import { TableHeaderCell, type DropSide } from "./TableHeaderCell";
-import { isPinnedColumn, PINNED_LAST_COLUMN_ID } from "./types";
+import { isPinnedColumn } from "./types";
 import { useTrailingScrollFade } from "./useTrailingScrollFade";
 
 interface CorpusTableProps {
@@ -84,9 +86,6 @@ export function CorpusTable({ table, loading }: CorpusTableProps) {
   const paddingTop = virtualItems.length ? virtualItems[0].start : 0;
   const paddingBottom = virtualItems.length ? virtualizer.getTotalSize() - virtualItems[virtualItems.length - 1].end : 0;
   const canScrollRight = useTrailingScrollFade(scrollRef, [tableWidth, columnCount, rows.length]);
-  // The sticky actions column no longer scrolls away, so the actual "more columns off-screen"
-  // crop boundary now sits just before it, not at the container's true right edge.
-  const actionsWidth = table.getColumn(PINNED_LAST_COLUMN_ID)?.getSize() ?? 0;
 
   const onHeaderDragStart = (columnId: string) => setDrag({ sourceId: columnId, overId: null, side: "after" });
 
@@ -160,6 +159,7 @@ export function CorpusTable({ table, loading }: CorpusTableProps) {
           ))}
         </colgroup>
         <thead style={{ position: "sticky", top: 0, zIndex: 5, background: theme.color.surface }}>
+          <GroupHeaderRow columns={visibleColumns} />
           {table.getHeaderGroups().map((headerGroup) => (
             <tr key={headerGroup.id}>
               {headerGroup.headers.map((header) => (
@@ -176,7 +176,6 @@ export function CorpusTable({ table, loading }: CorpusTableProps) {
                   onAutoFit={onAutoFit}
                   onResizeStep={onResizeStep}
                   onReorderStep={onReorderStep}
-                  sticky={header.column.id === PINNED_LAST_COLUMN_ID}
                 />
               ))}
             </tr>
@@ -211,13 +210,6 @@ export function CorpusTable({ table, loading }: CorpusTableProps) {
                       overflow: "hidden",
                       textAlign: cell.column.columnDef.meta?.align === "right" ? "right" : "left",
                       ...(cell.column.columnDef.meta?.mono ? { fontFamily: theme.font.mono, color: theme.color.dim, fontSize: theme.font.size.xs } : {}),
-                      // Pin the row-actions cell to the container's right edge — needs its own
-                      // opaque background (the row's own bg comes from the `df-row-hover` class on
-                      // the <tr>, which doesn't reach a sticky-repositioned descendant once other
-                      // cells have scrolled out from underneath it).
-                      ...(cell.column.id === PINNED_LAST_COLUMN_ID
-                        ? { position: "sticky", right: 0, background: theme.color.surface, borderLeft: `1px solid ${theme.color.line}` }
-                        : {}),
                     }}
                   >
                     {flexRender(cell.column.columnDef.cell, cell.getContext())}
@@ -229,7 +221,7 @@ export function CorpusTable({ table, loading }: CorpusTableProps) {
           {rows.length > 0 && paddingBottom > 0 && <tr aria-hidden style={{ height: paddingBottom }} />}
         </tbody>
       </table>
-      <ScrollEdgeFade visible={canScrollRight} inset={actionsWidth} />
+      <ScrollEdgeFade visible={canScrollRight} />
     </div>
   );
 }

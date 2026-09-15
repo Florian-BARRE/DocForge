@@ -10,6 +10,8 @@ import type { DocumentGridRow } from "../../api/corpus";
 import { Button } from "../../components/Button";
 import { theme } from "../../theme";
 import { ColumnFilterCell } from "./ColumnFilterCell";
+import { COLUMN_GROUP_ORDER, GROUP_HEADER_INFO, groupColumnsByOrigin } from "./columns/columnGroups";
+import { FilterLegend } from "./FilterLegend";
 import { type ColumnFilterKind, type ColumnFilterValue, type ColumnFiltersState } from "./types";
 
 interface CorpusFilterPanelProps {
@@ -35,45 +37,72 @@ export function CorpusFilterPanel({ table, columnFilters, onColumnFilterChange, 
   const filterableColumns = table.getVisibleLeafColumns().filter((column) => column.columnDef.meta?.filterKind);
   if (filterableColumns.length === 0) return null;
 
+  const grouped = groupColumnsByOrigin(filterableColumns);
+  const sections = COLUMN_GROUP_ORDER.filter((group) => (grouped[group]?.length ?? 0) > 0);
+
   return (
     <div
       style={{
-        display: "flex", flexWrap: "wrap", gap: theme.space.m, alignItems: "flex-end",
+        display: "flex", flexDirection: "column", gap: theme.space.m,
         padding: theme.space.m, background: theme.color.surface2, border: `1px solid ${theme.color.line}`,
         borderRadius: theme.radius.l,
       }}
     >
-      {filterableColumns.map((column) => {
-        const filterKind = column.columnDef.meta!.filterKind!;
-        const label = typeof column.columnDef.header === "string" ? column.columnDef.header : column.id;
-        return (
-          <div key={column.id} style={{ width: FILTER_WIDTH[filterKind], flex: "none" }}>
-            {/* `bool` renders its own legend via SegmentedControl — a second label here would be
-               a redundant, worse-spaced repeat of the same text. */}
-            {filterKind !== "bool" && (
-              <span
-                style={{
-                  display: "block", marginBottom: 4, fontSize: theme.font.size.xs,
-                  fontWeight: theme.font.weight.semibold, color: theme.color.dim,
-                }}
-              >
-                {label}
-              </span>
-            )}
-            <ColumnFilterCell
-              columnId={column.id}
-              filterKind={filterKind}
-              label={label}
-              enumOptions={column.columnDef.meta?.enumOptions}
-              value={columnFilters[column.id]}
-              onChange={onColumnFilterChange}
-            />
+      <FilterLegend />
+      {sections.map((group, index) => (
+        <div
+          key={group}
+          style={{
+            borderTop: index > 0 ? `1px solid ${theme.color.line}` : "none",
+            paddingTop: index > 0 ? theme.space.s : 0,
+          }}
+        >
+          <span
+            style={{
+              display: "block", marginBottom: theme.space.xs, fontSize: theme.font.size.xs,
+              fontWeight: theme.font.weight.semibold, textTransform: "uppercase", letterSpacing: "0.04em",
+              color: theme.color.dim,
+            }}
+          >
+            {GROUP_HEADER_INFO[group].label}
+          </span>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: theme.space.m, alignItems: "flex-end" }}>
+            {grouped[group]!.map((column) => {
+              const filterKind = column.columnDef.meta!.filterKind!;
+              const label = typeof column.columnDef.header === "string" ? column.columnDef.header : column.id;
+              return (
+                <div key={column.id} style={{ width: FILTER_WIDTH[filterKind], flex: "none" }}>
+                  {/* `bool` renders its own legend via SegmentedControl — a second label here
+                     would be a redundant, worse-spaced repeat of the same text. */}
+                  {filterKind !== "bool" && (
+                    <span
+                      style={{
+                        display: "block", marginBottom: 4, fontSize: theme.font.size.xs,
+                        fontWeight: theme.font.weight.semibold, color: theme.color.dim,
+                      }}
+                    >
+                      {label}
+                    </span>
+                  )}
+                  <ColumnFilterCell
+                    columnId={column.id}
+                    filterKind={filterKind}
+                    label={label}
+                    enumOptions={column.columnDef.meta?.enumOptions}
+                    value={columnFilters[column.id]}
+                    onChange={onColumnFilterChange}
+                  />
+                </div>
+              );
+            })}
           </div>
-        );
-      })}
-      <Button size="sm" variant="ghost" disabled={Object.keys(columnFilters).length === 0} onClick={onClearAll}>
-        Clear filters
-      </Button>
+        </div>
+      ))}
+      <div>
+        <Button size="sm" variant="ghost" disabled={Object.keys(columnFilters).length === 0} onClick={onClearAll}>
+          Clear filters
+        </Button>
+      </div>
     </div>
   );
 }

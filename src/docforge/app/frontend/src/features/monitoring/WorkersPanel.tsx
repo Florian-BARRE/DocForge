@@ -1,24 +1,25 @@
 // ====== Code Summary ======
 // The fleet-wide live view: every worker with a RUNNING job, polled continuously while this page is
 // open (there is no "settled" state for a fleet monitor — it is always live). Also folds in what
-// used to be the separate Monitoring page: a top tile row (fleet queue depth + throughput) above the
-// fleet summary, and a telemetry footnote below the recent-activity panel — the former Monitoring
-// page's live-per-worker grid (LiveWorkersGrid/WorkerLiveCard) was a strict SUBSET of the WorkerCard
-// grid already rendered here, so it was deleted rather than folded in (see
-// agent-memory/frontend for the consolidation note). A compact top-right toggle switches the card
-// grid between list/grid-N/auto layouts via the shared ViewModeToggle, persisted per-viewer
-// (useViewMode, storage key docforge_view_workers).
+// used to be the separate Monitoring page: a top throughput tile above the fleet summary, and a
+// telemetry footnote below the recent-activity panel — the former Monitoring page's live-per-worker
+// grid (LiveWorkersGrid/WorkerLiveCard) was a strict SUBSET of the WorkerCard grid already rendered
+// here, so it was deleted rather than folded in (see agent-memory/frontend for the consolidation
+// note). Fleet-wide QUEUE DEPTH moved to Activity ▸ Trends (IA redesign W3) — it's a job-flow signal,
+// not a worker one, and duplicating the same tile on both pages was exactly the redundancy the
+// redesign set out to kill; Fleet keeps throughput (a worker-capacity signal proper to this page). A
+// compact top-right toggle switches the card grid between list/grid-N/auto layouts via the shared
+// ViewModeToggle, persisted per-viewer (useViewMode, storage key docforge_view_workers).
 
 import { useEffect, useState } from "react";
 import { getWorkersLive, type JobStatus, type WorkerActivity } from "../../api/jobs";
 import { ErrorState } from "../../components/ErrorState";
 import { LoadingState } from "../../components/LoadingState";
-import { PageHeader } from "../../components/PageHeader";
 import { gridTemplateColumnsFor, useViewMode } from "../../components/viewMode/useViewMode";
 import { ViewModeToggle } from "../../components/viewMode/ViewModeToggle";
+import { TopContentBar } from "../../shell/TopContentBar";
 import type { Navigate } from "../../shell/view";
 import { theme } from "../../theme";
-import { QueueDepthTile } from "./QueueDepthTile";
 import { RecentJobsPanel } from "./RecentJobsPanel";
 import { TelemetryNote } from "./TelemetryNote";
 import { ThroughputTile } from "./ThroughputTile";
@@ -70,17 +71,14 @@ export function WorkersPanel({ onNavigate }: { onNavigate: Navigate }) {
 
   return (
     <div className="df-rise" style={{ padding: theme.space.xl, overflowY: "auto", height: "100%", maxWidth: 1200, margin: "0 auto", width: "100%" }}>
-      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-end", gap: theme.space.l }}>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <PageHeader title="Workers" subtitle="Live worker resources, queue depth, and fleet health." />
-        </div>
-        <div style={{ marginBottom: theme.space.xl }}>
-          <ViewModeToggle mode={mode} onChange={setMode} label="Workers" />
-        </div>
-      </div>
+      <TopContentBar
+        page="Fleet"
+        subtitle="Live worker resources, queue depth, and fleet health."
+        actions={<ViewModeToggle mode={mode} onChange={setMode} label="Workers" />}
+        onNavigate={onNavigate}
+      />
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: theme.space.l, marginBottom: theme.space.xl }}>
-        <QueueDepthTile />
         <ThroughputTile />
       </div>
 

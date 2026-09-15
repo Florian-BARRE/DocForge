@@ -1,8 +1,8 @@
 // ====== Code Summary ======
-// Lets a page nested under CollectionShell (e.g. DocumentPage, reached two levels under
-// Corpus›Documents) contribute trailing segments to the shell's own breadcrumb, so the shell renders
-// ONE unified trail (Collections / {collection} / Corpus / Documents / {filename}) instead of a
-// redundant second one stacked below the shell's own "Collections / {collection}". Lives in `shell/`
+// Lets a page nested under CollectionShell (e.g. DocumentPage, reached under the Documents tab)
+// contribute trailing segments to the shell's own breadcrumb, so the shell renders ONE unified
+// trail (Collections / {collection} / Documents / {filename}) instead of a redundant second one
+// stacked below the shell's own "Collections / {collection}". Lives in `shell/`
 // (not a feature slice) because both `features/collections` (the provider, CollectionShell) and
 // `features/explorer` (a consumer, DocumentPage) need it, and features never cross-import each other.
 // Same cross-sibling context pattern as CollectionShell's own `useHideHeaderUpload` — the nested page

@@ -3,25 +3,13 @@
 // then metadata by origin: system / generated / upload) — TanStack's own column-visibility state,
 // so hiding a column (including a metadata one) is free once its column def carries a `group`.
 
-import type { Column, Table } from "@tanstack/react-table";
+import type { Table } from "@tanstack/react-table";
 import { useEffect, useRef, useState } from "react";
 import type { DocumentGridRow } from "../../api/corpus";
 import { Button } from "../../components/Button";
 import { theme } from "../../theme";
 import { ColumnVisibilityGroup } from "./ColumnVisibilityGroup";
-import { COLUMN_GROUP_LABELS, COLUMN_GROUP_ORDER } from "./columns/columnGroups";
-import type { ColumnGroup } from "./types";
-
-type GridColumn = Column<DocumentGridRow, unknown>;
-
-function groupColumns(columns: GridColumn[]): Partial<Record<ColumnGroup, GridColumn[]>> {
-  const grouped: Partial<Record<ColumnGroup, GridColumn[]>> = {};
-  for (const column of columns) {
-    const group = column.columnDef.meta?.group ?? "document";
-    (grouped[group] ??= []).push(column);
-  }
-  return grouped;
-}
+import { COLUMN_GROUP_LABELS, COLUMN_GROUP_ORDER, groupColumnsByOrigin } from "./columns/columnGroups";
 
 interface ColumnVisibilityMenuProps {
   table: Table<DocumentGridRow>;
@@ -42,7 +30,7 @@ export function ColumnVisibilityMenu({ table, onResetLayout }: ColumnVisibilityM
   }, [open]);
 
   const columns = table.getAllLeafColumns().filter((c) => c.id !== "__select" && c.id !== "__actions");
-  const grouped = groupColumns(columns);
+  const grouped = groupColumnsByOrigin(columns);
   const visibleGroups = COLUMN_GROUP_ORDER.filter((group) => (grouped[group]?.length ?? 0) > 0);
 
   return (

@@ -1,31 +1,24 @@
 // ====== Code Summary ======
-// The app's global navigation chrome — replaces the removed TopBar. A collapsed ~72px icon rail by
-// default; hovering or focusing it expands it into a 240px tree — on a wide, hover-capable viewport
-// only (see `useSidebarCompact`), since a compact/touch viewport has no meaningful hover state and
-// would otherwise "open" unannounced from a resting cursor/finger. Regardless of WHY it expands
-// (hover, focus, or a PERSISTENT pin), on a wide viewport App.tsx is told via `onExpandedChange` so
-// its content-reserving spacer always REFLOWS to match the rail's actual rendered width — content is
-// pushed, never partially covered (a fixed-position overlay wider than the spacer used to clip
-// content: the iteration-2 regression for pin-at-rest, and again for hover/focus since landing on a
-// top-level route via a sidebar click leaves the cursor resting inside the rail — not a brief
-// preview but the steady state). Only a compact-viewport pin stays a non-reflowing overlay+scrim
-// (no room to push there). Pinning (SidebarFooter) is the one way to expand on a compact viewport
-// (pin state is owned by App.tsx via `useSidebarPin`, passed in as props) — it is always reachable,
-// even collapsed, so a small screen still has a visible way to open the tree. Collapsed shows one
-// icon per section; expanded additionally lists each section's pages (SidebarSectionItem/
-// SidebarPageItem). Escape collapses it back (unless pinned) — see onKeyDown below for the full
-// "reliably collapses" contract (mouseleave/focus-out/Escape).
+// The app's global navigation chrome — a persistent rail, expanded (240px) by DEFAULT. Collapsing to
+// the ~72px icon rail is an EXPLICIT user toggle (SidebarFooter, persisted via useSidebarExpanded),
+// never hover/focus-gated — the pre-redesign hover-to-preview behaviour hid global chrome (theme
+// toggle, API token, nav) behind a transient cursor state, which is exactly the "chrome hidden behind
+// hover" problem this rail fixes. On a wide viewport, expansion REFLOWS the page (App.tsx's content-
+// reserving spacer widens via `onExpandedChange`) so content is pushed, never covered. On a compact/
+// touch viewport (see `useSidebarCompact`) there's no room to push, so expansion stays a floating
+// overlay + scrim instead (clicking the scrim collapses it back).
 
-import { useEffect, useState, type KeyboardEvent } from "react";
+import { useEffect } from "react";
 import { theme as t } from "../../theme";
 import { useRovingTabIndex } from "../../components/useRovingTabIndex";
 import { ForgeMark } from "../ForgeMark";
 import type { Navigate, View } from "../view";
-import { activePageKey, activeSectionKey, isCollectionScopedView, SIDEBAR_SECTIONS } from "./sidebarConfig";
-import { SidebarSectionItem } from "./SidebarSectionItem";
+import { activeSidebarKey, isCollectionScopedView, SIDEBAR_PAGES, type SidebarPage } from "./sidebarConfig";
+import { activeCollectionKey, collectionIdOf, COLLECTION_SIDEBAR_PAGES } from "./collectionSidebarConfig";
+import { BackGlyph } from "./icons";
+import { SidebarNavItem } from "./SidebarNavItem";
 import { SidebarFooter } from "./SidebarFooter";
 import { SidebarScrim } from "./SidebarScrim";
-import { SidebarExpandHint } from "./SidebarExpandHint";
 import { useSidebarCompact } from "./useSidebarCompact";
 
 export const SIDEBAR_RAIL_WIDTH = 72;
@@ -34,88 +27,62 @@ export const SIDEBAR_EXPANDED_WIDTH = 240;
 interface SidebarProps {
   view: View;
   onNavigate: Navigate;
-  pinned: boolean;
-  onTogglePin: () => void;
-  /** Fires whenever the rendered expansion state changes, so a caller (App.tsx) can size a
-   *  content-reserving spacer that always matches — the sole mechanism preventing overlap. */
-  onExpandedChange?: (expanded: boolean) => void;
+  expanded: boolean;
+  onToggleExpanded: () => void;
+  /** Fires whenever the rail's REFLOW state changes, so a caller (App.tsx) can size a content-
+   *  reserving spacer that always matches — the sole mechanism preventing overlap. */
+  onExpandedChange?: (reflow: boolean) => void;
+  /** Opens the root-mounted ⌘K command palette (see shell/command-palette/) — the rail only hosts
+   *  the trigger affordance near the brand mark, App.tsx owns the palette's open state. */
+  onOpenPalette?: () => void;
 }
 
-/** Every currently-navigable item key, in tree order — section headers always, pages only once expanded. */
-function navigationOrder(expanded: boolean): string[] {
-  return SIDEBAR_SECTIONS.flatMap((section) => [
-    `section:${section.key}`,
-    ...(expanded ? section.pages.map((page) => `page:${section.key}:${page.key}`) : []),
-  ]);
-}
-
-export function Sidebar({ view, onNavigate, pinned, onTogglePin, onExpandedChange }: SidebarProps) {
+export function Sidebar({ view, onNavigate, expanded, onToggleExpanded, onExpandedChange, onOpenPalette }: SidebarProps) {
   const isCompact = useSidebarCompact();
-  const [hovered, setHovered] = useState(false);
-  const [focused, setFocused] = useState(false);
-  // Hover/focus only drive expansion on a wide, hover-capable viewport — on a compact one the pin
-  // toggle is the only way in, so it never opens from a resting cursor/finger.
-  const expanded = pinned || (!isCompact && (hovered || focused));
-  // ANY expansion REFLOWS the page on a wide viewport — hover/focus preview included, not just a
-  // persistent pin. A `position: fixed` rail that renders wider than the content's reserved offset
-  // clips the page underneath it (measured regression: h1 left=180 while the hovered rail occupied
-  // 0-240 — landing on a top-level route by clicking a sidebar link leaves the cursor resting
-  // INSIDE the rail, so the "transient" hover overlay was in practice the steady state, not brief).
-  // On a compact viewport (narrow and/or touch — see `useSidebarCompact`) there's no room to push:
-  // hover/focus never expand there in the first place (see `expanded` above), and a 240px push from
-  // pinning would shove content off the right edge instead (the iteration-3 FIX-B regression:
-  // pinning at 375px clipped content) — so pinning stays an OVERLAY+scrim there.
+  // On a wide viewport expansion pushes content (reflow); on a compact one it floats over it instead
+  // (no room to push — a 240px push at 375px would shove content off the right edge).
   const reflow = expanded && !isCompact;
-  const isTransientOverlay = expanded && !reflow;
+  const isOverlay = expanded && isCompact;
 
-  // Report the REFLOW state to the caller's content-reserving spacer (App.tsx) so it always matches
-  // the rail's actual rendered width on a wide viewport — content is pushed, never partially
-  // covered. Only a compact-viewport pin stays an overlay (no room to push there).
   useEffect(() => {
     onExpandedChange?.(reflow);
   }, [reflow, onExpandedChange]);
 
-  const activeSection = activeSectionKey(view);
-  const activePage = activePageKey(view);
+  // Scope swap: inside a specific collection the rail OWNS that collection's nav (Supabase model),
+  // so there's no redundant horizontal tab strip in the content. Otherwise it shows the deployment nav.
   const collectionScoped = isCollectionScopedView(view);
+  const collectionId = collectionScoped ? collectionIdOf(view) : null;
+  const inCollection = collectionScoped && collectionId !== null;
 
-  const roving = useRovingTabIndex(navigationOrder(expanded), (key) => {
-    const [kind, sectionKey, pageKey] = key.split(":");
-    const section = SIDEBAR_SECTIONS.find((s) => s.key === sectionKey);
-    if (!section) return;
-    const target = kind === "page" ? section.pages.find((p) => p.key === pageKey) : section.pages[0];
-    if (target) onNavigate(target.view);
+  const navPages: SidebarPage[] = inCollection
+    ? COLLECTION_SIDEBAR_PAGES.map((p) => ({
+        key: p.key, label: p.label, icon: p.icon, view: p.build(collectionId), isActive: p.isActive,
+      }))
+    : SIDEBAR_PAGES;
+  const activePage = inCollection ? activeCollectionKey(view) : activeSidebarKey(view);
+
+  const roving = useRovingTabIndex(navPages.map((p) => p.key), (key) => {
+    const page = navPages.find((p) => p.key === key);
+    if (page) onNavigate(page.view);
   });
-
-  const onKeyDown = (e: KeyboardEvent) => {
-    if (e.key !== "Escape" || pinned) return;
-    (document.activeElement as HTMLElement | null)?.blur();
-    setHovered(false);
-    setFocused(false);
-  };
 
   return (
     <>
-      <SidebarScrim visible={isTransientOverlay} />
+      <SidebarScrim visible={isOverlay} onClick={onToggleExpanded} />
       <nav
         aria-label="Global navigation"
-        onMouseEnter={() => setHovered(true)}
-        onMouseLeave={() => setHovered(false)}
-        onFocus={() => setFocused(true)}
-        onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setFocused(false); }}
-        onKeyDown={onKeyDown}
         style={{
           position: "fixed", left: 0, top: 0, bottom: 0,
           width: expanded ? SIDEBAR_EXPANDED_WIDTH : SIDEBAR_RAIL_WIDTH,
           display: "flex", flexDirection: "column",
           background: t.color.panel, borderRight: `1px solid ${t.color.line}`,
-          boxShadow: isTransientOverlay ? t.shadow.pop : "none",
+          boxShadow: isOverlay ? t.shadow.pop : "none",
           zIndex: 500, overflow: "hidden",
           transition: "width .16s cubic-bezier(0.22, 1, 0.36, 1)",
         }}
       >
         <button
-          onClick={() => onNavigate({ name: "home" })}
+          onClick={() => onNavigate({ name: "overview" })}
           title="DocForge home"
           style={{
             display: "flex", alignItems: "center", gap: t.space.s, flexShrink: 0,
@@ -131,15 +98,48 @@ export function Sidebar({ view, onNavigate, pinned, onTogglePin, onExpandedChang
           )}
         </button>
 
-        <div style={{ flex: 1, minHeight: 0, overflowY: "auto", overflowX: "hidden", padding: `0 ${t.space.xs}px` }}>
-          {SIDEBAR_SECTIONS.map((section) => (
-            <SidebarSectionItem
-              key={section.key}
-              section={section}
+        <button
+          onClick={onOpenPalette}
+          title="Command palette (⌘K)"
+          aria-label="Open command palette"
+          style={{
+            display: "flex", alignItems: "center", justifyContent: expanded ? "space-between" : "center",
+            gap: t.space.s, flexShrink: 0,
+            margin: expanded ? `0 ${t.space.m}px ${t.space.s}px` : `0 auto ${t.space.s}px`,
+            width: expanded ? "auto" : 36, height: 30,
+            background: t.color.surface2, color: t.color.dim, border: `1px solid ${t.color.line}`,
+            borderRadius: t.radius.m, cursor: "pointer", padding: `0 ${t.space.s}px`,
+            fontSize: t.font.size.s, fontFamily: t.font.family,
+          }}
+        >
+          {expanded && <span>Search…</span>}
+          <span style={{ fontFamily: t.font.mono, fontSize: t.font.size.xs }}>⌘K</span>
+        </button>
+
+        <div style={{ flex: 1, minHeight: 0, overflowY: "auto", overflowX: "hidden", padding: `${t.space.xs}px` }}>
+          {inCollection && (
+            <button
+              onClick={() => onNavigate({ name: "collections" })}
+              title="All collections"
+              style={{
+                display: "flex", alignItems: "center", justifyContent: expanded ? "flex-start" : "center",
+                gap: t.space.s, width: "100%", background: "transparent", color: t.color.dim,
+                border: "none", borderRadius: t.radius.m, cursor: "pointer",
+                padding: t.space.s, marginBottom: t.space.xs, fontSize: t.font.size.s, fontWeight: 500,
+                whiteSpace: "nowrap", textAlign: "left",
+              }}
+            >
+              <span style={{ display: "grid", placeItems: "center", width: 22, height: 22, flexShrink: 0 }}><BackGlyph /></span>
+              {expanded && <span>All collections</span>}
+            </button>
+          )}
+          {navPages.map((page) => (
+            <SidebarNavItem
+              key={page.key}
+              page={page}
               expanded={expanded}
-              isSectionActive={activeSection === section.key}
-              isSectionSoftActive={section.key === "collections" && collectionScoped}
-              activePageKey={activePage}
+              active={activePage === page.key}
+              softActive={false}
               onNavigate={onNavigate}
               registerRef={roving.register}
               onItemKeyDown={roving.onKeyDown}
@@ -147,8 +147,7 @@ export function Sidebar({ view, onNavigate, pinned, onTogglePin, onExpandedChang
           ))}
         </div>
 
-        {!expanded && <SidebarExpandHint />}
-        <SidebarFooter expanded={expanded} pinned={pinned} onTogglePin={onTogglePin} />
+        <SidebarFooter expanded={expanded} onToggleExpanded={onToggleExpanded} />
       </nav>
     </>
   );

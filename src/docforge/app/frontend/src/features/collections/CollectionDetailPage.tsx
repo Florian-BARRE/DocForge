@@ -1,9 +1,10 @@
 // ====== Code Summary ======
-// The collection's Metadata tab content (Corpus › Metadata), beneath CollectionShell's header/tabs:
-// the reindex banner (when the searchable surface has drifted) and the editable metadata-field
-// schema table. The destructive delete flow lives on the Edit page's danger zone instead (see
-// `wizard/DangerZone.tsx`) — a settings action, not something to trip over while reading fields. A
-// page remount (e.g. returning from an edit) always refetches it.
+// The collection's Schema tab content (promoted to its own top-level rail tab), beneath
+// CollectionShell's header: the reindex banner (when the searchable surface has drifted) and the
+// read-only metadata-field table, with an "Edit fields" shortcut into Settings ▸ Contract. The
+// destructive delete flow lives in Settings ▸ Danger zone instead (see `settings/DangerZone.tsx`) —
+// a settings action, not something to trip over while reading fields. A page remount (e.g.
+// returning from an edit) always refetches it.
 
 import { useEffect, useState } from "react";
 import { getCollection, type Collection } from "../../api/collections";
@@ -48,7 +49,7 @@ export function CollectionDetailPage({ collectionId, onNavigate }: CollectionDet
           the fields upstream of ingestion — each drives filtering, semantic or lexical search
         </span>
         <div style={{ marginLeft: "auto" }}>
-          <Button variant="secondary" onClick={() => onNavigate({ name: "collection-edit", collectionId })}>
+          <Button variant="secondary" onClick={() => onNavigate({ name: "collection-settings", collectionId })}>
             Edit fields
           </Button>
         </div>

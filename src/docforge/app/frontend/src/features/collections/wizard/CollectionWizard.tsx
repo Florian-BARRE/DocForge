@@ -1,8 +1,10 @@
 // ====== Code Summary ======
 // The 3-step collection wizard's parent — owns the whole draft plus the current step, each step
 // is a dumb child receiving slices of this state. Submits once, on step 3. Reused for both
-// creation (POST) and editing (PATCH an existing collection) via the `mode`/`initial` props;
-// an `initial` collection prefills every field and the last step becomes "Review changes".
+// creation (POST, standalone full-page layout) and editing (PATCH an existing collection). In
+// "edit" mode this renders EMBEDDED — no own page header/back-link/scroll wrapper and no Danger
+// Zone — because it's now one section ("Contract") of `settings/CollectionSettingsPage`, which owns
+// the page chrome and the Danger Zone itself.
 
 import { useState } from "react";
 import { createCollection, updateCollection, type Collection, type CollectionPreset } from "../../../api/collections";
@@ -13,7 +15,6 @@ import { BackLink } from "../../../components/BackLink";
 import { PageHeader } from "../../../components/PageHeader";
 import { theme } from "../../../theme";
 import type { Navigate } from "../../../shell/view";
-import { DangerZone } from "./DangerZone";
 import { StepIdentity } from "./StepIdentity";
 import { StepReview } from "./StepReview";
 import { StepSchema } from "./StepSchema";
@@ -100,13 +101,8 @@ export function CollectionWizard({ onNavigate, mode = "create", initial, collect
     }
   };
 
-  return (
-    <div className="df-rise" style={{ padding: theme.space.xl, maxWidth: 1200, margin: "0 auto", overflowY: "auto", height: "100%" }}>
-      <PageHeader
-        eyebrow={<BackLink label={mode === "edit" ? "Collection" : "Collections"} onClick={() => onNavigate(backTarget)} />}
-        title={mode === "edit" ? `Edit collection — ${initial?.name}` : "New collection"}
-        subtitle={mode === "edit" ? "Update the contract — schema changes apply on submit." : "Define the contract this collection ingests against."}
-      />
+  const steps = (
+    <>
       <WizardSteps labels={stepLabels} current={step} />
       {/* Step 0 (Identity) is a narrow form — the live preview panel fills the page's otherwise-idle
           right side. Step 1 (Schema) is the opposite: its table needs every pixel it can get
@@ -145,11 +141,23 @@ export function CollectionWizard({ onNavigate, mode = "create", initial, collect
           onBack={() => setStep(1)} onSubmit={handleSubmit} submitting={submitting} issues={issues}
         />
       )}
-      {/* Deletion is a settings action, not a wizard step — shown once, below every step, so it
-          reads as belonging to the collection as a whole rather than to whichever step is active. */}
-      {mode === "edit" && collectionId && initial && (
-        <DangerZone collectionId={collectionId} collectionName={initial.name} onNavigate={onNavigate} />
-      )}
+    </>
+  );
+
+  // Edit mode is always embedded inside `settings/CollectionSettingsPage`'s "Contract" section,
+  // which already supplies the breadcrumb/header/scroll chrome — rendering another one here would
+  // duplicate it. Create mode is still reached as its own standalone route (`new-collection`), so
+  // it keeps the full page treatment.
+  if (mode === "edit") return steps;
+
+  return (
+    <div className="df-rise" style={{ padding: theme.space.xl, maxWidth: 1200, margin: "0 auto", overflowY: "auto", height: "100%" }}>
+      <PageHeader
+        eyebrow={<BackLink label="Collections" onClick={() => onNavigate(backTarget)} />}
+        title="New collection"
+        subtitle="Define the contract this collection ingests against."
+      />
+      {steps}
     </div>
   );
 }

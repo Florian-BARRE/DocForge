@@ -1,33 +1,25 @@
 // ====== Code Summary ======
-// The fleet-wide job management page (the "step back and manage" flagship): every job across every
-// collection, filterable/sortable/searchable, paginated, plus the SRE observability panels (new-
-// failures banner, trends sparklines, failure breakdown) that sit above the triage list itself.
-// State (page fetch/poll, worker join, tab/pagination/filters) is split across small hooks; this
-// component only lays the page out.
+// Activity ▸ Jobs — the fleet-wide triage list: every job across every collection, filterable/
+// sortable/searchable, paginated. Also accepts a one-shot `focusRequest` from a sibling tab (the
+// Failures tab's "why it's breaking, now show me those jobs" loop, or the new-failures banner) — a
+// patch of pre-set filters consumed once via effect, then cleared through `onFocusConsumed` so it
+// never re-applies on an unrelated re-render.
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { JobOrder, JobSort } from "../../api/jobs";
 import { ErrorState } from "../../components/ErrorState";
 import { EmptyState } from "../../components/EmptyState";
 import { LoadingState } from "../../components/LoadingState";
-import { PageHeader } from "../../components/PageHeader";
 import type { Navigate } from "../../shell/view";
 import { theme } from "../../theme";
-import { FailureBreakdownPanel } from "./FailureBreakdownPanel";
 import { EMPTY_JOB_FILTERS, JobFilterBar, type JobFilters } from "./JobFilterBar";
 import { JobFleetList } from "./JobFleetList";
 import { JobStatusTabs, TAB_STATUS, type JobFleetTab } from "./JobStatusTabs";
 import { JobsPager } from "./JobsPager";
-import { JobTrendsPanel } from "./JobTrendsPanel";
-import { NewFailuresBanner } from "./NewFailuresBanner";
 import { useJobsFleetPage } from "./state/useJobsFleetPage";
 import { useRunningWorkerMap } from "./state/useRunningWorkerMap";
 
 const PAGE_SIZE = 25;
-
-interface AllJobsPageProps {
-  onNavigate: Navigate;
-}
 
 /** A UI date-only bound ("yyyy-mm-dd") to the ISO instant the API expects — start/end of that day. */
 function toCreatedAfterIso(dateOnly: string): string | undefined {
@@ -37,13 +29,25 @@ function toCreatedBeforeIso(dateOnly: string): string | undefined {
   return dateOnly ? `${dateOnly}T23:59:59.999Z` : undefined;
 }
 
-export function AllJobsPage({ onNavigate }: AllJobsPageProps) {
+/** A pre-filter request handed down from a sibling section — see the file-level summary. */
+export interface JobsFocusRequest {
+  errorType?: string;
+  stage?: string;
+  collectionId?: string;
+}
+
+interface ActivityJobsTabProps {
+  onNavigate: Navigate;
+  focusRequest: JobsFocusRequest | null;
+  onFocusConsumed: () => void;
+}
+
+export function ActivityJobsTab({ onNavigate, focusRequest, onFocusConsumed }: ActivityJobsTabProps) {
   const [tab, setTab] = useState<JobFleetTab>("all");
   const [offset, setOffset] = useState(0);
   const [filters, setFilters] = useState<JobFilters>(EMPTY_JOB_FILTERS);
   const [sort, setSort] = useState<JobSort>("created");
   const [order, setOrder] = useState<JobOrder>("newest");
-  const [trendsWindowHours, setTrendsWindowHours] = useState(24);
 
   const { page, error, patchJob } = useJobsFleetPage({
     status: TAB_STATUS[tab], order, sort, limit: PAGE_SIZE, offset,
@@ -56,6 +60,18 @@ export function AllJobsPage({ onNavigate }: AllJobsPageProps) {
   });
   const workerMap = useRunningWorkerMap();
 
+  // A focus request always lands the user straight into a pre-filtered Failed view, regardless of
+  // whichever status tab/pagination the Jobs tab was last left on.
+  useEffect(() => {
+    if (!focusRequest) return;
+    setTab("failed");
+    setOrder("newest");
+    setOffset(0);
+    setFilters({ ...EMPTY_JOB_FILTERS, ...focusRequest });
+    onFocusConsumed();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `onFocusConsumed` is a stable setter-closure from the parent, not a dep that should re-trigger this.
+  }, [focusRequest]);
+
   const selectTab = (next: JobFleetTab) => {
     setTab(next);
     setOffset(0); // a new filter starts back on its own first page
@@ -67,29 +83,8 @@ export function AllJobsPage({ onNavigate }: AllJobsPageProps) {
     setOffset(0);
   };
 
-  /** A failure-breakdown bucket / the new-failures banner both drop the user straight into a
-   *  pre-filtered Failed view — the "why it's breaking, now show me those jobs" loop. */
-  const focusFailures = (patch: Partial<JobFilters> = {}) => {
-    setTab("failed");
-    setOrder("newest");
-    setOffset(0);
-    setFilters({ ...EMPTY_JOB_FILTERS, ...patch });
-  };
-
   return (
-    <div className="df-rise" style={{ padding: theme.space.xl, overflowY: "auto", height: "100%", maxWidth: 1200, margin: "0 auto", width: "100%" }}>
-      <PageHeader
-        title="All Jobs"
-        subtitle="Every ingestion job across every collection — Pending shows what runs next (oldest first)."
-      />
-      <NewFailuresBanner onViewFailures={() => focusFailures()} />
-      <JobTrendsPanel windowHours={trendsWindowHours} onWindowHoursChange={setTrendsWindowHours} />
-      <FailureBreakdownPanel
-        windowHours={24}
-        onSelectErrorType={(errorType) => focusFailures({ errorType })}
-        onSelectStage={(stage) => focusFailures({ stage })}
-        onSelectCollection={(collectionId) => focusFailures({ collectionId })}
-      />
+    <div>
       <div style={{ marginBottom: theme.space.l }}>
         <JobStatusTabs active={tab} onSelect={selectTab} />
       </div>

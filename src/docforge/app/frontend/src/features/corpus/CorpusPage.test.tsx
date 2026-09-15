@@ -8,10 +8,10 @@
 // sticky "__actions" column and per-row re-ingest/delete controls) — plus the always-visible
 // "Filters" toggle that sits in the toolbar regardless of which branch is showing.
 
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { describe, expect, it, vi } from "vitest";
-import type { Collection } from "../../api/collections";
+import type { Collection, FieldSpec } from "../../api/collections";
 import type { DocumentGridRow, DocumentQueryResponse } from "../../api/corpus";
 import { ToastProvider } from "../../shell/toast";
 import { CorpusPage } from "./CorpusPage";
@@ -133,5 +133,73 @@ describe("CorpusPage — loading to loaded transition", () => {
     const actionsCell = reingestButtons[0].closest("td");
     expect(actionsCell).not.toBeNull();
     expect(within(actionsCell as HTMLElement).getByText("delete")).toBeInTheDocument();
+  });
+
+  it("shows the grouped header families and a metadata column's search-nature badges", async () => {
+    const topicField: FieldSpec = {
+      field_name: "topic",
+      field_type: "string",
+      required: false,
+      filterable: true,
+      lexical: true,
+      semantic: true,
+      enum_values: null,
+      origin: "user",
+      scope: "document",
+    };
+    vi.mocked(getCollection).mockResolvedValue({ ...baseCollection, fields: [topicField] });
+    const row = { ...documentRowFixture("doc-1"), metadata: { topic: "finance" } };
+    vi.mocked(queryDocuments).mockResolvedValue(queryResponse([row]));
+
+    renderWithProviders(<CorpusPage collectionId="col-1" onNavigate={vi.fn()} />);
+    await waitFor(() => expect(screen.getByText("doc-1.pdf")).toBeInTheDocument());
+
+    // GroupHeaderRow — the base columns' true-origin families read as two contiguous bands, plus
+    // the schema field's own "Metadata" (user-origin) band.
+    expect(screen.getByText("Document")).toBeInTheDocument();
+    expect(screen.getByText("System")).toBeInTheDocument();
+    expect(screen.getByText("Metadata")).toBeInTheDocument();
+
+    // ColumnNatureBadges — the metadata column is filterable + semantic + lexical, so all three
+    // tiny badges render under its header label.
+    expect(screen.getAllByText("filter").length).toBeGreaterThan(0);
+    expect(screen.getByText("dense")).toBeInTheDocument();
+    expect(screen.getByText("bm25")).toBeInTheDocument();
+  });
+
+  it("groups the filter panel's controls by the same origin families and shows the badge legend", async () => {
+    const topicField: FieldSpec = {
+      field_name: "topic",
+      field_type: "string",
+      required: false,
+      filterable: true,
+      lexical: true,
+      semantic: true,
+      enum_values: null,
+      origin: "user",
+      scope: "document",
+    };
+    vi.mocked(getCollection).mockResolvedValue({ ...baseCollection, fields: [topicField] });
+    vi.mocked(queryDocuments).mockResolvedValue(queryResponse([documentRowFixture("doc-1")]));
+
+    renderWithProviders(<CorpusPage collectionId="col-1" onNavigate={vi.fn()} />);
+    await waitFor(() => expect(screen.getByText("doc-1.pdf")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: "Toggle column filters" }));
+
+    // The legend explains what "filter"/"dense"/"bm25" mean before the reader reaches the
+    // per-family filter controls below it.
+    expect(screen.getByText("Filterable — exact/range filter")).toBeInTheDocument();
+    expect(screen.getByText("Semantic search — dense vector on this field")).toBeInTheDocument();
+    expect(screen.getByText("Lexical search — sparse/BM25 on this field")).toBeInTheDocument();
+
+    // Filter controls are grouped into the same family sections as the grid's grouped header —
+    // scoped to the filter panel itself (its own container, found via the "Clear filters" button)
+    // since "Document"/"System"/"Metadata" also label the grid's always-rendered GroupHeaderRow.
+    const clearFiltersButton = screen.getByRole("button", { name: "Clear filters" });
+    const panel = clearFiltersButton.parentElement?.parentElement as HTMLElement;
+    expect(within(panel).getByText("Document")).toBeInTheDocument();
+    expect(within(panel).getByText("System")).toBeInTheDocument();
+    expect(within(panel).getByText("Metadata")).toBeInTheDocument();
   });
 });

@@ -1,15 +1,11 @@
 // ====== Code Summary ======
-// Render smoke-test for the global Sidebar nav — the replacement for the removed TopBar. Covers the
-// behaviors the task spec calls out explicitly: mounts collapsed with zero throw, expands on
-// hover/focus (revealing page labels hidden while collapsed) and REFLOWS the content-reserving
-// spacer on a wide viewport (hover/focus included, not just a pin — see the "reflows on hover"
-// test below, the fix for a measured top-level-route clipping regression: landing on Home/
-// Collections via a sidebar click leaves the cursor resting inside the rail, so a non-reflowing
-// hover overlay clipped the page title underneath it), collapses back on mouseleave/Escape, stays
-// expanded+reflow-flagged while pinned, English labels (no more French, no more redundant health
-// shortcuts), and the Collections section's soft "where am I" cue while inside a collection-scoped
-// view. The transient overlay+scrim treatment now only exists on a compact/touch viewport, where a
-// pin is the sole way to expand (hover/focus never trigger there) and there's no room to reflow.
+// Render smoke-test for the redesigned global Sidebar — a PERSISTENT rail (expanded by default),
+// collapsing to the icon rail only via the explicit footer toggle (never hover/focus-gated). Covers
+// the behaviours the IA redesign (Wave 1) fixes: a flat deployment-scope nav (Overview / Collections /
+// Activity / Fleet / Settings, all English), the brand wordmark home → the `overview` view, the
+// forge-accent HARD-active page via aria-current, the steel SOFT "where am I" cue on Collections while
+// inside a specific collection (no aria-current then), the always-visible footer account controls
+// (theme toggle + API token) reachable even while collapsed, and the explicit expand/collapse toggle.
 
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
@@ -17,181 +13,109 @@ import type { Navigate, View } from "../view";
 import { Sidebar } from "./Sidebar";
 import { useSidebarCompact } from "./useSidebarCompact";
 
-// Real jsdom has no `matchMedia`, so `useSidebarCompact` always resolves `false` there — mock it so
-// the compact-viewport branch (FIX-B: pin must OVERLAY, never push, on a narrow/touch screen) is
-// actually exercisable. Defaults to `false` (desktop) so every pre-existing test below is unaffected.
+// Real jsdom has no `matchMedia`, so mock the compact hook to a stable desktop `false` (the reflow
+// path) — the compact/overlay branch is toggled explicitly in the one test that needs it.
 vi.mock("./useSidebarCompact", () => ({ useSidebarCompact: vi.fn(() => false) }));
 
 function renderSidebar(props: Partial<Parameters<typeof Sidebar>[0]> = {}) {
   const onNavigate: Navigate = props.onNavigate ?? vi.fn();
-  const onTogglePin = props.onTogglePin ?? vi.fn();
+  const onToggleExpanded = props.onToggleExpanded ?? vi.fn();
   const view: View = props.view ?? { name: "collections" };
-  const pinned = props.pinned ?? false;
+  const expanded = props.expanded ?? true;
   render(
     <Sidebar
       view={view}
       onNavigate={onNavigate}
-      pinned={pinned}
-      onTogglePin={onTogglePin}
+      expanded={expanded}
+      onToggleExpanded={onToggleExpanded}
       onExpandedChange={props.onExpandedChange}
     />,
   );
-  return { onNavigate, onTogglePin };
+  return { onNavigate, onToggleExpanded };
 }
 
 describe("Sidebar", () => {
-  it("mounts collapsed with no throw and no page labels visible", () => {
+  it("mounts expanded with the flat English nav and no throw", () => {
     renderSidebar();
     expect(screen.getByRole("navigation", { name: "Global navigation" })).toBeInTheDocument();
-    // Section headers are always in the DOM (collapsed rail's only visible affordance)…
-    expect(screen.getByTitle("Home")).toBeInTheDocument();
-    expect(screen.getByTitle("Collections")).toBeInTheDocument();
-    // …but page labels only mount once expanded.
-    expect(screen.queryByText("All")).not.toBeInTheDocument();
+    for (const label of ["Overview", "Collections", "Activity", "Fleet", "Settings"]) {
+      expect(screen.getByText(label)).toBeInTheDocument();
+    }
+    // No leftover French / two-level section labels from the old rail.
+    expect(screen.queryByText("Pipeline de recherche")).not.toBeInTheDocument();
+    expect(screen.queryByText("All Jobs")).not.toBeInTheDocument();
   });
 
-  it("expands on hover, revealing the section's page tree in English", () => {
-    renderSidebar();
-    fireEvent.mouseEnter(screen.getByRole("navigation", { name: "Global navigation" }));
-    expect(screen.getByText("All")).toBeInTheDocument();
-    expect(screen.getByText("Create")).toBeInTheDocument();
-    expect(screen.getByText("Import")).toBeInTheDocument();
-    // The new Jobs & Workers section leads with the fleet-wide All Jobs page.
-    expect(screen.getByText("All Jobs")).toBeInTheDocument();
-    expect(screen.getByText("Workers")).toBeInTheDocument();
-    // No more redundant health-preset shortcuts — the Collections page's own toolbar owns those.
-    expect(screen.queryByText("À surveiller")).not.toBeInTheDocument();
-    expect(screen.queryByText("Opérationnelles")).not.toBeInTheDocument();
-    expect(screen.queryByText("Needs attention")).not.toBeInTheDocument();
-  });
-
-  it("navigates to Home on click, as the sidebar's first top-level entry", () => {
-    const { onNavigate } = renderSidebar();
-    fireEvent.mouseEnter(screen.getByRole("navigation", { name: "Global navigation" }));
-    fireEvent.click(screen.getByTitle("Home"));
-    expect(onNavigate).toHaveBeenCalledWith({ name: "home" });
-  });
-
-  it("expands on focus too (keyboard parity with hover)", () => {
-    renderSidebar();
-    // `focusin` (not `focus`, which does not bubble) — React's onFocus is a delegated listener on
-    // the bubbling "focusin" event, matching what a real Tab keypress into the nav dispatches.
-    fireEvent.focusIn(screen.getByTitle("DocForge home"));
-    expect(screen.getByText("All")).toBeInTheDocument();
-  });
-
-  it("collapses back on mouseleave (transient overlay never gets stuck open)", () => {
-    renderSidebar();
-    const nav = screen.getByRole("navigation", { name: "Global navigation" });
-    fireEvent.mouseEnter(nav);
-    expect(screen.getByText("All")).toBeInTheDocument();
-    fireEvent.mouseLeave(nav);
-    expect(screen.queryByText("All")).not.toBeInTheDocument();
-  });
-
-  it("collapses back on Escape while unpinned", () => {
-    renderSidebar();
-    const nav = screen.getByRole("navigation", { name: "Global navigation" });
-    fireEvent.mouseEnter(nav);
-    expect(screen.getByText("All")).toBeInTheDocument();
-    fireEvent.keyDown(nav, { key: "Escape" });
-    expect(screen.queryByText("All")).not.toBeInTheDocument();
-  });
-
-  it("stays expanded regardless of hover/focus while pinned, and does not show a transient scrim", () => {
-    renderSidebar({ pinned: true });
-    // Already expanded without any hover/focus — that's the whole point of pinning.
-    expect(screen.getByText("All")).toBeInTheDocument();
-    const scrim = screen.getByTestId("sidebar-scrim");
-    expect(scrim).toHaveStyle({ opacity: "0" });
-  });
-
-  it("reflows (no scrim) on hover on a wide viewport — the top-level-route clipping fix", () => {
-    const onExpandedChange = vi.fn();
-    renderSidebar({ pinned: false, onExpandedChange });
-    const nav = screen.getByRole("navigation", { name: "Global navigation" });
-    expect(screen.getByTestId("sidebar-scrim")).toHaveStyle({ opacity: "0" });
-    fireEvent.mouseEnter(nav);
-    // No transient overlay: the caller's content-reserving spacer is told to widen, exactly like a
-    // pin, so a page's own centered content is never partially covered by the rendered rail.
-    expect(screen.getByTestId("sidebar-scrim")).toHaveStyle({ opacity: "0" });
-    expect(onExpandedChange).toHaveBeenCalledWith(true);
-  });
-
-  it("navigates to a page's view on click", () => {
-    const { onNavigate } = renderSidebar();
-    fireEvent.mouseEnter(screen.getByRole("navigation", { name: "Global navigation" }));
-    fireEvent.click(screen.getByText("Workers"));
-    expect(onNavigate).toHaveBeenCalledWith({ name: "workers" });
-  });
-
-  it("highlights the active page and section from the current view", () => {
-    renderSidebar({ view: { name: "api-keys" } });
-    fireEvent.mouseEnter(screen.getByRole("navigation", { name: "Global navigation" }));
-    expect(screen.getByText("API Keys").closest("button")).toHaveAttribute("aria-current", "page");
-    expect(screen.getByText("All").closest("button")).not.toHaveAttribute("aria-current");
-  });
-
-  it("soft-highlights the Collections section while inside a collection-scoped view", () => {
-    renderSidebar({ view: { name: "document", collectionId: "c1", documentId: "d1" } });
-    // Deep inside a specific collection: no sidebar page/section is HARD-active (CollectionShell
-    // owns that in-collection nav), so no aria-current — but the Collections header still gets a
-    // steel "where am I" lift rather than reading fully inert.
-    const collectionsHeader = screen.getByTitle("Collections");
-    expect(collectionsHeader).not.toHaveAttribute("aria-current");
-    expect(collectionsHeader).toHaveStyle({ color: "var(--text)" });
-  });
-
-  it("does not soft-highlight Collections on unrelated global views", () => {
-    renderSidebar({ view: { name: "workers" } });
-    expect(screen.getByTitle("Collections")).toHaveStyle({ color: "var(--text-dim)" });
-  });
-
-  it("reaches the theme toggle and token control while collapsed via compact icons", () => {
-    renderSidebar();
-    // Collapsed: no hover/focus, yet both controls' compact stand-ins are already in the DOM.
+  it("collapsed hides labels but keeps titles + footer account controls reachable", () => {
+    renderSidebar({ expanded: false });
+    // Labels only mount when expanded…
+    expect(screen.queryByText("Overview")).not.toBeInTheDocument();
+    // …but each item keeps its title (icon-only rail stays navigable), and the footer's compact
+    // theme/token stand-ins are present WITHOUT any hover — the "chrome hidden behind hover" fix.
+    expect(screen.getByTitle("Fleet")).toBeInTheDocument();
     expect(screen.getByLabelText("Toggle theme")).toBeInTheDocument();
     expect(screen.getByLabelText("API token")).toBeInTheDocument();
   });
 
-  it("clicking the compact token icon while collapsed requests a pin (so the real editor becomes reachable)", () => {
-    const { onTogglePin } = renderSidebar();
-    fireEvent.click(screen.getByLabelText("API token"));
-    expect(onTogglePin).toHaveBeenCalledTimes(1);
+  it("navigates to the overview view from the brand home button", () => {
+    const { onNavigate } = renderSidebar();
+    fireEvent.click(screen.getByTitle("DocForge home"));
+    expect(onNavigate).toHaveBeenCalledWith({ name: "overview" });
   });
 
-  it("on a compact viewport, a pin OVERLAYS with a scrim instead of reflowing (FIX-B)", () => {
+  it("navigates to a nav item's view on click", () => {
+    const { onNavigate } = renderSidebar();
+    fireEvent.click(screen.getByText("Fleet"));
+    expect(onNavigate).toHaveBeenCalledWith({ name: "fleet" });
+  });
+
+  it("marks the current page HARD-active via aria-current, and only that one", () => {
+    renderSidebar({ view: { name: "fleet" } });
+    expect(screen.getByText("Fleet").closest("button")).toHaveAttribute("aria-current", "page");
+    expect(screen.getByText("Overview").closest("button")).not.toHaveAttribute("aria-current");
+  });
+
+  it("swaps to the collection nav inside a collection-scoped view (Supabase-style scope swap)", () => {
+    renderSidebar({ view: { name: "document", collectionId: "c1", documentId: "d1" } });
+    // The rail now OWNS the in-collection nav: a back item + the 7 collection pages, not the
+    // deployment nav (no top-level "Activity"/"Fleet" here) and no redundant horizontal tab strip.
+    expect(screen.getByTitle("All collections")).toBeInTheDocument();
+    for (const label of ["Overview", "Documents", "Search", "Pipelines", "Schema", "Activity", "Settings"]) {
+      expect(screen.getByText(label)).toBeInTheDocument();
+    }
+    expect(screen.queryByText("Fleet")).not.toBeInTheDocument();
+    // A document is nested under Documents, which stays HARD-active for it.
+    expect(screen.getByText("Documents").closest("button")).toHaveAttribute("aria-current", "page");
+  });
+
+  it("fires onOpenPalette from the ⌘K trigger near the brand mark", () => {
+    const onOpenPalette = vi.fn();
+    render(
+      <Sidebar
+        view={{ name: "overview" }}
+        onNavigate={vi.fn()}
+        expanded
+        onToggleExpanded={vi.fn()}
+        onOpenPalette={onOpenPalette}
+      />,
+    );
+    fireEvent.click(screen.getByTitle("Command palette (⌘K)"));
+    expect(onOpenPalette).toHaveBeenCalledTimes(1);
+  });
+
+  it("fires onToggleExpanded from the explicit footer collapse toggle", () => {
+    const { onToggleExpanded } = renderSidebar({ expanded: true });
+    fireEvent.click(screen.getByTitle("Collapse sidebar"));
+    expect(onToggleExpanded).toHaveBeenCalledTimes(1);
+  });
+
+  it("on a compact viewport, expansion floats over a scrim instead of reflowing", () => {
     vi.mocked(useSidebarCompact).mockReturnValue(true);
     const onExpandedChange = vi.fn();
-    renderSidebar({ pinned: true, onExpandedChange });
-    // Still expanded (the page tree renders) — pinning stays the way in on a compact viewport too.
-    expect(screen.getByText("All")).toBeInTheDocument();
-    // …but as an overlay: the scrim shows, and the caller's content-reserving spacer is never told
-    // to widen (would push content off the right edge of a narrow screen — the FIX-B regression).
+    renderSidebar({ expanded: true, onExpandedChange });
     expect(screen.getByTestId("sidebar-scrim")).toHaveStyle({ opacity: "1" });
+    // No reflow on compact — the caller's content spacer is never told to widen.
     expect(onExpandedChange).toHaveBeenCalledWith(false);
-    expect(onExpandedChange).not.toHaveBeenCalledWith(true);
-  });
-
-  it("on a wide viewport, a pin still reflows (no scrim, spacer told to widen) — desktop unaffected", () => {
     vi.mocked(useSidebarCompact).mockReturnValue(false);
-    const onExpandedChange = vi.fn();
-    renderSidebar({ pinned: true, onExpandedChange });
-    expect(screen.getByTestId("sidebar-scrim")).toHaveStyle({ opacity: "0" });
-    expect(onExpandedChange).toHaveBeenCalledWith(true);
-  });
-
-  // Regression guard for a reported "pin doesn't push at exactly 1440px" repro: reflow is gated
-  // SOLELY by `isCompact` (Sidebar.tsx: `reflow = expanded && !isCompact`), which itself is a single
-  // CSS media query — `(max-width: 640px), (pointer: coarse)` in useSidebarCompact.ts — with no
-  // second/duplicate width comparison anywhere in the reflow path. So every non-compact width,
-  // 641px through 1440px and beyond, is one uniform branch; live-verified at exactly 1440x900
-  // against the running dev container (spacer=240, content starts at x=240, page title unclipped).
-  it("reflows at any non-compact width, not just >1440 — no off-by-one at the desktop boundary", () => {
-    vi.mocked(useSidebarCompact).mockReturnValue(false);
-    const onExpandedChange = vi.fn();
-    renderSidebar({ pinned: true, onExpandedChange });
-    expect(onExpandedChange).toHaveBeenCalledWith(true);
-    expect(onExpandedChange).not.toHaveBeenCalledWith(false);
   });
 });

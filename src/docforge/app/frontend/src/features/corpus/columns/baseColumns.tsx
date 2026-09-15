@@ -1,8 +1,11 @@
 // ====== Code Summary ======
 // The fixed catalogue columns every corpus grid has, regardless of the collection's metadata
-// schema — filename (opens the document), status, format, page count, size, created date, title,
-// language, and the enabled toggle. Each carries the `meta.filterKind` its header filter row
-// dispatches on.
+// schema — filename (opens the document), title, status, format and the enabled toggle (TRUE
+// document identity/state, `group: "document"`), followed by page count, language, size, created
+// date and chunk count (all computed by the platform at ingestion, `group: "system"`). Emitted
+// group-contiguous in that order so the grouped header row (GroupHeaderRow) reads as two clean
+// bands by default. Each carries the `meta.filterKind` its header filter row dispatches on, plus
+// `meta.filterable` (mirrors `filterKind !== undefined`) for the header's ColumnNatureBadges.
 
 import type { ColumnDef } from "@tanstack/react-table";
 import type { DocumentGridRow } from "../../../api/corpus";
@@ -30,7 +33,7 @@ export function buildBaseColumns({ onOpen, onEnabledChanged, supportedFormats }:
       accessorKey: "filename",
       header: "Filename",
       size: 240,
-      meta: { filterKind: "text", group: "document" },
+      meta: { filterKind: "text", filterable: true, group: "document" },
       cell: ({ row }) => (
         <button
           onClick={() => onOpen(row.original.id)}
@@ -45,11 +48,19 @@ export function buildBaseColumns({ onOpen, onEnabledChanged, supportedFormats }:
       ),
     },
     {
+      id: "title",
+      accessorKey: "title",
+      header: "Title",
+      size: 200,
+      meta: { filterKind: "text", filterable: true, group: "document" },
+      cell: ({ row }) => <span style={truncateStyle}>{row.original.title || "—"}</span>,
+    },
+    {
       id: "status",
       accessorKey: "status",
       header: "Status",
       size: 120,
-      meta: { filterKind: "enumMulti", enumOptions: DOCUMENT_STATUSES, group: "document" },
+      meta: { filterKind: "enumMulti", filterable: true, enumOptions: DOCUMENT_STATUSES, group: "document" },
       cell: ({ row }) => (
         <CorpusStatusChip
           status={row.original.status}
@@ -57,20 +68,28 @@ export function buildBaseColumns({ onOpen, onEnabledChanged, supportedFormats }:
         />
       ),
     },
-    // Deliberately placed early (right after Status) rather than trailing the column set: it's the
-    // one interactive control in this whole grid (a toggle, not read-only data), so it must stay
-    // reachable within the always-visible leading columns — the grid's own MIN_TABLE_WIDTH floor
-    // routinely overflows a typical viewport once metadata columns are added, and the row-actions
-    // column pinned `position: sticky; right: 0` (CorpusTable.tsx) unavoidably overlaps whatever
-    // trailing column sits at that overflow boundary at scrollLeft=0 — a read-only column (e.g.
-    // Language, now trailing) degrading there is a cosmetic nit; an unreachable ENABLED toggle
-    // was a MAJOR usability regression (iteration-2 GUI campaign finding).
+    {
+      id: "format",
+      accessorKey: "format",
+      header: "Format",
+      size: 100,
+      meta: { filterKind: "enumMulti", filterable: true, enumOptions: supportedFormats, group: "document" },
+      cell: ({ row }) => <Chip tone="neutral">{row.original.format}</Chip>,
+    },
+    // Deliberately kept LAST within the Document block rather than trailing the whole column set:
+    // it's the one interactive control in this whole grid (a toggle, not read-only data), so it
+    // must stay reachable within the always-visible leading columns — the grid's own
+    // MIN_TABLE_WIDTH floor routinely overflows a typical viewport once metadata columns are
+    // added, and the row-actions column pinned `position: sticky; right: 0` (CorpusTable.tsx)
+    // unavoidably overlaps whatever trailing column sits at that overflow boundary at
+    // scrollLeft=0 — a read-only column degrading there is a cosmetic nit; an unreachable ENABLED
+    // toggle was a MAJOR usability regression (iteration-2 GUI campaign finding).
     {
       id: "enabled",
       accessorKey: "enabled",
       header: "Enabled",
       size: 90,
-      meta: { filterKind: "bool", group: "document" },
+      meta: { filterKind: "bool", filterable: true, group: "document" },
       cell: ({ row }) => (
         <CorpusEnabledToggle
           documentId={row.original.id}
@@ -80,42 +99,22 @@ export function buildBaseColumns({ onOpen, onEnabledChanged, supportedFormats }:
       ),
     },
     {
-      id: "format",
-      accessorKey: "format",
-      header: "Format",
-      size: 100,
-      meta: { filterKind: "enumMulti", enumOptions: supportedFormats, group: "document" },
-      cell: ({ row }) => <Chip tone="neutral">{row.original.format}</Chip>,
-    },
-    {
-      // Display-only — not wired into the server filter/sort contract (chunk_count is absent from
-      // both `DocumentFilter` and the backend's sortable-column set), so no `filterKind` and sorting
-      // disabled rather than sending a field the API would reject.
-      id: "chunk_count",
-      accessorKey: "chunk_count",
-      header: "Chunks",
-      size: 90,
-      minSize: 90,
-      enableSorting: false,
-      meta: { mono: true, align: "right", group: "document" },
-      cell: ({ row }) => {
-        const { chunk_count, warning_reason } = row.original;
-        return (
-          <span title={warning_reason ?? undefined} style={{ color: warning_reason || chunk_count === 0 ? theme.color.warnStrong : undefined }}>
-            {chunk_count === null ? "—" : chunk_count}
-          </span>
-        );
-      },
-    },
-    {
       id: "page_count",
       accessorKey: "page_count",
       header: "Pages",
       // Wide enough that its min/max header filter never squeezes below the placeholder text.
       size: 110,
       minSize: 110,
-      meta: { filterKind: "numberRange", mono: true, align: "right", group: "document" },
+      meta: { filterKind: "numberRange", filterable: true, mono: true, align: "right", group: "system" },
       cell: ({ row }) => row.original.page_count ?? "—",
+    },
+    {
+      id: "language",
+      accessorKey: "language",
+      header: "Language",
+      size: 110,
+      meta: { filterKind: "listIn", filterable: true, group: "system" },
+      cell: ({ row }) => row.original.language ?? "—",
     },
     {
       id: "file_size",
@@ -124,7 +123,7 @@ export function buildBaseColumns({ onOpen, onEnabledChanged, supportedFormats }:
       // Same floor as Pages — its filter is the same two-input numberRange control.
       size: 110,
       minSize: 110,
-      meta: { filterKind: "numberRange", mono: true, align: "right", group: "document" },
+      meta: { filterKind: "numberRange", filterable: true, mono: true, align: "right", group: "system" },
       cell: ({ row }) => formatBytes(row.original.file_size),
     },
     {
@@ -137,24 +136,28 @@ export function buildBaseColumns({ onOpen, onEnabledChanged, supportedFormats }:
       // Its dateRange filter stacks its two inputs vertically, so this only needs to fit one native
       // date value's own width, not two side by side.
       minSize: 150,
-      meta: { filterKind: "dateRange", mono: true, group: "document" },
+      meta: { filterKind: "dateRange", filterable: true, mono: true, group: "system" },
       cell: ({ row }) => formatDateTime(row.original.created_at),
     },
     {
-      id: "title",
-      accessorKey: "title",
-      header: "Title",
-      size: 200,
-      meta: { filterKind: "text", group: "document" },
-      cell: ({ row }) => <span style={truncateStyle}>{row.original.title || "—"}</span>,
-    },
-    {
-      id: "language",
-      accessorKey: "language",
-      header: "Language",
-      size: 110,
-      meta: { filterKind: "listIn", group: "document" },
-      cell: ({ row }) => row.original.language ?? "—",
+      // Display-only — not wired into the server filter/sort contract (chunk_count is absent from
+      // both `DocumentFilter` and the backend's sortable-column set), so no `filterKind` and sorting
+      // disabled rather than sending a field the API would reject.
+      id: "chunk_count",
+      accessorKey: "chunk_count",
+      header: "Chunks",
+      size: 90,
+      minSize: 90,
+      enableSorting: false,
+      meta: { mono: true, align: "right", group: "system" },
+      cell: ({ row }) => {
+        const { chunk_count, warning_reason } = row.original;
+        return (
+          <span title={warning_reason ?? undefined} style={{ color: warning_reason || chunk_count === 0 ? theme.color.warnStrong : undefined }}>
+            {chunk_count === null ? "—" : chunk_count}
+          </span>
+        );
+      },
     },
   ];
 }

@@ -5,8 +5,8 @@
 // (failed_node_id null) — the caller keeps the flat message visible as a fallback in that case.
 
 import type { JobStatus } from "../../api/jobs";
+import { humanizeStageId } from "../../components/trace/stageLabels";
 import { theme } from "../../theme";
-import { humanizeStageId } from "./stageLabels";
 
 interface FailedNodeBreadcrumbProps {
   job: JobStatus;

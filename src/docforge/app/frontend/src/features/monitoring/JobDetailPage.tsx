@@ -13,13 +13,13 @@ import { Breadcrumb } from "../../components/Breadcrumb";
 import { ErrorState } from "../../components/ErrorState";
 import { LoadingState } from "../../components/LoadingState";
 import { PageHeader } from "../../components/PageHeader";
+import { JobEventItem } from "../../components/trace/JobEventItem";
+import { JobStatusChip } from "../../components/trace/JobStatusChip";
 import type { Navigate } from "../../shell/view";
 import { theme } from "../../theme";
 import { JobCancelControl } from "./JobCancelControl";
-import { JobEventItem } from "./JobEventItem";
 import { JobFailureBanner } from "./JobFailureBanner";
 import { JobRerunControl } from "./JobRerunControl";
-import { JobStatusChip } from "./JobStatusChip";
 import { JobSummaryCard } from "./JobSummaryCard";
 import { useJobDetail } from "./state/useJobDetail";
 
@@ -54,7 +54,7 @@ export function JobDetailPage({ jobId, collectionId, onNavigate }: JobDetailPage
             items={[
               { label: "Collections", view: { name: "collections" } },
               { label: job.collection_name ?? "Collection", view: { name: "collection", collectionId } },
-              { label: "Jobs", view: { name: "collection-jobs", collectionId } },
+              { label: "Jobs", view: { name: "collection-activity", collectionId } },
               { label: jobDisplayName(job) },
             ]}
             onNavigate={onNavigate}

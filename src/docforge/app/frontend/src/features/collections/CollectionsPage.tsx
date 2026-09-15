@@ -11,9 +11,9 @@ import { Button } from "../../components/Button";
 import { EmptyState } from "../../components/EmptyState";
 import { ErrorState } from "../../components/ErrorState";
 import { LoadingState } from "../../components/LoadingState";
-import { PageHeader } from "../../components/PageHeader";
 import { gridTemplateColumnsFor, useViewMode } from "../../components/viewMode/useViewMode";
 import { ViewModeToggle } from "../../components/viewMode/ViewModeToggle";
+import { TopContentBar } from "../../shell/TopContentBar";
 import type { Navigate } from "../../shell/view";
 import { theme } from "../../theme";
 import { CollectionCard } from "./CollectionCard";
@@ -41,8 +41,9 @@ export function CollectionsPage({ onNavigate, initialHealthFilter }: Collections
 
   return (
     <div className="df-rise" style={{ padding: `${theme.space.xl}px`, overflowY: "auto", height: "100%", maxWidth: 1200, margin: "0 auto", width: "100%" }}>
-      <PageHeader
-        title="Collections"
+      <TopContentBar
+        page="Collections"
+        onNavigate={onNavigate}
         subtitle={collections ? `${totalCount} collection${totalCount === 1 ? "" : "s"} — each with its own schema, ingestion and search pipeline` : " "}
         actions={
           <>

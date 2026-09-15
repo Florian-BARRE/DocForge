@@ -150,7 +150,9 @@ export function ReadingOrderEntry({ block, index, enrichments, selected, related
       <ExtractionFacts block={block} parseChain={parseChain} />
 
       {block.text && (
-        <div style={{ fontSize: theme.font.size.s, color: theme.color.text, whiteSpace: "pre-wrap", wordBreak: "break-word", lineHeight: 1.45 }}>
+        // `m` (13px) + a taller line-height — matches ChunkProvenance's segment text so the same
+        // prose reads at a consistent, comfortable size whether it's shown as raw IR or as a chunk.
+        <div style={{ fontSize: theme.font.size.m, color: theme.color.text, whiteSpace: "pre-wrap", wordBreak: "break-word", lineHeight: 1.55 }}>
           {block.text}
         </div>
       )}

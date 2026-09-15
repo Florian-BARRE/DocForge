@@ -39,23 +39,32 @@ interface JobFilterBarProps {
   onSortChange: (next: JobSort) => void;
   order: JobOrder;
   onOrderChange: (next: JobOrder) => void;
+  /** Hides the Collection facet — the collection-scoped mirror (CollectionActivityTab) already fixes
+   *  `filters.collectionId` to its own collection, so re-offering a cross-collection picker there
+   *  would be a dead/confusing control. */
+  hideCollectionFacet?: boolean;
 }
 
-function activeFacetCount(filters: JobFilters): number {
-  return Object.values(filters).filter((v) => v !== "").length;
+function activeFacetCount(filters: JobFilters, hideCollectionFacet: boolean): number {
+  return Object.entries(filters).filter(
+    ([key, value]) => value !== "" && !(hideCollectionFacet && key === "collectionId"),
+  ).length;
 }
 
-export function JobFilterBar({ filters, onFiltersChange, sort, onSortChange, order, onOrderChange }: JobFilterBarProps) {
+export function JobFilterBar({
+  filters, onFiltersChange, sort, onSortChange, order, onOrderChange, hideCollectionFacet = false,
+}: JobFilterBarProps) {
   const [collections, setCollections] = useState<{ id: string; name: string }[]>([]);
 
   useEffect(() => {
+    if (hideCollectionFacet) return;
     // Best-effort: an empty/failed collection list only degrades the facet to "no options", never
     // blocks the rest of the triage bar.
     listCollections().then((rows) => setCollections(rows.map((c) => ({ id: c.id, name: c.name })))).catch(() => {});
-  }, []);
+  }, [hideCollectionFacet]);
 
   const set = <K extends keyof JobFilters>(key: K, value: JobFilters[K]) => onFiltersChange({ ...filters, [key]: value });
-  const activeCount = activeFacetCount(filters);
+  const activeCount = activeFacetCount(filters, hideCollectionFacet);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: theme.space.s, marginBottom: theme.space.l }}>
@@ -71,18 +80,20 @@ export function JobFilterBar({ filters, onFiltersChange, sort, onSortChange, ord
             style={{ ...inputStyle, width: 220, fontFamily: theme.font.mono, fontSize: theme.font.size.s }}
           />
         </label>
-        <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: theme.font.size.xs, color: theme.color.dim }}>
-          Collection
-          <select
-            value={filters.collectionId}
-            onChange={(e) => set("collectionId", e.target.value)}
-            aria-label="Filter jobs by collection"
-            style={{ ...inputStyle, width: 180 }}
-          >
-            <option value="">All collections</option>
-            {collections.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
-        </label>
+        {!hideCollectionFacet && (
+          <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: theme.font.size.xs, color: theme.color.dim }}>
+            Collection
+            <select
+              value={filters.collectionId}
+              onChange={(e) => set("collectionId", e.target.value)}
+              aria-label="Filter jobs by collection"
+              style={{ ...inputStyle, width: 180 }}
+            >
+              <option value="">All collections</option>
+              {collections.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </label>
+        )}
         <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: theme.font.size.xs, color: theme.color.dim }}>
           Stage
           <input
