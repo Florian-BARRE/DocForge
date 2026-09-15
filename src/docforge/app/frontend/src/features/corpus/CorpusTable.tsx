@@ -17,6 +17,7 @@ import type { DocumentGridRow } from "../../api/corpus";
 import { LoadingState } from "../../components/LoadingState";
 import { theme } from "../../theme";
 import { autoFitColumnWidth } from "./columnAutoFit";
+import { GroupHeaderRow } from "./GroupHeaderRow";
 import { ScrollEdgeFade } from "./ScrollEdgeFade";
 import { TableHeaderCell, type DropSide } from "./TableHeaderCell";
 import { isPinnedColumn, PINNED_LAST_COLUMN_ID } from "./types";
@@ -160,6 +161,7 @@ export function CorpusTable({ table, loading }: CorpusTableProps) {
           ))}
         </colgroup>
         <thead style={{ position: "sticky", top: 0, zIndex: 5, background: theme.color.surface }}>
+          <GroupHeaderRow columns={visibleColumns} />
           {table.getHeaderGroups().map((headerGroup) => (
             <tr key={headerGroup.id}>
               {headerGroup.headers.map((header) => (

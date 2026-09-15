@@ -10,6 +10,7 @@ import { flexRender, type Header } from "@tanstack/react-table";
 import type { DragEvent, KeyboardEvent } from "react";
 import type { DocumentGridRow } from "../../api/corpus";
 import { theme } from "../../theme";
+import { ColumnNatureBadges } from "./ColumnNatureBadges";
 import { ColumnResizeHandle } from "./ColumnResizeHandle";
 
 export type DropSide = "before" | "after";
@@ -104,6 +105,13 @@ export function TableHeaderCell({
           {flexRender(header.column.columnDef.header, header.getContext())}
         </div>
       ))}
+      {!header.isPlaceholder && (
+        <ColumnNatureBadges
+          filterable={header.column.columnDef.meta?.filterable}
+          semantic={header.column.columnDef.meta?.semantic}
+          lexical={header.column.columnDef.meta?.lexical}
+        />
+      )}
       {canResize && (
         <ColumnResizeHandle
           header={header}
