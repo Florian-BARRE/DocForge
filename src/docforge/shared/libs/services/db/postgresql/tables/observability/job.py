@@ -72,6 +72,17 @@ class Job(Base, UUIDPrimaryKey, TimestampedMixin):
     # ``created_at DESC`` backing the fleet-wide "All Jobs" listing (no collection leading column) and
     # age-based pruning — without it that scan falls back to a seq-scan + sort. Created by migration
     # b2d7f9c4e3a1; mirrors the standalone ``ix_audit_log_created_at`` pattern.
+    #
+    # ``uq_job_active_per_document`` is a PARTIAL UNIQUE index on ``document_id`` covering only the LIVE
+    # rows (``status IN ('pending', 'running')``): a hard DB invariant that at most ONE active job can
+    # exist per document, race-safe across worker containers. It closes the concurrency gap where a
+    # reingest minted a SECOND job while an older run was still queued/executing — their persist phases
+    # (Qdrant delete-by-document then upsert of reminted chunk ids) interleave and strand orphan points.
+    # A terminal row (done/failed/cancelled) is outside the predicate, so finishing a job frees the
+    # document for a fresh run. Created by migration a1f4c9e7b2d3; declared here so ``--autogenerate``
+    # reconciles it (Alembic normalises the ``postgresql_where`` predicate cleanly, as for
+    # ``ix_job_status_active``). Complementary to — not a replacement for — the conditional-UPDATE
+    # terminal transitions, which still guard the FINISH race.
     __table_args__ = (
         Index("ix_job_collection_created_at", "collection_id", text("created_at DESC")),
         Index(
@@ -80,6 +91,12 @@ class Job(Base, UUIDPrimaryKey, TimestampedMixin):
             postgresql_where=text("status IN ('pending', 'running')"),
         ),
         Index("ix_job_created_at", text("created_at DESC")),
+        Index(
+            "uq_job_active_per_document",
+            "document_id",
+            unique=True,
+            postgresql_where=text("status IN ('pending', 'running')"),
+        ),
     )
 
     document_id: Mapped[uuid.UUID] = mapped_column(
