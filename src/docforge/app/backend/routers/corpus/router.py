@@ -249,6 +249,7 @@ async def bulk_reingest(
         enqueued=result.enqueued,
         capped=result.capped,
         max_fanout=result.ceiling,
+        skipped_in_flight=result.skipped_in_flight,
         jobs=result.handles,
     )
 

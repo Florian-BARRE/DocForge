@@ -25,6 +25,20 @@ from .models import ReingestJobHandle
 
 
 @dataclass(slots=True)
+class FanoutBatch:
+    """The result of fanning out over a fetched document set: the handles + the skipped-in-flight count.
+
+    Attributes:
+        handles (list[ReingestJobHandle]): One handle per document a fresh job was minted + enqueued for.
+        skipped_in_flight (int): Documents skipped because a run was ALREADY active for them (an older
+            job still PENDING/RUNNING) — the per-document active-job invariant refuses a second run.
+    """
+
+    handles: list[ReingestJobHandle]
+    skipped_in_flight: int
+
+
+@dataclass(slots=True)
 class CappedFanout:
     """The outcome of a capped fan-out: how many matched, how many were enqueued, and the handles.
 
@@ -33,6 +47,7 @@ class CappedFanout:
         enqueued (int): Jobs actually enqueued (<= the ceiling).
         capped (bool): True when ``matched`` exceeded the ceiling (the tail was NOT enqueued).
         ceiling (int): The per-call fan-out ceiling that was applied.
+        skipped_in_flight (int): Kept documents skipped because a run was ALREADY active for them.
         handles (list[ReingestJobHandle]): One handle per enqueued run.
     """
 
@@ -40,6 +55,7 @@ class CappedFanout:
     enqueued: int
     capped: bool
     ceiling: int
+    skipped_in_flight: int
     handles: list[ReingestJobHandle]
 
 
@@ -90,13 +106,14 @@ class BulkReingestService(LoggerClass):
 
         # 2. Fetch the kept documents and fan out one full-pipeline job each.
         documents = await self._database.documents.get_by_ids(targets)
-        handles = await self.enqueue(collection, documents, force=force)
+        batch = await self.enqueue(collection, documents, force=force)
         return CappedFanout(
             matched=len(matched_ids),
-            enqueued=len(handles),
+            enqueued=len(batch.handles),
             capped=capped,
             ceiling=ceiling,
-            handles=handles,
+            skipped_in_flight=batch.skipped_in_flight,
+            handles=batch.handles,
         )
 
     async def enqueue(
@@ -104,7 +121,7 @@ class BulkReingestService(LoggerClass):
         collection: Collection,
         documents: Sequence[Document],
         force: bool = False,
-    ) -> list[ReingestJobHandle]:
+    ) -> FanoutBatch:
         """
         Create + enqueue one full re-ingestion job per target document.
 
@@ -118,10 +135,12 @@ class BulkReingestService(LoggerClass):
             force (bool): When True, each run bypasses the stage cache (full recompute).
 
         Returns:
-            list[ReingestJobHandle]: One handle (document id + job id) per enqueued run.
+            FanoutBatch: One handle per enqueued run, plus how many documents were skipped because a
+                run was ALREADY active for them (the per-document active-job invariant).
         """
         # 1. Per document: fresh job (doc → PENDING), then enqueue with the collection job timeout.
         handles: list[ReingestJobHandle] = []
+        skipped_in_flight = 0
         for document in documents:
             result = await self._database.ingestion.reingest(document.id)
             if result.outcome is ReingestOutcome.NOT_FOUND:
@@ -131,7 +150,9 @@ class BulkReingestService(LoggerClass):
                 continue
             if result.outcome is ReingestOutcome.ALREADY_ACTIVE:
                 # A run is already queued/executing for this document — skip rather than mint a second
-                # concurrent job (two parallel runs strand orphan Qdrant points). Absent from handles.
+                # concurrent job (two parallel runs strand orphan Qdrant points). Counted separately so
+                # the caller can report how many were skipped for being in flight.
+                skipped_in_flight += 1
                 self.logger.warning(
                     f"Skipped {document.id}: an ingestion job ({result.active_job_id}) is already "
                     f"active — not re-ingesting concurrently"
@@ -149,9 +170,10 @@ class BulkReingestService(LoggerClass):
 
         # 2. One log line for the whole fan-out (the per-job lines live in the queue client).
         self.logger.info(
-            f"Bulk re-ingest enqueued {len(handles)} job(s) for collection {collection.id}"
+            f"Bulk re-ingest enqueued {len(handles)} job(s) for collection {collection.id} "
+            f"({skipped_in_flight} skipped — already in flight)"
         )
-        return handles
+        return FanoutBatch(handles=handles, skipped_in_flight=skipped_in_flight)
 
 
 __all__ = ["BulkReingestService"]

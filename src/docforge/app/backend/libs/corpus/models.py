@@ -119,6 +119,10 @@ class BulkReingestResponse(BaseModel):
         description="True when the match count exceeded the per-call fan-out ceiling."
     )
     max_fanout: int = Field(description="The per-call fan-out ceiling that was applied.")
+    skipped_in_flight: int = Field(
+        default=0,
+        description="Documents skipped because an ingestion job was already active for them.",
+    )
     jobs: list[ReingestJobHandle] = Field(
         description="One handle per enqueued run (poll each job)."
     )

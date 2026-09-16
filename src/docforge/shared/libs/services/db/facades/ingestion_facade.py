@@ -59,6 +59,13 @@ from .trace_purge import TracePurgeHelper
 # integrity failure (which must still surface as a real error).
 _DOCUMENT_UNIQUE_CONSTRAINT = "uq_document_collection_id"
 
+# The partial UNIQUE index a concurrent SECOND active job for one document violates: at most one job
+# may be PENDING/RUNNING per document (see ``job`` model / migration a1f4c9e7b2d3). On a unique-INDEX
+# violation Postgres reports the INDEX name, which asyncpg surfaces as ``constraint_name`` (the same
+# inspection hops as ``_DOCUMENT_UNIQUE_CONSTRAINT``). Matching it tells "a run is already in flight"
+# apart from any other integrity failure (which must still surface as a real error).
+_ACTIVE_JOB_UNIQUE_INDEX = "uq_job_active_per_document"
+
 
 class IngestionFacade(LoggerClass):
     """The worker's persistence path — admit, store blobs, save the run, index the vectors."""
@@ -87,6 +94,27 @@ class IngestionFacade(LoggerClass):
         candidates = (orig, getattr(orig, "__cause__", None))
         return any(
             getattr(candidate, "constraint_name", None) == _DOCUMENT_UNIQUE_CONSTRAINT
+            for candidate in candidates
+        )
+
+    @staticmethod
+    def _is_active_job_conflict(error: IntegrityError) -> bool:
+        """
+        Decide whether an IntegrityError is the per-document active-job guard violation (a lost race).
+
+        Args:
+            error (IntegrityError): The error raised by the job INSERT's flush.
+
+        Returns:
+            bool: True only when the violated index is ``uq_job_active_per_document``.
+        """
+        # 1. Walk the driver error and its __cause__ (the asyncpg native error carrying constraint_name)
+        #    and match the active-job index's name — precise, so an unrelated integrity failure is never
+        #    mistaken for a benign "already running" outcome.
+        orig = getattr(error, "orig", None)
+        candidates = (orig, getattr(orig, "__cause__", None))
+        return any(
+            getattr(candidate, "constraint_name", None) == _ACTIVE_JOB_UNIQUE_INDEX
             for candidate in candidates
         )
 
@@ -143,7 +171,12 @@ class IngestionFacade(LoggerClass):
                     session, collection_id, source_hash, pipeline_version
                 )
                 return AdmissionResult(created=False, document=existing)
-            # 5. Won the insert — mint the job and persist the declared metadata in the same tx.
+            # 5. Won the insert — mint the job and persist the declared metadata in the same tx. The
+            #    per-document active-job index (uq_job_active_per_document) cannot fire here: the job is
+            #    minted only for a DOCUMENT this tx just created (still uncommitted, so no other tx can
+            #    see it to mint a competing job), so this path needs no active-job conflict handler. A
+            #    re-upload mapping to an EXISTING busy document is handled above — it loses the document
+            #    UNIQUE race and returns the incumbent with no job (never a second run).
             job.document_id = created.id
             job.collection_id = created.collection_id
             created_job = await JobApi.create(session, job)
@@ -168,8 +201,13 @@ class IngestionFacade(LoggerClass):
         CONCURRENCY GUARD: a document that already has a live (PENDING/RUNNING) job is REFUSED
         (``ALREADY_ACTIVE``) rather than given a second job — two parallel runs of one document
         interleave their Qdrant delete-by-document + upsert and strand the loser's points as live
-        orphans. The document row is locked ``FOR UPDATE`` for the admission so two concurrent
-        reingests serialise: the second blocks, then sees the first's fresh PENDING job and refuses.
+        orphans. Two layers enforce this: (1) the document row is locked ``FOR UPDATE`` for the
+        admission so two concurrent reingests serialise — the second blocks, then sees the first's
+        fresh PENDING job and refuses at the pre-check; (2) the DB invariant
+        ``uq_job_active_per_document`` (a partial UNIQUE index over the live rows) is the hard,
+        cross-container backstop — should the job INSERT still race a concurrent live job (a path that
+        does not take the document lock), the flush raises and is resolved here to ``ALREADY_ACTIVE``
+        pointing at the winning job, never a 500 and never a second active row.
 
         Args:
             document_id (uuid.UUID): The document to re-ingest.
@@ -192,9 +230,22 @@ class IngestionFacade(LoggerClass):
             # 3. Capture the document's PRIOR job ids (before minting the fresh one) — the run being
             #    replaced; their full-trace payloads are reclaimed after the commit.
             prior_job_ids = await JobApi.list_job_ids_for_document(session, document_id)
-            # 4. Mint the fresh job and reset the document to PENDING (one transaction).
+            # 4. Mint the fresh job and reset the document to PENDING (one transaction). The INSERT is
+            #    the race-safe admission: on the per-document active-job index violation the whole tx
+            #    is rolled back and resolved to the winning live job (ALREADY_ACTIVE), so a run that
+            #    slipped past the pre-check never mints a second active row.
             job = Job(document_id=document.id, collection_id=document.collection_id)
-            created_job = await JobApi.create(session, job)
+            try:
+                created_job = await JobApi.create(session, job)
+            except IntegrityError as error:
+                if not self._is_active_job_conflict(error):
+                    raise
+                await session.rollback()
+                existing = await JobApi.get_active_for_document(session, document_id)
+                return ReingestResult(
+                    outcome=ReingestOutcome.ALREADY_ACTIVE,
+                    active_job_id=existing.id if existing is not None else None,
+                )
             await DocumentApi.set_status(session, document_id, DocumentStatus.PENDING)
         # 5. Reclaim the superseded runs' full-trace payloads (best-effort — the old job rows survive
         #    a reingest, so this also clears their now-dangling refs; a failure never blocks the run).

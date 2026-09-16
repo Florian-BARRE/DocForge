@@ -52,6 +52,8 @@ class BulkReingestAccepted(BaseModel):
         enqueued (int): Jobs actually enqueued (<= the fan-out ceiling).
         capped (bool): True when ``matched`` exceeded the per-call fan-out ceiling.
         max_fanout (int): The per-call fan-out ceiling that was applied.
+        skipped_in_flight (int): Documents skipped because a run was ALREADY active for them (an
+            older job still queued/running) — the per-document active-job invariant refuses a second.
         jobs (list[ReingestJobHandle]): One handle per enqueued run.
     """
 
@@ -63,6 +65,10 @@ class BulkReingestAccepted(BaseModel):
         description="True when the match count exceeded the per-call fan-out ceiling."
     )
     max_fanout: int = Field(description="The per-call fan-out ceiling that was applied.")
+    skipped_in_flight: int = Field(
+        default=0,
+        description="Documents skipped because an ingestion job was already active for them.",
+    )
     jobs: list[ReingestJobHandle] = Field(description="One handle per enqueued run.")
 
 
