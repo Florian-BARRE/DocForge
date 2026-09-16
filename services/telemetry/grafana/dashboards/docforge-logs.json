@@ -66,7 +66,8 @@
           "value": "$__all"
         },
         "refresh": 2,
-        "sort": 1
+        "sort": 1,
+        "allValue": "docforge_.+"
       }
     ]
   },
@@ -297,7 +298,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "{compose_service=~\"$service\"}"
+          "expr": "{compose_service=~\"docforge_.+\", compose_service=~\"$service\"}"
         }
       ]
     }
