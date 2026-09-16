@@ -240,4 +240,5 @@ def test_bulk_reingest_skips_documents_with_an_active_job(client, monkeypatch) -
     assert response.status_code == 202, response.text
     body = response.json()
     assert body["matched"] == 2 and body["enqueued"] == 1  # the active doc was skipped
+    assert body["skipped_in_flight"] == 1  # and it is reported as skipped-in-flight
     enqueue.assert_awaited_once()  # only the idle document was enqueued
