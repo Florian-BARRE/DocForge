@@ -282,6 +282,7 @@ def register(mcp: FastMCP, sdk: AsyncClient) -> None:
         re-uploads. `force` bypasses the stage cache and recomputes every stage from scratch. A
         match above the server's fan-out ceiling enqueues only the first N and reports
         `capped=true` with the full `matched` count — poll each returned job handle for progress.
+        Documents that already have a running job are skipped (`skipped_in_flight`), not re-queued.
         """
         request = BulkReingestRequest(document_ids=document_ids, force=force)
         accepted = await sdk.collections.reingest(collection_id, request)

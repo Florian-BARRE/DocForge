@@ -81,7 +81,8 @@ def register(mcp: FastMCP, sdk: AsyncClient) -> None:
     ) -> Any:
         """
         Bulk re-run the full ingestion over the selected documents (capped fan-out). `selector` is the
-        shared id-XOR-filter target. Returns matched/enqueued/capped + one job handle per enqueued run.
+        shared id-XOR-filter target. Returns matched/enqueued/capped/skipped_in_flight + one job
+        handle per enqueued run (documents that already had a running job are skipped, not re-queued).
         """
         return (
             await sdk.corpus.bulk_reingest(collection_id, DocumentSelector(**selector), force)

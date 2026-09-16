@@ -707,8 +707,11 @@ Exactly one mode is allowed (`422` otherwise); `document_ids` must be non-empty,
 - **reingest** → `?force=<bool>` as on the single-document route. The stored pipeline is healed and
   structurally validated **once** before any job is minted (`422`), so a broken collection surfaces
   here instead of as N failed jobs. Returns `{collection_id, matched, enqueued, capped, max_fanout,
-  jobs}` (`202`) with one job handle per run; a match beyond `CORPUS_MAX_REINGEST_FANOUT` enqueues
-  only the first N and reports `capped: true` with the full `matched`.
+  skipped_in_flight, jobs}` (`202`) with one job handle per run; a match beyond
+  `CORPUS_MAX_REINGEST_FANOUT` enqueues only the first N and reports `capped: true` with the full
+  `matched`. `skipped_in_flight` counts documents skipped because an ingestion job was already active
+  for them (at most one active run per document is a hard invariant), so `enqueued + skipped_in_flight`
+  can be below the kept count when some targets were already running.
 
 ---
 
