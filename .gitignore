@@ -1,3 +1,7 @@
+# ── Stray local dumps (never commit) ──────────────────────
+prod output logs.txt
+*.log
+
 # ── Python ────────────────────────────────────────────────
 __pycache__/
 *.py[cod]
