@@ -16,6 +16,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Index,
+    Integer,
     Numeric,
     SmallInteger,
     String,
@@ -126,6 +127,16 @@ class Job(Base, UUIDPrimaryKey, TimestampedMixin):
     total_prompt_tokens: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
     total_completion_tokens: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
     cost_usd: Mapped[Decimal] = mapped_column(Numeric(12, 6), nullable=False, default=0)
+    # Total bytes of this job's heavy FULL execution-trace payloads stored raw in S3 under
+    # ``trace/{job_id}/`` (deduped by content-addressed key). These objects are NOT registry-tracked,
+    # so this column is how the storage footprint surfaces (and the trace-payload purge reclaims) them.
+    # DOCUMENTED LIMITATION: only trace stored AFTER this column shipped is counted — a payload written
+    # before it existed reads as 0 until re-stored (no backfill, mirroring the filterable-meta tradeoff).
+    # Reset to 0 when the payloads are reclaimed (purge / retention GC / reingest-supersede) so the
+    # footprint converges. Zero for a job that stored no full trace (shape-only runs).
+    trace_payload_bytes: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=text("0"), default=0
+    )
     # Per-item counter for the CURRENT fan-out (foreach) root stage: how many child items have
     # finished (items_done) out of the fan-out width (items_total). Both NULL when the current root
     # stage is not a fan-out; reset to NULL when the job leaves a fan-out stage.

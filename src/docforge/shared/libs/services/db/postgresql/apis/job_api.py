@@ -1065,15 +1065,40 @@ class JobApi:
         """
         if not job_ids:
             return
+        ids = list(job_ids)
         await session.execute(
             update(JobStageEvent)
-            .where(JobStageEvent.job_id.in_(list(job_ids)))
+            .where(JobStageEvent.job_id.in_(ids))
             .values(
                 input_ref=None,
                 output_ref=None,
                 has_full_input=False,
                 has_full_output=False,
             )
+        )
+        # Zero the footprint counter in the SAME transaction: once the bytes are reclaimed the storage
+        # footprint must converge (purge / retention GC / reingest-supersede all funnel through here).
+        await session.execute(update(Job).where(Job.id.in_(ids)).values(trace_payload_bytes=0))
+
+    @staticmethod
+    async def set_trace_payload_bytes(
+        session: AsyncSession, job_id: uuid.UUID, total_bytes: int
+    ) -> None:
+        """
+        Record the total bytes of a job's stored FULL execution-trace payloads.
+
+        Written best-effort right after ``store_trace_payloads`` persisted the payloads: it lets the
+        storage footprint surface the ``trace/{job_id}/`` object-store space (which is NOT registry-
+        tracked) via a plain SQL SUM, and the trace-payload purge zero it (through ``clear_trace_refs``)
+        so the footprint converges once the bytes are reclaimed.
+
+        Args:
+            session (AsyncSession): The active DB session.
+            job_id (uuid.UUID): The job whose trace-payload byte total is recorded.
+            total_bytes (int): The summed size of the job's stored (content-addressed) trace objects.
+        """
+        await session.execute(
+            update(Job).where(Job.id == job_id).values(trace_payload_bytes=total_bytes)
         )
 
     @staticmethod
