@@ -184,6 +184,7 @@ export function DocumentPage({ collectionId, documentId, onNavigate }: DocumentP
           ))}
         {activeTab === "trace" && (
           <TraceTab
+            documentId={documentId}
             provenance={tabs.provenance}
             error={tabs.provenanceError}
             onRetry={tabs.loadProvenance}

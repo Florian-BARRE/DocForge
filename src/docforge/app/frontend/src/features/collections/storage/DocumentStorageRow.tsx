@@ -31,6 +31,7 @@ export function DocumentStorageRow({ document, collectionId, onNavigate }: Docum
       <td style={byteCellStyle}>{formatBytes(document.s3.total_bytes)}</td>
       <td style={byteCellStyle}>{formatBytes(document.postgres.total_bytes)}</td>
       <td style={byteCellStyle}>{formatBytes(document.qdrant.total_bytes)}</td>
+      <td style={byteCellStyle}>{formatBytes(document.trace_bytes)}</td>
       <td style={{ ...byteCellStyle, color: t.color.text, fontWeight: t.font.weight.semibold }}>{formatBytes(document.total_bytes)}</td>
     </tr>
   );

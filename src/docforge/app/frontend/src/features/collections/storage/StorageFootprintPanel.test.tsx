@@ -21,6 +21,7 @@ const storage: CollectionStorage = {
   s3: { original_bytes: 2048, rendered_bytes: 0, total_bytes: 2048, physical_unique_bytes: 2048, estimated: false },
   postgres: { documents_bytes: 512, ir_blocks_bytes: 256, enrichment_bytes: 0, chunks_bytes: 128, metadata_bytes: 64, observability_bytes: 0, total_bytes: 960, estimated: true },
   qdrant: { points: 4, dense_bytes: 4096, sparse_bytes: 0, payload_bytes: 128, total_bytes: 4224, estimated: false },
+  trace_bytes: 0,
   grand_total_bytes: 7232,
   documents: [
     {
@@ -29,6 +30,7 @@ const storage: CollectionStorage = {
       s3: { original_bytes: 2048, rendered_bytes: 0, total_bytes: 2048, physical_unique_bytes: 2048, estimated: false },
       postgres: { documents_bytes: 512, ir_blocks_bytes: 256, enrichment_bytes: 0, chunks_bytes: 128, metadata_bytes: 64, observability_bytes: 0, total_bytes: 960, estimated: true },
       qdrant: { points: 4, dense_bytes: 4096, sparse_bytes: 0, payload_bytes: 128, total_bytes: 4224, estimated: false },
+      trace_bytes: 0,
       total_bytes: 7232,
     },
   ],

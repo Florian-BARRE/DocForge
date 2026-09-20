@@ -7,29 +7,61 @@
 // the shared `JobEventItem` (components/trace/) — quality score, stage/kind, status ink, tokens/cost,
 // input/output shape summaries and lazy full-payload buttons all come for free from that component.
 
+import { useState } from "react";
 import type { DocumentProvenance } from "../../../api/explorer";
+import { Button } from "../../../components/Button";
 import { EmptyState } from "../../../components/EmptyState";
 import { ErrorState } from "../../../components/ErrorState";
 import { LoadingState } from "../../../components/LoadingState";
 import { JobEventItem } from "../../../components/trace/JobEventItem";
 import { theme } from "../../../theme";
+import { DocumentTracePurgeDialog } from "./DocumentTracePurgeDialog";
+import { useDocumentTracePurge } from "./useDocumentTracePurge";
 
 interface TraceTabProps {
+  documentId: string;
   provenance: DocumentProvenance | null;
   error: string | null;
   onRetry: () => void;
 }
 
-export function TraceTab({ provenance, error, onRetry }: TraceTabProps) {
+export function TraceTab({ documentId, provenance, error, onRetry }: TraceTabProps) {
+  // Hooks before any conditional return (rules-of-hooks) — this tab needs the purge affordance
+  // regardless of whether `provenance` has loaded yet.
+  const [confirming, setConfirming] = useState(false);
+  const { pending, error: purgeError, purge } = useDocumentTracePurge(documentId);
+
+  const handleConfirm = async () => {
+    const result = await purge();
+    if (result) setConfirming(false);
+  };
+
   if (error) return <ErrorState message={error} onRetry={onRetry} />;
   if (!provenance) return <LoadingState label="loading trace…" />;
 
+  const purgeControl = (
+    <>
+      <Button size="sm" variant="danger" onClick={() => setConfirming(true)}>Purge stored traces</Button>
+      {confirming && (
+        <DocumentTracePurgeDialog
+          pending={pending}
+          error={purgeError}
+          onConfirm={handleConfirm}
+          onCancel={() => setConfirming(false)}
+        />
+      )}
+    </>
+  );
+
   if (!provenance.available || provenance.stages.length === 0) {
     return (
-      <EmptyState
-        title="No trace retained for this document"
-        subtitle="Either no ingestion job has completed for this document yet, or its execution trace has since been pruned/reaped."
-      />
+      <div style={{ display: "flex", flexDirection: "column", gap: theme.space.m }}>
+        <EmptyState
+          title="No trace retained for this document"
+          subtitle="Either no ingestion job has completed for this document yet, or its execution trace has since been pruned/reaped. A heavy full-payload store may still exist from a prior run — purge below reclaims it either way."
+        />
+        <div>{purgeControl}</div>
+      </div>
     );
   }
 
@@ -44,6 +76,7 @@ export function TraceTab({ provenance, error, onRetry }: TraceTabProps) {
             job <span style={{ fontFamily: theme.font.mono, color: theme.color.text }}>{provenance.job_id}</span>
           </span>
         )}
+        <div style={{ marginLeft: "auto" }}>{purgeControl}</div>
       </div>
       <div
         style={{

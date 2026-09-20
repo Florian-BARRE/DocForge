@@ -239,6 +239,9 @@ export interface DocumentStorageBreakdown {
   s3: StorageS3Stats;
   postgres: StoragePostgresStats;
   qdrant: StorageQdrantStats;
+  /** This document's share of the heavy full execution-trace payloads (see
+   *  {@link CollectionStorage.trace_bytes}) — already folded into `total_bytes`. */
+  trace_bytes: number;
   total_bytes: number;
 }
 
@@ -249,6 +252,10 @@ export interface CollectionStorage {
   s3: StorageS3Stats;
   postgres: StoragePostgresStats;
   qdrant: StorageQdrantStats;
+  /** Heavy full execution-trace payloads stored in S3 under `trace/{job_id}/` (opt-in
+   *  `trace_verbosity='full'` tier) — reclaimable via {@link purgeCollectionTracePayloads}. Already
+   *  folded into `grand_total_bytes`, not part of `s3`. */
+  trace_bytes: number;
   grand_total_bytes: number;
   documents: DocumentStorageBreakdown[];
 }
@@ -420,4 +427,20 @@ export function estimateCollectionCost(
 ): Promise<CostEstimate> {
   const request: EstimateRequest = subset ? { ...subset } : { scope };
   return apiFetch(`${BASE}/${id}/estimate`, jsonInit("POST", request));
+}
+
+// ====== Trace-payload purge (reclaim the heavy opt-in `trace_verbosity='full'` object-store bytes) ======
+// Mirrors POST /api/v1/collections/{id}/trace-payloads/purge (collection scope) and the document-scoped
+// analogue at POST /api/v1/documents/{id}/trace-payloads/purge (see api/documents.ts). Idempotent
+// (nothing stored -> zeros) and best-effort (never 500s on a partial storage failure).
+
+/** The outcome of a trace-payload purge, collection- or document-scoped — same shape either way. */
+export interface TracePurgeResult {
+  purged_jobs: number;
+  deleted_objects: number;
+}
+
+/** Reclaims every stored full execution-trace payload across the collection's jobs. */
+export function purgeCollectionTracePayloads(id: string): Promise<TracePurgeResult> {
+  return apiFetch(`${BASE}/${id}/trace-payloads/purge`, { method: "POST" });
 }

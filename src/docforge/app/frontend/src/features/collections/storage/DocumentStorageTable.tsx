@@ -10,7 +10,7 @@ import { theme as t } from "../../../theme";
 import { DocumentStorageRow } from "./DocumentStorageRow";
 import { STORAGE_STORES, type StoreKey } from "./storageStores";
 
-type SortKey = "filename" | "s3" | "postgres" | "qdrant" | "total";
+type SortKey = "filename" | "s3" | "postgres" | "qdrant" | "trace" | "total";
 type SortDirection = "asc" | "desc";
 
 interface DocumentStorageTableProps {
@@ -30,6 +30,7 @@ const COLUMNS: { key: SortKey; label: string; title?: string; align: "left" | "r
   { key: "s3", label: STORE_META.s3.label, title: STORE_META.s3.technicalName, align: "right", storeKey: "s3" },
   { key: "postgres", label: STORE_META.postgres.label, title: STORE_META.postgres.technicalName, align: "right", storeKey: "postgres" },
   { key: "qdrant", label: STORE_META.qdrant.label, title: STORE_META.qdrant.technicalName, align: "right", storeKey: "qdrant" },
+  { key: "trace", label: "Traces", title: "Heavy full execution-trace payloads (Full mode)", align: "right" },
   { key: "total", label: "Total", align: "right" },
 ];
 
@@ -39,6 +40,7 @@ function sortValue(document: DocumentStorageBreakdown, key: SortKey): string | n
     case "s3": return document.s3.total_bytes;
     case "postgres": return document.postgres.total_bytes;
     case "qdrant": return document.qdrant.total_bytes;
+    case "trace": return document.trace_bytes;
     case "total": return document.total_bytes;
   }
 }

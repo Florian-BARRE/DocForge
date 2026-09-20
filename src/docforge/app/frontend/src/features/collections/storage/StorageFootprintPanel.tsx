@@ -106,6 +106,14 @@ export function StorageFootprintPanel({ collectionId, onNavigate }: StorageFootp
                 </div>
               </div>
 
+              {storage.trace_bytes > 0 && (
+                <div style={{ color: t.color.dim, fontSize: t.font.size.s }}>
+                  Heavy traces (Full mode):{" "}
+                  <span style={{ fontFamily: t.font.mono, color: t.color.text }}>{formatBytes(storage.trace_bytes)}</span>
+                  {" — reclaimable in Settings ▸ Danger zone."}
+                </div>
+              )}
+
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: t.space.m }}>
                 {STORAGE_STORES.map(({ key, label, technicalName, color, emptyLabel }) => {
                   const s = storeStats(storage, key);

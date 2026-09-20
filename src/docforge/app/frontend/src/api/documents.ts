@@ -2,6 +2,7 @@
 // TypeScript mirror of the documents upload contract + its typed client (multipart/form-data).
 
 import { apiFetch, jsonInit } from "./http";
+import type { TracePurgeResult } from "./collections";
 
 const BASE = "/api/v1/documents";
 
@@ -55,4 +56,10 @@ export interface ReingestOptions {
 export function reingestDocument(id: string, options: ReingestOptions = {}): Promise<UploadAccepted> {
   const query = options.force ? "?force=true" : "";
   return apiFetch(`${BASE}/${id}/reingest${query}`, { method: "POST" });
+}
+
+/** Reclaims every stored full execution-trace payload across this document's jobs — the
+ *  document-scoped analogue of `purgeCollectionTracePayloads` (see api/collections.ts). */
+export function purgeDocumentTracePayloads(documentId: string): Promise<TracePurgeResult> {
+  return apiFetch(`${BASE}/${documentId}/trace-payloads/purge`, { method: "POST" });
 }

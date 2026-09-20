@@ -18,6 +18,7 @@ import type { Navigate } from "../../../shell/view";
 import { StepIdentity } from "./StepIdentity";
 import { StepReview } from "./StepReview";
 import { StepSchema } from "./StepSchema";
+import { TracePurgeOfferDialog } from "../trace/TracePurgeOfferDialog";
 import { WizardPreviewPanel } from "./WizardPreviewPanel";
 import { WizardSteps } from "./WizardSteps";
 import {
@@ -68,6 +69,10 @@ export function CollectionWizard({ onNavigate, mode = "create", initial, collect
   const toast = useToast();
   const [submitting, setSubmitting] = useState(false);
   const [issues, setIssues] = useState<ApiIssue[]>([]);
+  // Set right after a successful edit-mode save that LOWERED trace_verbosity away from 'full' —
+  // the navigate-away is held until the offer dialog resolves (accept or decline), otherwise the
+  // wizard (and this dialog's own state) would unmount before the user could act on it.
+  const [traceOfferCollectionId, setTraceOfferCollectionId] = useState<string | null>(null);
 
   const stepLabels = STEP_LABELS_BY_MODE[mode];
   const removed = initial ? removedFieldNames(initial.fields, fields) : [];
@@ -91,7 +96,17 @@ export function CollectionWizard({ onNavigate, mode = "create", initial, collect
         // `preset` selects the stock ingestion blob (light = fast, enrichment-free); create-only.
         : await createCollection({ ...payload, preset });
       toast.success(mode === "edit" ? `Collection “${result.name}” updated` : `Collection “${result.name}” created`);
-      onNavigate({ name: "collection", collectionId: result.id });
+
+      // Offer to also purge the heavy trace payloads already stored under the OLD setting whenever
+      // this save just lowered trace_verbosity away from 'full' — `initial` is this edit session's
+      // starting point (never re-fetched mid-session), so it reliably reads as the PREVIOUS value.
+      const previousVerbosity = initial?.trace_verbosity;
+      const nextVerbosity = (payload as unknown as Record<string, unknown>).trace_verbosity;
+      if (mode === "edit" && previousVerbosity === "full" && nextVerbosity !== "full") {
+        setTraceOfferCollectionId(result.id);
+      } else {
+        onNavigate({ name: "collection", collectionId: result.id });
+      }
     } catch (error) {
       const issueList = error instanceof HttpError ? error.issues : [{ message: String(error) }];
       setIssues(issueList);
@@ -139,6 +154,16 @@ export function CollectionWizard({ onNavigate, mode = "create", initial, collect
           jobTimeoutSeconds={jobTimeoutSeconds} fields={fields}
           removedFieldNames={removed}
           onBack={() => setStep(1)} onSubmit={handleSubmit} submitting={submitting} issues={issues}
+        />
+      )}
+      {traceOfferCollectionId && (
+        <TracePurgeOfferDialog
+          collectionId={traceOfferCollectionId}
+          onDone={() => {
+            const id = traceOfferCollectionId;
+            setTraceOfferCollectionId(null);
+            onNavigate({ name: "collection", collectionId: id });
+          }}
         />
       )}
     </>

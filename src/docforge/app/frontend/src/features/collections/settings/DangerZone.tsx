@@ -15,7 +15,10 @@ import { Button } from "../../../components/Button";
 import { useToast } from "../../../shell/toast";
 import type { Navigate } from "../../../shell/view";
 import { theme } from "../../../theme";
+import { formatBytes } from "../../explorer/format";
 import { useDeleteCollection } from "../state/useDeleteCollection";
+import { useCollectionTraceBytes } from "../trace/useCollectionTraceBytes";
+import { useCollectionTracePurge } from "../trace/useCollectionTracePurge";
 
 interface DangerZoneProps {
   collectionId: string;
@@ -30,10 +33,18 @@ export function DangerZone({ collectionId, collectionName, onNavigate }: DangerZ
   const [confirmingReingest, setConfirmingReingest] = useState(false);
   const [reingesting, setReingesting] = useState(false);
   const [reingestError, setReingestError] = useState<string | null>(null);
+  const { traceBytes, loading: traceBytesLoading } = useCollectionTraceBytes(collectionId);
+  const { pending: purgingTraces, error: purgeTracesError, purge: purgeTraces } = useCollectionTracePurge(collectionId);
+  const [confirmingTracePurge, setConfirmingTracePurge] = useState(false);
 
   const handleDelete = async () => {
     const ok = await remove({ id: collectionId, name: collectionName });
     if (ok) onNavigate({ name: "collections" });
+  };
+
+  const handlePurgeTraces = async () => {
+    const result = await purgeTraces();
+    if (result) setConfirmingTracePurge(false);
   };
 
   const handleReingest = async () => {
@@ -88,6 +99,42 @@ export function DangerZone({ collectionId, collectionName, onNavigate }: DangerZ
         </div>
       </div>
       {reingestError && <div style={{ color: theme.color.error, fontSize: theme.font.size.s }}>{reingestError}</div>}
+
+      <div style={{ borderTop: `1px solid ${theme.color.error}`, opacity: 0.4 }} />
+
+      <div
+        style={{
+          display: "flex", alignItems: "center", justifyContent: "space-between", gap: theme.space.m,
+          flexWrap: "wrap",
+        }}
+      >
+        <div style={{ color: theme.color.text, fontSize: theme.font.size.s, maxWidth: 480 }}>
+          <strong>Purge stored traces</strong> reclaims the heavy full execution-trace payloads
+          accumulated while verbosity was set to Full
+          {!traceBytesLoading && traceBytes !== null && (
+            <>
+              {" — currently "}
+              <span style={{ fontFamily: theme.font.mono, color: theme.color.text }}>{formatBytes(traceBytes)}</span>
+              {" stored."}
+            </>
+          )}
+        </div>
+        <div style={{ display: "flex", gap: theme.space.s, flexShrink: 0 }}>
+          {confirmingTracePurge ? (
+            <>
+              <Button onClick={() => setConfirmingTracePurge(false)} disabled={purgingTraces}>Cancel</Button>
+              <Button variant="danger" disabled={purgingTraces} onClick={handlePurgeTraces}>
+                {purgingTraces ? "purging…" : "Confirm purge"}
+              </Button>
+            </>
+          ) : (
+            <Button variant="danger" disabled={!traceBytes} onClick={() => setConfirmingTracePurge(true)}>
+              Purge stored traces
+            </Button>
+          )}
+        </div>
+      </div>
+      {purgeTracesError && <div style={{ color: theme.color.error, fontSize: theme.font.size.s }}>{purgeTracesError}</div>}
 
       <div style={{ borderTop: `1px solid ${theme.color.error}`, opacity: 0.4 }} />
 

@@ -74,6 +74,7 @@ const baseStorage: CollectionStorage = {
   s3: { original_bytes: 0, rendered_bytes: 0, total_bytes: 0, physical_unique_bytes: 0, estimated: false },
   postgres: { documents_bytes: 0, ir_blocks_bytes: 0, enrichment_bytes: 0, chunks_bytes: 0, metadata_bytes: 0, observability_bytes: 0, total_bytes: 0, estimated: false },
   qdrant: { points: 0, dense_bytes: 0, sparse_bytes: 0, payload_bytes: 0, total_bytes: 0, estimated: false },
+  trace_bytes: 0,
   grand_total_bytes: 0,
   documents: [],
 };
