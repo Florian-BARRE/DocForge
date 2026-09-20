@@ -53,6 +53,32 @@ def test_metrics_returns_prometheus_text(client, monkeypatch, stub_infra) -> Non
     assert "docforge_workers_live 0.0" in body
 
 
+def test_metrics_lists_the_search_series(client, monkeypatch, stub_infra) -> None:
+    """The docforge_search_* series render through the same /metrics path (schema-stable at rest).
+
+    Importing the emitter module registers the series on the default registry at import time, so
+    they appear in the exposition even before any search has run — the same property the infra
+    gauges rely on.
+    """
+    import backend.libs.metrics.search_collectors  # noqa: F401,PLC0415  (registers the series)
+    from config import RUNTIME_CONFIG  # noqa: PLC0415
+
+    monkeypatch.setattr(RUNTIME_CONFIG, "METRICS_ENABLED", True)
+    body = client.get("/metrics").text
+    for name in (
+        "docforge_search_runs_total",
+        "docforge_search_run_duration_seconds",
+        "docforge_search_duration_seconds",
+        "docforge_search_candidates",
+        "docforge_search_zero_result_total",
+        "docforge_search_retrieval_total",
+        "docforge_search_rerank_rank_shift",
+        "docforge_search_branch_contribution_ratio",
+        "docforge_search_branch_probe_total",
+    ):
+        assert name in body
+
+
 def test_metrics_exempt_from_auth(client, monkeypatch, stub_infra) -> None:
     """With auth ON and no bearer, /metrics is still served (it lives outside /api/v1)."""
     from config import RUNTIME_CONFIG  # noqa: PLC0415

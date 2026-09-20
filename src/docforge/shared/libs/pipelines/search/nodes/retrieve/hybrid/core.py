@@ -22,7 +22,7 @@ from ...base import PortBackedNode
 
 
 class RetrieveHybridConfig(NodeConfig):
-    """The branch-fusion strategy."""
+    """The branch-fusion strategy + the opt-in dense/sparse contribution measurement."""
 
     fusion: Literal["rrf", "dbsf"] = Field(
         default="rrf",
@@ -31,6 +31,15 @@ class RetrieveHybridConfig(NodeConfig):
         "— Distribution-Based Score Fusion: normalises each branch's score distribution before "
         "summing, so a confident axis (e.g. exact lexical on IDs/codes) can dominate. Tune per "
         "collection to shift the semantic↔lexical balance.",
+    )
+    measure_branch_contribution: bool = Field(
+        default=False,
+        description="Diagnostic knob (OFF by default). When True, each hybrid retrieval ALSO runs "
+        "two measurement-only probe queries (dense-only + sparse-only) so the dense-vs-sparse share "
+        "of the fused pool is reported as Prometheus series (docforge_search_branch_contribution_*). "
+        "Costs 3× the Qdrant retrieval queries (+1 round-trip wall-clock) for this collection and is "
+        "best-effort (a probe failure never fails the search). The breakdown surfaces ONLY in metrics "
+        "— it never changes the retrieved candidates or the API response.",
     )
 
 
@@ -85,6 +94,7 @@ class RetrieveHybridNode(PortBackedNode):
             limit=data.spec.candidate_k,
             targets=data.spec.search_targets,
             fusion=config.fusion,
+            measure_branch_contribution=config.measure_branch_contribution,
         )
         self.logger.debug(
             f"Retrieved {len(candidates)} candidate(s) (depth {data.spec.candidate_k})"

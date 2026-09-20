@@ -64,7 +64,9 @@ class MockCollectionReadPort(CollectionReadPort):
         self.hydrated_ids: list[str] = []
         self.fusions: list[str] = []
 
-    async def hybrid_search(self, encoded, filters, limit, targets=None, fusion="rrf"):
+    async def hybrid_search(
+        self, encoded, filters, limit, targets=None, fusion="rrf", measure_branch_contribution=False
+    ):
         """Return 3 fake candidates, best-first (records the call + fusion for assertions)."""
         assert isinstance(encoded, EncodedQuery)
         self.hybrid_calls.append((filters, limit))
@@ -175,7 +177,9 @@ class CuttingReadPort(CollectionReadPort):
     def __init__(self) -> None:
         self.hydrated_ids: list[str] = []
 
-    async def hybrid_search(self, encoded, filters, limit, targets=None, fusion="rrf"):
+    async def hybrid_search(
+        self, encoded, filters, limit, targets=None, fusion="rrf", measure_branch_contribution=False
+    ):
         """Return 5 candidates in NON-descending order so ranking-before-cut is observable."""
         return [
             Candidate(chunk_id="lo", score=0.1, source="hybrid"),
@@ -372,7 +376,9 @@ class TargetCapturingReadPort(CollectionReadPort):
     def __init__(self) -> None:
         self.targets_seen: list = None
 
-    async def hybrid_search(self, encoded, filters, limit, targets=None, fusion="rrf"):
+    async def hybrid_search(
+        self, encoded, filters, limit, targets=None, fusion="rrf", measure_branch_contribution=False
+    ):
         self.targets_seen = targets
         return [Candidate(chunk_id="c1", score=0.9, source="hybrid")]
 
@@ -445,7 +451,9 @@ class _LexicalCapturingReadPort(CollectionReadPort):
     def __init__(self) -> None:
         self.encoded_seen = None
 
-    async def hybrid_search(self, encoded, filters, limit, targets=None, fusion="rrf"):
+    async def hybrid_search(
+        self, encoded, filters, limit, targets=None, fusion="rrf", measure_branch_contribution=False
+    ):
         self.encoded_seen = encoded
         return [Candidate(chunk_id="c1", score=0.8, source="hybrid")]
 

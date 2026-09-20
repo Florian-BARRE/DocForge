@@ -57,7 +57,9 @@ class _TextPort(CollectionReadPort):
         self._texts = texts
         self.hydrated_ids: list[str] = []
 
-    async def hybrid_search(self, encoded, filters, limit, targets=None, fusion="rrf"):
+    async def hybrid_search(
+        self, encoded, filters, limit, targets=None, fusion="rrf", measure_branch_contribution=False
+    ):
         """Unused by the rerank-node unit tests (the node reads only hydrate)."""
         raise AssertionError("hybrid_search must not be called by the rerank node")
 
@@ -394,7 +396,9 @@ def test_rerank_blob_hydrate_binds_to_rerank_not_retrieve() -> None:
 class _EndToEndPort(CollectionReadPort):
     """A port whose fusion pool the reranker will re-order, proving rerank changes the final result."""
 
-    async def hybrid_search(self, encoded, filters, limit, targets=None, fusion="rrf"):
+    async def hybrid_search(
+        self, encoded, filters, limit, targets=None, fusion="rrf", measure_branch_contribution=False
+    ):
         """Fusion ranks a>b>c; the mocked reranker below inverts it to c>b>a."""
         return [
             Candidate(chunk_id="a", score=0.9, source="hybrid"),

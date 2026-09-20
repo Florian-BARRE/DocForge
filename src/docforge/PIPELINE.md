@@ -627,6 +627,17 @@ touché (golden blob inchangé, **pas de bump `ENGINE_BLOB_VERSION`**).
 > ne **façonne que le défaut** d'une requête sans targets explicites — l'embedder de la collection décide
 > quels axes existent réellement (un axe absent dégrade proprement).
 
+> **Knob diagnostic `measure_branch_contribution` (node `(retrieve, hybrid)`, défaut `False`)** — mesure
+> la part dense-vs-sparse du pool fusionné. Quand `True`, CHAQUE retrieval lance en plus **deux requêtes
+> sonde** (dense-seul + sparse-seul) concurrentes APRÈS l'appel hybrid autoritatif → **3× les requêtes
+> Qdrant** de cette collection (+1 aller-retour wall-clock), **best-effort** (une sonde en échec ne fait
+> jamais échouer la recherche). La ventilation ne sort **que** en séries Prometheus
+> (`docforge_search_branch_contribution_ratio{branch}` + `docforge_search_branch_probe_total{outcome}`) —
+> elle ne change **ni les candidats retrouvés ni la réponse API**. Champ per-collection du blob search
+> (`extra="forbid"`), jamais un flag de requête (sûreté coût multi-tenant + zéro ripple d'API) ; **pas de
+> bump `ENGINE_BLOB_VERSION`** (ratchet ingest-only ; le normalizer search n'a pas de version stamp — un
+> blob stocké antérieur prend le défaut `False` via `SearchBlobNormalizer`).
+
 **Le contrat de collection est schema-driven** — `GET /api/v1/collections/contract-schema` expose l'identité et
 les limites de la collection (dont `job_timeout_seconds`) en **JSON Schema** — le même mécanisme que le
 `config_schema` d'un node — et l'UI le rend via `SchemaForm`, si bien qu'un nouveau champ du contrat **remonte

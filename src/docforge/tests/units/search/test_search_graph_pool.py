@@ -51,7 +51,9 @@ class _FixedReadPort(CollectionReadPort):
         self._chunk_id = chunk_id
         self._yield_first = yield_first
 
-    async def hybrid_search(self, encoded, filters, limit, targets=None, fusion="rrf"):
+    async def hybrid_search(
+        self, encoded, filters, limit, targets=None, fusion="rrf", measure_branch_contribution=False
+    ):
         # Optionally yield control so two gathered runs are genuinely in-flight at once.
         if self._yield_first:
             await asyncio.sleep(0.01)

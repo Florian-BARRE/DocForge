@@ -37,6 +37,7 @@ class CollectionReadPort(ABC):
         limit: int,
         targets: list[SearchTarget],
         fusion: str = "rrf",
+        measure_branch_contribution: bool = False,
     ) -> list[Candidate]:
         """
         Run the collection's filtered hybrid search and return candidates, best-first.
@@ -53,6 +54,11 @@ class CollectionReadPort(ABC):
             limit (int): The candidate depth to return (the QuerySpec's ``candidate_k``).
             targets (list[SearchTarget]): The fields × modalities to search (content and/or metadata).
             fusion (str): Branch-fusion strategy — "rrf" (default) or "dbsf".
+            measure_branch_contribution (bool): A BEHAVIOUR knob a node may forward (exactly as it
+                forwards ``fusion``): when True the implementation may run extra measurement-only
+                branch probes. OFF by default and never changes the returned candidates. This is a
+                legitimate behaviour argument on the engine-side contract; the app-side probe OBJECT
+                that collects the result is deliberately NOT part of this protocol.
 
         Returns:
             list[Candidate]: Chunk ids + scores in fusion order (empty when nothing matched).

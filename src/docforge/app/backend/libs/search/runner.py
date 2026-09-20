@@ -29,6 +29,10 @@ from shared_libs.pipelines.validation import GraphValidator
 from shared_libs.public_models.search import SearchResult
 
 # ====== Local Project Imports ======
+# Imported DIRECTLY (not via the metrics package __init__) so the search import graph never drags in
+# MetricsService and its QueueClient/Database imports — the emitter is a pure reader of what a run
+# produced.
+from ..metrics.search_emitter import SearchMetricsEmitter
 from .graph_pool import BuiltGraphPool
 
 # The error_type the encode node stamps when NO query vector axis could be produced (the shared
@@ -76,8 +80,11 @@ class SearchRunner(LoggerClass):
         LoggerClass.__init__(self)
         self._builder = PipelineBuilder()
         self._validator = GraphValidator()
-        # Search runs INLINE in the request and DISCARDS the record, so it captures nothing — no
-        # per-hop trace work is spent (the ingest worker is the only trace consumer).
+        # Search runs INLINE in the request at TraceLevel.OFF, so it captures NO payloads — no
+        # per-hop trace work is spent (the ingest worker is the only full-trace consumer). The record
+        # is NOT discarded, though: per-node duration/kind/score survive OFF (they are copied off the
+        # output, not payload capture), and run() reads the returned record ONCE at its boundary to
+        # emit the docforge_search_* metrics before dropping it — still no payload capture is added.
         self._engine = FlowEngine(trace_level=TraceLevel.OFF)
         # The per-blob pool of built+validated graphs — builds once per distinct blob, reused across
         # requests (the read port is rebound per run, the mutable seam the pool never shares).
@@ -221,6 +228,12 @@ class SearchRunner(LoggerClass):
         # 1. Check out a built + validated graph (built once per distinct blob, then pooled). A
         #    broken blob raises here — never pooled — before any spend.
         group = self._pool.acquire(graph_key, lambda: self.__build_validated(blob))
+        # Hoisted so the finally can emit metrics for EVERY path (all four failures raise inside the
+        # try, so an end-of-try emission would miss them). Default outcome is "failed"; each branch
+        # refines it before it raises/returns.
+        record: NodeExecutionRecord | None = None
+        result: SearchResult | None = None
+        outcome = "failed"
         try:
             # 2. Bind the read port onto the port-backed nodes — the engine does NOT bind. This is
             #    the per-request mutable seam; binding our OWN checked-out graph keeps concurrent
@@ -245,9 +258,11 @@ class SearchRunner(LoggerClass):
                 )
                 # 4a. The whole run blew the wall-clock cap — the provider is stuck. Retryable 504.
                 if error_type == _TIMEOUT_ERROR:
+                    outcome = "timeout"
                     raise SearchRunTimeout(f"search run timed out: {reason}")
                 # 4b. The query could not be encoded on any axis — the embedder is busy. Retryable 503.
                 if error_type == _ENCODE_UNAVAILABLE_ERROR:
+                    outcome = "unavailable"
                     raise SearchUnavailableError(f"search temporarily unavailable: {reason}")
                 # 4c. Anything else is a genuine run failure of the graph itself.
                 raise SearchRunError(f"search run failed: {reason}")
@@ -262,10 +277,24 @@ class SearchRunner(LoggerClass):
             # 6. Meter the run's paid text-gen spend (rewrite/HyDE LLM calls stamp usage on the
             #    records), priced against the collection's effective rates — search cost is surfaced.
             usage = UsageSummer.summarize(record, rates)
+            outcome = "success"
             self.logger.info(f"Search delivered {len(result.hits)} hit(s)")
             return result, usage
         finally:
-            # 7. Return the graph for reuse whatever the outcome — nodes keep no run-scoped state
+            # 7. Emit the per-search metrics FIRST (before releasing the graph) and best-effort:
+            #    raising here would MASK the run's real exception (a precise SearchRunTimeout would
+            #    become a metrics stack trace) AND skip the pool release, leaking a pooled graph.
+            try:
+                SearchMetricsEmitter.emit(
+                    record=record,
+                    result=result,
+                    probe=getattr(read_port, "probe", None),
+                    families=SearchMetricsEmitter.family_map(group),
+                    outcome=outcome,
+                )
+            except Exception as exc:
+                self.logger.warning(f"Search metrics emission failed (ignored): {exc}")
+            # 8. Return the graph for reuse whatever the outcome — nodes keep no run-scoped state
             #    (the engine holds it all in its RunContext), so a used graph is safe to re-run.
             self._pool.release(graph_key, group)
 
