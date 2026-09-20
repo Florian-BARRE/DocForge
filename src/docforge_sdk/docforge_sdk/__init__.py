@@ -140,6 +140,9 @@ from .models.storage import (
 # ------------------- Transfers models ------------------- #
 from .models.transfers import TransferAccepted, TransferStatus
 
+# ------------------- Trace payloads models ------------------- #
+from .models.trace import TracePurgeResult
+
 # ------------------- Public API ------------------- #
 __all__ = [
     "__version__",
@@ -249,6 +252,8 @@ __all__ = [
     # Transfers
     "TransferAccepted",
     "TransferStatus",
+    # Trace payloads
+    "TracePurgeResult",
     # Exceptions
     "DocForgeError",
     "APIConnectionError",

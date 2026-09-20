@@ -99,7 +99,9 @@ class DocumentStorageModel(BaseModel):
         s3 (S3FootprintModel): EXACT S3 bytes.
         postgres (PostgresFootprintModel): ESTIMATED Postgres row bytes.
         qdrant (QdrantFootprintModel): ESTIMATED vector-store bytes.
-        total_bytes (int): S3 (logical) + Postgres + Qdrant.
+        trace_bytes (int): Heavy full execution-trace payloads stored in S3 under trace/{job_id}/
+            (reclaimable via the trace-payload purge).
+        total_bytes (int): S3 (logical) + Postgres + Qdrant + trace.
     """
 
     document_id: str = Field(description="The document's UUID.")
@@ -107,7 +109,11 @@ class DocumentStorageModel(BaseModel):
     s3: S3FootprintModel = Field(description="EXACT S3 bytes.")
     postgres: PostgresFootprintModel = Field(description="ESTIMATED Postgres row bytes.")
     qdrant: QdrantFootprintModel = Field(description="ESTIMATED vector-store bytes.")
-    total_bytes: int = Field(description="S3 (logical) + Postgres + Qdrant.")
+    trace_bytes: int = Field(
+        description="Heavy full execution-trace payloads stored in S3 under trace/{job_id}/ "
+        "(reclaimable via the trace-payload purge)."
+    )
+    total_bytes: int = Field(description="S3 (logical) + Postgres + Qdrant + trace.")
 
 
 class CollectionStorageResponse(BaseModel):
@@ -123,7 +129,9 @@ class CollectionStorageResponse(BaseModel):
         s3 (S3FootprintModel): EXACT S3 totals (logical + deduped physical).
         postgres (PostgresFootprintModel): ESTIMATED Postgres row bytes.
         qdrant (QdrantFootprintModel): ESTIMATED vector-store bytes.
-        grand_total_bytes (int): Material footprint — S3 physical_unique + Postgres + Qdrant.
+        trace_bytes (int): Heavy full execution-trace payloads stored in S3 under trace/{job_id}/
+            (reclaimable via the trace-payload purge).
+        grand_total_bytes (int): Material footprint — S3 physical_unique + Postgres + Qdrant + trace.
         documents (list[DocumentStorageModel]): Per-document breakdown, sorted by total bytes
             descending (doubles as top-N).
     """
@@ -132,8 +140,12 @@ class CollectionStorageResponse(BaseModel):
     s3: S3FootprintModel = Field(description="EXACT S3 totals (logical + deduped physical).")
     postgres: PostgresFootprintModel = Field(description="ESTIMATED Postgres row bytes.")
     qdrant: QdrantFootprintModel = Field(description="ESTIMATED vector-store bytes.")
+    trace_bytes: int = Field(
+        description="Heavy full execution-trace payloads stored in S3 under trace/{job_id}/ "
+        "(reclaimable via the trace-payload purge)."
+    )
     grand_total_bytes: int = Field(
-        description="Material footprint — S3 physical_unique + Postgres + Qdrant."
+        description="Material footprint — S3 physical_unique + Postgres + Qdrant + trace."
     )
     documents: list[DocumentStorageModel] = Field(
         description="Per-document breakdown, sorted by total bytes descending (doubles as top-N)."

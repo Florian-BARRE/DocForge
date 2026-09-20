@@ -174,6 +174,9 @@ from .storage import (
 # ------------------- Transfers models ------------------- #
 from .transfers import TransferAccepted, TransferStatus
 
+# ------------------- Trace payloads models ------------------- #
+from .trace import TracePurgeResult
+
 # ------------------- Public API ------------------- #
 __all__ = [
     # Shared vocabulary
@@ -326,4 +329,6 @@ __all__ = [
     # Transfers
     "TransferAccepted",
     "TransferStatus",
+    # Trace payloads
+    "TracePurgeResult",
 ]

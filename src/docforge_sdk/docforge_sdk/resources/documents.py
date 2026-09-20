@@ -11,6 +11,7 @@ from typing import Any
 # ====== Local Project Imports ======
 from .._requestspec import RequestSpec
 from ..models.documents import DocumentEnabledResponse, DocumentView, EnabledPatch, UploadAccepted
+from ..models.trace import TracePurgeResult
 from ._base import AsyncResource, SyncResource, _ResourceMixin
 
 
@@ -71,6 +72,12 @@ class _DocumentsSpecs(_ResourceMixin):
         """A POST re-running the full ingestion of one document (``force`` bypasses the doc cache)."""
         return RequestSpec(
             "POST", f"{self._DOCUMENTS_PATH}/{document_id}/reingest", params={"force": force}
+        )
+
+    def _purge_trace_payloads_spec(self, document_id: str) -> RequestSpec:
+        """A POST reclaiming one document's stored full execution-trace payloads (best-effort)."""
+        return RequestSpec(
+            "POST", f"{self._DOCUMENTS_PATH}/{document_id}/trace-payloads/purge"
         )
 
     def _markdown_path(self, document_id: str) -> str:
@@ -153,6 +160,24 @@ class AsyncDocuments(AsyncResource, _DocumentsSpecs):
             self._reingest_spec(document_id, force), UploadAccepted
         )
 
+    async def purge_trace_payloads(self, document_id: str) -> TracePurgeResult:
+        """
+        Reclaim one document's stored full execution-trace payloads (the heavy per-node raw bytes).
+
+        Idempotent: a document that stored no full-trace payloads returns zeros, not an error (404
+        only when the document itself is unknown). Best-effort server-side, so the call always
+        succeeds and reports the counts.
+
+        Args:
+            document_id (str): The document whose trace payloads are purged.
+
+        Returns:
+            TracePurgeResult: Jobs considered + object-store objects deleted.
+        """
+        return await self._transport.request(
+            self._purge_trace_payloads_spec(document_id), TracePurgeResult
+        )
+
     async def get_markdown(self, document_id: str, download: bool = False) -> DocumentView:
         """
         Render a document as an on-the-fly markdown view generated from the canonical IR.
@@ -231,6 +256,12 @@ class SyncDocuments(SyncResource, _DocumentsSpecs):
     def reingest(self, document_id: str, force: bool = False) -> UploadAccepted:
         """Re-run the full ingestion of a single document (``force`` bypasses the doc cache)."""
         return self._transport.request(self._reingest_spec(document_id, force), UploadAccepted)
+
+    def purge_trace_payloads(self, document_id: str) -> TracePurgeResult:
+        """Reclaim one document's stored full execution-trace payloads (idempotent, best-effort)."""
+        return self._transport.request(
+            self._purge_trace_payloads_spec(document_id), TracePurgeResult
+        )
 
     def get_markdown(self, document_id: str, download: bool = False) -> DocumentView:
         """

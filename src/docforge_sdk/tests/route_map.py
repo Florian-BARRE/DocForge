@@ -44,6 +44,7 @@ ROUTES: set[tuple[str, str]] = {
     ("GET", "/api/v1/collections/{collection_id}/health"),
     ("GET", "/api/v1/collections/{collection_id}/storage"),
     ("POST", "/api/v1/collections/{collection_id}/reingest"),
+    ("POST", "/api/v1/collections/{collection_id}/trace-payloads/purge"),
     ("POST", "/api/v1/collections/{collection_id}/estimate"),
     ("POST", "/api/v1/collections/{collection_id}/pipeline/preview"),
     ("POST", "/api/v1/collections/{collection_id}/pipeline/preview/jobs"),
@@ -57,6 +58,7 @@ ROUTES: set[tuple[str, str]] = {
     ("POST", "/api/v1/documents"),
     ("PATCH", "/api/v1/documents/{document_id}/enabled"),
     ("POST", "/api/v1/documents/{document_id}/reingest"),
+    ("POST", "/api/v1/documents/{document_id}/trace-payloads/purge"),
     ("GET", "/api/v1/documents/{document_id}/markdown"),
     ("GET", "/api/v1/documents/{document_id}/html"),
     # Search — resources/search.py

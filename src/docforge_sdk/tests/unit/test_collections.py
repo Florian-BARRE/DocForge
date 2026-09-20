@@ -186,7 +186,8 @@ _STORAGE_SAMPLE: dict[str, Any] = {
     "s3": _S3_FOOTPRINT_SAMPLE,
     "postgres": _POSTGRES_FOOTPRINT_SAMPLE,
     "qdrant": _QDRANT_FOOTPRINT_SAMPLE,
-    "grand_total_bytes": 1520,
+    "trace_bytes": 300,
+    "grand_total_bytes": 1820,
     "documents": [
         {
             "document_id": "33333333-3333-3333-3333-333333333333",
@@ -194,7 +195,8 @@ _STORAGE_SAMPLE: dict[str, Any] = {
             "s3": _S3_FOOTPRINT_SAMPLE,
             "postgres": _POSTGRES_FOOTPRINT_SAMPLE,
             "qdrant": _QDRANT_FOOTPRINT_SAMPLE,
-            "total_bytes": 1820,
+            "trace_bytes": 300,
+            "total_bytes": 2120,
         }
     ],
 }
@@ -209,8 +211,10 @@ async def test_storage_returns_typed_footprint() -> None:
         result = await client.collections.storage(CID)
     assert route.calls.last.request.method == "GET"
     assert route.calls.last.request.url.path == f"/api/v1/collections/{CID}/storage"
-    assert result.grand_total_bytes == 1520
+    assert result.grand_total_bytes == 1820
+    assert result.trace_bytes == 300
     assert result.documents[0].filename == "report.pdf"
+    assert result.documents[0].trace_bytes == 300
 
 
 @respx.mock

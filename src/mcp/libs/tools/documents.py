@@ -99,3 +99,15 @@ def register(
         """Re-run the full ingestion of a single document (force bypasses the doc cache)."""
         accepted = await sdk.documents.reingest(document_id, force)
         return accepted.model_dump(mode="json")
+
+    @mcp.tool()
+    async def purge_document_trace_payloads(document_id: str) -> Any:
+        """
+        Reclaim every stored full execution-trace payload of a single document's jobs — the heavy
+        per-node raw input/output bytes the opt-in `trace_verbosity='full'` tier accumulates in the
+        object store. Idempotent: a document that stored nothing returns zeros (not an error); 404
+        only when the document itself is unknown. Best-effort — always succeeds and reports
+        `purged_jobs` (jobs considered) + `deleted_objects` (object-store objects removed).
+        """
+        result = await sdk.documents.purge_trace_payloads(document_id)
+        return result.model_dump(mode="json")

@@ -139,6 +139,7 @@ from docforge_sdk.models.storage import (
     QdrantFootprintModel,
     S3FootprintModel,
 )
+from docforge_sdk.models.trace import TracePurgeResult
 from docforge_sdk.models.transfers import TransferAccepted, TransferStatus
 
 # Maps the OpenAPI component-schema NAME to the SDK model that mirrors it. A handful of SDK classes
@@ -278,6 +279,8 @@ MODELS: dict[str, type[BaseModel]] = {
     # Transfers
     "TransferAccepted": TransferAccepted,
     "TransferStatus": TransferStatus,
+    # Trace payloads
+    "TracePurgeResult": TracePurgeResult,
     # Collection config snippets (granular pipeline/search/schema export-import).
     "CollectionSnippet": CollectionSnippet,
     "SnippetImportResult": SnippetImportResult,

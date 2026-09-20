@@ -256,6 +256,29 @@ later), so declare the **full** schema up front.
 | `GET` | `/api/v1/collections/{id}/health` | `read` | Zero-spend provider preflight sweep + an overall verdict |
 | `GET` | `/api/v1/collections/{id}/storage` | `read` | Material footprint across all three stores (exact S3, estimated PG/Qdrant) |
 | `POST` | `/api/v1/collections/{id}/reingest` | `write` | Re-run the full pipeline over the whole collection (`202`) |
+| `POST` | `/api/v1/collections/{id}/trace-payloads/purge` | `write` | Reclaim the collection's stored full execution-trace payloads (`TracePurgeResult`) |
+
+### Purging stored trace payloads
+
+`POST /api/v1/collections/{collection_id}/trace-payloads/purge` — capability `write`. Reclaims the
+heavy per-node raw input/output bytes the opt-in `trace_verbosity='full'` tier stores in the object
+store under each job's `trace/{job_id}/` prefix, and clears the stage-event rows' references so
+nothing keeps advertising a payload that is gone. **Idempotent**: a collection that stored nothing is
+a clean no-op returning zeros, not a `404` (only an unknown collection is `404`). **Best-effort**: a
+storage error is swallowed server-side, so the call always succeeds and reports the counts — it never
+returns a `500` for a partial store failure.
+
+```json
+{
+  "purged_jobs": 12,
+  "deleted_objects": 24
+}
+```
+
+| Field | Type | Meaning |
+|---|---|---|
+| `purged_jobs` | int | Jobs in scope whose trace references were cleared (`0` when the scope has no jobs). |
+| `deleted_objects` | int | Object-store objects removed across those jobs (`0` when nothing was stored). |
 
 ### The metadata FieldSpec
 
@@ -467,13 +490,17 @@ cache.
 | `s3` | **Exact** bytes: `{original_bytes, rendered_bytes, total_bytes, physical_unique_bytes, estimated:false}` |
 | `postgres` | **Estimated** row bytes per bucket (documents / ir_blocks / enrichment / chunks / metadata / observability) + `total_bytes` |
 | `qdrant` | **Estimated** `{points, dense_bytes, sparse_bytes, payload_bytes, total_bytes}` |
-| `grand_total_bytes` | S3 (logical) + Postgres + Qdrant |
-| `documents[]` | Per-document `{document_id, filename, s3, postgres, qdrant, total_bytes}` |
+| `trace_bytes` | **Exact** bytes of the heavy full execution-trace payloads stored in S3 under `trace/{job_id}/` (a separate top-level S3 line, reclaimable via the trace-payload purge) — collection level and per document |
+| `grand_total_bytes` | S3 `physical_unique_bytes` + Postgres + Qdrant + `trace_bytes` |
+| `documents[]` | Per-document `{document_id, filename, s3, postgres, qdrant, trace_bytes, total_bytes}` |
 
 Only S3 is exact (it reads the content-addressed blob registry, and `physical_unique_bytes` accounts
 for dedup). Postgres bytes come from `pg_column_size` and exclude index/TOAST/bloat; Qdrant bytes are
 count-based arithmetic and exclude index overhead. Every footprint carries an `estimated` flag saying
-which it is — the numbers are never presented as measured when they are not.
+which it is — the numbers are never presented as measured when they are not. `trace_bytes` is summed
+from a byte total recorded on each `job` row when its trace payloads are stored, so ONLY trace
+captured after this shipped is counted (older payloads read as 0 until re-stored) — and it converges
+back to 0 when the trace-payload purge reclaims those bytes.
 
 `404` when the collection is unknown.
 
@@ -586,6 +613,7 @@ collection scope; an unknown id is `404`.
 | `GET` | `/api/v1/documents/{document_id}/markdown` | `read` | Markdown view, generated on the fly from the IR |
 | `GET` | `/api/v1/documents/{document_id}/html` | `read` | HTML view, generated on the fly from the IR |
 | `DELETE` | `/api/v1/documents/{document_id}` | `write` | Delete everywhere (`204`) |
+| `POST` | `/api/v1/documents/{document_id}/trace-payloads/purge` | `write` | Reclaim a single document's stored full execution-trace payloads (`TracePurgeResult`) |
 
 ```bash
 # List a collection's documents

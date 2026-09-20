@@ -287,3 +287,15 @@ def register(mcp: FastMCP, sdk: AsyncClient) -> None:
         request = BulkReingestRequest(document_ids=document_ids, force=force)
         accepted = await sdk.collections.reingest(collection_id, request)
         return accepted.model_dump(mode="json")
+
+    @mcp.tool()
+    async def purge_collection_trace_payloads(collection_id: str) -> Any:
+        """
+        Reclaim every stored full execution-trace payload of a collection's jobs — the heavy
+        per-node raw input/output bytes the opt-in `trace_verbosity='full'` tier accumulates in the
+        object store. Idempotent: a collection that stored nothing returns zeros (not an error);
+        404 only when the collection itself is unknown. Best-effort — the call always succeeds and
+        reports `purged_jobs` (jobs considered) + `deleted_objects` (object-store objects removed).
+        """
+        result = await sdk.collections.purge_trace_payloads(collection_id)
+        return result.model_dump(mode="json")

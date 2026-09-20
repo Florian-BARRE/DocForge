@@ -21,7 +21,7 @@ from libs.server import build_mcp
 # 65 -> 66: preview_pipeline (collections) — inline non-persisting ingestion dry-run on one document.
 # 66 -> 68: submit_preview_job + get_preview_job (collections) — async worker-side non-persisting
 # dry-run (covers every pipeline incl. docling) + its poll.
-EXPECTED_TOOL_COUNT = 68
+EXPECTED_TOOL_COUNT = 70
 
 EXPECTED_TOOL_NAMES = {
     # health
@@ -49,6 +49,7 @@ EXPECTED_TOOL_NAMES = {
     "get_collection_contract_schema",
     "collection_health",
     "reingest_collection",
+    "purge_collection_trace_payloads",
     # documents
     "upload_document",
     "upload_document_bytes",
@@ -56,6 +57,7 @@ EXPECTED_TOOL_NAMES = {
     "get_document_markdown",
     "get_document_html",
     "reingest_document",
+    "purge_document_trace_payloads",
     # corpus grid + bulk ops
     "query_documents",
     "delete_documents",

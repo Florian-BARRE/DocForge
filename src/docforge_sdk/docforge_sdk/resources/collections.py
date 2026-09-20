@@ -31,6 +31,7 @@ from ..models.estimate import CollectionEstimateRequest, CostEstimate
 from ..models.health import CollectionHealthResponse
 from ..models.preview import PreviewJobAccepted, PreviewJobResult, PreviewResponse
 from ..models.storage import CollectionStorageResponse
+from ..models.trace import TracePurgeResult
 from ._base import AsyncResource, SyncResource, _ResourceMixin
 
 
@@ -124,6 +125,20 @@ class _CollectionsSpecs(_ResourceMixin):
             RequestSpec: A GET on the collection's storage sub-resource.
         """
         return RequestSpec("GET", f"{self._COLLECTIONS_PATH}/{collection_id}/storage")
+
+    def _purge_trace_payloads_spec(self, collection_id: str) -> RequestSpec:
+        """
+        Build the spec for reclaiming a collection's stored full execution-trace payloads.
+
+        Args:
+            collection_id (str): The collection whose trace payloads are purged.
+
+        Returns:
+            RequestSpec: A POST on the collection's ``/trace-payloads/purge`` sub-resource.
+        """
+        return RequestSpec(
+            "POST", f"{self._COLLECTIONS_PATH}/{collection_id}/trace-payloads/purge"
+        )
 
     def _reingest_spec(self, collection_id: str, request: BulkReingestRequest) -> RequestSpec:
         """
@@ -307,6 +322,24 @@ class AsyncCollections(AsyncResource, _CollectionsSpecs):
         """
         return await self._transport.request(
             self._storage_spec(collection_id), CollectionStorageResponse
+        )
+
+    async def purge_trace_payloads(self, collection_id: str) -> TracePurgeResult:
+        """
+        Reclaim a collection's stored full execution-trace payloads (the heavy per-node raw bytes).
+
+        Idempotent: a collection that stored no full-trace payloads returns zeros, not an error
+        (404 only when the collection itself is unknown). Best-effort server-side, so the call always
+        succeeds and reports the counts.
+
+        Args:
+            collection_id (str): The collection whose trace payloads are purged.
+
+        Returns:
+            TracePurgeResult: Jobs considered + object-store objects deleted.
+        """
+        return await self._transport.request(
+            self._purge_trace_payloads_spec(collection_id), TracePurgeResult
         )
 
     async def reingest(
@@ -542,6 +575,20 @@ class SyncCollections(SyncResource, _CollectionsSpecs):
             CollectionStorageResponse: Per-store totals + the per-document breakdown, heaviest first.
         """
         return self._transport.request(self._storage_spec(collection_id), CollectionStorageResponse)
+
+    def purge_trace_payloads(self, collection_id: str) -> TracePurgeResult:
+        """
+        Reclaim a collection's stored full execution-trace payloads (idempotent, best-effort).
+
+        Args:
+            collection_id (str): The collection whose trace payloads are purged.
+
+        Returns:
+            TracePurgeResult: Jobs considered + object-store objects deleted (404 only when unknown).
+        """
+        return self._transport.request(
+            self._purge_trace_payloads_spec(collection_id), TracePurgeResult
+        )
 
     def reingest(
         self, collection_id: str, request: BulkReingestRequest | None = None
