@@ -347,6 +347,55 @@ async def test_store_trace_payloads_byte_accounting_failure_is_swallowed(monkeyp
     assert set(refs) == {"parse"}
 
 
+async def test_store_trace_payloads_counts_identical_overcap_payloads_once(monkeypatch) -> None:
+    """Two BYTE-IDENTICAL over-cap payloads truncate to the same content key → counted ONCE. Guards
+    the ``sum({key: len(data)})`` dedup against double-counting the shared object (and the marker)."""
+    nodes = [
+        _flat("parse", output={"x": "a" * 100}),
+        _flat("chunk", output={"x": "a" * 100}),
+    ]
+    monkeypatch.setattr(facade_module.ExecutionTreeFlattener, "flatten", lambda record: nodes)
+    put_many = AsyncMock()
+    monkeypatch.setattr(facade_module.S3ObjectApi, "put_many", put_many)
+    set_bytes = AsyncMock()
+    monkeypatch.setattr(facade_module.JobApi, "set_trace_payload_bytes", set_bytes)
+
+    facade = IngestionFacade(
+        _postgres_yielding(MagicMock()), MagicMock(), _s3_yielding(MagicMock())
+    )
+    await facade.store_trace_payloads(uuid.uuid4(), MagicMock(), max_payload_bytes=20)
+
+    # Both payloads over the cap collapse to ONE content-addressed (truncated) object.
+    objects = put_many.await_args.args[2]
+    assert len({obj.key for obj in objects}) == 1
+    # The recorded total is that single object's size — not double the byte count.
+    (only_object,) = {obj.key: obj for obj in objects}.values()
+    set_bytes.assert_awaited_once_with(ANY, ANY, len(only_object.data))
+
+
+async def test_store_trace_payloads_counts_distinct_overcap_payloads_twice(monkeypatch) -> None:
+    """Two DISTINCT over-cap payloads have different content keys → both counted (sum of the two)."""
+    nodes = [
+        _flat("parse", output={"x": "a" * 100}),
+        _flat("chunk", output={"x": "b" * 100}),
+    ]
+    monkeypatch.setattr(facade_module.ExecutionTreeFlattener, "flatten", lambda record: nodes)
+    put_many = AsyncMock()
+    monkeypatch.setattr(facade_module.S3ObjectApi, "put_many", put_many)
+    set_bytes = AsyncMock()
+    monkeypatch.setattr(facade_module.JobApi, "set_trace_payload_bytes", set_bytes)
+
+    facade = IngestionFacade(
+        _postgres_yielding(MagicMock()), MagicMock(), _s3_yielding(MagicMock())
+    )
+    await facade.store_trace_payloads(uuid.uuid4(), MagicMock(), max_payload_bytes=20)
+
+    objects = put_many.await_args.args[2]
+    by_key = {obj.key: obj for obj in objects}
+    assert len(by_key) == 2  # distinct previews → distinct keys
+    set_bytes.assert_awaited_once_with(ANY, ANY, sum(len(obj.data) for obj in by_key.values()))
+
+
 # --------------------------------------------------------------------------- #
 # index
 # --------------------------------------------------------------------------- #

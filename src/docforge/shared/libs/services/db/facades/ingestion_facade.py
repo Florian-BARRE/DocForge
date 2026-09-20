@@ -340,6 +340,12 @@ class IngestionFacade(LoggerClass):
                 f"Trace payload store failed for job {job_id}; dropping {len(pending)} ref(s): {exc}"
             )
             return {}
+        # ACCEPTED LIMITATION (rare, no code change): the caller stamps these refs onto the rows via
+        # ``persist_execution_tree`` AFTER this returns. If that tree-persist fails, the S3 bytes are
+        # written but no row flags ``has_full_*`` — the retention GC (which keys off those flags) then
+        # never reclaims them, so they can strand. Rare (persist runs right after) and still reclaimable
+        # by an explicit collection/document purge (it prefix-deletes ``trace/{job_id}/`` by job id,
+        # not by flag); a full fix would need a two-phase commit not worth its weight here.
         for node_path, side, obj in pending:
             (input_by_path if side == "input" else output_by_path)[node_path] = obj.key
 

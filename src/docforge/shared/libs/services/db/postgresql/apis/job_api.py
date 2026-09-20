@@ -1025,6 +1025,62 @@ class JobApi:
         return list(result.scalars().all())
 
     @staticmethod
+    async def list_terminal_job_ids_for_collection(
+        session: AsyncSession, collection_id: uuid.UUID
+    ) -> list[uuid.UUID]:
+        """
+        Return a collection's TERMINAL (done/failed/cancelled) job ids — the explicit trace-purge set.
+
+        The trace-payload purge endpoint reclaims only jobs that are over: a PENDING/RUNNING job may be
+        mid trace-finalize (``store_trace_payloads`` then ``persist_execution_tree``), so gathering it
+        would race that write — the counter could be re-set to N after the bytes were prefix-deleted,
+        or S3 objects could be stranded. Excluding the live rows (mirroring ``prune_history``'s
+        terminal-only discipline) keeps the ``=0`` convergence sound; the in-flight job's trace becomes
+        reclaimable by a later purge (or the retention GC) once it terminates. The document delete /
+        reingest paths deliberately keep gathering ALL jobs and use ``list_job_ids_for_*`` instead.
+
+        Args:
+            session (AsyncSession): The active DB session.
+            collection_id (uuid.UUID): The collection whose terminal job ids are gathered.
+
+        Returns:
+            list[uuid.UUID]: The collection's terminal job ids (empty when none are over).
+        """
+        result = await session.execute(
+            select(Job.id).where(
+                Job.collection_id == collection_id,
+                Job.status.in_(JobStatus.terminal()),
+            )
+        )
+        return list(result.scalars().all())
+
+    @staticmethod
+    async def list_terminal_job_ids_for_document(
+        session: AsyncSession, document_id: uuid.UUID
+    ) -> list[uuid.UUID]:
+        """
+        Return a document's TERMINAL (done/failed/cancelled) job ids — the explicit trace-purge set.
+
+        The document-scoped analogue of ``list_terminal_job_ids_for_collection``: the trace-payload
+        purge reclaims only jobs that are over, so a PENDING/RUNNING job racing its trace-finalize is
+        skipped and reclaimed once terminal. Delete/reingest keep using ``list_job_ids_for_document``.
+
+        Args:
+            session (AsyncSession): The active DB session.
+            document_id (uuid.UUID): The document whose terminal job ids are gathered.
+
+        Returns:
+            list[uuid.UUID]: The document's terminal job ids (empty when none are over).
+        """
+        result = await session.execute(
+            select(Job.id).where(
+                Job.document_id == document_id,
+                Job.status.in_(JobStatus.terminal()),
+            )
+        )
+        return list(result.scalars().all())
+
+    @staticmethod
     async def list_active_for_collection(
         session: AsyncSession, collection_id: uuid.UUID
     ) -> list[Job]:

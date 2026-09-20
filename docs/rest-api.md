@@ -263,10 +263,12 @@ later), so declare the **full** schema up front.
 `POST /api/v1/collections/{collection_id}/trace-payloads/purge` — capability `write`. Reclaims the
 heavy per-node raw input/output bytes the opt-in `trace_verbosity='full'` tier stores in the object
 store under each job's `trace/{job_id}/` prefix, and clears the stage-event rows' references so
-nothing keeps advertising a payload that is gone. **Idempotent**: a collection that stored nothing is
-a clean no-op returning zeros, not a `404` (only an unknown collection is `404`). **Best-effort**: a
-storage error is swallowed server-side, so the call always succeeds and reports the counts — it never
-returns a `500` for a partial store failure.
+nothing keeps advertising a payload that is gone. Only **terminal** jobs are reclaimed: an in-flight
+(pending/running) job is skipped so the purge can never race that job's trace-finalize — its trace is
+reclaimed once the job terminates (by a later purge or the retention GC). **Idempotent**: a collection
+that stored nothing is a clean no-op returning zeros, not a `404` (only an unknown collection is
+`404`). **Best-effort**: a storage error is swallowed server-side, so the call always succeeds and
+reports the counts — it never returns a `500` for a partial store failure.
 
 ```json
 {

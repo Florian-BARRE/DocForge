@@ -859,9 +859,12 @@ async def purge_collection_trace_payloads(
 
     Frees the object-store space the opt-in ``trace_verbosity='full'`` tier accumulates under each
     job's ``trace/{job_id}/`` prefix, and clears the stage-event rows' references so nothing keeps
-    advertising a payload that is gone. Idempotent: purging a collection that stored nothing is a
-    clean no-op returning zeros, NOT a 404. Best-effort — a storage error is swallowed, so the call
-    reports the counts and never surfaces a 500 for a partial store failure.
+    advertising a payload that is gone. Only TERMINAL jobs are reclaimed: an in-flight
+    (pending/running) job is skipped so the purge can never race that job's trace-finalize — its trace
+    is reclaimed once the job terminates (a later purge or the retention GC). Idempotent: purging a
+    collection that stored nothing is a clean no-op returning zeros, NOT a 404. Best-effort — a
+    storage error is swallowed, so the call reports the counts and never surfaces a 500 for a partial
+    store failure.
 
     Returns:
         TracePurgeResult: jobs considered + object-store objects deleted; 404 only when the

@@ -85,13 +85,14 @@ async def _seed_job(
     *,
     collection_id: uuid.UUID,
     document_id: uuid.UUID,
-    trace_payload_bytes: int,
+    trace_payload_bytes: int = 0,
+    status: JobStatus = JobStatus.DONE,
 ) -> uuid.UUID:
-    """Seed a terminal job carrying a recorded trace-payload byte total; return its id."""
+    """Seed a job (terminal by default) carrying a recorded trace-payload byte total; return its id."""
     job = Job(
         document_id=document_id,
         collection_id=collection_id,
-        status=JobStatus.DONE,
+        status=status,
         trace_payload_bytes=trace_payload_bytes,
     )
     db_session.add(job)
@@ -165,3 +166,49 @@ async def test_clear_trace_refs_zeroes_the_footprint_counter(session: AsyncSessi
     await JobApi.clear_trace_refs(session, [job_id])
 
     assert await _trace_bytes(session, job_id) == 0
+
+
+async def test_set_trace_payload_bytes_persists_a_value_beyond_the_integer_cap(
+    session: AsyncSession,
+) -> None:
+    """A large fan-out job's summed trace bytes can exceed the ~2.1 GB Integer cap; BigInteger holds
+    it exactly. This FAILS on the old Integer column (NumericValueOutOfRange on the UPDATE)."""
+    # 1. Seed a job and record a byte total well past 2^31-1 (2 147 483 647).
+    collection_id = await _seed_collection(session)
+    doc = await _seed_document(session, collection_id)
+    job_id = await _seed_job(session, collection_id=collection_id, document_id=doc)
+    over_int_cap = 3_000_000_000
+
+    await JobApi.set_trace_payload_bytes(session, job_id, over_int_cap)
+
+    # 2. It round-trips exactly — proof the column is BigInteger, not the ~2.1 GB Integer.
+    assert await _trace_bytes(session, job_id) == over_int_cap
+
+
+async def test_terminal_job_id_gather_excludes_in_flight_jobs(session: AsyncSession) -> None:
+    """The purge id-gather returns TERMINAL jobs only: a pending/running run mid trace-finalize is
+    skipped so a purge never races it (or strands its bytes)."""
+    # 1. One terminal (done + failed) document and one document with an in-flight (pending) job.
+    collection_id = await _seed_collection(session)
+    doc_terminal = await _seed_document(session, collection_id)
+    doc_active = await _seed_document(session, collection_id)
+    done_id = await _seed_job(
+        session, collection_id=collection_id, document_id=doc_terminal, status=JobStatus.DONE
+    )
+    failed_id = await _seed_job(
+        session, collection_id=collection_id, document_id=doc_terminal, status=JobStatus.FAILED
+    )
+    await _seed_job(
+        session, collection_id=collection_id, document_id=doc_active, status=JobStatus.PENDING
+    )
+
+    # 2. Collection-scope: the two terminal jobs are gathered, the in-flight one is not.
+    coll_ids = await JobApi.list_terminal_job_ids_for_collection(session, collection_id)
+    assert set(coll_ids) == {done_id, failed_id}
+
+    # 3. Document-scope: the terminal doc yields its terminal jobs; the in-flight doc yields none.
+    assert set(await JobApi.list_terminal_job_ids_for_document(session, doc_terminal)) == {
+        done_id,
+        failed_id,
+    }
+    assert await JobApi.list_terminal_job_ids_for_document(session, doc_active) == []

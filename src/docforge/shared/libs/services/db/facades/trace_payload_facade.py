@@ -125,9 +125,11 @@ class TracePayloadFacade(LoggerClass):
         Purge every stored full-trace payload of a whole collection — the explicit reclaim hook.
 
         Idempotent and best-effort: a collection with no jobs (or none carrying stored payloads) is a
-        clean no-op returning zeros, never an error. Gathers the collection's job ids, then hands them
-        to the shared best-effort purge (clears the rows' refs, prefix-deletes each ``trace/{job_id}/``
-        namespace) which never raises.
+        clean no-op returning zeros, never an error. Gathers the collection's TERMINAL job ids only,
+        then hands them to the shared best-effort purge (clears the rows' refs, prefix-deletes each
+        ``trace/{job_id}/`` namespace) which never raises. In-flight (pending/running) jobs are skipped
+        so a purge can never race a job's trace-finalize; their trace is reclaimed once terminal (by a
+        later purge or the retention GC).
 
         Args:
             collection_id (uuid.UUID): The collection whose jobs' trace payloads are reclaimed.
@@ -135,9 +137,9 @@ class TracePayloadFacade(LoggerClass):
         Returns:
             tuple[int, int]: (jobs considered, object-store objects deleted).
         """
-        # 1. Gather every job id of the collection (the ids whose trace namespaces are reclaimed).
+        # 1. Gather the collection's TERMINAL job ids only (skip in-flight runs mid trace-finalize).
         async with self._postgres.session() as session:
-            job_ids = await JobApi.list_job_ids_for_collection(session, collection_id)
+            job_ids = await JobApi.list_terminal_job_ids_for_collection(session, collection_id)
         # 2. Best-effort purge (refs cleared + bytes prefix-deleted); report jobs + objects reclaimed.
         deleted = await self.purge_jobs(job_ids)
         return len(job_ids), deleted
@@ -148,6 +150,8 @@ class TracePayloadFacade(LoggerClass):
 
         Idempotent and best-effort, exactly like ``purge_for_collection`` but scoped to one document's
         jobs: a document with no jobs (or none carrying stored payloads) returns zeros without error.
+        Only TERMINAL jobs are reclaimed — an in-flight (pending/running) job mid trace-finalize is
+        skipped and reclaimed once it terminates.
 
         Args:
             document_id (uuid.UUID): The document whose jobs' trace payloads are reclaimed.
@@ -155,9 +159,9 @@ class TracePayloadFacade(LoggerClass):
         Returns:
             tuple[int, int]: (jobs considered, object-store objects deleted).
         """
-        # 1. Gather every job id of the document.
+        # 1. Gather the document's TERMINAL job ids only (skip in-flight runs mid trace-finalize).
         async with self._postgres.session() as session:
-            job_ids = await JobApi.list_job_ids_for_document(session, document_id)
+            job_ids = await JobApi.list_terminal_job_ids_for_document(session, document_id)
         # 2. Best-effort purge; report jobs considered + objects reclaimed.
         deleted = await self.purge_jobs(job_ids)
         return len(job_ids), deleted

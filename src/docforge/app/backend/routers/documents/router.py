@@ -347,8 +347,10 @@ async def purge_document_trace_payloads(
 
     The document-scoped analogue of the collection purge: frees the object-store space the opt-in
     ``trace_verbosity='full'`` tier accumulates under each of the document's jobs
-    (``trace/{job_id}/``) and clears the stage-event refs. Idempotent — a document that stored nothing
-    returns zeros, NOT a 404 — and best-effort, so a storage error is swallowed rather than surfaced.
+    (``trace/{job_id}/``) and clears the stage-event refs. Only TERMINAL jobs are reclaimed — an
+    in-flight (pending/running) job is skipped and reclaimed once it terminates. Idempotent — a
+    document that stored nothing returns zeros, NOT a 404 — and best-effort, so a storage error is
+    swallowed rather than surfaced.
 
     Returns:
         TracePurgeResult: jobs considered + object-store objects deleted; 404 only when the document

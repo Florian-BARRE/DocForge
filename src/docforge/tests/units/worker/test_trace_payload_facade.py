@@ -147,37 +147,47 @@ async def test_gc_before_noop_when_nothing_expired(monkeypatch) -> None:
 # --------------------------------------------------------------------------- #
 
 
-async def test_purge_for_collection_gathers_ids_then_purges(monkeypatch) -> None:
+async def test_purge_for_collection_gathers_terminal_ids_then_purges(monkeypatch) -> None:
+    # The purge reclaims TERMINAL jobs only — it gathers via the terminal-only id method, never the
+    # all-jobs one (which delete/reingest use), so an in-flight run mid trace-finalize is skipped.
     collection_id = uuid.uuid4()
     job_ids = [uuid.uuid4(), uuid.uuid4(), uuid.uuid4()]
     monkeypatch.setattr(
-        facade_module.JobApi, "list_job_ids_for_collection", AsyncMock(return_value=job_ids)
+        facade_module.JobApi,
+        "list_terminal_job_ids_for_collection",
+        AsyncMock(return_value=job_ids),
     )
+    all_jobs = AsyncMock()
+    monkeypatch.setattr(facade_module.JobApi, "list_job_ids_for_collection", all_jobs)
     facade = TracePayloadFacade(_postgres_yielding(MagicMock()), _s3_yielding())
     purge = AsyncMock(return_value=9)
     monkeypatch.setattr(facade, "purge_jobs", purge)
 
     assert await facade.purge_for_collection(collection_id) == (3, 9)
     purge.assert_awaited_once_with(job_ids)
+    all_jobs.assert_not_awaited()  # never the all-jobs gatherer — that would race an in-flight run
 
 
-async def test_purge_for_document_gathers_ids_then_purges(monkeypatch) -> None:
+async def test_purge_for_document_gathers_terminal_ids_then_purges(monkeypatch) -> None:
     document_id = uuid.uuid4()
     job_ids = [uuid.uuid4()]
     monkeypatch.setattr(
-        facade_module.JobApi, "list_job_ids_for_document", AsyncMock(return_value=job_ids)
+        facade_module.JobApi, "list_terminal_job_ids_for_document", AsyncMock(return_value=job_ids)
     )
+    all_jobs = AsyncMock()
+    monkeypatch.setattr(facade_module.JobApi, "list_job_ids_for_document", all_jobs)
     facade = TracePayloadFacade(_postgres_yielding(MagicMock()), _s3_yielding())
     purge = AsyncMock(return_value=2)
     monkeypatch.setattr(facade, "purge_jobs", purge)
 
     assert await facade.purge_for_document(document_id) == (1, 2)
     purge.assert_awaited_once_with(job_ids)
+    all_jobs.assert_not_awaited()
 
 
 async def test_purge_for_collection_no_jobs_is_a_zero_no_op(monkeypatch) -> None:
     monkeypatch.setattr(
-        facade_module.JobApi, "list_job_ids_for_collection", AsyncMock(return_value=[])
+        facade_module.JobApi, "list_terminal_job_ids_for_collection", AsyncMock(return_value=[])
     )
     facade = TracePayloadFacade(_postgres_yielding(MagicMock()), _s3_yielding())
     purge = AsyncMock(return_value=0)
