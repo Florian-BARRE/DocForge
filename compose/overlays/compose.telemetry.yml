@@ -55,7 +55,7 @@
 services:
   # ── Prometheus — scrapes DocForge app metrics ───────────────────────────────
   prometheus:
-    image: prom/prometheus:v2.54.1
+    image: prom/prometheus:v3.14.0
     container_name: docforge-prometheus
     # Explicit command so we can enable the remote-write RECEIVER: a REMOTE Grafana Alloy running
     # on another host can `prometheus.remote_write` its metrics INTO this Prometheus (the in-stack
