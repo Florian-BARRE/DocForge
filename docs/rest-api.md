@@ -303,8 +303,12 @@ Validation guards (all `422`):
 - A `chunk`-scope field cannot be `lexical` (no BM25 producer for chunk metadata).
 - A `field_name` cannot shadow a reserved chunk-payload key.
 
-`needs_reindex` (read-only, on the response) flips `true` when a config/schema change alters the
-searchable surface and the collection must be reindexed.
+`needs_reindex` (read-only, on the response) is DERIVED, not sticky: it is `true` only when the
+collection has already been indexed AND its current reindex-relevant config (the semantic/lexical
+metadata surface + the embed vector space) differs from the config the indexed vectors were produced
+under. A `filterable`-only change never sets it (the payload index is added live, no reindex);
+reverting the config back to the indexed one clears it; and a successful (re)ingest advances the
+baseline, so a real reindex turns it back to `false`.
 
 ### Config blobs
 

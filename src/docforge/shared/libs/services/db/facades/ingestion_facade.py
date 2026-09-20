@@ -18,6 +18,7 @@ from loggerplusplus import LoggerClass
 from sqlalchemy.exc import IntegrityError
 
 from shared_libs.pipelines.base import NodeExecutionRecord
+from shared_libs.services.db.index_signature import CollectionIndexSignature
 from shared_libs.services.db.postgresql import PostgresClient
 from shared_libs.services.db.postgresql.apis import (
     BlobApi,
@@ -518,7 +519,45 @@ class IngestionFacade(LoggerClass):
         await QdrantIndexApi.upsert(self._qdrant.raw, name, points)
         async with self._postgres.session() as session:
             await ChunkApi.mark_indexed(session, [uuid.UUID(point.point_id) for point in points])
+        # 4. Advance the indexed baseline: the vectors just landed under the CURRENT config, so stamp
+        #    its signature and clear needs_reindex (a real reindex is now the ONLY thing that clears
+        #    the flag — the old sticky boolean never did). Best-effort: a failure here must not fail an
+        #    ingestion already persisted+upserted (the doc IS indexed; the baseline heals on the next
+        #    successful ingest or a config write's derive).
+        #    KNOWN LIMITATION: this advances on ANY successful doc ingestion, so a PARTIAL reindex
+        #    (only some documents) optimistically clears the flag even if older docs remain on the
+        #    previous signature. Acceptable V1 — the documented remediation for a config drift is a
+        #    FULL bulk reingest (which DocForge's reindex performs), after which every doc matches.
+        await self._advance_indexed_baseline(collection_id, schema)
         self.logger.info(f"Indexed {len(points)} points into '{name}'")
+
+    async def _advance_indexed_baseline(self, collection_id: uuid.UUID, schema: Sequence) -> None:
+        """Stamp the collection's indexed_signature to the current config and clear needs_reindex.
+
+        Idempotent and best-effort: re-running the same ingest recomputes the same signature, and any
+        failure is swallowed so an already-persisted ingestion never fails at this trailing step.
+
+        Args:
+            collection_id (uuid.UUID): The just-indexed collection.
+            schema (Sequence): The metadata schema the vectors were indexed under (reused from index).
+        """
+        try:
+            # 1. Read the current pipeline blob, compute the signature over (blob + schema), stamp it.
+            async with self._postgres.session() as session:
+                collection = await CollectionApi.get(session, collection_id)
+                if collection is None:
+                    return
+                signature = CollectionIndexSignature.compute(collection.pipeline, schema)
+                await CollectionApi.update(
+                    session,
+                    collection_id,
+                    indexed_signature=signature,
+                    needs_reindex=False,
+                )
+        except (
+            Exception
+        ) as exc:  # best-effort: a trailing baseline advance must never fail an ingest.
+            self.logger.warning(f"Could not advance indexed baseline for {collection_id}: {exc}")
 
 
 __all__ = ["IngestionFacade"]

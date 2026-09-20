@@ -99,6 +99,12 @@ async def test_all_parts_commit_in_one_transaction(monkeypatch) -> None:
     set_overrides = AsyncMock()
     monkeypatch.setattr(cf_module.CollectionApi, "update", update)
     monkeypatch.setattr(cf_module.CollectionApi, "get_schema", AsyncMock(return_value=[]))
+    # The trailing needs_reindex derive reads the post-write row (pipeline + indexed baseline).
+    monkeypatch.setattr(
+        cf_module.CollectionApi,
+        "get",
+        AsyncMock(return_value=SimpleNamespace(pipeline={"p": 1}, indexed_signature=None)),
+    )
     # The config snapshot locks the collection row FOR UPDATE before minting the next version.
     monkeypatch.setattr(
         cf_module.CollectionApi,
@@ -118,7 +124,6 @@ async def test_all_parts_commit_in_one_transaction(monkeypatch) -> None:
         schema_fields=[],
         config_touched=True,
         pipeline={"p": 1},
-        embed_reindex=True,
         note="edit",
         apply_overrides=True,
         estimate_overrides={"rate": 1},

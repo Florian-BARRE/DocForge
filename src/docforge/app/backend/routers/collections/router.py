@@ -687,20 +687,7 @@ async def update_collection(
     if request.fields is not None:
         CollectionHelpers.validate_fields(request.fields)
 
-    # 4. An embed-space change (different embedder model/provider, toggled sparse) forces a reindex —
-    #    a PURE comparison of the current vs stored blob, computed before the write. None leaves the
-    #    flag as-is (a schema change may already have set it inside the same transaction). Otherwise
-    #    new documents would embed into a space incompatible with the stored ones, degrading search.
-    reindex_from_embed: bool | None = None
-    if stored_pipeline is not None and CollectionBlobHelpers.embed_space_changed(
-        current.pipeline, stored_pipeline
-    ):
-        reindex_from_embed = True
-        CONTEXT.logger.warning(
-            f"Collection {collection_id}: embed vector space changed — reindex required"
-        )
-
-    # 5. Apply EVERY DB part in ONE transaction — a mid-sequence failure rolls the WHOLE patch back,
+    # 4. Apply EVERY DB part in ONE transaction — a mid-sequence failure rolls the WHOLE patch back,
     #    so a collection is never left half-updated (e.g. contract changed but schema not). The
     #    pipeline is stored in its stamped canonical form (subsequent runs/uploads fast-path). A
     #    vector-slug collision surfaces as ValueError → 422, before any write touches the DB.
@@ -728,7 +715,6 @@ async def update_collection(
         config_touched=request.pipeline is not None or request.search is not None,
         pipeline=stored_pipeline,
         search=healed_search,
-        embed_reindex=reindex_from_embed,
         note=request.note,
         apply_overrides="estimate_overrides" in request.model_fields_set,
         estimate_overrides=request.estimate_overrides.model_dump(mode="json", exclude_none=True)
@@ -743,17 +729,17 @@ async def update_collection(
         # A rename lost the UNIQUE race after the pre-check — same 409 the pre-check returns.
         raise HTTPException(status_code=409, detail=f"Collection '{request.name}' already exists.")
 
-    # 6. Store-side follow-through AFTER the DB commit — reconcile the Qdrant store to the new schema
+    # 5. Store-side follow-through AFTER the DB commit — reconcile the Qdrant store to the new schema
     #    (a newly-filterable field gets its payload index added live; the backfills repopulate existing
     #    points) then enqueue the repair backfills. Kept OUT of the DB transaction on purpose: it is
     #    non-transactional and best-effort. A newly semantic/lexical field needs a named vector Qdrant
     #    cannot add live, so a reindex is required to make it searchable.
     if result.schema_applied:
         await CollectionStoreSync.reconcile_and_backfill(collection_id)
-        if result.schema_reindex_required:
-            CONTEXT.logger.warning(
-                f"Collection {collection_id}: searchable schema changed — reindex required"
-            )
+    if result.schema_reindex_required:
+        CONTEXT.logger.warning(
+            f"Collection {collection_id}: reindex-relevant config changed — reindex required"
+        )
 
     updated = await CONTEXT.database.collections.get(collection_id)
     return CollectionHelpers.to_model(

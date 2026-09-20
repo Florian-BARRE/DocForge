@@ -212,6 +212,7 @@ class CollectionImporterV1:
             job_timeout_seconds=contract.job_timeout_seconds,
             trace_verbosity=contract.trace_verbosity,
             needs_reindex=contract.needs_reindex,
+            indexed_signature=contract.indexed_signature,
             pipeline=contract.pipeline,
             search=contract.search,
         )

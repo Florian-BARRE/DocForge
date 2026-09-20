@@ -81,7 +81,6 @@ class CollectionUpdateSpec:
             the schema; a diff-update is applied otherwise).
         config_touched (bool): Apply the pipeline/search blobs below and append a version snapshot.
         pipeline / search (dict | None): The stamped config blobs (None = leave that blob unchanged).
-        embed_reindex (bool | None): needs_reindex to set from an embed-space change (None = leave).
         note (str | None): The snapshot note stored with the config version.
         apply_overrides (bool): Write the cost-estimate overrides below (True even to CLEAR to None).
         estimate_overrides (dict | None): The overrides to store (None clears back to the defaults).
@@ -101,7 +100,6 @@ class CollectionUpdateSpec:
     config_touched: bool = False
     pipeline: dict | None = None
     search: dict | None = None
-    embed_reindex: bool | None = None
     note: str | None = None
     # cost-estimate overrides (apply=True writes even a clearing None)
     apply_overrides: bool = False
@@ -116,7 +114,9 @@ class CollectionUpdateResult:
     Attributes:
         schema_applied (bool): The schema-diff part ran (the router then reconciles Qdrant + backfills
             AFTER the commit — that step is non-transactional and stays OUT of the DB tx).
-        schema_reindex_required (bool): The searchable metadata surface changed (a reindex is due).
+        schema_reindex_required (bool): The collection's DERIVED needs_reindex after the PATCH — True
+            only when it has an indexed baseline AND its reindex-relevant config (semantic/lexical
+            surface + embed space; filterable excluded) now differs from it.
     """
 
     schema_applied: bool

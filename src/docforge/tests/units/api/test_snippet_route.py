@@ -35,7 +35,10 @@ def wired(fastapi_app, monkeypatch):
 
     monkeypatch.setattr(CONTEXT.database.collections, "get", AsyncMock(return_value=_collection()))
     monkeypatch.setattr(CONTEXT.database.collections, "get_schema", AsyncMock(return_value=[]))
-    monkeypatch.setattr(CONTEXT.database.collections, "update_config", AsyncMock())
+    # update_config now returns the DERIVED needs_reindex (False here — same embed space).
+    monkeypatch.setattr(
+        CONTEXT.database.collections, "update_config", AsyncMock(return_value=False)
+    )
     monkeypatch.setattr(CONTEXT.database.collections, "update_schema", AsyncMock(return_value=True))
     monkeypatch.setattr(
         CONTEXT.database.collections, "reconcile_store", AsyncMock(return_value=set())

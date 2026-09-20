@@ -14,6 +14,7 @@ from loggerplusplus import LoggerClass
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared_libs.services.db.index_signature import CollectionIndexSignature
 from shared_libs.services.db.postgresql import PostgresClient
 from shared_libs.services.db.postgresql.apis import BlobApi, CollectionApi, JobApi
 from shared_libs.services.db.postgresql.tables import (
@@ -214,9 +215,10 @@ class CollectionsFacade(LoggerClass):
             desired (list[MetadataField]): The target schema (collection_id filled here).
 
         Returns:
-            bool: True when the SEARCHABLE surface changed (semantic/lexical/filterable or
-            the type of such a field) — the caller flags needs_reindex; plain metadata
-            edits do not require a reindex.
+            bool: The DERIVED needs_reindex after the diff — True only when the collection has an
+            indexed baseline AND its reindex-relevant surface (semantic/lexical fields or the type of
+            such a field, plus the embed space) now differs from it. A filterable-only toggle keeps
+            the signature stable (reconciled live), and a never-indexed collection stays False.
 
         Raises:
             ValueError: On vector-slug collisions in the desired schema (fail-fast).
@@ -224,9 +226,11 @@ class CollectionsFacade(LoggerClass):
         # 1. Fail fast before anything is written.
         DatabaseHelpers.validate_vector_slugs(desired)
 
-        # 2. Apply the diff in its own transaction (the standalone path — the snippet applier).
+        # 2. Apply the diff, then DERIVE needs_reindex from the resulting config vs the indexed
+        #    baseline — never a sticky True (the standalone path: the snippet schema applier).
         async with self._postgres.session() as session:
-            reindex_needed = await self._apply_schema_diff(session, collection_id, desired)
+            await self._apply_schema_diff(session, collection_id, desired)
+            reindex_needed = await self._sync_needs_reindex(session, collection_id)
         self.logger.info(
             f"Schema updated for {collection_id} "
             f"({len(desired)} fields, reindex_needed={reindex_needed})"
@@ -236,37 +240,25 @@ class CollectionsFacade(LoggerClass):
     @staticmethod
     async def _apply_schema_diff(
         session: AsyncSession, collection_id: uuid.UUID, desired: list[MetadataField]
-    ) -> bool:
+    ) -> None:
         """
         Diff-update the metadata schema INSIDE a caller-supplied session (never a wholesale replace).
 
         The transactional core shared by ``update_schema`` (own session) and ``apply_update`` (one
         session threaded through the whole PATCH). The caller MUST have already validated vector slugs
-        (fail-fast, before any write). Never opens or commits a session — it only stages the writes.
+        (fail-fast, before any write). Never opens or commits a session — it only stages the writes;
+        the caller then derives ``needs_reindex`` via ``_sync_needs_reindex`` over the final state.
 
         Args:
             session (AsyncSession): The unit of work the whole PATCH shares.
             collection_id (uuid.UUID): The collection.
             desired (list[MetadataField]): The target schema (collection_id filled here).
-
-        Returns:
-            bool: True when the SEARCHABLE surface changed (a reindex is due) — the caller flags it.
         """
         current = await CollectionApi.get_schema(session, collection_id)
         current_by_name = {row.field_name: row for row in current}
         desired_by_name = {row.field_name: row for row in desired}
 
-        # 1. The searchable surface before/after — membership drives the reindex flag.
-        def searchable(rows: dict[str, MetadataField]) -> set[tuple]:
-            return {
-                (r.field_name, r.field_type, r.semantic, r.lexical, r.filterable)
-                for r in rows.values()
-                if r.semantic or r.lexical or r.filterable
-            }
-
-        reindex_needed = searchable(current_by_name) != searchable(desired_by_name)
-
-        # 2. Update in place / insert new / delete removed (values cascade — explicit).
+        # 1. Update in place / insert new / delete removed (values cascade — explicit).
         for name, wanted in desired_by_name.items():
             row = current_by_name.get(name)
             if row is None:
@@ -285,10 +277,39 @@ class CollectionsFacade(LoggerClass):
             if name not in desired_by_name:
                 await session.delete(row)
 
-        # 3. A changed searchable surface invalidates the vector space.
-        if reindex_needed:
-            await CollectionApi.update(session, collection_id, needs_reindex=True)
-        return reindex_needed
+    @staticmethod
+    async def _sync_needs_reindex(session: AsyncSession, collection_id: uuid.UUID) -> bool:
+        """
+        Derive ``needs_reindex`` from the CURRENT config vs the indexed baseline — the single source.
+
+        Replaces the old sticky one-way boolean. ``needs_reindex`` flips ON only when the collection
+        has an indexed baseline (``indexed_signature`` not NULL) AND its current reindex-relevant
+        config (semantic/lexical metadata surface + embed vector space; ``filterable`` EXCLUDED — it
+        reconciles live) differs from that baseline. So: a never-indexed collection (NULL baseline)
+        has nothing stale to reindex → False; reverting to the indexed config → equal signatures →
+        False; a filterable-only toggle → unchanged signature → stays False.
+
+        Must be called AFTER every schema/config write has been staged on the same session, so it
+        sees the final state (autoflush makes the staged rows visible to its reads).
+
+        Args:
+            session (AsyncSession): The unit of work the write was staged on.
+            collection_id (uuid.UUID): The collection to recompute.
+
+        Returns:
+            bool: The recomputed ``needs_reindex`` (also written onto the row).
+        """
+        # 1. Read the post-write config (same identity-mapped row → reflects staged mutations).
+        collection = await CollectionApi.get(session, collection_id)
+        if collection is None:
+            return False
+        schema = await CollectionApi.get_schema(session, collection_id)
+        # 2. A never-indexed collection has no baseline to be stale against → never needs a reindex.
+        current = CollectionIndexSignature.compute(collection.pipeline, schema)
+        needs = collection.indexed_signature is not None and current != collection.indexed_signature
+        # 3. Stage the derived flag on the row (never a sticky True).
+        collection.needs_reindex = needs
+        return needs
 
     async def reconcile_store(self, collection_id: uuid.UUID) -> set[str]:
         """
@@ -339,19 +360,22 @@ class CollectionsFacade(LoggerClass):
         *,
         pipeline: dict | None = None,
         search: dict | None = None,
-        needs_reindex: bool | None = None,
         note: str | None = None,
-    ) -> None:
-        """Patch the collection's config blobs and append the immutable snapshot."""
+    ) -> bool:
+        """Patch the collection's config blobs, append the snapshot, and derive needs_reindex.
+
+        Returns:
+            bool: The DERIVED needs_reindex after the write (baseline-relative, never sticky).
+        """
         async with self._postgres.session() as session:
             await self._apply_config(
                 session,
                 collection_id,
                 pipeline=pipeline,
                 search=search,
-                needs_reindex=needs_reindex,
                 note=note,
             )
+            return await self._sync_needs_reindex(session, collection_id)
 
     @staticmethod
     async def _apply_config(
@@ -360,14 +384,14 @@ class CollectionsFacade(LoggerClass):
         *,
         pipeline: dict | None = None,
         search: dict | None = None,
-        needs_reindex: bool | None = None,
         note: str | None = None,
     ) -> None:
         """
         Patch the config blobs + append the snapshot INSIDE a caller-supplied session.
 
         The transactional core shared by ``update_config`` (own session) and ``apply_update`` (the
-        whole PATCH in one session). Never opens or commits — it only stages the writes.
+        whole PATCH in one session). Never opens or commits — it only stages the writes; the caller
+        derives ``needs_reindex`` via ``_sync_needs_reindex`` over the final state.
         """
         # 1. Lock the collection row FIRST: concurrent config PATCHes on the same collection serialize
         #    here, so the version counter can't be read-then-bumped by two transactions at once (which
@@ -382,7 +406,6 @@ class CollectionsFacade(LoggerClass):
             collection_id,
             pipeline=pipeline,
             search=search,
-            needs_reindex=needs_reindex,
         )
         # 3. Snapshot the NEW state (append-only history). Only the max version number is needed —
         #    fetch it as a scalar, not the whole {pipeline, search} snapshot history.
@@ -424,7 +447,7 @@ class CollectionsFacade(LoggerClass):
         if spec.schema_fields is not None:
             DatabaseHelpers.validate_vector_slugs(spec.schema_fields)
 
-        schema_reindex = False
+        reindex_needed = False
         # A rename to an already-taken name slips past the router's pre-check on a concurrent race and
         # violates uq_collection_name at commit — map it to the same domain 409 as create (never a 500).
         try:
@@ -442,21 +465,17 @@ class CollectionsFacade(LoggerClass):
                         trace_verbosity=spec.trace_verbosity,
                     )
 
-                # 3. Metadata schema by DIFF (may flip needs_reindex=True on the shared row).
+                # 3. Metadata schema by DIFF (stages the schema rows only).
                 if spec.schema_fields is not None:
-                    schema_reindex = await self._apply_schema_diff(
-                        session, collection_id, spec.schema_fields
-                    )
+                    await self._apply_schema_diff(session, collection_id, spec.schema_fields)
 
-                # 4. Config blobs + immutable snapshot (needs_reindex from an embed-space change; None
-                #    leaves a True a schema change may already have set on the same row).
+                # 4. Config blobs + immutable snapshot (stages the blobs only).
                 if spec.config_touched:
                     await self._apply_config(
                         session,
                         collection_id,
                         pipeline=spec.pipeline,
                         search=spec.search,
-                        needs_reindex=spec.embed_reindex,
                         note=spec.note,
                     )
 
@@ -465,6 +484,12 @@ class CollectionsFacade(LoggerClass):
                     await CollectionApi.set_estimate_overrides(
                         session, collection_id, spec.estimate_overrides
                     )
+
+                # 6. DERIVE needs_reindex ONCE over the fully-staged state (schema + config) vs the
+                #    indexed baseline — a single source of truth, never a sticky True. Skipped when the
+                #    PATCH touched neither surface (a contract/overrides-only edit can't affect it).
+                if spec.schema_fields is not None or spec.config_touched:
+                    reindex_needed = await self._sync_needs_reindex(session, collection_id)
         except IntegrityError as error:
             if spec.contract_touched and spec.name is not None and self._is_duplicate_name(error):
                 raise DuplicateCollectionNameError(spec.name) from error
@@ -477,7 +502,7 @@ class CollectionsFacade(LoggerClass):
         )
         return CollectionUpdateResult(
             schema_applied=spec.schema_fields is not None,
-            schema_reindex_required=schema_reindex,
+            schema_reindex_required=reindex_needed,
         )
 
     async def _cancel_active_jobs(self, collection_id: uuid.UUID) -> int:

@@ -107,6 +107,7 @@ def _collection() -> SimpleNamespace:
         job_timeout_seconds=None,
         trace_verbosity="shape",
         needs_reindex=False,
+        indexed_signature=None,
         pipeline=_leaky_pipeline(),
         search=_leaky_search(),
     )

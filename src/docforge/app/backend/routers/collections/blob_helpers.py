@@ -1,8 +1,8 @@
 # ====== Code Summary ======
 # CollectionBlobHelpers — the pure (store-free) pipeline-BLOB logic behind the collections routes,
 # split out of CollectionHelpers so blob concerns own their own file. It selects the stock blob for
-# a creation preset, canonicalizes a posted blob (heal → validate → stamp), and computes the embed
-# vector-space fingerprint used to decide whether a config change forces a reindex.
+# a creation preset and canonicalizes a posted blob (heal → validate → stamp). The reindex decision
+# now lives in the DERIVED signature (shared_libs.services.db.index_signature), not here.
 
 # ====== Standard Library Imports ======
 
@@ -21,46 +21,14 @@ from shared_libs.pipelines.search import SearchPipeline
 # ====== Local Project Imports ======
 from ...utils.pipeline_validation import PipelineBlobValidator
 
-# The embed-node config keys that define the vector space (a change to any means already-stored
-# vectors were produced by a different/incompatible embedder → the collection must be reindexed).
-_EMBED_VECTOR_KEYS = ("base_url", "model", "embed_sparse", "embed_semantic_fields")
-
 
 class CollectionBlobHelpers:
-    """Static, store-free pipeline-blob helpers for the collections routes (preset, canonicalize, reindex)."""
+    """Static, store-free pipeline-blob helpers for the collections routes (preset, canonicalize)."""
 
     logger = loggerplusplus.bind(identifier="CollectionBlobHelpers")
 
     def __new__(cls, *args: object, **kwargs: object) -> None:
         raise TypeError("CollectionBlobHelpers is a static-only class and cannot be instantiated.")
-
-    # -------------------- protected --------------------
-    @staticmethod
-    def _embed_vector_space(blob: dict) -> list:
-        """A stable fingerprint of every embed node's vector-space-affecting config in a pipeline blob.
-
-        Two blobs with the same fingerprint produce vectors in the same space; a difference means a
-        reindex is required (e.g. a swapped embed model/provider, toggled sparse).
-        """
-        fingerprint: list = []
-
-        def walk(nodes: list) -> None:
-            for node in nodes:
-                if node.get("family") == "embed":
-                    config = node.get("config") or {}
-                    fingerprint.append(
-                        (
-                            node.get("id"),
-                            node.get("kind"),
-                            tuple((key, config.get(key)) for key in _EMBED_VECTOR_KEYS),
-                        )
-                    )
-                body = node.get("body")
-                if isinstance(body, dict):
-                    walk(body.get("nodes") or [])
-
-        walk(blob.get("nodes") or [])
-        return sorted(fingerprint)
 
     # -------------------- presets & blobs --------------------
     @staticmethod
@@ -142,18 +110,6 @@ class CollectionBlobHelpers:
 
         # 4. Persist the stamped canonical form so future reads fast-path.
         return BlobNormalizer.stamp(canonical)
-
-    # -------------------- embed vector space --------------------
-    @classmethod
-    def embed_space_changed(cls, old_blob: dict, new_blob: dict) -> bool:
-        """True when two pipeline blobs embed into DIFFERENT vector spaces (a reindex is required).
-
-        Compares a stable fingerprint of every embed node's vector-space-affecting config; a
-        difference means already-stored vectors were produced by an incompatible embedder (swapped
-        model/provider, toggled sparse), so new documents must not be embedded into a space
-        incompatible with the stored ones.
-        """
-        return cls._embed_vector_space(old_blob) != cls._embed_vector_space(new_blob)
 
 
 __all__ = ["CollectionBlobHelpers"]

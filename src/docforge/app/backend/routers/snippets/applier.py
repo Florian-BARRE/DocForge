@@ -65,17 +65,14 @@ class SnippetApplier:
         # 2. Heal to the current engine + structurally validate (a broken graph is a clean 422 here).
         canonical = CollectionBlobHelpers.canonical_pipeline(healed)
 
-        # 3. A change to the embed vector space forces a reindex (new docs would embed incompatibly).
-        needs_reindex = CollectionBlobHelpers.embed_space_changed(collection.pipeline, canonical)
-
-        # 4. Store the canonical blob + append the immutable version snapshot (None leaves the flag).
-        await CONTEXT.database.collections.update_config(
+        # 3. Store the canonical blob + append the snapshot; the facade DERIVES needs_reindex from the
+        #    new config vs the indexed baseline (an embed-space change moves the signature → True, a
+        #    revert-to-indexed → False), never a sticky True.
+        return await CONTEXT.database.collections.update_config(
             collection.id,
             pipeline=canonical,
-            needs_reindex=True if needs_reindex else None,
             note="snippet import: pipeline",
         )
-        return needs_reindex
 
     @classmethod
     async def __apply_search(cls, collection: Collection, body: dict) -> bool:
@@ -87,7 +84,9 @@ class SnippetApplier:
         if healed != {}:
             CollectionHelpers.validate_search_blob(healed)
 
-        # 3. Store it + snapshot; a search-graph change never invalidates the vector space (no reindex).
+        # 3. Store it + snapshot; a search-graph change never touches the index signature (no reindex).
+        #    The facade still derives needs_reindex, but a search-only write cannot move it — the
+        #    response field is documented as always false for a search snippet.
         await CONTEXT.database.collections.update_config(
             collection.id,
             search=healed,

@@ -44,6 +44,14 @@ class _FakeConfigStore:
     async def update(self, _session, _collection_id, **_kwargs):
         return None
 
+    async def get(self, _session, _collection_id):
+        """The post-write row the trailing needs_reindex derive reads (never-indexed baseline)."""
+        return SimpleNamespace(pipeline={}, indexed_signature=None, needs_reindex=False)
+
+    async def get_schema(self, _session, _collection_id):
+        """No metadata schema — the derive's metadata surface is empty."""
+        return []
+
     async def max_config_version(self, _session, _collection_id) -> int:
         await asyncio.sleep(0)  # a yield point where an unlocked race would interleave
         return max(self._versions, default=0)
@@ -83,6 +91,8 @@ def _wire(monkeypatch, store: _FakeConfigStore, *, lock: bool) -> None:
     getter = store.get_for_update if lock else store.get_for_update_nolock
     monkeypatch.setattr(cf_module.CollectionApi, "get_for_update", getter)
     monkeypatch.setattr(cf_module.CollectionApi, "update", store.update)
+    monkeypatch.setattr(cf_module.CollectionApi, "get", store.get)
+    monkeypatch.setattr(cf_module.CollectionApi, "get_schema", store.get_schema)
     monkeypatch.setattr(cf_module.CollectionApi, "max_config_version", store.max_config_version)
     monkeypatch.setattr(cf_module.CollectionApi, "add_config_version", store.add_config_version)
 

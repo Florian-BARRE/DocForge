@@ -99,6 +99,10 @@ class CollectionContractModel(BaseModel):
     # "shape", today's behaviour), never a KeyError — the transfer coupling-map's tolerance requirement.
     trace_verbosity: str = "shape"
     needs_reindex: bool = False
+    # The exported collection's docs were indexed under this signature — carried so an import restores
+    # the baseline and the imported collection is not spuriously flagged needs_reindex. Defaulted so a
+    # bundle exported before it existed imports cleanly (legacy bundle → NULL = never indexed).
+    indexed_signature: str | None = None
     pipeline: dict = Field(default_factory=dict)
     search: dict = Field(default_factory=dict)
     config_versions: list[ConfigVersionModel] = Field(default_factory=list)

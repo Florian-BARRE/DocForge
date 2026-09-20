@@ -46,7 +46,16 @@ class Collection(Base, UUIDPrimaryKey, TimestampedMixin):
     estimate_overrides: Mapped[dict | None] = mapped_column(
         JSONB, nullable=True, server_default=None
     )
+    # DERIVED at every config write, never sticky: True only when this collection has an indexed
+    # baseline AND its current reindex-relevant config drifted from it (see indexed_signature).
     needs_reindex: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # The CollectionIndexSignature of the config the currently-indexed vectors were produced under —
+    # the baseline needs_reindex is derived against. NULL = never indexed (nothing stale to reindex).
+    # Advanced at the worker's ingestion edge on every successful embed; a config write recomputes
+    # needs_reindex = (indexed_signature IS NOT NULL AND current_signature != indexed_signature).
+    indexed_signature: Mapped[str | None] = mapped_column(
+        String(64), nullable=True, server_default=None
+    )
     pipeline: Mapped[dict] = mapped_column(
         JSONB, nullable=False, default=dict
     )  # ingestion graph blob
