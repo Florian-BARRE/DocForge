@@ -137,11 +137,11 @@ from .models.storage import (
     S3FootprintModel,
 )
 
-# ------------------- Transfers models ------------------- #
-from .models.transfers import TransferAccepted, TransferStatus
-
 # ------------------- Trace payloads models ------------------- #
 from .models.trace import TracePurgeResult
+
+# ------------------- Transfers models ------------------- #
+from .models.transfers import TransferAccepted, TransferStatus
 
 # ------------------- Public API ------------------- #
 __all__ = [

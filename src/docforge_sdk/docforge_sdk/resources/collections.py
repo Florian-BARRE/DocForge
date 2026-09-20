@@ -136,9 +136,7 @@ class _CollectionsSpecs(_ResourceMixin):
         Returns:
             RequestSpec: A POST on the collection's ``/trace-payloads/purge`` sub-resource.
         """
-        return RequestSpec(
-            "POST", f"{self._COLLECTIONS_PATH}/{collection_id}/trace-payloads/purge"
-        )
+        return RequestSpec("POST", f"{self._COLLECTIONS_PATH}/{collection_id}/trace-payloads/purge")
 
     def _reingest_spec(self, collection_id: str, request: BulkReingestRequest) -> RequestSpec:
         """

@@ -76,9 +76,7 @@ class _DocumentsSpecs(_ResourceMixin):
 
     def _purge_trace_payloads_spec(self, document_id: str) -> RequestSpec:
         """A POST reclaiming one document's stored full execution-trace payloads (best-effort)."""
-        return RequestSpec(
-            "POST", f"{self._DOCUMENTS_PATH}/{document_id}/trace-payloads/purge"
-        )
+        return RequestSpec("POST", f"{self._DOCUMENTS_PATH}/{document_id}/trace-payloads/purge")
 
     def _markdown_path(self, document_id: str) -> str:
         """
