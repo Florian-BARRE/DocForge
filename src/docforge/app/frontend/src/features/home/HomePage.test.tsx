@@ -31,9 +31,15 @@ vi.mock("../../api/jobs", async (importOriginal) => ({
   listJobsPage: vi.fn(),
 }));
 
+vi.mock("../../api/search", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../api/search")>()),
+  getSearchHealth: vi.fn(),
+}));
+
 const { listCollections, getCollectionHealth } = await import("../../api/collections");
 const { queryDocuments } = await import("../../api/corpus");
 const { getQueueDepth, getWorkersLive, getFailureBreakdown, listJobsPage } = await import("../../api/jobs");
+const { getSearchHealth } = await import("../../api/search");
 
 const collection: Collection = {
   id: "col-1", name: "Contracts", supported_formats: ["pdf"], max_file_size_bytes: 1000,
@@ -55,6 +61,7 @@ const emptyBreakdown: FailureBreakdown = {
   by_error_type: [], by_stage: [], by_collection: [],
 };
 const emptyJobPage: JobPage = { total: 0, limit: 6, offset: 0, jobs: [] };
+const emptySearchHealth = { total_runs: 0, error_rate: 0, p95_latency_ms: null, zero_result_rate: 0, avg_hits: null };
 
 const runningJob = {
   job_id: "job-1", document_id: "doc-1", document_filename: "invoice.pdf", document_title: null,
@@ -75,6 +82,7 @@ describe("HomePage", () => {
     vi.mocked(getWorkersLive).mockResolvedValue(emptyWorkers);
     vi.mocked(getFailureBreakdown).mockResolvedValue(emptyBreakdown);
     vi.mocked(listJobsPage).mockResolvedValue(emptyJobPage);
+    vi.mocked(getSearchHealth).mockResolvedValue(emptySearchHealth);
 
     const onNavigate: Navigate = vi.fn();
     expect(() => render(<HomePage onNavigate={onNavigate} />)).not.toThrow();
@@ -103,6 +111,9 @@ describe("HomePage", () => {
     vi.mocked(getWorkersLive).mockResolvedValue(emptyWorkers);
     vi.mocked(getFailureBreakdown).mockResolvedValue(emptyBreakdown);
     vi.mocked(listJobsPage).mockResolvedValue(oneJobPage);
+    vi.mocked(getSearchHealth).mockResolvedValue({
+      total_runs: 42, error_rate: 0.02, p95_latency_ms: 962, zero_result_rate: 0.05, avg_hits: 6.4,
+    });
 
     const onNavigate: Navigate = vi.fn();
     render(<HomePage onNavigate={onNavigate} />);

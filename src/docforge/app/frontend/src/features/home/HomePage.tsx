@@ -13,6 +13,7 @@ import { NeedsAttentionPanel } from "./NeedsAttentionPanel";
 import { QueueStatusTile } from "./QueueStatusTile";
 import { RecentActivityPanel } from "./RecentActivityPanel";
 import { RecentFailuresTile } from "./RecentFailuresTile";
+import { SearchHealthTile } from "./SearchHealthTile";
 import { WorkersStatusTile } from "./WorkersStatusTile";
 
 interface HomePageProps {
@@ -33,6 +34,7 @@ export function HomePage({ onNavigate }: HomePageProps) {
         <CollectionsStatusTiles onNavigate={onNavigate} />
         <WorkersStatusTile onNavigate={onNavigate} />
         <QueueStatusTile onNavigate={onNavigate} />
+        <SearchHealthTile onNavigate={onNavigate} />
         <RecentFailuresTile onNavigate={onNavigate} />
       </div>
 

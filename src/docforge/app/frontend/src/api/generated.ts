@@ -1653,6 +1653,36 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/search/health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Search Health
+         * @description Return a compact search-runtime health summary for the deployment Overview cockpit.
+         *
+         *     Search runs INLINE in the request (no job/fleet surface of its own), so this mirrors the
+         *     operational tiles ``GET /jobs/queue`` and ``GET /jobs/workers/live`` power. Every figure is
+         *     CUMULATIVE since process start, read straight off the in-process ``docforge_search_*`` Prometheus
+         *     series (the same source Grafana scrapes — no parallel counters). The payload carries no per-tenant
+         *     data or ids: it is a process-global aggregate, gated by the READ capability like the other read
+         *     routes. Trends/rates over time stay in Grafana; this is the at-a-glance snapshot.
+         *
+         *     Returns:
+         *         SearchHealthSummary: Total runs, error rate, p95 latency, zero-result rate and mean hits.
+         */
+        get: operations["search_health_api_v1_search_health_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/transfers/{transfer_id}": {
         parameters: {
             query?: never;
@@ -6385,6 +6415,56 @@ export interface components {
             search_operational: boolean | "degraded";
         };
         /**
+         * SearchHealthSummary
+         * @description A compact, tile-friendly roll-up of search-runtime health for the deployment cockpit.
+         *
+         *     Search runs INLINE in the request (no job/fleet surface), so this mirrors the operational tiles
+         *     the jobs endpoints power (``GET /jobs/queue``, ``GET /jobs/workers/live``) with a JSON summary the
+         *     Overview cockpit can poll. Every figure is CUMULATIVE since process start, read straight off the
+         *     in-process ``docforge_search_*`` Prometheus series (the single source of truth — no parallel
+         *     counters). Trends and rates over time stay in Grafana; this is the at-a-glance snapshot.
+         *
+         *     Attributes:
+         *         total_runs (int): Total search runs since process start (a RUNNER run — the router can 4xx
+         *             before a run ever starts, so those are not counted).
+         *         error_rate (float): Failed/timeout/unavailable runs over total, in [0, 1] (0.0 when there
+         *             have been no runs yet).
+         *         p95_latency_ms (float | None): 95th-percentile whole-run latency in milliseconds, a
+         *             bucket-based approximation from the run-duration histogram; None when no run has been
+         *             recorded yet.
+         *         zero_result_rate (float): Zero-result runs over total, in [0, 1] (0.0 when there have been
+         *             no runs yet).
+         *         avg_hits (float | None): Mean delivered hits per search (over successful runs); None when no
+         *             hits have been observed yet.
+         */
+        SearchHealthSummary: {
+            /**
+             * Avg Hits
+             * @description Mean delivered hits per search over successful runs; null when no hits have been observed yet.
+             */
+            avg_hits: number | null;
+            /**
+             * Error Rate
+             * @description Failed/timeout/unavailable runs over total, in [0, 1] (0.0 when total_runs==0).
+             */
+            error_rate: number;
+            /**
+             * P95 Latency Ms
+             * @description 95th-percentile whole-run latency in ms (bucket-based approximation); null when no run has been recorded yet.
+             */
+            p95_latency_ms: number | null;
+            /**
+             * Total Runs
+             * @description Total search runs since process start (router 4xx rejections are not counted).
+             */
+            total_runs: number;
+            /**
+             * Zero Result Rate
+             * @description Zero-result runs over total, in [0, 1] (0.0 when total_runs==0).
+             */
+            zero_result_rate: number;
+        };
+        /**
          * SearchHitModel
          * @description One ranked search result — the flat view of a hydrated chunk hit.
          *
@@ -9840,6 +9920,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    search_health_api_v1_search_health_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SearchHealthSummary"];
                 };
             };
         };

@@ -71,6 +71,22 @@ export function search(collectionId: string, request: SearchRequest): Promise<Se
   return apiFetch(`${BASE}/${collectionId}/search`, jsonInit("POST", request));
 }
 
+/** Fleet-wide search operational health, cumulative since the API process started (never
+ *  per-collection — mirrors `GET /search/health`). Nulls/zeros before the first search runs. */
+export interface SearchHealthSummary {
+  total_runs: number;
+  error_rate: number;
+  p95_latency_ms: number | null;
+  zero_result_rate: number;
+  avg_hits: number | null;
+}
+
+/** Fleet-wide search health — the Overview cockpit's "Search health" tile data. Not scoped under
+ *  `/collections` (unlike `search()` above): it aggregates across every collection's search runs. */
+export function getSearchHealth(): Promise<SearchHealthSummary> {
+  return apiFetch("/api/v1/search/health");
+}
+
 // ====== Honest search-failure classification ======
 // The search router now distinguishes a PERMANENT config/auth fault from a genuinely TRANSIENT
 // overload/timeout (see backend/routers/search/helpers.py::encode_failure_http) instead of a
