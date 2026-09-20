@@ -16,7 +16,6 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Index,
-    Integer,
     Numeric,
     SmallInteger,
     String,
@@ -134,8 +133,12 @@ class Job(Base, UUIDPrimaryKey, TimestampedMixin):
     # before it existed reads as 0 until re-stored (no backfill, mirroring the filterable-meta tradeoff).
     # Reset to 0 when the payloads are reclaimed (purge / retention GC / reingest-supersede) so the
     # footprint converges. Zero for a job that stored no full trace (shape-only runs).
+    # BigInteger (not Integer): a large fan-out job's summed trace bytes can exceed the ~2.1 GB Integer
+    # cap, which would raise NumericValueOutOfRange on the best-effort set_trace_payload_bytes UPDATE —
+    # swallowed, leaving the counter at 0 and under-reporting the heaviest traces. Widened by migration
+    # d4b8f2a1c6e7 (a forward alter over the initial Integer column shipped by c7a3f1e9d2b4).
     trace_payload_bytes: Mapped[int] = mapped_column(
-        Integer, nullable=False, server_default=text("0"), default=0
+        BigInteger, nullable=False, server_default=text("0"), default=0
     )
     # Per-item counter for the CURRENT fan-out (foreach) root stage: how many child items have
     # finished (items_done) out of the fan-out width (items_total). Both NULL when the current root
