@@ -86,7 +86,7 @@ conflicts = [
 # pytorch-cu126: CUDA 12.6 wheels — REQUIRED for the deployment GPU (Tesla V100, Volta, sm_70).
 # cu129/cu130 DROP Volta kernels (V100 gets "no kernel image for this GPU" at inference); cu126
 # still ships sm_70 AND torch 2.13 (matching the cpu extra). Do NOT bump the index past cu126
-# while the target GPU is a V100 — see agent-memory/bge-server + docs/deployment-resources.md.
+# while the target GPU is a V100 — see docs/deployment-resources.md.
 torch = [
     { index = "pytorch-cpu", extra = "cpu" },
     { index = "pytorch-cu126", extra = "gpu" },

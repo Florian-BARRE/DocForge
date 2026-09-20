@@ -17,7 +17,7 @@ by the next audit:
     absent on CI, so the test skips there; a dev run still enforces it).
 
 Deliberately narrow: only objective, string-level facts are checked (a kind name, a path, a stage
-token). Prose accuracy stays a human/review concern — see .claude/rules/methodology.md.
+token). Prose accuracy stays a human/review concern.
 """
 
 import json

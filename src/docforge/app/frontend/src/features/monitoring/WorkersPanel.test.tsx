@@ -2,7 +2,7 @@
 // Render smoke-test for WorkersPanel — mounts through loading -> loaded with one worker + the
 // fleet summary/recent-activity backfill panels, and asserts it never throws (JobRow inside both
 // the worker card and the recent-activity panel renders JobCancelControl, which calls useToast()
-// unconditionally — needs a real ToastProvider, see agent-memory/frontend/quality-gate-lint-test.md).
+// unconditionally — needs a real ToastProvider).
 // Also covers the throughput tile folded in from the former Monitoring page and the worker-card
 // layout toggle, now that this page absorbed both. Fleet-wide queue depth moved to Activity ▸ Trends
 // (IA redesign W3, see WorkersPanel.tsx's file summary) — its own coverage lives on that page now.

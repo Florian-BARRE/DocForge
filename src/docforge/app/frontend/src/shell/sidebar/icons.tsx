@@ -3,8 +3,8 @@
 // baked-in hex, sized to sit in a 16-18px glyph slot; the surrounding button's own text colour
 // (steel at rest, forge accent when active) tints them, matching the app's existing icon pattern
 // (ThemeToggle's Sun/Moon, TokenControl's KeyGlyph). Grouped in one file per the documented
-// "grouped-primitives" exception to one-component-per-file (agent-memory/frontend/
-// architecture-conventions.md) — each icon here is a tiny, stateless, single-purpose glyph consumed
+// "grouped-primitives" exception to one-component-per-file — each icon here is a tiny, stateless,
+// single-purpose glyph consumed
 // only by the sidebar's nav tree.
 
 const LINE = {

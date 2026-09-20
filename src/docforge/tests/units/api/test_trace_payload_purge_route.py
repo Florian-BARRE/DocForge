@@ -160,9 +160,7 @@ async def test_document_purge_cross_tenant_is_403(fastapi_app, monkeypatch) -> N
     monkeypatch.setattr(CONTEXT.database.trace_payloads, "purge_for_document", purge)
 
     with pytest.raises(HTTPException) as exc:
-        await purge_document_trace_payloads(
-            document_id=uuid.uuid4(), principal=_scoped(COLL_B)
-        )
+        await purge_document_trace_payloads(document_id=uuid.uuid4(), principal=_scoped(COLL_B))
 
     assert exc.value.status_code == 403
     purge.assert_not_awaited()

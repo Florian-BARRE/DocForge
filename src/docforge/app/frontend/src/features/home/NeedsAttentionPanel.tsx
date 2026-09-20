@@ -16,7 +16,7 @@ const MAX_ROWS = 6;
 
 // Local, deliberately minimal — a full verdict→tone/label/detail projection already exists in
 // features/collections/collectionHealth.ts, but feature slices don't cross-import small pure
-// helpers (agent-memory/frontend/feature_slice_isolation.md); this panel only ever renders the
+// helpers; this panel only ever renders the
 // non-operational verdicts anyway, so it needs the label, not the whole health-board vocabulary.
 const TONE_BY_VERDICT: Record<CollectionHealth["verdict"], ChipTone> = {
   down: "error", degraded: "warn", ingest_unavailable: "warn", empty: "dim", operational: "ok",

@@ -68,7 +68,7 @@ class BgeServerConfig(EnvConfigLoader):
     # When false, BgeModelsService.load() skips constructing (and downloading) the FlagReranker
     # entirely — no resident RAM for an unused model, no 30-120s reranker load time added to
     # startup. For embed-only deployments where production rerank is routed to a hosted/GPU
-    # reranker via base_url override instead (see agent-memory/bge-server/rerank-cpu-ceiling.md).
+    # reranker via base_url override instead.
     # Defaults true to preserve current behavior — every existing deployment keeps loading the
     # reranker unless this is explicitly set false. POST /rerank returns a clean HTTP 503 when
     # the reranker isn't loaded, instead of crashing.

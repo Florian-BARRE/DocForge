@@ -1,7 +1,7 @@
 // ====== Code Summary ======
 // Small formatting helpers local to the corpus grid — byte sizes and dates. A deliberate
 // duplicate of features/explorer/format.ts (feature slices never cross-import, even for tiny
-// pure helpers — see agent-memory/frontend/feature_slice_isolation.md).
+// pure helpers).
 
 export function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;

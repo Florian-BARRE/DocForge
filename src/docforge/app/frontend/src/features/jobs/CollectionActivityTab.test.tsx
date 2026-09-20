@@ -12,7 +12,7 @@ import { ToastProvider } from "../../shell/toast";
 import { CollectionActivityTab } from "./CollectionActivityTab";
 
 // JobRow renders JobCancelControl, which calls useToast() unconditionally — needs a real provider
-// (see agent-memory/frontend/quality-gate-lint-test.md's ToastProvider harness gotcha).
+// (the ToastProvider harness gotcha).
 function renderWithProviders(ui: ReactElement) {
   return render(<ToastProvider>{ui}</ToastProvider>);
 }

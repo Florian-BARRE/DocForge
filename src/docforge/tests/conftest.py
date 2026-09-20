@@ -43,9 +43,9 @@ def _add_worker_libs_to_path() -> None:
 
     Deliberately does NOT add the worker root itself: worker/backend/libs's modules only ever
     import ``shared_libs`` (verified by inspection), never the worker's own ``config``/``backend``
-    packages — so this stays free of the app/worker namespace collision documented in
-    agent-memory (both apps define top-level ``backend`` and ``config`` packages; only one of
-    them may ever be registered per process).
+    packages — so this stays free of the app/worker namespace collision (both apps define
+    top-level ``backend`` and ``config`` packages; only one of them may ever be registered per
+    process).
     """
     path_str = str(WORKER_LIBS_DIR)
     if path_str not in sys.path:

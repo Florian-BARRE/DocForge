@@ -44,7 +44,7 @@ dependencies = [
 # (Volta) kernels — recent PyTorch cu126 builds have been observed dropping older SM targets even
 # though the CUDA toolkit tag is unchanged. bge_server + worker's torch 2.13.0+cu126 is the version
 # PROVEN to run real GPU inference (BGE-M3 embeddings, granite_docling) on this exact Tesla V100 in
-# production today — see agent-memory/infra/torch-torchvision-abi-v100.md. Bumping to 2.14.0 here
+# production today. Bumping to 2.14.0 here
 # would be unverified on this hardware; align instead of leading.
 #
 # `mineru[core]` ships the dependency-light `vlm-transformers` backend (the MINERU_BACKEND default).

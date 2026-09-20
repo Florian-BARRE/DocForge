@@ -1,8 +1,7 @@
 // ====== Code Summary ======
 // Small formatting helpers local to the cost-estimate panel — byte sizes, adaptive USD amounts,
 // and assumption-key humanizing. `formatBytes` is a deliberate duplicate of
-// features/explorer/format.ts (feature slices never cross-import, even for tiny pure helpers —
-// see agent-memory/frontend/feature_slice_isolation.md).
+// features/explorer/format.ts (feature slices never cross-import, even for tiny pure helpers).
 
 export function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;

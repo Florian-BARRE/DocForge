@@ -13,8 +13,7 @@ import { theme } from "../../theme";
 const POLL_MS = 10000;
 const MAX_ROWS = 6;
 
-// Tiny local humanizer, deliberately duplicated rather than cross-imported — see
-// agent-memory/frontend/feature_slice_isolation.md.
+// Tiny local humanizer, deliberately duplicated rather than cross-imported.
 function humanizeAgo(iso: string): string {
   const deltaSeconds = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 1000));
   if (deltaSeconds < 60) return "just now";

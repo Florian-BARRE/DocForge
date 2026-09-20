@@ -107,7 +107,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 #   eager execution then falls straight through to the standard ATen/cuBLAS bmm kernel, exactly as
 #   torch<2.10 always did (verified: torch==2.9.0, which bge_server/worker/dots_ocr_server precedents
 #   don't hit this on, has no `torch/_native/` package at all). No image bloat, no torch downgrade, no
-#   runtime JIT latency. See agent-memory/infra/mineru-torch-native-triton-jit.md.
+#   runtime JIT latency.
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PATH="/opt/venv/bin:${PATH}" \

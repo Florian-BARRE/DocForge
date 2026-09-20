@@ -30,8 +30,7 @@ export const theme = {
     // The AA-safe accent for the CURRENT theme — resolves to accent-strong on paper (base --accent
     // fails ~3.4:1 as text/fill under light knockout content) and to plain --accent on ink (already
     // ~6:1, unchanged). Use this — never raw `accent` — for any accent rendered as TEXT on a paper-ish
-    // surface, or as a solid fill that carries light knockout text (see Button primary). Documented
-    // for page-owning agents in agent-memory/frontend/design-round1-2026-09.md.
+    // surface, or as a solid fill that carries light knockout text (see Button primary).
     accentSafe: "var(--accent-safe)",
     // One step darker than accentSafe — for accent TEXT on a tinted card surface (surface-2), where
     // accentSafe's paper-tuned ~4.35:1 falls under AA. Narrow use: SearchHitCard's "view page" link.

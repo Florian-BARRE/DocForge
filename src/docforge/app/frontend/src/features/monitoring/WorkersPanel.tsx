@@ -4,8 +4,8 @@
 // used to be the separate Monitoring page: a top throughput tile above the fleet summary, and a
 // telemetry footnote below the recent-activity panel — the former Monitoring page's live-per-worker
 // grid (LiveWorkersGrid/WorkerLiveCard) was a strict SUBSET of the WorkerCard grid already rendered
-// here, so it was deleted rather than folded in (see agent-memory/frontend for the consolidation
-// note). Fleet-wide QUEUE DEPTH moved to Activity ▸ Trends (IA redesign W3) — it's a job-flow signal,
+// here, so it was deleted rather than folded in. Fleet-wide QUEUE DEPTH moved to Activity ▸ Trends
+// (IA redesign W3) — it's a job-flow signal,
 // not a worker one, and duplicating the same tile on both pages was exactly the redundancy the
 // redesign set out to kill; Fleet keeps throughput (a worker-capacity signal proper to this page). A
 // compact top-right toggle switches the card grid between list/grid-N/auto layouts via the shared

@@ -10,7 +10,7 @@
 // stops compiling, and `npm run build`/CI fails loudly instead of the UI crashing at runtime later.
 //
 // `generated.ts` is openapi-typescript output (npm run gen:types — requires a reachable backend at
-// $OPENAPI_URL, see agent-memory/frontend/gen-types-constraint.md) and is committed as the parity
+// $OPENAPI_URL) and is committed as the parity
 // BASELINE: CI cannot regenerate it offline, so this file is the frozen reference these checks run
 // against. After a backend response model changes: run `npm run gen:types` against a live backend
 // to refresh `generated.ts`, THEN `npx tsc --noEmit` — any real drift fails here until the matching

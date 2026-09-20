@@ -2,8 +2,8 @@
 // Two Home tiles derived from the fleet's live health probes: how many collections need attention
 // right now vs. how many are fully operational — each clicks through to the matching Collections
 // preset. Deliberately imports `useCollectionsFleet` directly (a cross-feature import, an EXCEPTION
-// to the usual feature-slice isolation for small pure helpers — see agent-memory/frontend/
-// feature_slice_isolation.md): that hook owns a real multi-endpoint fetch/fan-out orchestration
+// to the usual feature-slice isolation for small pure helpers): that hook owns a real
+// multi-endpoint fetch/fan-out orchestration
 // (list + per-collection health/doc-count/queue probes), and duplicating that is exactly the kind
 // of large stateful logic the isolation rule was never meant to force-duplicate.
 

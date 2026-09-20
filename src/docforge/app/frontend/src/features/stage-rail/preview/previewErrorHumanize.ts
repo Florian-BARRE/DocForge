@@ -2,8 +2,8 @@
 // Strips the internal exception-chain prefix off a preview job's top-level `error`/`failed` string
 // (worker-side `"PipelineRunError: ...: ValueError: <useful message>"`) down to the last useful
 // segment. A LOCAL copy of `features/monitoring/jobErrorHumanize.ts`'s regex — deliberately not
-// cross-imported (feature slices stay independently movable, see agent-memory/frontend
-// feature_slice_isolation.md); this is the one small pure helper, not a growing shared module.
+// cross-imported (feature slices stay independently movable); this is the one small pure helper,
+// not a growing shared module.
 
 const ERROR_CHAIN_RE = /(?:^|: )[A-Za-z][A-Za-z0-9]*(?:Error|Exception)(?:\([^)]*\))?: /g;
 
