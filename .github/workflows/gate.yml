@@ -64,7 +64,10 @@ jobs:
         # tests/rag_eval holds pure retrieval-quality metrics (hit@k/recall@k/MRR) + the baseline
         # compare helper the retrieval-quality workflow gates on. The live CLI runner is marked
         # `live` and excluded here; only the serviceless units run, so this stays in the fast gate.
-        run: uv run pytest tests/rag_eval -q -m "not live"
+        # `python -m` so the repo dir is on sys.path — tests/rag_eval imports its helpers as
+        # `tests.rag_eval.*` (the package is designed to run via `python -m`, see its README) and
+        # `tests/` has no __init__, so a bare `pytest` console invocation can't resolve `tests`.
+        run: uv run python -m pytest tests/rag_eval -q -m "not live"
 
   db-tests:
     # DB-backed suite (`-m db`, tests/db/) — needs a REAL Postgres, unlike every other job in this
