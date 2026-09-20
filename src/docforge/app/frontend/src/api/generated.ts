@@ -740,6 +740,39 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/collections/{collection_id}/trace-payloads/purge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Purge Collection Trace Payloads
+         * @description Reclaim every stored full execution-trace payload of a collection's jobs (the heavy raw bytes).
+         *
+         *     Frees the object-store space the opt-in ``trace_verbosity='full'`` tier accumulates under each
+         *     job's ``trace/{job_id}/`` prefix, and clears the stage-event rows' references so nothing keeps
+         *     advertising a payload that is gone. Only TERMINAL jobs are reclaimed: an in-flight
+         *     (pending/running) job is skipped so the purge can never race that job's trace-finalize — its trace
+         *     is reclaimed once the job terminates (a later purge or the retention GC). Idempotent: purging a
+         *     collection that stored nothing is a clean no-op returning zeros, NOT a 404. Best-effort — a
+         *     storage error is swallowed, so the call reports the counts and never surfaces a 500 for a partial
+         *     store failure.
+         *
+         *     Returns:
+         *         TracePurgeResult: jobs considered + object-store objects deleted; 404 only when the
+         *             collection itself does not exist.
+         */
+        post: operations["purge_collection_trace_payloads_api_v1_collections__collection_id__trace_payloads_purge_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/collections/contract-schema": {
         parameters: {
             query?: never;
@@ -1052,6 +1085,37 @@ export interface paths {
          *         UploadAccepted: The document id and the new ingestion job id (202); 404 when unknown.
          */
         post: operations["reingest_document_api_v1_documents__document_id__reingest_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/{document_id}/trace-payloads/purge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Purge Document Trace Payloads
+         * @description Reclaim every stored full execution-trace payload of a single document's jobs (the heavy bytes).
+         *
+         *     The document-scoped analogue of the collection purge: frees the object-store space the opt-in
+         *     ``trace_verbosity='full'`` tier accumulates under each of the document's jobs
+         *     (``trace/{job_id}/``) and clears the stage-event refs. Only TERMINAL jobs are reclaimed — an
+         *     in-flight (pending/running) job is skipped and reclaimed once it terminates. Idempotent — a
+         *     document that stored nothing returns zeros, NOT a 404 — and best-effort, so a storage error is
+         *     swallowed rather than surfaced.
+         *
+         *     Returns:
+         *         TracePurgeResult: jobs considered + object-store objects deleted; 404 only when the document
+         *             itself does not exist.
+         */
+        post: operations["purge_document_trace_payloads_api_v1_documents__document_id__trace_payloads_purge_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2229,6 +2293,8 @@ export interface components {
          *         enqueued (int): Jobs actually enqueued (<= the fan-out ceiling).
          *         capped (bool): True when ``matched`` exceeded the per-call fan-out ceiling.
          *         max_fanout (int): The per-call fan-out ceiling that was applied.
+         *         skipped_in_flight (int): Documents skipped because a run was ALREADY active for them (an
+         *             older job still queued/running) — the per-document active-job invariant refuses a second.
          *         jobs (list[ReingestJobHandle]): One handle per enqueued run.
          */
         BulkReingestAccepted: {
@@ -2267,6 +2333,12 @@ export interface components {
              * @description The per-call fan-out ceiling that was applied.
              */
             max_fanout: number;
+            /**
+             * Skipped In Flight
+             * @description Documents skipped because an ingestion job was already active for them.
+             * @default 0
+             */
+            skipped_in_flight: number;
         };
         /**
          * BulkReingestRequest
@@ -2324,6 +2396,12 @@ export interface components {
              * @description The per-call fan-out ceiling that was applied.
              */
             max_fanout: number;
+            /**
+             * Skipped In Flight
+             * @description Documents skipped because an ingestion job was already active for them.
+             * @default 0
+             */
+            skipped_in_flight: number;
         };
         /**
          * CancelResult
@@ -3113,7 +3191,7 @@ export interface components {
             documents: components["schemas"]["DocumentStorageModel"][];
             /**
              * Grand Total Bytes
-             * @description Material footprint — S3 physical_unique + Postgres + Qdrant.
+             * @description Material footprint — S3 physical_unique + Postgres + Qdrant + trace.
              */
             grand_total_bytes: number;
             /** @description ESTIMATED Postgres row bytes. */
@@ -3122,6 +3200,11 @@ export interface components {
             qdrant: components["schemas"]["QdrantFootprintModel"];
             /** @description EXACT S3 totals (logical + deduped physical). */
             s3: components["schemas"]["S3FootprintModel"];
+            /**
+             * Trace Bytes
+             * @description Heavy full execution-trace payloads stored in S3 under trace/{job_id}/ (reclaimable via the trace-payload purge).
+             */
+            trace_bytes: number;
         };
         Condition: components["schemas"]["Always"] | components["schemas"]["OnSuccess"] | components["schemas"]["OnFailure"] | components["schemas"]["ScoreBelow"] | components["schemas"]["WhenEquals"];
         /**
@@ -3812,9 +3895,14 @@ export interface components {
             s3: components["schemas"]["S3FootprintModel"];
             /**
              * Total Bytes
-             * @description S3 (logical) + Postgres + Qdrant.
+             * @description S3 (logical) + Postgres + Qdrant + trace.
              */
             total_bytes: number;
+            /**
+             * Trace Bytes
+             * @description Heavy full execution-trace payloads stored in S3 under trace/{job_id}/ (reclaimable via the trace-payload purge).
+             */
+            trace_bytes: number;
         };
         EditOperation: components["schemas"]["AddNode"] | components["schemas"]["AddLoop"] | components["schemas"]["RemoveNode"] | components["schemas"]["SetBinding"] | components["schemas"]["SetAfter"] | components["schemas"]["SetCondition"] | components["schemas"]["SetConfig"] | components["schemas"]["SetLoopProp"] | components["schemas"]["InsertFragment"];
         /**
@@ -7161,6 +7249,32 @@ export interface components {
             failed: number;
         };
         /**
+         * TracePurgeResult
+         * @description The outcome of an explicit trace-payload purge (a collection's or a single document's).
+         *
+         *     Idempotent by contract: a purge over a scope that stored no full-trace payloads is a clean no-op
+         *     reporting zeros, never an error. Both counters are best-effort tallies — a storage error during
+         *     the purge is swallowed (logged) rather than surfaced, so the numbers may under-count on a partial
+         *     failure but the call always succeeds.
+         *
+         *     Attributes:
+         *         purged_jobs (int): The number of jobs whose stored-trace references were considered/cleared
+         *             (every job in the scope — zero when the scope has no jobs).
+         *         deleted_objects (int): The number of object-store objects actually removed across those jobs.
+         */
+        TracePurgeResult: {
+            /**
+             * Deleted Objects
+             * @description Object-store objects removed across those jobs (0 when nothing was stored).
+             */
+            deleted_objects: number;
+            /**
+             * Purged Jobs
+             * @description Jobs in scope whose trace references were cleared (0 when the scope has no jobs).
+             */
+            purged_jobs: number;
+        };
+        /**
          * TransferAccepted
          * @description The 202 envelope returned the instant a transfer is created and enqueued.
          *
@@ -8639,6 +8753,37 @@ export interface operations {
             };
         };
     };
+    purge_collection_trace_payloads_api_v1_collections__collection_id__trace_payloads_purge_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                collection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TracePurgeResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_contract_schema_api_v1_collections_contract_schema_get: {
         parameters: {
             query?: never;
@@ -9029,6 +9174,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UploadAccepted"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    purge_document_trace_payloads_api_v1_documents__document_id__trace_payloads_purge_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TracePurgeResult"];
                 };
             };
             /** @description Validation Error */
