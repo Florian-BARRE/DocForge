@@ -5,7 +5,7 @@
 // which jsdom implements, so a hooks-order or virtualization crash here would otherwise only surface
 // in a real browser. Covers both loaded shapes — an empty collection (the "No documents yet" hero,
 // which never mounts CorpusTable at all) and a populated one (the actual virtualized grid, with its
-// sticky "__actions" column and per-row re-ingest/delete controls) — plus the always-visible
+// trailing "__actions" column and per-row re-ingest/delete controls) — plus the always-visible
 // "Filters" toggle that sits in the toolbar regardless of which branch is showing.
 
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
@@ -122,8 +122,8 @@ describe("CorpusPage — loading to loaded transition", () => {
 
     expect(screen.getByRole("button", { name: "Toggle column filters" })).toHaveTextContent("Filters");
 
-    // The sticky "__actions" column's per-row controls (CorpusRowActions) rendered for both rows —
-    // the grid didn't silently drop rows or crop the pinned trailing column.
+    // The trailing "__actions" column's per-row controls (CorpusRowActions) rendered for both rows —
+    // the grid didn't silently drop rows or crop the trailing column.
     const reingestButtons = screen.getAllByLabelText("Re-ingest this document");
     expect(reingestButtons).toHaveLength(2);
     const deleteButtons = screen.getAllByText("delete");

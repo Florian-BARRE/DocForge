@@ -22,8 +22,11 @@ interface BaseColumnsArgs {
   supportedFormats: string[];
 }
 
+// Bounded by the enclosing `<td>` (itself sized by TanStack's `column.getSize()` via CorpusTable's
+// `<colgroup>`), never by a fixed pixel cap — so a resized-wide column shows the full text and the
+// ellipsis only kicks in once content genuinely exceeds the actual column width.
 const truncateStyle: React.CSSProperties = {
-  overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "block", maxWidth: 260,
+  overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "block", maxWidth: "100%",
 };
 
 export function buildBaseColumns({ onOpen, onEnabledChanged, supportedFormats }: BaseColumnsArgs): ColumnDef<DocumentGridRow>[] {
@@ -80,10 +83,9 @@ export function buildBaseColumns({ onOpen, onEnabledChanged, supportedFormats }:
     // it's the one interactive control in this whole grid (a toggle, not read-only data), so it
     // must stay reachable within the always-visible leading columns — the grid's own
     // MIN_TABLE_WIDTH floor routinely overflows a typical viewport once metadata columns are
-    // added, and the row-actions column pinned `position: sticky; right: 0` (CorpusTable.tsx)
-    // unavoidably overlaps whatever trailing column sits at that overflow boundary at
-    // scrollLeft=0 — a read-only column degrading there is a cosmetic nit; an unreachable ENABLED
-    // toggle was a MAJOR usability regression (iteration-2 GUI campaign finding).
+    // added, pushing later columns past the fold at scrollLeft=0. A read-only column degrading
+    // there is a cosmetic nit; an unreachable ENABLED toggle was a MAJOR usability regression
+    // (iteration-2 GUI campaign finding).
     {
       id: "enabled",
       accessorKey: "enabled",
@@ -130,8 +132,8 @@ export function buildBaseColumns({ onOpen, onEnabledChanged, supportedFormats }:
       id: "created_at",
       accessorKey: "created_at",
       header: "Created",
-      // Wide enough for the mono locale timestamp (e.g. "9/10/2026, 10:30:04 PM") to clear the
-      // sticky actions column without clipping.
+      // Wide enough for the mono locale timestamp (e.g. "9/10/2026, 10:30:04 PM") to render without
+      // wrapping.
       size: 200,
       // Its dateRange filter stacks its two inputs vertically, so this only needs to fit one native
       // date value's own width, not two side by side.

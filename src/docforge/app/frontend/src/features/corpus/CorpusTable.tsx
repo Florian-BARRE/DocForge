@@ -5,11 +5,12 @@
 // by TanStack's own sizing state via a `<colgroup>` (one write per resized column instead of one
 // per rendered cell, so dragging stays smooth under virtualization), and header drag-and-drop
 // reordering is owned here since it needs `table.setColumnOrder`. The row-actions column
-// ("__actions") is pinned `position: sticky; right: 0` in both the header and body so it survives
-// horizontal scroll. The row-actions column ("__actions") is NOT pinned/frozen: an opaque pinned
-// column floats over the data columns that have not yet scrolled into view and reads as a stray white
-// panel on the right (reported twice) — it is a plain trailing column, reached by scrolling right like
-// any other. Per-column filters live in the separate, toggleable CorpusFilterPanel, not in this table.
+// ("__actions") is deliberately NOT pinned/frozen: an opaque pinned column would float over the
+// data columns that have not yet scrolled into view and reads as a stray white panel on the right
+// (reported repeatedly) — it is a plain trailing column, reached by scrolling right like any other.
+// For the same reason there is no right-edge fade/gradient hint either (removed — it read as the
+// same "veil"); the horizontal scrollbar alone communicates that more columns exist. Per-column
+// filters live in the separate, toggleable CorpusFilterPanel, not in this table.
 
 import { flexRender, type Table } from "@tanstack/react-table";
 import { useVirtualizer } from "@tanstack/react-virtual";
@@ -19,10 +20,8 @@ import { LoadingState } from "../../components/LoadingState";
 import { theme } from "../../theme";
 import { autoFitColumnWidth } from "./columnAutoFit";
 import { GroupHeaderRow } from "./GroupHeaderRow";
-import { ScrollEdgeFade } from "./ScrollEdgeFade";
 import { TableHeaderCell, type DropSide } from "./TableHeaderCell";
 import { isPinnedColumn } from "./types";
-import { useTrailingScrollFade } from "./useTrailingScrollFade";
 
 interface CorpusTableProps {
   table: Table<DocumentGridRow>;
@@ -64,7 +63,7 @@ export function CorpusTable({ table, loading }: CorpusTableProps) {
   // `table-layout: fixed` with an explicit `<table>` width wider than the sum of the `<colgroup>`
   // widths (the MIN_TABLE_WIDTH floor on a narrow/few-column collection, e.g. one with zero metadata
   // fields) hands the leftover space to whichever <col> is LAST in the browser's own distribution —
-  // that's the pinned, non-resizable "__actions" column, which renders as a wide blank void after its
+  // that's the non-resizable "__actions" column, which renders as a wide blank void after its
   // small button cluster (a "ghost" trailing column). Route the leftover to the last REAL column
   // instead, so it reads as one column stretching to fill the row rather than empty dead space.
   const lastFlexColumnIndex = (() => {
@@ -85,7 +84,6 @@ export function CorpusTable({ table, loading }: CorpusTableProps) {
   const virtualItems = virtualizer.getVirtualItems();
   const paddingTop = virtualItems.length ? virtualItems[0].start : 0;
   const paddingBottom = virtualItems.length ? virtualizer.getTotalSize() - virtualItems[virtualItems.length - 1].end : 0;
-  const canScrollRight = useTrailingScrollFade(scrollRef, [tableWidth, columnCount, rows.length]);
 
   const onHeaderDragStart = (columnId: string) => setDrag({ sourceId: columnId, overId: null, side: "after" });
 
@@ -221,7 +219,6 @@ export function CorpusTable({ table, loading }: CorpusTableProps) {
           {rows.length > 0 && paddingBottom > 0 && <tr aria-hidden style={{ height: paddingBottom }} />}
         </tbody>
       </table>
-      <ScrollEdgeFade visible={canScrollRight} />
     </div>
   );
 }

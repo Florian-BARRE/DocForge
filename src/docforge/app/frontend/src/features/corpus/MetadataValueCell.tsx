@@ -27,8 +27,10 @@ export function MetadataValueCell({ value }: { value: unknown }) {
     <span
       title={text}
       style={{
+        // Bounded by the enclosing `<td>` (sized off TanStack's `column.getSize()`), not a fixed
+        // pixel cap — a resized-wide column shows the full text; only genuine overflow ellipsizes.
         fontSize: theme.font.size.s, color: theme.color.text, display: "block",
-        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 220,
+        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%",
       }}
     >
       {text}
