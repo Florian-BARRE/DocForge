@@ -1,0 +1,786 @@
+{
+  "title": "DocForge — Search observability",
+  "uid": "docforge-search",
+  "tags": [
+    "docforge"
+  ],
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "timezone": "browser",
+  "graphTooltip": 1,
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "refresh": "10s",
+  "links": [
+    {
+      "asDropdown": false,
+      "icon": "external link",
+      "includeVars": true,
+      "keepTime": true,
+      "tags": [
+        "docforge"
+      ],
+      "targetBlank": false,
+      "title": "DocForge dashboards",
+      "type": "dashboards"
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "current": {
+          "selected": false,
+          "text": "Prometheus",
+          "value": "docforge-prometheus"
+        },
+        "hide": 0,
+        "includeAll": false,
+        "label": "Prometheus source",
+        "multi": false,
+        "name": "DS_PROMETHEUS",
+        "options": [],
+        "query": "prometheus",
+        "queryValue": "",
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "type": "datasource"
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 100,
+      "type": "row",
+      "title": "Golden signals",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 1,
+      "title": "Search rate (runner runs)",
+      "type": "stat",
+      "description": "A RUNNER run — the router can 4xx before a run ever starts, so this undercounts rejected requests by design.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 0,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "graphMode": "area"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(docforge_search_runs_total[5m]))"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Whole-run p95 latency",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 6,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "decimals": 3,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#2f7d4f",
+                "value": null
+              },
+              {
+                "color": "#f4a63b",
+                "value": 0.5
+              },
+              {
+                "color": "#c8402c",
+                "value": 1.5
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "graphMode": "area",
+        "colorMode": "value"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(docforge_search_run_duration_seconds_bucket[5m])))"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Zero-result rate",
+      "type": "stat",
+      "description": "Successful searches that delivered zero hits, as a ratio of successful runs.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 12,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "noValue": "No data",
+          "mappings": [
+            {
+              "type": "special",
+              "options": {
+                "match": "null+nan",
+                "result": {
+                  "text": "No data",
+                  "color": "#8a8378"
+                }
+              }
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#8a8378",
+                "value": null
+              },
+              {
+                "color": "#f4a63b",
+                "value": 0.2
+              },
+              {
+                "color": "#c8402c",
+                "value": 0.5
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "graphMode": "area",
+        "colorMode": "value"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(docforge_search_zero_result_total[5m])) / sum(rate(docforge_search_runs_total{outcome=\"success\"}[5m]))"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Error / degraded rate",
+      "type": "stat",
+      "description": "Error = runner outcome other than success (failed/timeout/unavailable). Degraded = a successful search delivered on a degraded axis (an encode axis was unavailable).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 18,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "noValue": "No data",
+          "mappings": [
+            {
+              "type": "special",
+              "options": {
+                "match": "null+nan",
+                "result": {
+                  "text": "No data",
+                  "color": "#8a8378"
+                }
+              }
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#2f7d4f",
+                "value": null
+              },
+              {
+                "color": "#f4a63b",
+                "value": 0.05
+              },
+              {
+                "color": "#c8402c",
+                "value": 0.2
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "graphMode": "area",
+        "colorMode": "value"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(docforge_search_runs_total{outcome!=\"success\"}[5m])) / sum(rate(docforge_search_runs_total[5m]))",
+          "legendFormat": "error ratio"
+        },
+        {
+          "refId": "B",
+          "expr": "sum(rate(docforge_search_degraded_total[5m])) / sum(rate(docforge_search_runs_total{outcome=\"success\"}[5m]))",
+          "legendFormat": "degraded ratio"
+        }
+      ]
+    },
+    {
+      "id": 101,
+      "type": "row",
+      "title": "Latency",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 5
+      },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 10,
+      "title": "Per-stage p95 latency (query / encode / retrieve / postprocess / deliver)",
+      "type": "timeseries",
+      "description": "docforge_search_duration_seconds{stage}, labelled by the node's registry family — the per-stage breakdown of where a search spends its time.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 6
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.95, sum by (le, stage) (rate(docforge_search_duration_seconds_bucket[5m])))",
+          "legendFormat": "{{stage}}"
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "title": "Whole-run latency percentiles (p50 / p95 / p99)",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 15
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(docforge_search_run_duration_seconds_bucket[5m])))",
+          "legendFormat": "p50"
+        },
+        {
+          "refId": "B",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(docforge_search_run_duration_seconds_bucket[5m])))",
+          "legendFormat": "p95"
+        },
+        {
+          "refId": "C",
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(docforge_search_run_duration_seconds_bucket[5m])))",
+          "legendFormat": "p99"
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "title": "Search runs by outcome",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 15
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "custom": {
+            "fillOpacity": 20,
+            "stacking": {
+              "mode": "normal"
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "success"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#2f7d4f"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "failed"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#c8402c"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "timeout"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#f4a63b"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "unavailable"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#8a8378"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (outcome) (rate(docforge_search_runs_total[5m]))",
+          "legendFormat": "{{outcome}}"
+        }
+      ]
+    },
+    {
+      "id": 102,
+      "type": "row",
+      "title": "Retrieval & results",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 23
+      },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 20,
+      "title": "Retrieval calls by axes & filter",
+      "type": "timeseries",
+      "description": "docforge_search_retrieval_total{axes,filtered} — axes=none is a filter-only retrieval whose target vectors resolved to nothing (an otherwise-invisible degradation).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 24
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "custom": {
+            "fillOpacity": 15,
+            "stacking": {
+              "mode": "normal"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (axes, filtered) (rate(docforge_search_retrieval_total[5m]))",
+          "legendFormat": "{{axes}} · filtered={{filtered}}"
+        }
+      ]
+    },
+    {
+      "id": 21,
+      "title": "Zero-result rate over time",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 24
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(docforge_search_zero_result_total[5m])) / sum(rate(docforge_search_runs_total{outcome=\"success\"}[5m]))",
+          "legendFormat": "zero-result ratio"
+        }
+      ]
+    },
+    {
+      "id": 22,
+      "title": "Average hits / candidates per search",
+      "type": "timeseries",
+      "description": "docforge_search_hits (delivered) vs docforge_search_candidates (retrieved, summed over all retrieval calls) — both averaged per search via _sum/_count.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 32
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(docforge_search_hits_sum[5m])) / sum(rate(docforge_search_hits_count[5m]))",
+          "legendFormat": "avg hits"
+        },
+        {
+          "refId": "B",
+          "expr": "sum(rate(docforge_search_candidates_sum[5m])) / sum(rate(docforge_search_candidates_count[5m]))",
+          "legendFormat": "avg candidates"
+        }
+      ]
+    },
+    {
+      "id": 103,
+      "type": "row",
+      "title": "Rerank & fusion",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 40
+      },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 30,
+      "title": "Rerank usage rate",
+      "type": "timeseries",
+      "description": "Share of successful searches in which a rerank-family node ran.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 41
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(docforge_search_rerank_applied_total[5m])) / sum(rate(docforge_search_runs_total{outcome=\"success\"}[5m]))",
+          "legendFormat": "rerank ratio"
+        }
+      ]
+    },
+    {
+      "id": 31,
+      "title": "Rerank rank-shift distribution (p50 / p95)",
+      "type": "timeseries",
+      "description": "Mean absolute rank displacement of delivered hits vs their retrieval rank, when rerank ran.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 41
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(docforge_search_rerank_rank_shift_bucket[5m])))",
+          "legendFormat": "p50"
+        },
+        {
+          "refId": "B",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(docforge_search_rerank_rank_shift_bucket[5m])))",
+          "legendFormat": "p95"
+        }
+      ]
+    },
+    {
+      "id": 32,
+      "title": "Branch contribution ratio (dense/sparse fusion)",
+      "type": "timeseries",
+      "description": "Opt-in — populated only when a collection sets measure_branch_contribution. Share of the fused candidate pool attributable to a single retrieval branch, averaged via _sum/_count by branch.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 49
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "noValue": "No data (opt-in, off by default)"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (branch) (rate(docforge_search_branch_contribution_ratio_sum[5m])) / sum by (branch) (rate(docforge_search_branch_contribution_ratio_count[5m]))",
+          "legendFormat": "{{branch}}"
+        }
+      ]
+    },
+    {
+      "id": 33,
+      "title": "Branch probe outcomes",
+      "type": "timeseries",
+      "description": "Opt-in dense/sparse branch probes by outcome — so an always-failing probe is never silent.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 49
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "custom": {
+            "fillOpacity": 15,
+            "stacking": {
+              "mode": "normal"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (outcome) (rate(docforge_search_branch_probe_total[5m]))",
+          "legendFormat": "{{outcome}}"
+        }
+      ]
+    },
+    {
+      "id": 104,
+      "type": "row",
+      "title": "Degradation",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 57
+      },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 40,
+      "title": "Degraded searches over time",
+      "type": "timeseries",
+      "description": "Successful searches delivered on a degraded axis (an encode axis was unavailable) — raw rate, not a ratio.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 58
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "custom": {
+            "fillOpacity": 15
+          },
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#f4a63b"
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(docforge_search_degraded_total[5m]))",
+          "legendFormat": "degraded/s"
+        }
+      ]
+    }
+  ]
+}

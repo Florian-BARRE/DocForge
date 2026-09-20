@@ -24,11 +24,13 @@
 #     API is open on the internal net, so a REMOTE Alloy on another host can ship its metrics/logs
 #     into this stack; dashboards use datasource template variables (DS_PROMETHEUS/DS_LOKI) so an
 #     operator can point them at a local or a remote Prometheus/Loki without editing panels.
-#   - grafana: provisioned with both datasources + five dashboards
+#   - grafana: provisioned with both datasources + six dashboards
 #     (services/telemetry/grafana/dashboards/*.json) — docforge-overview (Control Tower: request
 #     rate, p95 latency, error rate, arq queue depth, job counts, live workers), docforge-api
 #     (HTTP golden signals + per-route breakdown), docforge-jobs (queue/worker detail),
-#     docforge-runtime (process memory/CPU/GC), docforge-logs (Loki volume + live tail).
+#     docforge-runtime (process memory/CPU/GC), docforge-logs (Loki volume + live tail),
+#     docforge-search (search-pipeline observability: per-stage p95 latency, retrieval axes,
+#     rerank rank-shift, dense/sparse fusion contribution, zero-result/degraded rates).
 #
 # Grafana admin login: services/telemetry/.env (GF_SECURITY_ADMIN_USER / GF_SECURITY_ADMIN_PASSWORD,
 # injected via env_file — the discoverable per-service config home). Copy .env.example → .env and
