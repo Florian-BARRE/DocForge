@@ -361,7 +361,11 @@ class DocumentStorageModel(BaseModel):
     s3: S3FootprintModel = Field(description="EXACT S3 bytes.")
     postgres: PostgresFootprintModel = Field(description="ESTIMATED Postgres row bytes.")
     qdrant: QdrantFootprintModel = Field(description="ESTIMATED vector-store bytes.")
-    total_bytes: int = Field(description="S3 (logical) + Postgres + Qdrant.")
+    trace_bytes: int = Field(
+        description="Heavy full execution-trace payloads stored in S3 under trace/{job_id}/ "
+        "(reclaimable via the trace-payload purge)."
+    )
+    total_bytes: int = Field(description="S3 (logical) + Postgres + Qdrant + trace.")
 
     @classmethod
     def from_payload(cls, payload: DocumentFootprint) -> "DocumentStorageModel":
@@ -372,6 +376,7 @@ class DocumentStorageModel(BaseModel):
             s3=S3FootprintModel.from_payload(payload.s3),
             postgres=PostgresFootprintModel.from_payload(payload.postgres),
             qdrant=QdrantFootprintModel.from_payload(payload.qdrant),
+            trace_bytes=payload.trace_bytes,
             total_bytes=payload.total_bytes,
         )
 
@@ -389,8 +394,12 @@ class CollectionStorageResponse(BaseModel):
     s3: S3FootprintModel = Field(description="EXACT S3 totals (logical + deduped physical).")
     postgres: PostgresFootprintModel = Field(description="ESTIMATED Postgres row bytes.")
     qdrant: QdrantFootprintModel = Field(description="ESTIMATED vector-store bytes.")
+    trace_bytes: int = Field(
+        description="Heavy full execution-trace payloads stored in S3 under trace/{job_id}/ "
+        "(reclaimable via the trace-payload purge)."
+    )
     grand_total_bytes: int = Field(
-        description="Material footprint — S3 physical_unique + Postgres + Qdrant."
+        description="Material footprint — S3 physical_unique + Postgres + Qdrant + trace."
     )
     documents: list[DocumentStorageModel] = Field(
         description="Per-document breakdown, sorted by total bytes descending (doubles as top-N)."
@@ -404,6 +413,7 @@ class CollectionStorageResponse(BaseModel):
             s3=S3FootprintModel.from_payload(payload.s3),
             postgres=PostgresFootprintModel.from_payload(payload.postgres),
             qdrant=QdrantFootprintModel.from_payload(payload.qdrant),
+            trace_bytes=payload.trace_bytes,
             grand_total_bytes=payload.grand_total_bytes,
             documents=[DocumentStorageModel.from_payload(doc) for doc in payload.documents],
         )
@@ -438,6 +448,29 @@ class PreviewJobResult(BaseModel):
     )
 
 
+class TracePurgeResult(BaseModel):
+    """
+    The outcome of an explicit trace-payload purge (a collection's or a single document's).
+
+    Idempotent by contract: a purge over a scope that stored no full-trace payloads is a clean no-op
+    reporting zeros, never an error. Both counters are best-effort tallies — a storage error during
+    the purge is swallowed (logged) rather than surfaced, so the numbers may under-count on a partial
+    failure but the call always succeeds.
+
+    Attributes:
+        purged_jobs (int): The number of jobs whose stored-trace references were considered/cleared
+            (every job in the scope — zero when the scope has no jobs).
+        deleted_objects (int): The number of object-store objects actually removed across those jobs.
+    """
+
+    purged_jobs: int = Field(
+        description="Jobs in scope whose trace references were cleared (0 when the scope has no jobs)."
+    )
+    deleted_objects: int = Field(
+        description="Object-store objects removed across those jobs (0 when nothing was stored)."
+    )
+
+
 __all__ = [
     "FieldSpecModel",
     "CollectionModel",
@@ -453,4 +486,5 @@ __all__ = [
     "CollectionStorageResponse",
     "PreviewJobAccepted",
     "PreviewJobResult",
+    "TracePurgeResult",
 ]

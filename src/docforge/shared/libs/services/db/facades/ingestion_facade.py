@@ -343,7 +343,18 @@ class IngestionFacade(LoggerClass):
         for node_path, side, obj in pending:
             (input_by_path if side == "input" else output_by_path)[node_path] = obj.key
 
-        # 3. Fold the two sides into one TraceRefs per node_path.
+        # 3. Record the stored footprint on the job row (best-effort): the content-addressed objects
+        #    are deduped by key (a payload reused across hops is stored — and counted — once), so the
+        #    total mirrors what the ``trace/{job_id}/`` prefix physically holds. A persist failure is
+        #    swallowed — trace accounting must never fail an ingestion that already produced its bundle.
+        total_bytes = sum({obj.key: len(obj.data) for _, _, obj in pending}.values())
+        try:
+            async with self._postgres.session() as session:
+                await JobApi.set_trace_payload_bytes(session, job_id, total_bytes)
+        except Exception as exc:
+            self.logger.warning(f"Trace payload byte accounting failed for job {job_id}: {exc}")
+
+        # 4. Fold the two sides into one TraceRefs per node_path.
         paths = set(input_by_path) | set(output_by_path)
         return {
             path: TraceRefs(input_ref=input_by_path.get(path), output_ref=output_by_path.get(path))

@@ -48,6 +48,7 @@ from .models import (
     CreateCollectionRequest,
     PreviewJobAccepted,
     PreviewJobResult,
+    TracePurgeResult,
     UpdateCollectionRequest,
 )
 from .store_sync import CollectionStoreSync
@@ -842,6 +843,48 @@ async def reingest_collection(
         skipped_in_flight=result.skipped_in_flight,
         jobs=result.handles,
     )
+
+
+@router.post(
+    "/{collection_id}/trace-payloads/purge",
+    response_model=TracePurgeResult,
+)
+@auto_handle_errors
+async def purge_collection_trace_payloads(
+    collection_id: uuid.UUID,
+    principal: AuthPrincipal = Depends(require(Capability.WRITE)),
+) -> TracePurgeResult:
+    """
+    Reclaim every stored full execution-trace payload of a collection's jobs (the heavy raw bytes).
+
+    Frees the object-store space the opt-in ``trace_verbosity='full'`` tier accumulates under each
+    job's ``trace/{job_id}/`` prefix, and clears the stage-event rows' references so nothing keeps
+    advertising a payload that is gone. Idempotent: purging a collection that stored nothing is a
+    clean no-op returning zeros, NOT a 404. Best-effort — a storage error is swallowed, so the call
+    reports the counts and never surfaces a 500 for a partial store failure.
+
+    Returns:
+        TracePurgeResult: jobs considered + object-store objects deleted; 404 only when the
+            collection itself does not exist.
+    """
+    # 1. The collection must exist — an unknown id is a 404 even though the purge itself is idempotent.
+    collection = await CONTEXT.database.collections.get(collection_id)
+    if collection is None:
+        raise HTTPException(status_code=404, detail=f"Collection {collection_id} not found.")
+
+    # 2. require(WRITE) already collection-scopes the `collection_id` path param before this body
+    #    runs (403 cross-tenant); restate it locally, mirroring the other collection routes.
+    AuthzGuard.assert_collection_scope(principal, str(collection_id))
+
+    # 3. Best-effort purge across the collection's jobs (façade owns postgres+s3; never raises).
+    purged_jobs, deleted_objects = await CONTEXT.database.trace_payloads.purge_for_collection(
+        collection_id
+    )
+    CONTEXT.logger.info(
+        f"Purged trace payloads for collection {collection_id}: "
+        f"{purged_jobs} job(s), {deleted_objects} object(s)"
+    )
+    return TracePurgeResult(purged_jobs=purged_jobs, deleted_objects=deleted_objects)
 
 
 @router.delete(

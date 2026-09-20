@@ -45,14 +45,16 @@ def _fixed_footprint() -> CollectionFootprint:
         s3=s3,
         postgres=postgres,
         qdrant=qdrant,
-        total_bytes=45280,
+        trace_bytes=700,
+        total_bytes=45980,
     )
     return CollectionFootprint(
         collection_id=uuid.UUID(COLLECTION_ID),
         s3=s3,
         postgres=postgres,
         qdrant=qdrant,
-        grand_total_bytes=45080,
+        trace_bytes=700,
+        grand_total_bytes=45780,
         documents=[document],
     )
 
@@ -82,9 +84,10 @@ def test_storage_returns_full_shape(client, wired) -> None:
     assert response.status_code == 200, response.text
     body = response.json()
 
-    # 1. Identity + the material grand total.
+    # 1. Identity + the material grand total (which folds the trace-payload line).
     assert body["collection_id"] == COLLECTION_ID
-    assert body["grand_total_bytes"] == 45080
+    assert body["grand_total_bytes"] == 45780
+    assert body["trace_bytes"] == 700
 
     # 2. S3 is EXACT — logical total vs deduped physical, flagged not-estimated.
     assert body["s3"]["total_bytes"] == 1500
@@ -103,7 +106,8 @@ def test_storage_returns_full_shape(client, wired) -> None:
     doc = body["documents"][0]
     assert doc["document_id"] == DOCUMENT_ID
     assert doc["filename"] == "attention.pdf"
-    assert doc["total_bytes"] == 45280
+    assert doc["total_bytes"] == 45980
+    assert doc["trace_bytes"] == 700
     assert doc["s3"]["original_bytes"] == 1000
     assert doc["qdrant"]["total_bytes"] == 43360
 

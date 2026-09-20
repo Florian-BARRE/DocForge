@@ -122,6 +122,12 @@ def _wire_apis(monkeypatch) -> None:
         "s3_physical_unique",
         AsyncMock(return_value=3000),
     )
+    # 4b. Heavy trace payloads per document + a NULL-document job (folds into the collection total only).
+    monkeypatch.setattr(
+        facade_mod.StorageFootprintApi,
+        "trace_bytes_per_document",
+        AsyncMock(return_value=[(DOC_A, 700), (DOC_B, 300), (None, 100)]),
+    )
     # 5. No semantic metadata fields → only the content dense vector is charged (the demo case).
     monkeypatch.setattr(
         facade_mod.StorageFootprintApi,
@@ -167,8 +173,11 @@ async def test_collection_footprint_rolls_up_all_three_stores(monkeypatch) -> No
     assert result.qdrant.sparse_bytes == 10 * 5 * 8
     assert result.qdrant.total_bytes == 40960 + 400 + 2000  # 43360
 
-    # 4. Grand total uses the DEDUPED S3 cost (3000), not the logical sum (3500).
-    assert result.grand_total_bytes == 3000 + 520 + 43360  # 46880
+    # 4. Trace payloads fold into the collection total (700 + 300 + the null-doc 100 = 1100).
+    assert result.trace_bytes == 1100
+
+    # 5. Grand total uses the DEDUPED S3 cost (3000), not the logical sum (3500), plus trace.
+    assert result.grand_total_bytes == 3000 + 520 + 43360 + 1100  # 47980
 
 
 async def test_collection_footprint_per_document_breakdown_is_sorted(monkeypatch) -> None:
@@ -181,20 +190,22 @@ async def test_collection_footprint_per_document_breakdown_is_sorted(monkeypatch
     # 1. DOC_A dominates (its 6 Qdrant points outweigh DOC_B's larger S3) → sorted first.
     assert [doc.document_id for doc in documents] == [DOC_A, DOC_B]
 
-    # 2. DOC_A: S3 1500 (logical == physical at doc level) + PG 350 + Qdrant(6 pts) 26016.
+    # 2. DOC_A: S3 1500 (logical == physical at doc level) + PG 350 + Qdrant(6 pts) 26016 + trace 700.
     doc_a = documents[0]
     assert doc_a.s3.total_bytes == 1500
     assert doc_a.s3.physical_unique_bytes == 1500
     assert doc_a.postgres.total_bytes == 350  # 100 + 200 + 50
     assert doc_a.qdrant.points == 6
     assert doc_a.qdrant.total_bytes == 6 * 1024 * 4 + 6 * 5 * 8 + 6 * 200  # 26016
-    assert doc_a.total_bytes == 1500 + 350 + 26016
+    assert doc_a.trace_bytes == 700
+    assert doc_a.total_bytes == 1500 + 350 + 26016 + 700
 
-    # 3. DOC_B: S3 2000 + PG 130 + Qdrant(4 pts) 17344.
+    # 3. DOC_B: S3 2000 + PG 130 + Qdrant(4 pts) 17344 + trace 300.
     doc_b = documents[1]
     assert doc_b.postgres.total_bytes == 130  # 100 + 30
     assert doc_b.qdrant.points == 4
-    assert doc_b.total_bytes == 2000 + 130 + (4 * 1024 * 4 + 4 * 5 * 8 + 4 * 200)
+    assert doc_b.trace_bytes == 300
+    assert doc_b.total_bytes == 2000 + 130 + (4 * 1024 * 4 + 4 * 5 * 8 + 4 * 200) + 300
 
 
 async def test_collection_footprint_charges_semantic_meta_vector_only_to_its_carriers(
@@ -251,5 +262,5 @@ async def test_collection_footprint_reports_zero_qdrant_when_never_embedded(monk
     assert result.qdrant.points == 0
     assert result.qdrant.total_bytes == 0
     assert all(doc.qdrant.total_bytes == 0 for doc in result.documents)
-    # 2. S3 + Postgres are unaffected; the grand total is just those two.
-    assert result.grand_total_bytes == 3000 + 520
+    # 2. S3 + Postgres + trace are unaffected; the grand total is just those (no Qdrant space yet).
+    assert result.grand_total_bytes == 3000 + 520 + 1100

@@ -40,6 +40,7 @@ from ...utils.error_handling import auto_handle_errors
 from ...utils.ingest_enqueuer import IngestEnqueuer
 from ...utils.pipeline_validation import PipelineBlobValidator
 from ...utils.upload_reader import UploadReader
+from ..collections.models import TracePurgeResult
 from .helpers import DocumentAdmissionHelpers
 from .models import DocumentEnabledResponse, EnabledPatch, UploadAccepted
 
@@ -330,6 +331,45 @@ async def reingest_document(
         )
     CONTEXT.logger.info(f"Re-ingest enqueued for {document.id} (job {job.id}, force={force})")
     return UploadAccepted(document_id=str(document.id), job_id=str(job.id))
+
+
+@router.post(
+    "/{document_id}/trace-payloads/purge",
+    response_model=TracePurgeResult,
+)
+@auto_handle_errors
+async def purge_document_trace_payloads(
+    document_id: uuid.UUID,
+    principal: AuthPrincipal = Depends(require(Capability.WRITE)),
+) -> TracePurgeResult:
+    """
+    Reclaim every stored full execution-trace payload of a single document's jobs (the heavy bytes).
+
+    The document-scoped analogue of the collection purge: frees the object-store space the opt-in
+    ``trace_verbosity='full'`` tier accumulates under each of the document's jobs
+    (``trace/{job_id}/``) and clears the stage-event refs. Idempotent — a document that stored nothing
+    returns zeros, NOT a 404 — and best-effort, so a storage error is swallowed rather than surfaced.
+
+    Returns:
+        TracePurgeResult: jobs considered + object-store objects deleted; 404 only when the document
+            itself does not exist.
+    """
+    # 1. The collection is not in the path — load the document to resolve its collection and enforce
+    #    the caller's scope (404 unknown, 403 foreign) BEFORE reclaiming another tenant's payloads.
+    document = await CONTEXT.database.documents.get(document_id)
+    if document is None:
+        raise HTTPException(status_code=404, detail=f"Document {document_id} not found.")
+    AuthzGuard.assert_collection_scope(principal, str(document.collection_id))
+
+    # 2. Best-effort purge across the document's jobs (façade owns postgres+s3; never raises).
+    purged_jobs, deleted_objects = await CONTEXT.database.trace_payloads.purge_for_document(
+        document_id
+    )
+    CONTEXT.logger.info(
+        f"Purged trace payloads for document {document_id}: "
+        f"{purged_jobs} job(s), {deleted_objects} object(s)"
+    )
+    return TracePurgeResult(purged_jobs=purged_jobs, deleted_objects=deleted_objects)
 
 
 __all__ = ["router"]

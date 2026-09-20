@@ -145,6 +145,19 @@ _S3_PHYSICAL_UNIQUE_SQL = text(
 # The collection's documents (id + display name), so a document with zero rows/blobs still appears.
 _DOCUMENT_NAMES_SQL = text("SELECT id, filename FROM document WHERE collection_id = :cid")
 
+# The heavy FULL execution-trace payload bytes each job recorded (``trace/{job_id}/`` in S3, NOT
+# registry-tracked), grouped by document. A job's ``document_id`` is NOT NULL today, but the column is
+# nullable at the schema level, so a null-document job is possible — the caller folds those into the
+# collection total only, never a per-document entry (mirroring the observability PG bucket).
+_TRACE_BYTES_PER_DOCUMENT_SQL = text(
+    """
+    SELECT document_id, COALESCE(SUM(trace_payload_bytes), 0) AS bytes
+    FROM job
+    WHERE collection_id = :cid
+    GROUP BY document_id
+    """
+)
+
 # Which documents populate which SEMANTIC metadata field — the carrier set of each ``meta_<slug>_dense``
 # named vector. A document-scope value rides EVERY chunk point of the document (document_metadata); a
 # chunk-scope value rides the chunks that carry it (chunk_metadata) — both surface the document here,
@@ -242,6 +255,27 @@ class StorageFootprintApi:
         """
         result = await session.execute(_S3_PHYSICAL_UNIQUE_SQL, {"cid": str(collection_id)})
         return int(result.scalar() or 0)
+
+    @staticmethod
+    async def trace_bytes_per_document(
+        session: AsyncSession, collection_id: uuid.UUID
+    ) -> list[tuple[uuid.UUID | None, int]]:
+        """
+        Return the summed FULL execution-trace payload bytes per document (``trace/{job_id}/`` in S3).
+
+        These heavy payloads are NOT tracked in the ``blob`` registry — the byte total is recorded on
+        each ``job`` row (``trace_payload_bytes``) and summed here. A ``None`` document id is possible
+        (the column is nullable): the caller folds those into the collection total but no document.
+
+        Args:
+            session (AsyncSession): The unit of work.
+            collection_id (uuid.UUID): The collection to measure.
+
+        Returns:
+            list[tuple[uuid.UUID | None, int]]: (document_id, trace_bytes) rows.
+        """
+        result = await session.execute(_TRACE_BYTES_PER_DOCUMENT_SQL, {"cid": str(collection_id)})
+        return [(row[0], int(row[1] or 0)) for row in result.all()]
 
     @staticmethod
     async def semantic_field_carriers(

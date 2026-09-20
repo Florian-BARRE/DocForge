@@ -120,6 +120,48 @@ class TracePayloadFacade(LoggerClass):
         """
         return await TracePurgeHelper.purge(self._postgres, self._s3, job_ids)
 
+    async def purge_for_collection(self, collection_id: uuid.UUID) -> tuple[int, int]:
+        """
+        Purge every stored full-trace payload of a whole collection — the explicit reclaim hook.
+
+        Idempotent and best-effort: a collection with no jobs (or none carrying stored payloads) is a
+        clean no-op returning zeros, never an error. Gathers the collection's job ids, then hands them
+        to the shared best-effort purge (clears the rows' refs, prefix-deletes each ``trace/{job_id}/``
+        namespace) which never raises.
+
+        Args:
+            collection_id (uuid.UUID): The collection whose jobs' trace payloads are reclaimed.
+
+        Returns:
+            tuple[int, int]: (jobs considered, object-store objects deleted).
+        """
+        # 1. Gather every job id of the collection (the ids whose trace namespaces are reclaimed).
+        async with self._postgres.session() as session:
+            job_ids = await JobApi.list_job_ids_for_collection(session, collection_id)
+        # 2. Best-effort purge (refs cleared + bytes prefix-deleted); report jobs + objects reclaimed.
+        deleted = await self.purge_jobs(job_ids)
+        return len(job_ids), deleted
+
+    async def purge_for_document(self, document_id: uuid.UUID) -> tuple[int, int]:
+        """
+        Purge every stored full-trace payload of a single document — the explicit reclaim hook.
+
+        Idempotent and best-effort, exactly like ``purge_for_collection`` but scoped to one document's
+        jobs: a document with no jobs (or none carrying stored payloads) returns zeros without error.
+
+        Args:
+            document_id (uuid.UUID): The document whose jobs' trace payloads are reclaimed.
+
+        Returns:
+            tuple[int, int]: (jobs considered, object-store objects deleted).
+        """
+        # 1. Gather every job id of the document.
+        async with self._postgres.session() as session:
+            job_ids = await JobApi.list_job_ids_for_document(session, document_id)
+        # 2. Best-effort purge; report jobs considered + objects reclaimed.
+        deleted = await self.purge_jobs(job_ids)
+        return len(job_ids), deleted
+
     async def gc_before(self, cutoff: datetime, batch_size: int) -> int:
         """
         Age out stored full-trace payloads: purge the object-store space of jobs older than ``cutoff``.

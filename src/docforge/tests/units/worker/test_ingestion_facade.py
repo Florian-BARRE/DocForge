@@ -277,16 +277,26 @@ async def test_store_trace_payloads_batches_into_one_put_many(monkeypatch) -> No
     monkeypatch.setattr(facade_module.ExecutionTreeFlattener, "flatten", lambda record: nodes)
     put_many = AsyncMock()
     monkeypatch.setattr(facade_module.S3ObjectApi, "put_many", put_many)
+    set_bytes = AsyncMock()
+    monkeypatch.setattr(facade_module.JobApi, "set_trace_payload_bytes", set_bytes)
 
-    facade = IngestionFacade(MagicMock(), MagicMock(), _s3_yielding(MagicMock()))
-    refs = await facade.store_trace_payloads(uuid.uuid4(), MagicMock(), max_payload_bytes=10_000)
+    job_id = uuid.uuid4()
+    facade = IngestionFacade(
+        _postgres_yielding(MagicMock()), MagicMock(), _s3_yielding(MagicMock())
+    )
+    refs = await facade.store_trace_payloads(job_id, MagicMock(), max_payload_bytes=10_000)
 
     # One call, carrying all four payload objects (2 nodes × input+output).
     put_many.assert_awaited_once()
-    assert len(put_many.await_args.args[2]) == 4
+    objects = put_many.await_args.args[2]
+    assert len(objects) == 4
     # Every node keeps both of its refs.
     assert set(refs) == {"parse", "chunk"}
     assert refs["parse"].input_ref and refs["parse"].output_ref
+    # The summed footprint (deduped by content-addressed key) is recorded on the job row.
+    expected = sum({obj.key: len(obj.data) for obj in objects}.values())
+    set_bytes.assert_awaited_once_with(ANY, job_id, expected)
+    assert set_bytes.await_args.args[2] > 0
 
 
 async def test_store_trace_payloads_best_effort_drops_all_refs_on_failure(monkeypatch) -> None:
@@ -315,6 +325,26 @@ async def test_store_trace_payloads_noop_when_no_payloads(monkeypatch) -> None:
 
     assert refs == {}
     put_many.assert_not_called()
+
+
+async def test_store_trace_payloads_byte_accounting_failure_is_swallowed(monkeypatch) -> None:
+    """A failure recording the byte total never fails an ingestion — the refs still come back."""
+    nodes = [_flat("parse", resolved_input={"a": 1}, output={"b": 2})]
+    monkeypatch.setattr(facade_module.ExecutionTreeFlattener, "flatten", lambda record: nodes)
+    monkeypatch.setattr(facade_module.S3ObjectApi, "put_many", AsyncMock())
+    monkeypatch.setattr(
+        facade_module.JobApi,
+        "set_trace_payload_bytes",
+        AsyncMock(side_effect=RuntimeError("pg down")),
+    )
+
+    facade = IngestionFacade(
+        _postgres_yielding(MagicMock()), MagicMock(), _s3_yielding(MagicMock())
+    )
+    refs = await facade.store_trace_payloads(uuid.uuid4(), MagicMock(), max_payload_bytes=10_000)
+
+    # The store succeeded, so the node keeps its refs even though the byte-accounting write failed.
+    assert set(refs) == {"parse"}
 
 
 # --------------------------------------------------------------------------- #

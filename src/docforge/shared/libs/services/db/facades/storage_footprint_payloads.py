@@ -79,13 +79,20 @@ class QdrantFootprint:
 
 @dataclass(slots=True)
 class DocumentFootprint:
-    """One document's footprint across the three stores."""
+    """One document's footprint across the three stores.
+
+    Attributes:
+        trace_bytes (int): Heavy full execution-trace payloads stored in S3 under ``trace/{job_id}/``
+            (reclaimable via the trace-payload purge). A SEPARATE top-level S3 line (not inside
+            ``s3``, which is the content-addressed blob registry) — folded into ``total_bytes``.
+    """
 
     document_id: uuid.UUID
     filename: str
     s3: S3Footprint
     postgres: PostgresFootprint
     qdrant: QdrantFootprint
+    trace_bytes: int
     total_bytes: int
 
 
@@ -99,7 +106,11 @@ class CollectionFootprint:
             the deduped disk cost.
         postgres (PostgresFootprint): ESTIMATED Postgres row bytes.
         qdrant (QdrantFootprint): ESTIMATED vector-store bytes.
-        grand_total_bytes (int): The material footprint — S3 ``physical_unique`` + Postgres + Qdrant.
+        trace_bytes (int): Heavy full execution-trace payloads stored in S3 under ``trace/{job_id}/``
+            (reclaimable via the trace-payload purge). A SEPARATE top-level S3 line — folded into
+            ``grand_total_bytes`` (it is real S3 disk).
+        grand_total_bytes (int): The material footprint — S3 ``physical_unique`` + Postgres + Qdrant
+            + ``trace_bytes``.
         documents (list[DocumentFootprint]): Per-document breakdown, sorted by total bytes descending.
     """
 
@@ -107,6 +118,7 @@ class CollectionFootprint:
     s3: S3Footprint
     postgres: PostgresFootprint
     qdrant: QdrantFootprint
+    trace_bytes: int
     grand_total_bytes: int
     documents: list[DocumentFootprint] = field(default_factory=list)
 

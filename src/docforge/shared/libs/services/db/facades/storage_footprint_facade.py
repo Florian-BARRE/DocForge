@@ -78,6 +78,7 @@ class StorageFootprintFacade(LoggerClass):
         names: list[tuple[uuid.UUID, str]],
         pg_by_doc: dict[uuid.UUID, dict[str, int]],
         s3_by_doc: dict[uuid.UUID, tuple[int, int]],
+        trace_by_doc: dict[uuid.UUID, int],
         doc_fields: dict[uuid.UUID, set[str]],
         profile: QdrantProfile | None,
     ) -> list[DocumentFootprint]:
@@ -98,7 +99,8 @@ class StorageFootprintFacade(LoggerClass):
             qdrant = self.__qdrant_footprint(
                 points, self.__dense_carriers(points, meta_points), profile
             )
-            total = s3.total_bytes + postgres.total_bytes + qdrant.total_bytes
+            trace_bytes = trace_by_doc.get(document_id, 0)
+            total = s3.total_bytes + postgres.total_bytes + qdrant.total_bytes + trace_bytes
             documents.append(
                 DocumentFootprint(
                     document_id=document_id,
@@ -106,6 +108,7 @@ class StorageFootprintFacade(LoggerClass):
                     s3=s3,
                     postgres=postgres,
                     qdrant=qdrant,
+                    trace_bytes=trace_bytes,
                     total_bytes=total,
                 )
             )
@@ -130,6 +133,23 @@ class StorageFootprintFacade(LoggerClass):
 
         # 2. The collection total folds every bucket — including observability rows with no document.
         return by_doc, StorageFootprintHelpers.postgres_footprint(totals)
+
+    def __collection_trace(
+        self, trace_rows: list[tuple[uuid.UUID | None, int]]
+    ) -> tuple[dict[uuid.UUID, int], int]:
+        """Split the per-job trace-byte roll-up into a per-document map AND the collection total.
+
+        A null-document job (the column is nullable) folds into the collection total only, never a
+        per-document entry — mirroring the observability Postgres bucket.
+        """
+        # 1. Accumulate per document (skipping null doc ids) AND into a collection-wide total.
+        by_doc: dict[uuid.UUID, int] = {}
+        total = 0
+        for document_id, size in trace_rows:
+            total += size
+            if document_id is not None:
+                by_doc[document_id] = by_doc.get(document_id, 0) + size
+        return by_doc, total
 
     def __collection_meta_carriers(
         self, doc_fields: dict[uuid.UUID, set[str]], profile: QdrantProfile | None
@@ -169,6 +189,7 @@ class StorageFootprintFacade(LoggerClass):
             pg_rows = await StorageFootprintApi.per_document_pg(session, collection_id)
             s3_rows = await StorageFootprintApi.s3_per_document(session, collection_id)
             physical_unique = await StorageFootprintApi.s3_physical_unique(session, collection_id)
+            trace_rows = await StorageFootprintApi.trace_bytes_per_document(session, collection_id)
             carriers = await StorageFootprintApi.semantic_field_carriers(session, collection_id)
 
         # 2. Qdrant — profile the vector store once (facet gives per-document counts in one call);
@@ -183,13 +204,16 @@ class StorageFootprintFacade(LoggerClass):
             document_id: (original, rendered) for document_id, original, rendered in s3_rows
         }
         pg_by_doc, postgres_total = self.__collection_postgres(pg_rows)
+        trace_by_doc, trace_total = self.__collection_trace(trace_rows)
         doc_fields: dict[uuid.UUID, set[str]] = {}
         for document_id, field_name in carriers:
             doc_fields.setdefault(document_id, set()).add(field_name)
 
         # 4. Per-document breakdown (sorted), then the S3/Qdrant collection totals. The collection
         #    dense weights content by every point and each meta vector by its own carrier-point sum.
-        documents = self.__build_documents(names, pg_by_doc, s3_by_doc, doc_fields, profile)
+        documents = self.__build_documents(
+            names, pg_by_doc, s3_by_doc, trace_by_doc, doc_fields, profile
+        )
         s3_total = self.__s3_footprint(
             original=sum(original for _, original, _ in s3_rows),
             rendered=sum(rendered for _, _, rendered in s3_rows),
@@ -201,9 +225,13 @@ class StorageFootprintFacade(LoggerClass):
         )
         qdrant_total = self.__qdrant_footprint(collection_points, collection_carriers, profile)
 
-        # 5. The material footprint uses the DEDUPED S3 disk cost (physical_unique), not the logical sum.
+        # 5. The material footprint uses the DEDUPED S3 disk cost (physical_unique), not the logical
+        #    sum, plus the heavy trace payloads (real S3 disk, but NOT in the blob registry).
         grand_total = (
-            s3_total.physical_unique_bytes + postgres_total.total_bytes + qdrant_total.total_bytes
+            s3_total.physical_unique_bytes
+            + postgres_total.total_bytes
+            + qdrant_total.total_bytes
+            + trace_total
         )
         self.logger.info(
             f"Storage footprint for collection {collection_id}: "
@@ -214,6 +242,7 @@ class StorageFootprintFacade(LoggerClass):
             s3=s3_total,
             postgres=postgres_total,
             qdrant=qdrant_total,
+            trace_bytes=trace_total,
             grand_total_bytes=grand_total,
             documents=documents,
         )
