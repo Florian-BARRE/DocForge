@@ -28,12 +28,23 @@ mkdir -p "${BACKUP_DIR}"
 
 # 2. Timestamped tarball; exclude the local/secret/large paths (mirrors .claude/.gitignore).
 #    The root CLAUDE.md and .mcp.json are gitignored TOO (same public-repo decision) and live
-#    OUTSIDE .claude/ — include them so the whole local Claude setup survives together.
+#    OUTSIDE .claude/ — include them so the whole local Claude setup survives together. The private
+#    UI-screenshot dev tooling (also gitignored "like .claude/": UI-SCREENSHOT.md + scripts/ui-shot.mjs)
+#    rotted once because nothing backed it up — include the two SOURCE files (never the regenerable
+#    scripts/node_modules/ or the *.png outputs) so the whole local setup survives together.
 STAMP="$(date +%Y-%m-%dT%H%M%S)"
 ARCHIVE="${BACKUP_DIR}/docforge-claude-${STAMP}.tar.gz"
+FRONTEND_DIR="src/docforge/app/frontend"
 EXTRAS=()
 [[ -f "${REPO_ROOT}/CLAUDE.md" ]] && EXTRAS+=(CLAUDE.md)
 [[ -f "${REPO_ROOT}/.mcp.json" ]] && EXTRAS+=(.mcp.json)
+[[ -f "${REPO_ROOT}/${FRONTEND_DIR}/UI-SCREENSHOT.md" ]] && EXTRAS+=("${FRONTEND_DIR}/UI-SCREENSHOT.md")
+[[ -f "${REPO_ROOT}/${FRONTEND_DIR}/scripts/ui-shot.mjs" ]] && EXTRAS+=("${FRONTEND_DIR}/scripts/ui-shot.mjs")
+# Internal dev-process / AI-workflow artifacts — gitignored out of the PUBLIC repo (which exposes only
+# code + product docs) but worth keeping internally: the audit-remediation journal and the RPI
+# research/plan/implementation notes. Included here so the whole internal setup survives together.
+[[ -f "${REPO_ROOT}/AUDIT-REMEDIATION.md" ]] && EXTRAS+=(AUDIT-REMEDIATION.md)
+[[ -d "${REPO_ROOT}/docs/rpi" ]] && EXTRAS+=(docs/rpi)
 tar -czf "${ARCHIVE}" -C "${REPO_ROOT}" \
   --exclude='.claude/hooks/logs' \
   --exclude='.claude/worktrees' \

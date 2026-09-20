@@ -103,5 +103,11 @@ docs/archive/agent-memory-legacy/
 # Root AI project instructions — local dev tooling, kept private (like .claude/).
 /CLAUDE.md
 
+# Internal dev-process / AI-workflow artifacts — the PUBLIC repo exposes only code + product docs.
+# The audit-remediation journal (wave log, internal decisions, claude.ai artifact links) and the RPI
+# research/plan/implementation notes stay internal (backed up via scripts/backup-claude.sh like .claude/).
+/AUDIT-REMEDIATION.md
+docs/rpi/
+
 # Docker Compose interpolation vars (copied from .env.example) — may hold local pins
 /.env
