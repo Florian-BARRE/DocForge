@@ -67,7 +67,10 @@ export function BulkActionBar({ collectionId, count, buildSelector, onDone }: Bu
         const response = await bulkReingestDocuments(collectionId, selector);
         const remaining = response.matched - response.enqueued;
         const cappedNote = response.capped ? ` — capped at ${response.max_fanout}; run again to continue the remaining ${remaining}` : "";
-        toast.success(`Queued ${response.enqueued} of ${response.matched} document${response.matched === 1 ? "" : "s"} for re-ingestion — see the Jobs tab${cappedNote}`);
+        const skippedNote = response.skipped_in_flight > 0
+          ? ` (${response.skipped_in_flight} skipped — already in flight)`
+          : "";
+        toast.success(`Queued ${response.enqueued} of ${response.matched} document${response.matched === 1 ? "" : "s"} for re-ingestion — see the Jobs tab${cappedNote}${skippedNote}`);
       }
       setConfirming(null);
       onDone();

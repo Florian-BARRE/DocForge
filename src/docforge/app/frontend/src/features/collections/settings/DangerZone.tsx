@@ -53,7 +53,10 @@ export function DangerZone({ collectionId, collectionName, onNavigate }: DangerZ
     try {
       const result = await reingestCollection(collectionId);
       setConfirmingReingest(false);
-      toast.success(`Full reingest queued for ${result.count} document${result.count === 1 ? "" : "s"}.`);
+      const skippedNote = result.skipped_in_flight > 0
+        ? ` (${result.skipped_in_flight} skipped — already in flight)`
+        : "";
+      toast.success(`Full reingest queued for ${result.count} document${result.count === 1 ? "" : "s"}.${skippedNote}`);
       onNavigate({ name: "collection-activity", collectionId });
     } catch (e) {
       setReingestError(e instanceof Error ? e.message : String(e));

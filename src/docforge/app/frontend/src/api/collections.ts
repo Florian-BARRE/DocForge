@@ -283,6 +283,8 @@ export interface ReingestJobHandle {
 export interface ReingestResponse {
   collection_id: string;
   count: number;
+  /** Documents skipped because a run was already active for them (the per-document active-job lock). */
+  skipped_in_flight: number;
   jobs: ReingestJobHandle[];
 }
 

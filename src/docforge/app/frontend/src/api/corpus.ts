@@ -130,6 +130,8 @@ export interface BulkReingestResponse {
   enqueued: number;
   capped: boolean;
   max_fanout: number;
+  /** Documents skipped because a run was already active for them (the per-document active-job lock). */
+  skipped_in_flight: number;
   jobs: ReingestJobHandle[];
 }
 
