@@ -232,6 +232,49 @@ class SearchResponse(BaseModel):
     )
 
 
+class SearchHealthSummary(BaseModel):
+    """
+    A compact, tile-friendly roll-up of search-runtime health for the deployment cockpit.
+
+    Search runs INLINE in the request (no job/fleet surface), so this mirrors the operational tiles
+    the jobs endpoints power (``GET /jobs/queue``, ``GET /jobs/workers/live``) with a JSON summary the
+    Overview cockpit can poll. Every figure is CUMULATIVE since process start, read straight off the
+    in-process ``docforge_search_*`` Prometheus series (the single source of truth — no parallel
+    counters). Trends and rates over time stay in Grafana; this is the at-a-glance snapshot.
+
+    Attributes:
+        total_runs (int): Total search runs since process start (a RUNNER run — the router can 4xx
+            before a run ever starts, so those are not counted).
+        error_rate (float): Failed/timeout/unavailable runs over total, in [0, 1] (0.0 when there
+            have been no runs yet).
+        p95_latency_ms (float | None): 95th-percentile whole-run latency in milliseconds, a
+            bucket-based approximation from the run-duration histogram; None when no run has been
+            recorded yet.
+        zero_result_rate (float): Zero-result runs over total, in [0, 1] (0.0 when there have been
+            no runs yet).
+        avg_hits (float | None): Mean delivered hits per search (over successful runs); None when no
+            hits have been observed yet.
+    """
+
+    total_runs: int = Field(
+        description="Total search runs since process start (router 4xx rejections are not counted)."
+    )
+    error_rate: float = Field(
+        description="Failed/timeout/unavailable runs over total, in [0, 1] (0.0 when total_runs==0).",
+    )
+    p95_latency_ms: float | None = Field(
+        description="95th-percentile whole-run latency in ms (bucket-based approximation); null when "
+        "no run has been recorded yet.",
+    )
+    zero_result_rate: float = Field(
+        description="Zero-result runs over total, in [0, 1] (0.0 when total_runs==0).",
+    )
+    avg_hits: float | None = Field(
+        description="Mean delivered hits per search over successful runs; null when no hits have "
+        "been observed yet.",
+    )
+
+
 __all__ = [
     "SearchTargetModel",
     "SearchRequest",
@@ -239,4 +282,5 @@ __all__ = [
     "SearchHitModel",
     "SearchCostModel",
     "SearchResponse",
+    "SearchHealthSummary",
 ]

@@ -836,6 +836,37 @@ curl -sX POST http://localhost:10040/api/v1/collections/7f1c9d2e-.../search \
       }'
 ```
 
+### Search health
+
+`GET /api/v1/search/health` — capability `read`.
+
+A compact, tile-friendly roll-up of search-runtime health for the deployment **Overview** cockpit.
+Because search runs **inline** (no job/fleet surface of its own), this mirrors the operational tiles
+`GET /api/v1/jobs/queue` and `GET /api/v1/jobs/workers/live` power. Every figure is **cumulative since
+process start**, read straight off the in-process `docforge_search_*` Prometheus series (the same
+source Grafana scrapes — no parallel counters); it is a **process-global aggregate** carrying no
+per-tenant data or ids. Trends/rates over time stay in Grafana; this is the at-a-glance snapshot.
+
+**SearchHealthSummary**:
+
+| Field | Type | Meaning |
+|---|---|---|
+| `total_runs` | int | Total search runs since process start (router `4xx` rejections are not counted). |
+| `error_rate` | float | Failed/timeout/unavailable runs over total, in `[0, 1]` (`0.0` when `total_runs == 0`). |
+| `p95_latency_ms` | float/null | 95th-percentile whole-run latency in ms (bucket-based approximation); `null` when no run recorded. |
+| `zero_result_rate` | float | Zero-result runs over total, in `[0, 1]` (`0.0` when `total_runs == 0`). |
+| `avg_hits` | float/null | Mean delivered hits per successful search; `null` when none observed. |
+
+```json
+{
+  "total_runs": 1284,
+  "error_rate": 0.012,
+  "p95_latency_ms": 420.0,
+  "zero_result_rate": 0.081,
+  "avg_hits": 7.4
+}
+```
+
 ---
 
 ## 7. Jobs

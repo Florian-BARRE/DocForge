@@ -190,6 +190,41 @@ class SearchResponse(BaseModel):
     )
 
 
+class SearchHealthSummary(BaseModel):
+    """
+    A compact, tile-friendly roll-up of search-runtime health for the deployment cockpit.
+
+    Search runs INLINE in the request (no job/fleet surface), so this mirrors the operational tiles
+    the jobs endpoints power. Every figure is CUMULATIVE since process start, read off the in-process
+    ``docforge_search_*`` Prometheus series. Trends over time live in Grafana; this is the snapshot.
+
+    Attributes:
+        total_runs (int): Total search runs since process start (router 4xx rejections not counted).
+        error_rate (float): Failed/timeout/unavailable runs over total, in [0, 1] (0.0 when none).
+        p95_latency_ms (float | None): 95th-percentile whole-run latency in ms (bucket approximation);
+            None when no run has been recorded yet.
+        zero_result_rate (float): Zero-result runs over total, in [0, 1] (0.0 when none).
+        avg_hits (float | None): Mean delivered hits per successful search; None when none observed.
+    """
+
+    total_runs: int = Field(
+        description="Total search runs since process start (router 4xx rejections are not counted)."
+    )
+    error_rate: float = Field(
+        description="Failed/timeout/unavailable runs over total, in [0, 1] (0.0 when total_runs==0).",
+    )
+    p95_latency_ms: float | None = Field(
+        description="95th-percentile whole-run latency in ms (bucket-based approximation); None when "
+        "no run has been recorded yet.",
+    )
+    zero_result_rate: float = Field(
+        description="Zero-result runs over total, in [0, 1] (0.0 when total_runs==0).",
+    )
+    avg_hits: float | None = Field(
+        description="Mean delivered hits per search over successful runs; None when none observed.",
+    )
+
+
 __all__ = [
     "SearchTarget",
     "SearchRequest",
@@ -197,4 +232,5 @@ __all__ = [
     "SearchHit",
     "SearchCost",
     "SearchResponse",
+    "SearchHealthSummary",
 ]

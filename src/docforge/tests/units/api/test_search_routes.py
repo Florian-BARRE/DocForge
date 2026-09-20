@@ -95,6 +95,61 @@ def test_search_route_is_registered(fastapi_app) -> None:
     assert "post" in paths["/api/v1/collections/{collection_id}/search"]
 
 
+def test_search_health_route_is_registered(fastapi_app) -> None:
+    """The deployment-wide search-health tile is part of the API contract (GET, no collection scope)."""
+    paths = fastapi_app.openapi()["paths"]
+    assert "get" in paths["/api/v1/search/health"]
+
+
+def test_search_health_returns_the_reader_summary(client, monkeypatch) -> None:
+    """The route delegates to SearchHealthReader and serialises the full tile shape verbatim."""
+    from backend.libs.metrics.search_health import SearchHealthReader
+    from backend.routers.search.models import SearchHealthSummary
+
+    summary = SearchHealthSummary(
+        total_runs=10,
+        error_rate=0.4,
+        p95_latency_ms=1000.0,
+        zero_result_rate=0.2,
+        avg_hits=4.0,
+    )
+    monkeypatch.setattr(SearchHealthReader, "summary", lambda: summary)
+
+    response = client.get("/api/v1/search/health")
+    assert response.status_code == 200, response.text
+    assert response.json() == {
+        "total_runs": 10,
+        "error_rate": 0.4,
+        "p95_latency_ms": 1000.0,
+        "zero_result_rate": 0.2,
+        "avg_hits": 4.0,
+    }
+
+
+def test_search_health_serialises_null_when_no_searches(client, monkeypatch) -> None:
+    """A cold process (no searches yet) serialises zero rates and null latency/mean, never a made-up 0."""
+    from backend.libs.metrics.search_health import SearchHealthReader
+    from backend.routers.search.models import SearchHealthSummary
+
+    empty = SearchHealthSummary(
+        total_runs=0,
+        error_rate=0.0,
+        p95_latency_ms=None,
+        zero_result_rate=0.0,
+        avg_hits=None,
+    )
+    monkeypatch.setattr(SearchHealthReader, "summary", lambda: empty)
+
+    response = client.get("/api/v1/search/health")
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["total_runs"] == 0
+    assert body["error_rate"] == 0.0
+    assert body["zero_result_rate"] == 0.0
+    assert body["p95_latency_ms"] is None
+    assert body["avg_hits"] is None
+
+
 def test_search_delegates_to_service_and_shapes_hits(client, wired) -> None:
     """Happy path: the service is called with resolved knobs, and the graph Hit is flattened."""
     # 1. A query with a scalar filter on the filterable field.

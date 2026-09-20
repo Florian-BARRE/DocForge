@@ -126,6 +126,7 @@ from docforge_sdk.models.preview import (
 from docforge_sdk.models.search import (
     BlockLocation,
     SearchCost,
+    SearchHealthSummary,
     SearchHit,
     SearchRequest,
     SearchResponse,
@@ -237,6 +238,7 @@ MODELS: dict[str, type[BaseModel]] = {
     "SearchHitModel": SearchHit,
     "SearchCostModel": SearchCost,
     "SearchResponse": SearchResponse,
+    "SearchHealthSummary": SearchHealthSummary,
     # Jobs
     "JobStatus": JobStatus,
     "JobPage": JobPage,

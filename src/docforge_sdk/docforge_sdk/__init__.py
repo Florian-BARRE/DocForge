@@ -126,7 +126,14 @@ from .models.preview import (
 )
 
 # ------------------- Search models ------------------- #
-from .models.search import BlockLocation, SearchHit, SearchRequest, SearchResponse, SearchTarget
+from .models.search import (
+    BlockLocation,
+    SearchHealthSummary,
+    SearchHit,
+    SearchRequest,
+    SearchResponse,
+    SearchTarget,
+)
 
 # ------------------- Storage models ------------------- #
 from .models.storage import (
@@ -210,6 +217,7 @@ __all__ = [
     "BlockLocation",
     "SearchHit",
     "SearchResponse",
+    "SearchHealthSummary",
     # Preview
     "PreviewIrSummary",
     "PreviewChunk",

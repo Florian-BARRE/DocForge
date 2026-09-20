@@ -152,7 +152,14 @@ from .preview import (
 )
 
 # ------------------- Search models ------------------- #
-from .search import BlockLocation, SearchHit, SearchRequest, SearchResponse, SearchTarget
+from .search import (
+    BlockLocation,
+    SearchHealthSummary,
+    SearchHit,
+    SearchRequest,
+    SearchResponse,
+    SearchTarget,
+)
 
 # ------------------- Snippet models ------------------- #
 from .snippets import (
@@ -266,6 +273,7 @@ __all__ = [
     "BlockLocation",
     "SearchHit",
     "SearchResponse",
+    "SearchHealthSummary",
     # Jobs
     "JobStatus",
     "JobPage",

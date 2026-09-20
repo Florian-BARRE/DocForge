@@ -49,3 +49,14 @@ def register(mcp: FastMCP, sdk: AsyncClient) -> None:
         )
         result = await sdk.search.search(collection_id, request)
         return result.model_dump(mode="json")
+
+    @mcp.tool()
+    async def get_search_health() -> Any:
+        """
+        Deployment-wide search-runtime health summary (cumulative since process start).
+
+        Search runs inline (no job/fleet surface), so this is the operational snapshot: total_runs,
+        error_rate (0..1), p95_latency_ms, zero_result_rate (0..1) and avg_hits. A process-global
+        aggregate with no per-collection scope.
+        """
+        return (await sdk.search.get_search_health()).model_dump(mode="json")

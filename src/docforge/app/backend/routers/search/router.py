@@ -15,6 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException
 # ====== Local Project Imports ======
 from ...context import CONTEXT
 from ...libs.auth import Capability, require
+from ...libs.metrics.search_health import SearchHealthReader
 from ...libs.search import (
     QueryEmbedderProbe,
     SearchRunError,
@@ -23,9 +24,33 @@ from ...libs.search import (
 )
 from ...utils.error_handling import auto_handle_errors
 from .helpers import SearchHelpers
-from .models import SearchCostModel, SearchRequest, SearchResponse
+from .models import SearchCostModel, SearchHealthSummary, SearchRequest, SearchResponse
 
 router = APIRouter(tags=["search"])
+
+
+@router.get(
+    "/search/health",
+    response_model=SearchHealthSummary,
+    dependencies=[Depends(require(Capability.READ))],
+)
+@auto_handle_errors
+async def search_health() -> SearchHealthSummary:
+    """
+    Return a compact search-runtime health summary for the deployment Overview cockpit.
+
+    Search runs INLINE in the request (no job/fleet surface of its own), so this mirrors the
+    operational tiles ``GET /jobs/queue`` and ``GET /jobs/workers/live`` power. Every figure is
+    CUMULATIVE since process start, read straight off the in-process ``docforge_search_*`` Prometheus
+    series (the same source Grafana scrapes — no parallel counters). The payload carries no per-tenant
+    data or ids: it is a process-global aggregate, gated by the READ capability like the other read
+    routes. Trends/rates over time stay in Grafana; this is the at-a-glance snapshot.
+
+    Returns:
+        SearchHealthSummary: Total runs, error rate, p95 latency, zero-result rate and mean hits.
+    """
+    # 1. Fold the current search series into the tile — no I/O, just reads the in-process collectors.
+    return SearchHealthReader.summary()
 
 
 @router.post(
