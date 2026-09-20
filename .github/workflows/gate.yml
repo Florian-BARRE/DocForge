@@ -60,6 +60,11 @@ jobs:
         # Scoped to app/worker/shared (product code) — tests/ itself is excluded, it is
         # trivially ~100% self-covered and would inflate the number into meaninglessness.
         run: uv run pytest tests/units -q --cov=app --cov=worker --cov=shared --cov-report=term-missing
+      - name: Retrieval-eval unit suite (serviceless — pure metrics/compare, no live stack)
+        # tests/rag_eval holds pure retrieval-quality metrics (hit@k/recall@k/MRR) + the baseline
+        # compare helper the retrieval-quality workflow gates on. The live CLI runner is marked
+        # `live` and excluded here; only the serviceless units run, so this stays in the fast gate.
+        run: uv run pytest tests/rag_eval -q -m "not live"
 
   db-tests:
     # DB-backed suite (`-m db`, tests/db/) — needs a REAL Postgres, unlike every other job in this

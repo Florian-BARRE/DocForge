@@ -1,0 +1,150 @@
+# ============================================================================
+# Retrieval-quality regression gate — MANUAL, NON-BLOCKING.
+#
+# What this is: stands up the full dev-cpu stack BUILT FROM THE CURRENT TREE
+# (compose/compose.dev-cpu.yml --profile full up --build), runs the deterministic SYNTHETIC
+# regulatory corpus (tests/rag_eval/synthetic.py — 6 regulations, 48 single-clause-evidence
+# queries, zero network/API cost) through the PRODUCT-DEFAULT pipeline, and compares hit@5 /
+# hit@10 / MRR against the committed baseline (tests/rag_eval/baselines/regulatory.json).
+# hit@1 is reported but never gated (too jittery on 48 queries — see tests/rag_eval/gate.py).
+#
+# What this is NOT: a merge gate. It is `workflow_dispatch`-only (no `schedule`, no `push`,
+# no `pull_request`) and is NEVER `needs:`-ed by ci.yml / gate.yml / release-sdk.yml / any
+# release-images workflow, and must never be added to branch-protection required checks. A red
+# run is a real, visible signal (an operator has to notice and act on it) — this is why the
+# comparison step is allowed to FAIL the job outright rather than using `continue-on-error`,
+# which would make the job cosmetic and silently ignored.
+#
+# QASPER (tests/rag_eval/qasper.py) is NEVER used here — its HuggingFace datasets-server fetch
+# is a network/determinism flake; it stays a manual `runner.py` diagnostic (see
+# tests/rag_eval/README.md).
+#
+# Baseline lifecycle: the committed baseline starts as a structurally-correct PLACEHOLDER (see
+# its "note" field) with all-zero metrics — every gated metric trivially passes until the FIRST
+# successful dispatch's numbers are reviewed and committed by a human (or a local
+# `--update-baseline` run against a live dev-cpu stack). A baseline bump with no accompanying
+# retrieval change is a red flag to question in review, never a routine commit.
+# ============================================================================
+
+name: retrieval-quality
+
+on:
+  workflow_dispatch:
+    inputs:
+      papers:
+        description: "Synthetic regulations to ingest (max 6)."
+        required: false
+        default: "6"
+      tolerance:
+        description: "Absolute regression tolerance for the gated metrics (hit@5/hit@10/MRR)."
+        required: false
+        default: "0.05"
+
+# Least-privilege floor, mirroring gate.yml — this job never pushes an image or a package, only
+# reads the checkout and builds/runs the stack locally on the runner.
+permissions:
+  contents: read
+
+# A second manual dispatch while one is already running would contend for the same heavy stack
+# (worker CPU-torch layer, BGE-M3 weight load) — never cancel a run already in flight, just queue.
+concurrency:
+  group: retrieval-quality
+  cancel-in-progress: false
+
+jobs:
+  retrieval-quality:
+    name: retrieval-quality — synthetic regulatory corpus vs baseline
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src/docforge
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Sync dependencies (locked)
+        run: uv sync --frozen
+
+      - name: Materialize app config with auth ON (generated root token)
+        # AUTH_ENABLED=true + a freshly generated AUTH_ROOT_TOKEN so the eval exercises the real
+        # authenticated path (client_from_env requires a token anyway). Appended lines win: Compose's
+        # env_file parsing takes the LAST occurrence of a repeated key, overriding the .env.example
+        # defaults (AUTH_ENABLED=false) above them. DOCFORGE_TOKEN is exported for every later step
+        # via $GITHUB_ENV — the harness (tests/rag_eval/harness.py:client_from_env) reads it directly.
+        working-directory: .
+        run: |
+          cp services/docforge/.env.example services/docforge/.env
+          TOKEN=$(openssl rand -hex 32)
+          {
+            echo "AUTH_ENABLED=true"
+            echo "AUTH_ROOT_TOKEN=${TOKEN}"
+          } >> services/docforge/.env
+          echo "DOCFORGE_TOKEN=${TOKEN}" >> "$GITHUB_ENV"
+
+      - name: Build + start the dev-cpu stack (current tree)
+        # --profile full is mandatory (app/worker/frontend/mcp sit behind it). --build measures THIS
+        # checkout, not the last published release — the whole point of a tree-regression signal.
+        working-directory: .
+        run: docker compose -f compose/compose.dev-cpu.yml --profile full up --build -d
+
+      - name: Wait for readiness (qdrant + bge_server reachable via /capabilities)
+        # /capabilities is a ROOT-path route (NOT under /api/v1 — the authN middleware only gates
+        # /api/v1/*), so it stays credential-free even with AUTH_ENABLED=true. A blind `sleep` would
+        # be either flaky (cold BGE-M3 weight load) or wasteful — poll until both the always-declared
+        # qdrant store and the live-probed bge_server sidecar report reachable, bounded at ~15 min.
+        working-directory: .
+        run: |
+          deadline=$((SECONDS + 900))
+          until curl -fsS http://localhost:10040/capabilities 2>/dev/null | jq -e '
+              ([.services[] | select(.name == "qdrant") | .reachable] | first) == true and
+              ([.services[] | select(.name == "bge_server") | .reachable] | first) == true
+            ' >/dev/null 2>&1; do
+            if [ "$SECONDS" -ge "$deadline" ]; then
+              echo "Timed out waiting for /capabilities readiness (qdrant + bge_server)" >&2
+              docker compose -f compose/compose.dev-cpu.yml --profile full ps
+              exit 1
+            fi
+            sleep 5
+          done
+          echo "Stack ready."
+
+      - name: Run the retrieval-quality gate (synthetic regulatory corpus)
+        # gate.py's compare() gates hit@5/hit@10/MRR at --tolerance absolute regression vs the
+        # committed baseline; hit@1 is reported only. Non-zero exit here fails THIS job (by design —
+        # see the header comment), never any other workflow.
+        run: |
+          uv run --no-sync python -m tests.rag_eval.gate \
+            --papers "${{ github.event.inputs.papers }}" \
+            --tolerance "${{ github.event.inputs.tolerance }}" \
+            --out /tmp/retrieval-quality-report.json \
+            --baseline tests/rag_eval/baselines/regulatory.json
+
+      - name: Upload report artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: retrieval-quality-report
+          path: /tmp/retrieval-quality-report.json
+          if-no-files-found: ignore
+
+      - name: Dump stack logs on failure
+        if: failure()
+        working-directory: .
+        run: docker compose -f compose/compose.dev-cpu.yml --profile full logs > /tmp/retrieval-quality-stack.log
+
+      - name: Upload stack logs (failure only — a red run must be debuggable without a re-run)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: retrieval-quality-stack-logs
+          path: /tmp/retrieval-quality-stack.log
+          if-no-files-found: ignore
+
+      - name: Tear down the stack
+        if: always()
+        working-directory: .
+        run: docker compose -f compose/compose.dev-cpu.yml --profile full down -v

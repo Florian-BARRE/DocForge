@@ -1,0 +1,17 @@
+{
+  "corpus": "regulatory",
+  "n_queries": 48,
+  "papers": 6,
+  "ingested": 6,
+  "hit_at": {
+    "1": 0.0,
+    "3": 0.0,
+    "5": 0.0,
+    "10": 0.0
+  },
+  "mrr": 0.0,
+  "generated_at": "1970-01-01T00:00:00+00:00",
+  "git_sha": "unseeded",
+  "seeded": false,
+  "note": "PLACEHOLDER — structurally correct, numbers NOT real. Seed this file from the FIRST successful `retrieval-quality` workflow dispatch (or a local `uv run python -m tests.rag_eval.gate --update-baseline` run against a live dev-cpu stack), then commit the result deliberately (see tests/rag_eval/README.md, 'Regression gate' section). Until re-seeded, every gated metric trivially passes against this all-zero baseline — the gate reports but cannot yet meaningfully regress-test."
+}

@@ -72,3 +72,28 @@ Env: `DOCFORGE_API_BASE` (default `http://localhost:10040/api/v1`), `DOCFORGE_TO
 - **MRR** — mean reciprocal rank of the first covering chunk.
 - The `--sweep` compares `min_tokens=64` (default, coalesces tiny sections) vs `min_tokens=0` (strict
   one section = one chunk). Higher hit@k / MRR = better retrieval for that config on this corpus.
+
+## Regression gate (non-blocking, manual)
+
+`gate.py` turns the metrics above into a pass/fail check against a committed baseline. It is exercised
+by the **`retrieval-quality` GitHub workflow** — `workflow_dispatch`-only (no schedule, no push/PR),
+never `needs:`-ed by any other workflow, so it **reports** a regression (the job goes red) but blocks
+no merge. The workflow builds the current tree (`compose.dev-cpu.yml --profile full up --build`), runs
+the deterministic **synthetic `regulatory`** corpus (never QASPER — that stays a manual `runner.py`
+diagnostic), then compares:
+
+- **Gated** (fail on >0.05 absolute regression vs baseline): `hit@5`, `hit@10`, `MRR`.
+- **Reported, not gated**: `hit@1` (too jittery on 48 queries).
+- **Integrity failures**: fewer documents ingested than the corpus holds, or corpus drift.
+
+The `compare()` helper is pure and serviceless — its unit tests run in the fast gate
+(`pytest tests/rag_eval -m "not live"`), added to `.github/workflows/gate.yml`.
+
+**Baseline** lives in `baselines/regulatory.json` (tracked — NOT under `data/`, which is gitignored).
+It ships as an all-zero **placeholder** (`seeded: false`), so the gate reports but cannot meaningfully
+regress-test until seeded. Seed it from the first successful workflow dispatch, or locally against a
+live dev-cpu stack:
+```bash
+cd src/docforge && uv run --no-sync python -m tests.rag_eval.gate --update-baseline
+```
+then commit the updated `baselines/regulatory.json` deliberately.
