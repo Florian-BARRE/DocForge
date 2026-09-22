@@ -117,7 +117,7 @@ services:
   # discovers containers on this host's Docker socket, tails their json-file logs, and writes to
   # loki — same job Promtail did, in Alloy's config language (services/telemetry/alloy/config.alloy).
   alloy:
-    image: grafana/alloy:v1.5.1
+    image: grafana/alloy:v1.19.2
     container_name: docforge-alloy
     # `run <config>`; `--storage.path` is where Alloy keeps its own WAL/positions (needs a writable
     # volume so log positions survive a restart, like Promtail's positions.yaml did). The HTTP
