@@ -88,7 +88,7 @@ services:
 
   # ── Loki — log storage/index, receives from promtail ────────────────────────
   loki:
-    image: grafana/loki:2.9.8
+    image: grafana/loki:3.7.8
     container_name: docforge-loki
     command: ["-config.file=/etc/loki/loki-config.yml"]
     volumes:
