@@ -151,6 +151,14 @@ flowchart TB
 images de figures dans l'IR (`figure_render`). L'enrich reçoit un IR où chaque figure porte déjà ses bytes.
 (markdown/html = vues générées à la demande par le backend, hors pipeline.)
 
+> **IR NUL-free (invariant, chokepoint unique)** : tous les parsers convergent dans le node parser de
+> base, qui passe l'IR par `IrTextSanitizer.clean` — retire `U+0000` (titre, texte des blocs, cellules de
+> table, slots figure). Un NUL d'une couche texte PDF corrompue n'est jamais du contenu réel et PostgreSQL
+> le REJETTE dans un `text`/`jsonb` ; nettoyer l'IR canonique une fois garde chunks/embeddings/texte de
+> recherche/métadonnées générées propres en aval. Filet complémentaire au bord d'écriture worker
+> (`translator.py` → `TextSanitizer.strip_nul` sur chaque valeur text/jsonb) pour tout NUL introduit
+> hors-parse (sortie LLM du metagen, enrich).
+
 ```mermaid
 flowchart TB
     classDef artefact fill:#eef4fb,stroke:#4a7ab5,stroke-width:1px

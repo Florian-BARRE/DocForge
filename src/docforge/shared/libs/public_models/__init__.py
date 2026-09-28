@@ -11,12 +11,16 @@ from .ir import (
     FigureEnrichment,
     FigureKind,
     FigureRouting,
+    IrTextSanitizer,
     Provenance,
     TableData,
     figure_prompt_lines,
     first_heading,
     is_toc_title,
 )
+
+# ---------------------- Text sanitization (NUL-stripping primitive) ---------------------- #
+from .sanitize import TextSanitizer
 
 # ---------------------- Collection contract vocabulary ---------------------- #
 from .contract import (
@@ -80,6 +84,8 @@ __all__ = [
     "TOC_TITLES",
     "is_toc_title",
     "first_heading",
+    "IrTextSanitizer",
+    "TextSanitizer",
     "FieldType",
     "FieldOrigin",
     "FieldScope",

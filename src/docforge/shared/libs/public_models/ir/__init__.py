@@ -16,6 +16,9 @@ from .document import DocumentIR
 # ---------------------- Document-structure helpers ---------------------- #
 from .structure import TOC_TITLES, first_heading, is_toc_title
 
+# ---------------------- Text sanitization (NUL-stripping) ---------------------- #
+from .sanitize import IrTextSanitizer
+
 # ------------------- Public API ------------------- #
 __all__ = [
     "BlockType",
@@ -31,4 +34,5 @@ __all__ = [
     "TOC_TITLES",
     "is_toc_title",
     "first_heading",
+    "IrTextSanitizer",
 ]

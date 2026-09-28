@@ -28,6 +28,7 @@ from shared_libs.public_models import (
     FigureKind,
     PageRender,
     RunBundle,
+    TextSanitizer,
     first_heading,
     role_default_enabled,
 )
@@ -172,9 +173,9 @@ class RunTranslator:
                     if block.parent_id
                     else None,
                     level=block.level,
-                    text=block.text,
+                    text=TextSanitizer.strip_nul(block.text),
                     is_boilerplate=block.block_type == BlockType.HEADER_FOOTER,
-                    language=block.language,
+                    language=TextSanitizer.strip_nul(block.language),
                     confidence=None,
                 )
             )
@@ -185,7 +186,7 @@ class RunTranslator:
                         n_rows=block.table.n_rows,
                         n_cols=block.table.n_cols,
                         has_header=block.table.has_header,
-                        cells=block.table.cells,
+                        cells=TextSanitizer.strip_nul(block.table.cells),
                         linearized_md=None,
                     )
                 )
@@ -235,7 +236,7 @@ class RunTranslator:
                 BlockEnrichment(
                     block_id=block_id,
                     kind=EnrichmentKind.CLASSIFY,
-                    text=figure.kind.value,
+                    text=TextSanitizer.strip_nul(figure.kind.value),
                     data=None,
                     status=EnrichmentStatus.OK,
                 )
@@ -253,8 +254,8 @@ class RunTranslator:
                 BlockEnrichment(
                     block_id=block_id,
                     kind=kind,
-                    text=text,
-                    data=data,
+                    text=TextSanitizer.strip_nul(text),
+                    data=TextSanitizer.strip_nul(data),
                     status=EnrichmentStatus.OK,
                 )
             )
@@ -299,9 +300,9 @@ class RunTranslator:
                     chunk_index=chunk.ordinal,
                     strategy=strategy,
                     parent_id=None,
-                    text=chunk.enriched_text,
+                    text=TextSanitizer.strip_nul(chunk.enriched_text),
                     token_count=chunk.token_count,
-                    heading_path=chunk.heading_path or None,
+                    heading_path=TextSanitizer.strip_nul(chunk.heading_path) or None,
                     role=chunk.role.value,
                     simhash=None,
                     is_indexed=False,
@@ -325,7 +326,10 @@ class RunTranslator:
                     ChunkMetadata(
                         chunk_id=chunk_uuid,
                         field_id=field_ids[name],
-                        value=value,
+                        # THE prod-crash site: a metagen JSONB value (e.g. a list of strings) may
+                        # carry a U+0000 leaked from the source text — PostgreSQL rejects it. Strip
+                        # it recursively so the INSERT never raises UntranslatableCharacterError.
+                        value=TextSanitizer.strip_nul(value),
                         origin=FieldOrigin.GENERATED,
                     )
                 )
@@ -413,8 +417,12 @@ class RunTranslator:
         # 1. Document facts + the canonical PDF blob. The title falls back to the document's first
         #    top-level heading when the parser extracted none (the HTML->PDF path loses <title>), so
         #    a search hit and the explorer surface a human label, not an empty string.
-        out.payload.title = bundle.ir.title or first_heading(bundle.ir) or None
-        out.payload.language = bundle.ir.language
+        # Title/language are NUL-stripped at the edge too — a NUL can reach here from a source the
+        # parse-node IR sanitizer never saw (a stored stale IR blob, or metagen/enrich output).
+        out.payload.title = TextSanitizer.strip_nul(
+            bundle.ir.title or first_heading(bundle.ir) or None
+        )
+        out.payload.language = TextSanitizer.strip_nul(bundle.ir.language)
         # A natively-parsed html/md carries no parser PDF (page_count 0), yet its view-only preview
         # yields page renders — fall back to their count so page_count > 0 and the viewer is honest.
         page_renders = bundle.pages.pages if bundle.pages else []
@@ -465,7 +473,7 @@ class RunTranslator:
                 DocumentMetadata(
                     document_id=document_id,
                     field_id=field_ids[name],
-                    value=value,
+                    value=TextSanitizer.strip_nul(value),
                     origin=FieldOrigin.GENERATED,
                 )
             )

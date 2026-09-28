@@ -10,7 +10,7 @@ from abc import abstractmethod
 
 # ====== Internal Project Imports ======
 from shared_libs.pipelines.base import ActionNode
-from shared_libs.public_models import DocumentIR, IntakeResult
+from shared_libs.public_models import DocumentIR, IntakeResult, IrTextSanitizer
 
 # ====== Local Project Imports ======
 from .io import ParserConsumes, ParserProduces
@@ -84,8 +84,12 @@ class BaseParserNode(ActionNode):
             empty = DocumentIR(doc_id=source.source_hash, source_hash=source.source_hash)
             return ParserProduces(ir=empty, score=0.0)
 
-        # 2. Delegate to the parser engine, then score the IR (the ScoreBelow gate reads it).
-        ir = await self._parse(source)
+        # 2. Delegate to the parser engine. Every parser converges here, so this is the single
+        #    chokepoint that strips U+0000 from the IR — a NUL leaked from a corrupt PDF text layer
+        #    is never real content and PostgreSQL rejects it in a text/jsonb value, so cleaning the
+        #    canonical IR once keeps chunks, embeddings, search text and generated metadata clean
+        #    downstream (rather than patching each of the five parser mappers).
+        ir = IrTextSanitizer.clean(await self._parse(source))
         return ParserProduces(ir=ir, score=self._quality_score(ir))
 
 
