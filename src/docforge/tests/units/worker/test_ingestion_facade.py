@@ -569,7 +569,11 @@ async def test_admit_returns_created_when_the_insert_wins(monkeypatch) -> None:
     """The uncontended path: the document + job are inserted and returned as a fresh admission."""
     coll_id = uuid.uuid4()
     document = SimpleNamespace(
-        id=uuid.uuid4(), collection_id=coll_id, source_hash="sha", pipeline_version="v1"
+        id=uuid.uuid4(),
+        collection_id=coll_id,
+        source_hash="sha",
+        pipeline_version="v1",
+        filename="doc.pdf",
     )
     created = MagicMock(id=uuid.uuid4(), collection_id=coll_id)
     job = MagicMock(id=uuid.uuid4())
@@ -594,7 +598,11 @@ async def test_admit_resolves_duplicate_race_to_the_incumbent_document(monkeypat
     dedup pre-check returns, never a 500."""
     coll_id = uuid.uuid4()
     document = SimpleNamespace(
-        id=uuid.uuid4(), collection_id=coll_id, source_hash="sha", pipeline_version="v1"
+        id=uuid.uuid4(),
+        collection_id=coll_id,
+        source_hash="sha",
+        pipeline_version="v1",
+        filename="doc.pdf",
     )
     incumbent = MagicMock(id=uuid.uuid4())
     session = MagicMock()
@@ -625,7 +633,11 @@ async def test_admit_reraises_an_unrelated_integrity_error(monkeypatch) -> None:
     violation) is a real, unexpected error and must still surface, never be masked as a duplicate."""
     coll_id = uuid.uuid4()
     document = SimpleNamespace(
-        id=uuid.uuid4(), collection_id=coll_id, source_hash="sha", pipeline_version="v1"
+        id=uuid.uuid4(),
+        collection_id=coll_id,
+        source_hash="sha",
+        pipeline_version="v1",
+        filename="doc.pdf",
     )
     session = MagicMock()
     session.rollback = AsyncMock()

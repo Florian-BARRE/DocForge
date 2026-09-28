@@ -18,6 +18,7 @@ from loggerplusplus import LoggerClass
 from sqlalchemy.exc import IntegrityError
 
 from shared_libs.pipelines.base import NodeExecutionRecord
+from shared_libs.public_models import TextSanitizer
 from shared_libs.services.db.index_signature import CollectionIndexSignature
 from shared_libs.services.db.postgresql import PostgresClient
 from shared_libs.services.db.postgresql.apis import (
@@ -158,6 +159,13 @@ class IngestionFacade(LoggerClass):
         collection_id = document.collection_id
         source_hash = document.source_hash
         pipeline_version = document.pipeline_version
+        # 1b. NUL guard on the USER-origin text bound for Postgres: the uploaded filename and the
+        #     user-declared metadata values can carry a U+0000 (a corrupt upload) that Postgres rejects
+        #     for a text/jsonb column. GENERATED metadata is stripped by the translator; this closes the
+        #     user-origin asymmetry. title/language are NULL at admit (set later by the translator).
+        document.filename = TextSanitizer.strip_nul(document.filename)
+        for row in declared_metadata:
+            row.value = TextSanitizer.strip_nul(row.value)
         async with self._postgres.session() as session:
             # 2. Insert the document; a UNIQUE violation is a concurrent duplicate admission.
             try:

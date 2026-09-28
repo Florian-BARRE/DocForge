@@ -21,6 +21,7 @@ from sqlalchemy.orm import defer
 
 # ====== Internal Project Imports ======
 from shared_libs.pipelines.base import NodeExecutionRecord
+from shared_libs.public_models import TextSanitizer
 
 from ..tables import Collection, Document, Job, JobStageEvent, JobStatus, WorkerHeartbeat
 
@@ -332,6 +333,11 @@ class JobApi:
             failed_item_index (int | None): The fan-out item index the failure sits in (None outside).
             error_type (str | None): The exception class name (e.g. "TimeoutError").
         """
+        # NUL guard on the double-fault path: a parser/provider exception message can echo raw document
+        # bytes (incl. a U+0000), which Postgres rejects for a text column — marking a job FAILED must
+        # never itself raise a secondary UntranslatableCharacterError.
+        error = TextSanitizer.strip_nul(error)
+        error_type = TextSanitizer.strip_nul(error_type)
         result = await session.execute(
             update(Job)
             .where(Job.id == job_id, Job.status == JobStatus.RUNNING)
@@ -440,6 +446,11 @@ class JobApi:
                 THIS call won the transition, or None when the job was already terminal / unknown (the
                 caller must then NOT mirror the document).
         """
+        # 0. NUL guard on the terminate path (shares the double-fault concern with ``mark_failed``): the
+        #    reason/error_type can carry a U+0000 echoed from raw document bytes, which Postgres rejects
+        #    for a text column — terminating a job must never itself raise.
+        reason = TextSanitizer.strip_nul(reason)
+        error_type = TextSanitizer.strip_nul(error_type)
         # 1. Build the values written on a winning transition. error_type is set only when the caller
         #    supplied one (the reaper's watchdog paths); a None leaves any prior value untouched so a
         #    plain cancel does not fabricate an error_type.
@@ -605,7 +616,9 @@ class JobApi:
             # avg_stage_durations read). Raw token counts are reported when present; per-leaf USD
             # pricing stays at the aggregating root row, so cost_usd is left NULL here.
             usage = rec.usage
-            detail = (
+            # NUL guard: a nested node's error message can echo raw document bytes (incl. U+0000) —
+            # strip it so persisting the trace of a FAILED run never itself raises on the text column.
+            detail = TextSanitizer.strip_nul(
                 f"{rec.error.error_type}: {rec.error.message}"
                 if rec.error is not None
                 else f"{rec.duration_ms:.0f} ms"

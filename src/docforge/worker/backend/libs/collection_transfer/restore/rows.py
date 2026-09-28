@@ -13,6 +13,11 @@
 #     dangling target is LOGGED (warning, naming the id) and DROPPED to NULL — the import proceeds.
 #   * An UNKNOWN metadata field (no matching field in the restored schema) is LOGGED and the value is
 #     SKIPPED (returns None). The stale point-payload document_id is handled the same way in the importer.
+#
+# NUL guard (mirrors the ingestion translator): every external text/jsonb field is passed through
+# TextSanitizer.strip_nul as the row is deserialized, so a bundle exported before the ingestion-path
+# fix (or hand-crafted) whose text carries a U+0000 imports cleanly instead of crashing the INSERT
+# with asyncpg's UntranslatableCharacterError. The manifest format is unchanged — we only sanitize on read.
 
 # ====== Standard Library Imports ======
 from __future__ import annotations
@@ -25,7 +30,7 @@ from typing import Any
 from loggerplusplus import loggerplusplus
 
 # ====== Internal Project Imports ======
-from shared_libs.public_models import FieldOrigin, FieldScope, FieldType
+from shared_libs.public_models import FieldOrigin, FieldScope, FieldType, TextSanitizer
 from shared_libs.services.db.postgresql.tables import (
     Blob,
     BlobKind,
@@ -112,14 +117,14 @@ class RowDeserializer:
             collection_id=collection_id,
             source_hash=data["source_hash"],
             pdf_blob_hash=data["pdf_blob_hash"],
-            filename=data["filename"],
+            filename=TextSanitizer.strip_nul(data["filename"]),
             format=data["format"],
             mime_type=data["mime_type"],
             file_size=data["file_size"],
             page_count=data["page_count"],
-            language=data["language"],
+            language=TextSanitizer.strip_nul(data["language"]),
             source_kind=SourceKind(data["source_kind"]),
-            title=data["title"],
+            title=TextSanitizer.strip_nul(data["title"]),
             simhash=data["simhash"],
             status=DocumentStatus(data["status"]),
             pipeline_version=data["pipeline_version"],
@@ -140,7 +145,7 @@ class RowDeserializer:
         return DocumentMetadata(
             document_id=ctx.documents[data["document_id"]],
             field_id=field_id,
-            value=data["value"],
+            value=TextSanitizer.strip_nul(data["value"]),
             origin=FieldOrigin(data["origin"]),
         )
 
@@ -171,9 +176,9 @@ class RowDeserializer:
             column_index=data["column_index"],
             parent_id=cls._optional_ref(data["parent_id"], ctx.blocks, label="block parent"),
             level=data["level"],
-            text=data["text"],
+            text=TextSanitizer.strip_nul(data["text"]),
             is_boilerplate=data["is_boilerplate"],
-            language=data["language"],
+            language=TextSanitizer.strip_nul(data["language"]),
             confidence=data["confidence"],
         )
 
@@ -185,8 +190,8 @@ class RowDeserializer:
             n_rows=data["n_rows"],
             n_cols=data["n_cols"],
             has_header=data["has_header"],
-            cells=data["cells"],
-            linearized_md=data["linearized_md"],
+            cells=TextSanitizer.strip_nul(data["cells"]),
+            linearized_md=TextSanitizer.strip_nul(data["linearized_md"]),
         )
 
     @classmethod
@@ -207,8 +212,8 @@ class RowDeserializer:
             id=ctx.enrichments[data["id"]],
             block_id=ctx.blocks[data["block_id"]],
             kind=EnrichmentKind(data["kind"]),
-            text=data["text"],
-            data=data["data"],
+            text=TextSanitizer.strip_nul(data["text"]),
+            data=TextSanitizer.strip_nul(data["data"]),
             status=EnrichmentStatus(data["status"]),
         )
 
@@ -222,9 +227,9 @@ class RowDeserializer:
             chunk_index=data["chunk_index"],
             strategy=data["strategy"],
             parent_id=cls._optional_ref(data["parent_id"], ctx.chunks, label="chunk parent"),
-            text=data["text"],
+            text=TextSanitizer.strip_nul(data["text"]),
             token_count=data["token_count"],
-            heading_path=data["heading_path"],
+            heading_path=TextSanitizer.strip_nul(data["heading_path"]),
             simhash=data["simhash"],
             is_indexed=data["is_indexed"],
             role=data["role"],
@@ -254,7 +259,7 @@ class RowDeserializer:
         return ChunkMetadata(
             chunk_id=ctx.chunks[data["chunk_id"]],
             field_id=field_id,
-            value=data["value"],
+            value=TextSanitizer.strip_nul(data["value"]),
             origin=FieldOrigin(data["origin"]),
         )
 

@@ -14,6 +14,7 @@ from pydantic import BaseModel
 
 # ====== Internal Project Imports ======
 from shared_libs.pipelines.base import NodeExecutionRecord, NodeStatus
+from shared_libs.public_models import TextSanitizer
 
 # A foreach stamps each item's record node_id as ``<body_id>[<index>]`` — the fan-out item marker.
 _ITEM_INDEX_RE = re.compile(r"\[(\d+)\]$")
@@ -63,11 +64,14 @@ class FailureBreadcrumb(BaseModel):
 
         # 3. This node is the culprit only if it FAILED with a captured error.
         if record.status == NodeStatus.FAILED and record.error is not None:
+            # NUL guard at the source: the exception message can echo raw document bytes (incl. a
+            # U+0000). Both the job's free-text error (via ``reason``) and the breadcrumb columns derive
+            # from here, so stripping once keeps every downstream Postgres text write NUL-free.
             return cls(
                 node_id=record.node_id,
                 node_kind=record.kind,
-                error_type=record.error.error_type,
-                message=record.error.message,
+                error_type=TextSanitizer.strip_nul(record.error.error_type),
+                message=TextSanitizer.strip_nul(record.error.message),
                 item_index=current_index,
             )
         return None
