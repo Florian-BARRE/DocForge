@@ -103,6 +103,25 @@ def test_linearize_markdown_empty_figure_renders_nothing() -> None:
 
 
 # -------------------- html --------------------
+def test_linearize_html_is_a_utf8_declaring_document() -> None:
+    """The HTML view is a standalone HTML5 document that self-declares UTF-8 and its lang/title —
+    without the in-document charset, a downloaded/blob-opened view has no HTTP header to decode by
+    and the browser mangles every non-ASCII character."""
+    ir = _sample_ir()
+    ir.language = "fr"
+    ir.title = "Rapport & Résumé"
+    html = HtmlLinearizer().render(ir)
+    # Skeleton in order, charset first inside <head>.
+    assert html.startswith("<!DOCTYPE html>")
+    assert '<html lang="fr">' in html
+    assert '<meta charset="utf-8">' in html
+    # Title is escaped, never raw.
+    assert "<title>Rapport &amp; Résumé</title>" in html
+    # The semantic body still lives inside <body>.
+    body = html.split("<body>", 1)[1]
+    assert "<h1>Overview</h1>" in body
+
+
 def test_linearize_html_semantic_tags() -> None:
     html = HtmlLinearizer().render(_sample_ir())
     assert "<h1>Overview</h1>" in html

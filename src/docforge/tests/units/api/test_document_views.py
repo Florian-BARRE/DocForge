@@ -253,6 +253,9 @@ def test_html_endpoint_inline_content_type_and_body(
 
     assert response.status_code == 200, response.text
     assert response.headers["content-type"].startswith("text/html")
+    # A standalone document that self-declares UTF-8 (decodes correctly without the HTTP header).
+    assert response.text.startswith("<!DOCTYPE html>")
+    assert '<meta charset="utf-8">' in response.text
     assert "<h1>Hello</h1>" in response.text
     assert "content-disposition" not in response.headers
 

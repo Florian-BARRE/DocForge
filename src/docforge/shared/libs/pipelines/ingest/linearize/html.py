@@ -1,8 +1,8 @@
 # ====== Code Summary ======
 # HtmlLinearizer — the structural HTML view of a DocumentIR. It walks the exact same reading order as
 # the markdown view (shared base) but emits semantic HTML (h1-h6, p, ul/li, table/thead/tbody/tr/td,
-# figure/figcaption, pre/code). Every piece of IR text is HTML-escaped, so parser output can never
-# inject markup into the rendered view. PURE: no I/O.
+# figure/figcaption, pre/code), wrapped in a minimal, self-describing HTML5 document. Every piece of
+# IR text is HTML-escaped, so parser output can never inject markup into the rendered view. PURE: no I/O.
 
 # ====== Standard Library Imports ======
 from __future__ import annotations
@@ -10,7 +10,7 @@ from __future__ import annotations
 from html import escape
 
 # ====== Internal Project Imports ======
-from shared_libs.public_models import FigureEnrichment, TableData
+from shared_libs.public_models import DocumentIR, FigureEnrichment, TableData
 
 # ====== Local Project Imports ======
 from .base import BaseIRLinearizer
@@ -20,6 +20,41 @@ class HtmlLinearizer(BaseIRLinearizer):
     """Render a DocumentIR as a structural, escaped, full-document HTML view."""
 
     _block_separator = "\n"
+
+    def render(self, ir: DocumentIR) -> str:
+        """
+        Render the whole document as a standalone, self-describing HTML5 document.
+
+        Wraps the shared reading-order body in a minimal skeleton whose ``<meta charset="utf-8">`` is
+        mandatory: this view is consumed as a standalone document (browser download, ``blob:`` URL,
+        ``file://``) where no HTTP ``Content-Type`` governs decoding, so without an in-document charset
+        the browser guesses the encoding and mangles every non-ASCII character.
+
+        Args:
+            ir (DocumentIR): The canonical parsed document.
+
+        Returns:
+            str: The full HTML document (skeleton + escaped body).
+        """
+        # 1. Walk the IR into the escaped semantic body (shared reading-order traversal).
+        body = super().render(ir)
+
+        # 2. Wrap it in a UTF-8-declaring HTML5 skeleton carrying the document's language and title.
+        return self.__document(ir, body)
+
+    def __document(self, ir: DocumentIR, body: str) -> str:
+        """Wrap a rendered body fragment in a minimal UTF-8 HTML5 document skeleton."""
+        lang_attr = f' lang="{escape(ir.language, quote=True)}"' if ir.language else ""
+        title = escape(ir.title) if ir.title else "Document"
+        return (
+            "<!DOCTYPE html>\n"
+            f"<html{lang_attr}>\n"
+            "<head>\n"
+            '<meta charset="utf-8">\n'
+            f"<title>{title}</title>\n"
+            "</head>\n"
+            f"<body>\n{body}\n</body>\n</html>"
+        )
 
     def _emit_heading(self, text: str, level: int) -> str:
         """Render an <h1>..<h6>, clamping the level to the valid range."""
