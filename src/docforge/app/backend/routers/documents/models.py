@@ -1,8 +1,11 @@
 # ====== Code Summary ======
-# Pydantic models for the documents router — the admission responses.
+# Pydantic models for the documents router — the admission responses + the metadata value-edit.
+
+# ====== Standard Library Imports ======
+from typing import Any
 
 # ====== Third-Party Library Imports ======
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class UploadAccepted(BaseModel):
@@ -40,4 +43,48 @@ class DocumentEnabledResponse(BaseModel):
     enabled: bool = Field(description="The new searchability state.")
 
 
-__all__ = ["UploadAccepted", "EnabledPatch", "DocumentEnabledResponse"]
+class MetadataValuesPatch(BaseModel):
+    """
+    The metadata VALUES to write on a document (field_name → new value), the cheap value-edit.
+
+    Attributes:
+        values (dict[str, Any]): Map of metadata field name → new value. DOCUMENT-scope USER or
+            GENERATED fields only; a chunk-scope or unknown field is rejected (422). A value's shape
+            must match its field type (scalar, or a list for the *_list types).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    values: dict[str, Any] = Field(
+        min_length=1,
+        description="Map of metadata field name → new value (document-scope fields only).",
+    )
+
+
+class MetadataUpdateResponse(BaseModel):
+    """
+    The result of a document metadata value edit.
+
+    Attributes:
+        updated_fields (list[str]): The field names whose values were written.
+        reembedding (bool): True when a changed field feeds a named vector (semantic/lexical) and a
+            re-embed job was enqueued.
+        reembed_fields (list[str]): The changed fields that need their metadata vectors re-embedded.
+        job_id (str | None): The enqueued re-embed job's id, or null when nothing needed re-embedding.
+    """
+
+    updated_fields: list[str] = Field(description="Field names whose values were written.")
+    reembedding: bool = Field(
+        description="A semantic/lexical field changed — a re-embed was queued."
+    )
+    reembed_fields: list[str] = Field(description="Changed fields needing a metadata re-embed.")
+    job_id: str | None = Field(default=None, description="The re-embed job's UUID, or null.")
+
+
+__all__ = [
+    "UploadAccepted",
+    "EnabledPatch",
+    "DocumentEnabledResponse",
+    "MetadataValuesPatch",
+    "MetadataUpdateResponse",
+]

@@ -27,6 +27,7 @@ from .facades import (
     IdempotencyFacade,
     IngestionFacade,
     JobsFacade,
+    MetadataEditFacade,
     MetaVectorSyncFacade,
     SearchFacade,
     StorageFootprintFacade,
@@ -47,6 +48,8 @@ class Database(LoggerClass):
         enablement (EnablementFacade): Reversible enable/disable of documents/chunks (flag + payload).
         filters (FilterSyncFacade): Denormalise document-scope filterable metadata onto chunk points.
         meta_vectors (MetaVectorSyncFacade): Populate document-scope metadata named vectors on points.
+        metadata_edit (MetadataEditFacade): Edit a single document's document-scope metadata VALUES
+            without a re-ingest (validate + upsert + synchronous filter-payload repaint).
         search (SearchFacade): Hybrid filtered search + Postgres hydration.
         jobs (JobsFacade): Ingestion job lifecycle + stage timeline.
         trace_payloads (TracePayloadFacade): Full execution-trace payload read (fetch route), purge
@@ -81,6 +84,8 @@ class Database(LoggerClass):
         self.enablement = EnablementFacade(postgres, qdrant)
         self.filters = FilterSyncFacade(postgres, qdrant)
         self.meta_vectors = MetaVectorSyncFacade(postgres, qdrant)
+        # Reuses the already-wired filter-sync facade to repaint payloads synchronously on an edit.
+        self.metadata_edit = MetadataEditFacade(postgres, self.filters)
         self.search = SearchFacade(postgres, qdrant)
         self.jobs = JobsFacade(postgres)
         self.trace_payloads = TracePayloadFacade(postgres, s3)

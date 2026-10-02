@@ -29,6 +29,21 @@ export interface DocumentEnabledResponse {
   enabled: boolean;
 }
 
+/** Body of PATCH /documents/{id}/metadata — only the fields whose value actually changed. */
+export interface MetadataValuesPatch {
+  /** Field name → new value (document-scope USER/GENERATED fields only). */
+  values: Record<string, unknown>;
+}
+
+/** Outcome of a metadata value edit. `job_id` is set when a background job (semantic/lexical
+ *  re-embed, or a filterable repair) was enqueued; null when the change applied instantly. */
+export interface MetadataUpdateResponse {
+  job_id?: string | null;
+  reembed_fields: string[];
+  reembedding: boolean;
+  updated_fields: string[];
+}
+
 export function uploadDocument({ file, collectionId, metadata }: UploadDocumentArgs): Promise<UploadAccepted> {
   const form = new FormData();
   form.append("file", file);
@@ -62,4 +77,11 @@ export function reingestDocument(id: string, options: ReingestOptions = {}): Pro
  *  document-scoped analogue of `purgeCollectionTracePayloads` (see api/collections.ts). */
 export function purgeDocumentTracePayloads(documentId: string): Promise<TracePurgeResult> {
   return apiFetch(`${BASE}/${documentId}/trace-payloads/purge`, { method: "POST" });
+}
+
+/** Edit a document's metadata VALUES in place — no re-ingest. Send only changed fields. Throws
+ *  `HttpError` 404 (unknown document) or 422 (per-field messages: unknown / chunk-scope / bad type). */
+export function updateDocumentMetadata(id: string, values: Record<string, unknown>): Promise<MetadataUpdateResponse> {
+  const body: MetadataValuesPatch = { values };
+  return apiFetch(`${BASE}/${id}/metadata`, jsonInit("PATCH", body));
 }

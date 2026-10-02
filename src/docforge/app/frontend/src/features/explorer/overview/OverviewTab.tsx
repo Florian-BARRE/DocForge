@@ -6,7 +6,9 @@
 import type { DocumentDetail, PageInfo } from "../../../api/explorer";
 import type { Navigate } from "../../../shell/view";
 import { theme } from "../../../theme";
-import { MetadataTable } from "../metadata/MetadataTable";
+import type { FieldSpec } from "../../../api/collections";
+import { MetadataSection } from "../metadata/edit/MetadataSection";
+import type { DraftValues } from "../metadata/edit/metadataDraft";
 import { DocumentFailureBanner } from "./DocumentFailureBanner";
 import { DownloadsPanel } from "./DownloadsPanel";
 import { SystemMetadataPanel } from "./SystemMetadataPanel";
@@ -28,9 +30,11 @@ interface OverviewTabProps {
   pages: PageInfo[] | null;
   collectionId: string;
   onNavigate: Navigate;
+  /** Folds freshly-saved metadata values back into the loaded document (see DocumentPage). */
+  onMetadataSaved: (updated: DraftValues, specs: FieldSpec[]) => void;
 }
 
-export function OverviewTab({ document, pages, collectionId, onNavigate }: OverviewTabProps) {
+export function OverviewTab({ document, pages, collectionId, onNavigate, onMetadataSaved }: OverviewTabProps) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: theme.space.l }}>
       <DocumentFailureBanner document={document} collectionId={collectionId} onNavigate={onNavigate} />
@@ -44,7 +48,13 @@ export function OverviewTab({ document, pages, collectionId, onNavigate }: Overv
       </section>
       <section style={sectionStyle}>
         <h2 style={sectionTitleStyle}>Metadata</h2>
-        <MetadataTable metadata={document.metadata} />
+        <MetadataSection
+          documentId={document.id}
+          collectionId={collectionId}
+          metadata={document.metadata}
+          onNavigate={onNavigate}
+          onSaved={onMetadataSaved}
+        />
       </section>
     </div>
   );

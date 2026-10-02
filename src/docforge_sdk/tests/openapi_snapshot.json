@@ -1271,6 +1271,60 @@
                 }
             }
         },
+        "/api/v1/documents/{document_id}/metadata": {
+            "patch": {
+                "tags": [
+                    "documents"
+                ],
+                "summary": "Update Document Metadata",
+                "description": "Edit a document's metadata VALUES in place \u2014 no re-ingest, chunk content untouched.\n\nThe cheap per-document value edit: the new values are validated against the collection's schema,\nwritten to Postgres, and the filterable Qdrant payloads are repainted synchronously (instant, no\nembed). When a CHANGED field feeds a named vector (semantic/lexical), a lightweight worker job is\nenqueued to re-embed ONLY the short metadata values onto the document's points \u2014 the index\nsignature is unchanged, so this never triggers a reindex. Accepts DOCUMENT-scope USER and\nGENERATED fields (a GENERATED override is overwritten again on the next reingest/metagen);\nchunk-scope and unknown fields are rejected with 422.\n\nReturns:\n    MetadataUpdateResponse: The fields that actually changed, whether a re-embed was queued, and\n        the reconciliation job id (set when a semantic/lexical field changed or a filterable\n        repaint needs repair; null otherwise); 404 when the document is unknown.",
+                "operationId": "update_document_metadata_api_v1_documents__document_id__metadata_patch",
+                "parameters": [
+                    {
+                        "name": "document_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid",
+                            "title": "Document Id"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/MetadataValuesPatch"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/MetadataUpdateResponse"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/documents/{document_id}/trace-payloads/purge": {
             "post": {
                 "tags": [
@@ -9062,6 +9116,51 @@
                 "title": "MetadataFilter",
                 "description": "One dynamic document-metadata predicate, addressed by field name.\n\nAttributes:\n    field (str): The metadata field name (must exist in the collection schema + be filterable).\n    op (str): The comparison \u2014 ``eq``/``contains`` (string/text), ``in`` (membership; matches\n        any element for list-typed fields), ``gte``/``lte`` (int/float/datetime).\n    value (Any): The comparison value, typed by the field (a list for ``in``)."
             },
+            "MetadataUpdateResponse": {
+                "properties": {
+                    "updated_fields": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array",
+                        "title": "Updated Fields",
+                        "description": "Field names whose values were written."
+                    },
+                    "reembedding": {
+                        "type": "boolean",
+                        "title": "Reembedding",
+                        "description": "A semantic/lexical field changed \u2014 a re-embed was queued."
+                    },
+                    "reembed_fields": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array",
+                        "title": "Reembed Fields",
+                        "description": "Changed fields needing a metadata re-embed."
+                    },
+                    "job_id": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Job Id",
+                        "description": "The re-embed job's UUID, or null."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "updated_fields",
+                    "reembedding",
+                    "reembed_fields"
+                ],
+                "title": "MetadataUpdateResponse",
+                "description": "The result of a document metadata value edit.\n\nAttributes:\n    updated_fields (list[str]): The field names whose values were written.\n    reembedding (bool): True when a changed field feeds a named vector (semantic/lexical) and a\n        re-embed job was enqueued.\n    reembed_fields (list[str]): The changed fields that need their metadata vectors re-embedded.\n    job_id (str | None): The enqueued re-embed job's id, or null when nothing needed re-embedding."
+            },
             "MetadataValue": {
                 "properties": {
                     "field_name": {
@@ -9086,6 +9185,24 @@
                 ],
                 "title": "MetadataValue",
                 "description": "One resolved metadata value \u2014 the field NAME (joined from the collection schema), the stored\nvalue, and the origin that actually filled THIS value (user upload / pipeline / metagen)."
+            },
+            "MetadataValuesPatch": {
+                "properties": {
+                    "values": {
+                        "additionalProperties": true,
+                        "type": "object",
+                        "minProperties": 1,
+                        "title": "Values",
+                        "description": "Map of metadata field name \u2192 new value (document-scope fields only)."
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "values"
+                ],
+                "title": "MetadataValuesPatch",
+                "description": "The metadata VALUES to write on a document (field_name \u2192 new value), the cheap value-edit.\n\nAttributes:\n    values (dict[str, Any]): Map of metadata field name \u2192 new value. DOCUMENT-scope USER or\n        GENERATED fields only; a chunk-scope or unknown field is rejected (422). A value's shape\n        must match its field type (scalar, or a list for the *_list types)."
             },
             "ModelRateOverride": {
                 "properties": {

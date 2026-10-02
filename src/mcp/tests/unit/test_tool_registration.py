@@ -21,7 +21,8 @@ from libs.server import build_mcp
 # 65 -> 66: preview_pipeline (collections) — inline non-persisting ingestion dry-run on one document.
 # 66 -> 68: submit_preview_job + get_preview_job (collections) — async worker-side non-persisting
 # dry-run (covers every pipeline incl. docling) + its poll.
-EXPECTED_TOOL_COUNT = 71
+# 71 -> 72: update_document_metadata (documents) — PATCH /documents/{id}/metadata.
+EXPECTED_TOOL_COUNT = 72
 
 EXPECTED_TOOL_NAMES = {
     # health
@@ -54,6 +55,7 @@ EXPECTED_TOOL_NAMES = {
     "upload_document",
     "upload_document_bytes",
     "set_document_enabled",
+    "update_document_metadata",
     "get_document_markdown",
     "get_document_html",
     "reingest_document",

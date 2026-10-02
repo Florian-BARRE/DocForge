@@ -83,6 +83,19 @@ def register(
         return result.model_dump(mode="json")
 
     @mcp.tool()
+    async def update_document_metadata(document_id: str, values: dict[str, Any]) -> Any:
+        """
+        Update a document's metadata VALUES in place - document-scope fields only (chunk-scope or
+        unknown fields are rejected 422, as is an empty `values`). `values` maps field name -> new
+        value (scalar, or a list for list-typed fields). Filterable changes are instant;
+        semantic/lexical changes trigger a background re-embed and return a `job_id` to poll with
+        wait_for_job / get_job (`reembedding` / `reembed_fields` tell you which). 404 when the
+        document is unknown.
+        """
+        result = await sdk.documents.update_metadata(document_id, values)
+        return result.model_dump(mode="json")
+
+    @mcp.tool()
     async def get_document_markdown(document_id: str) -> Any:
         """The document rendered as Markdown, generated on the fly from the canonical IR."""
         view = await sdk.documents.get_markdown(document_id)

@@ -4,7 +4,8 @@
 // cluster (toggle/re-ingest/delete) lives in `DocumentPageActions` — this component owns just the
 // document's own identity load + tab switching.
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import type { FieldSpec } from "../../api/collections";
 import { getDocument, type DocumentDetail } from "../../api/explorer";
 import type { BreadcrumbItem } from "../../components/Breadcrumb";
 import { Chip } from "../../components/Chip";
@@ -21,6 +22,7 @@ import { DocumentPageActions } from "./DocumentPageActions";
 import { DocumentStatusChip } from "./DocumentStatusChip";
 import { formatBytes, formatDateTime } from "./format";
 import { IRTab } from "./ir/IRTab";
+import { mergeSavedMetadata, type DraftValues } from "./metadata/edit/metadataDraft";
 import { LayoutTab } from "./layout/LayoutTab";
 import { OverviewTab } from "./overview/OverviewTab";
 import { PagesTab } from "./pages/PagesTab";
@@ -80,6 +82,10 @@ export function DocumentPage({ collectionId, documentId, onNavigate }: DocumentP
     setDocument((prev) => (prev ? { ...prev, enabled } : prev));
   };
 
+  const handleMetadataSaved = useCallback((updated: DraftValues, specs: FieldSpec[]) => {
+    setDocument((prev) => (prev ? { ...prev, metadata: mergeSavedMetadata(prev.metadata, updated, specs) } : prev));
+  }, []);
+
   if (error) return <ErrorState message={error} onRetry={load} />;
   if (!document) return <LoadingState label="loading document…" />;
 
@@ -132,7 +138,7 @@ export function DocumentPage({ collectionId, documentId, onNavigate }: DocumentP
         style={{ marginTop: theme.space.m, flex: 1, minHeight: 0 }}
       >
         {activeTab === "overview" && (
-          <OverviewTab document={document} pages={tabs.pages} collectionId={collectionId} onNavigate={onNavigate} />
+          <OverviewTab document={document} pages={tabs.pages} collectionId={collectionId} onNavigate={onNavigate} onMetadataSaved={handleMetadataSaved} />
         )}
         {activeTab === "pages" &&
           (tabs.pagesError ? (

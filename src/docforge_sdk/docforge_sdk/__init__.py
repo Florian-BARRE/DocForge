@@ -51,7 +51,13 @@ from .models.collections import (
 )
 
 # ------------------- Documents models ------------------- #
-from .models.documents import DocumentEnabledResponse, EnabledPatch, UploadAccepted
+from .models.documents import (
+    DocumentEnabledResponse,
+    EnabledPatch,
+    MetadataUpdateResponse,
+    MetadataValuesPatch,
+    UploadAccepted,
+)
 
 # ------------------- Estimate models ------------------- #
 from .models.estimate import (
@@ -188,6 +194,8 @@ __all__ = [
     "UploadAccepted",
     "EnabledPatch",
     "DocumentEnabledResponse",
+    "MetadataValuesPatch",
+    "MetadataUpdateResponse",
     # Estimate
     "CollectionEstimateRequest",
     "EstimateAssumptions",

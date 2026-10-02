@@ -41,6 +41,7 @@ import type {
 import type { AssumptionOverrides, Collection, EstimateOverrides, FieldSpec, ModelRateOverride, RateOverrides } from "./collections";
 import type { CapabilitiesResponse, CapabilityMatrix, CapabilityService } from "./capabilities";
 import type { DocumentGridRow } from "./corpus";
+import type { MetadataUpdateResponse, MetadataValuesPatch } from "./documents";
 import type { JobEvent, JobEventPayload, JobPage, JobStatus, WorkerActivity } from "./jobs";
 import type { BlockLocationModel, SearchHitModel } from "./search";
 import type {
@@ -244,3 +245,8 @@ export type _PreviewTraceNodeParity = Expect<Equal<Normalize<PreviewTraceNode>, 
 export type _PreviewResponseParity = Expect<Equal<Normalize<PreviewResponse>, Normalize<Schemas["PreviewResponse"]>>>;
 export type _PreviewJobAcceptedParity = Expect<Equal<Normalize<PreviewJobAccepted>, Normalize<Schemas["PreviewJobAccepted"]>>>;
 export type _PreviewJobResultParity = Expect<Equal<Normalize<PreviewJobResult>, Normalize<Schemas["PreviewJobResult"]>>>;
+
+// ---------- documents.ts — the in-place metadata value edit (PATCH /documents/{id}/metadata) ----------
+
+export type _MetadataValuesPatchParity = Expect<Equal<Normalize<MetadataValuesPatch>, Normalize<Schemas["MetadataValuesPatch"]>>>;
+export type _MetadataUpdateResponseParity = Expect<Equal<Normalize<MetadataUpdateResponse>, Normalize<Schemas["MetadataUpdateResponse"]>>>;

@@ -30,6 +30,12 @@ from .filter_sync_facade import FilterSyncFacade
 from .ingestion_facade import IngestionFacade
 from .artifact_cache_facade import ArtifactCacheFacade, ArtifactCacheGcSummary
 from .meta_vector_sync_facade import MetaVectorSyncFacade
+from .metadata_edit_facade import (
+    MetadataEditFacade,
+    MetadataEditNotFoundError,
+    MetadataEditResult,
+    MetadataValidationError,
+)
 from .search_facade import SearchFacade
 from .jobs_facade import JobsFacade
 from .trace_payload_facade import TracePayloadFacade
@@ -70,6 +76,10 @@ __all__ = [
     "ArtifactCacheFacade",
     "ArtifactCacheGcSummary",
     "MetaVectorSyncFacade",
+    "MetadataEditFacade",
+    "MetadataEditNotFoundError",
+    "MetadataEditResult",
+    "MetadataValidationError",
     "SearchFacade",
     "JobsFacade",
     "TracePayloadFacade",

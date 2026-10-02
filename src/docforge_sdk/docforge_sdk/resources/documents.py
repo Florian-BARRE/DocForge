@@ -10,7 +10,14 @@ from typing import Any
 
 # ====== Local Project Imports ======
 from .._requestspec import RequestSpec
-from ..models.documents import DocumentEnabledResponse, DocumentView, EnabledPatch, UploadAccepted
+from ..models.documents import (
+    DocumentEnabledResponse,
+    DocumentView,
+    EnabledPatch,
+    MetadataUpdateResponse,
+    MetadataValuesPatch,
+    UploadAccepted,
+)
 from ..models.trace import TracePurgeResult
 from ._base import AsyncResource, SyncResource, _ResourceMixin
 
@@ -66,6 +73,14 @@ class _DocumentsSpecs(_ResourceMixin):
             "PATCH",
             f"{self._DOCUMENTS_PATH}/{document_id}/enabled",
             json=EnabledPatch(enabled=enabled).model_dump(mode="json"),
+        )
+
+    def _update_metadata_spec(self, document_id: str, values: dict[str, Any]) -> RequestSpec:
+        """A PATCH writing metadata VALUES (document-scope fields) onto one document in place."""
+        return RequestSpec(
+            "PATCH",
+            f"{self._DOCUMENTS_PATH}/{document_id}/metadata",
+            json=MetadataValuesPatch(values=values).model_dump(mode="json"),
         )
 
     def _reingest_spec(self, document_id: str, force: bool) -> RequestSpec:
@@ -141,6 +156,27 @@ class AsyncDocuments(AsyncResource, _DocumentsSpecs):
         """
         return await self._transport.request(
             self._set_enabled_spec(document_id, enabled), DocumentEnabledResponse
+        )
+
+    async def update_metadata(
+        self, document_id: str, values: dict[str, Any]
+    ) -> MetadataUpdateResponse:
+        """
+        Update a document's metadata VALUES in place (document-scope fields only).
+
+        Filterable changes apply instantly; semantic/lexical changes enqueue a background re-embed
+        whose ``job_id`` can be polled. Unknown/chunk-scope fields or bad values raise a
+        ValidationError (422); an unknown document raises NotFound (404).
+
+        Args:
+            document_id (str): The document to edit.
+            values (dict[str, Any]): Map of metadata field name -> new value (at least one entry).
+
+        Returns:
+            MetadataUpdateResponse: Written fields, whether a re-embed was queued, and its job id.
+        """
+        return await self._transport.request(
+            self._update_metadata_spec(document_id, values), MetadataUpdateResponse
         )
 
     async def reingest(self, document_id: str, force: bool = False) -> UploadAccepted:
@@ -249,6 +285,12 @@ class SyncDocuments(SyncResource, _DocumentsSpecs):
         """
         return self._transport.request(
             self._set_enabled_spec(document_id, enabled), DocumentEnabledResponse
+        )
+
+    def update_metadata(self, document_id: str, values: dict[str, Any]) -> MetadataUpdateResponse:
+        """Update a document's metadata VALUES in place (a semantic/lexical change queues a re-embed)."""
+        return self._transport.request(
+            self._update_metadata_spec(document_id, values), MetadataUpdateResponse
         )
 
     def reingest(self, document_id: str, force: bool = False) -> UploadAccepted:

@@ -588,6 +588,47 @@ curl -sX PATCH http://localhost:10040/api/v1/documents/d4c3.../enabled \
 
 Response: `{"document_id": "d4c3...", "enabled": false}`. `404` when unknown.
 
+### Edit document metadata
+
+Correct a document's metadata **values** in place — no re-ingest, chunk content untouched.
+
+`PATCH /api/v1/documents/{document_id}/metadata` — capability `write`.
+
+The new values are validated against the collection's schema, written to Postgres, and the
+**filterable** Qdrant payloads are repainted synchronously (instant, no embed). When a changed field
+feeds a named vector (`semantic` or `lexical`), a lightweight worker job is enqueued to re-embed
+**only** the short metadata values onto the document's points (never the chunk content); the index
+signature is unchanged, so this never triggers a reindex.
+
+Accepts **document-scope** `user` and `generated` fields (a `generated` override is overwritten
+again on the next reingest/metagen, which rewrites that set). Rejects, with `422`:
+
+- an **unknown** field name,
+- a **chunk-scope** field (its value lives per chunk — a reindex is required, there is no cheap
+  value-edit path),
+- a value whose shape does not match its field type.
+
+```bash
+curl -sX PATCH http://localhost:10040/api/v1/documents/d4c3.../metadata \
+  -H "Content-Type: application/json" \
+  -d '{"values": {"topic": "ai-safety", "abstract": "a short summary"}}'
+```
+
+Response (`MetadataUpdateResponse`):
+
+```json
+{
+  "updated_fields": ["abstract", "topic"],
+  "reembedding": true,
+  "reembed_fields": ["abstract"],
+  "job_id": "a1b2c3..."
+}
+```
+
+`reembedding`/`job_id` are only set when a changed field is `semantic`/`lexical` (`job_id` is the
+re-embed job; otherwise `null`). `values` must carry at least one field. `404` when the document is
+unknown.
+
 ### Chunk toggles
 
 Also `write`. Toggle one or many chunks' searchability (no re-embed):

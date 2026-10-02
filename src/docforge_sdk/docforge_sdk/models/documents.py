@@ -5,6 +5,9 @@
 # endpoints stream a raw text body with a Content-Type header rather than a JSON body, mirroring the
 # blobs resource's BlobContent wrapper.
 
+# ====== Standard Library Imports ======
+from typing import Any
+
 # ====== Third-Party Library Imports ======
 from pydantic import BaseModel, Field
 
@@ -49,6 +52,42 @@ class DocumentEnabledResponse(BaseModel):
     enabled: bool = Field(description="The new searchability state.")
 
 
+class MetadataValuesPatch(BaseModel):
+    """
+    The metadata VALUES to write on a document (field_name -> new value), the cheap value-edit.
+
+    Attributes:
+        values (dict[str, Any]): Map of metadata field name -> new value. DOCUMENT-scope USER or
+            GENERATED fields only; a chunk-scope or unknown field is rejected (422). A value's shape
+            must match its field type (scalar, or a list for the *_list types).
+    """
+
+    values: dict[str, Any] = Field(
+        min_length=1,
+        description="Map of metadata field name -> new value (document-scope fields only).",
+    )
+
+
+class MetadataUpdateResponse(BaseModel):
+    """
+    The result of a document metadata value edit.
+
+    Attributes:
+        updated_fields (list[str]): The field names whose values were written.
+        reembedding (bool): True when a changed field feeds a named vector (semantic/lexical) and a
+            re-embed job was enqueued.
+        reembed_fields (list[str]): The changed fields that need their metadata vectors re-embedded.
+        job_id (str | None): The enqueued re-embed job's id, or null when nothing needed re-embedding.
+    """
+
+    updated_fields: list[str] = Field(description="Field names whose values were written.")
+    reembedding: bool = Field(
+        description="A semantic/lexical field changed - a re-embed was queued."
+    )
+    reembed_fields: list[str] = Field(description="Changed fields needing a metadata re-embed.")
+    job_id: str | None = Field(default=None, description="The re-embed job's UUID, or null.")
+
+
 class DocumentView(BaseModel):
     """
     A rendered document view's raw text plus its server-declared media type.
@@ -62,4 +101,11 @@ class DocumentView(BaseModel):
     mime_type: str = Field(description="The media type the server declared for the view.")
 
 
-__all__ = ["UploadAccepted", "EnabledPatch", "DocumentEnabledResponse", "DocumentView"]
+__all__ = [
+    "UploadAccepted",
+    "EnabledPatch",
+    "DocumentEnabledResponse",
+    "MetadataValuesPatch",
+    "MetadataUpdateResponse",
+    "DocumentView",
+]

@@ -85,6 +85,7 @@ vector space is fixed at creation), plus optional ingestion/search pipeline blob
 | `upload_document` | Upload a local file into a collection and enqueue ingestion (async — poll `get_job`/`get_document`). `metadata` is validated against the collection schema. |
 | `upload_document_bytes` | Upload by sending raw bytes (`content_base64`) instead of a server-local path — the remote-caller counterpart of `upload_document`, no filesystem/`MCP_UPLOAD_DIR` involved. |
 | `set_document_enabled` | Toggle a document's searchability (reversible, no re-ingest). |
+| `update_document_metadata` | Update a document's metadata VALUES in place (document-scope fields only); filterable changes are instant, semantic/lexical changes queue a background re-embed returning a `job_id` to poll. |
 
 ### Explorer (read-only browse)
 

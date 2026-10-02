@@ -57,6 +57,7 @@ ROUTES: set[tuple[str, str]] = {
     # Documents (upload / toggle / reingest / rendered views) — resources/documents.py
     ("POST", "/api/v1/documents"),
     ("PATCH", "/api/v1/documents/{document_id}/enabled"),
+    ("PATCH", "/api/v1/documents/{document_id}/metadata"),
     ("POST", "/api/v1/documents/{document_id}/reingest"),
     ("POST", "/api/v1/documents/{document_id}/trace-payloads/purge"),
     ("GET", "/api/v1/documents/{document_id}/markdown"),

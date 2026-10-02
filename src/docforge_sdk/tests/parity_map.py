@@ -44,7 +44,13 @@ from docforge_sdk.models.corpus import (
     Pagination,
     TextFilter,
 )
-from docforge_sdk.models.documents import DocumentEnabledResponse, EnabledPatch, UploadAccepted
+from docforge_sdk.models.documents import (
+    DocumentEnabledResponse,
+    EnabledPatch,
+    MetadataUpdateResponse,
+    MetadataValuesPatch,
+    UploadAccepted,
+)
 from docforge_sdk.models.estimate import (
     AssumptionOverrides,
     CollectionEstimateRequest,
@@ -197,6 +203,8 @@ MODELS: dict[str, type[BaseModel]] = {
     "UploadAccepted": UploadAccepted,
     "EnabledPatch": EnabledPatch,
     "DocumentEnabledResponse": DocumentEnabledResponse,
+    "MetadataValuesPatch": MetadataValuesPatch,
+    "MetadataUpdateResponse": MetadataUpdateResponse,
     # Corpus grid filters (also reused by CollectionEstimateRequest.filter below).
     "TextFilter": TextFilter,
     "NumberRange": NumberRange,

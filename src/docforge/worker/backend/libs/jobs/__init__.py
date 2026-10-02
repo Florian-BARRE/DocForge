@@ -6,6 +6,7 @@ from .preview import preview_pipeline
 
 # ---------------------- Maintenance jobs ---------------------- #
 from .backfill import backfill_collection_filters, backfill_collection_meta_vectors
+from .metadata_sync import sync_document_metadata
 from .reaper import reap_stuck_jobs
 
 # ---------------------- Collection transfer jobs ---------------------- #
@@ -44,6 +45,7 @@ __all__ = [
     "with_correlation",
     "backfill_collection_filters",
     "backfill_collection_meta_vectors",
+    "sync_document_metadata",
     "reap_stuck_jobs",
     "export_collection",
     "import_collection",

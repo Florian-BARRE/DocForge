@@ -20,7 +20,11 @@ from shared_libs.pipelines.ingest import (
     FormatProbeHelpers,
 )
 from shared_libs.public_models import FieldOrigin
-from shared_libs.services.db.facades import ReingestOutcome
+from shared_libs.services.db.facades import (
+    MetadataEditNotFoundError,
+    MetadataValidationError,
+    ReingestOutcome,
+)
 from shared_libs.services.db.postgresql.tables import (
     Blob,
     BlobKind,
@@ -42,7 +46,13 @@ from ...utils.pipeline_validation import PipelineBlobValidator
 from ...utils.upload_reader import UploadReader
 from ..collections.models import TracePurgeResult
 from .helpers import DocumentAdmissionHelpers
-from .models import DocumentEnabledResponse, EnabledPatch, UploadAccepted
+from .models import (
+    DocumentEnabledResponse,
+    EnabledPatch,
+    MetadataUpdateResponse,
+    MetadataValuesPatch,
+    UploadAccepted,
+)
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
@@ -331,6 +341,76 @@ async def reingest_document(
         )
     CONTEXT.logger.info(f"Re-ingest enqueued for {document.id} (job {job.id}, force={force})")
     return UploadAccepted(document_id=str(document.id), job_id=str(job.id))
+
+
+@router.patch(
+    "/{document_id}/metadata",
+    response_model=MetadataUpdateResponse,
+)
+@auto_handle_errors
+async def update_document_metadata(
+    document_id: uuid.UUID,
+    patch: MetadataValuesPatch,
+    principal: AuthPrincipal = Depends(require(Capability.WRITE)),
+) -> MetadataUpdateResponse:
+    """
+    Edit a document's metadata VALUES in place — no re-ingest, chunk content untouched.
+
+    The cheap per-document value edit: the new values are validated against the collection's schema,
+    written to Postgres, and the filterable Qdrant payloads are repainted synchronously (instant, no
+    embed). When a CHANGED field feeds a named vector (semantic/lexical), a lightweight worker job is
+    enqueued to re-embed ONLY the short metadata values onto the document's points — the index
+    signature is unchanged, so this never triggers a reindex. Accepts DOCUMENT-scope USER and
+    GENERATED fields (a GENERATED override is overwritten again on the next reingest/metagen);
+    chunk-scope and unknown fields are rejected with 422.
+
+    Returns:
+        MetadataUpdateResponse: The fields that actually changed, whether a re-embed was queued, and
+            the reconciliation job id (set when a semantic/lexical field changed or a filterable
+            repaint needs repair; null otherwise); 404 when the document is unknown.
+    """
+    # 1. The collection is not in the path — load the document to resolve its collection and enforce
+    #    the caller's scope (404 unknown, 403 foreign) BEFORE mutating another tenant's metadata.
+    document = await CONTEXT.database.documents.get(document_id)
+    if document is None:
+        raise HTTPException(status_code=404, detail=f"Document {document_id} not found.")
+    AuthzGuard.assert_collection_scope(principal, str(document.collection_id))
+
+    # 2. Validate + write the values and repaint the filterable payloads synchronously. A bad field
+    #    is a 422 (naming each offending field); a document that vanished in the race window is a 404.
+    try:
+        result = await CONTEXT.database.metadata_edit.update_document_metadata(
+            document_id, patch.values
+        )
+    except MetadataEditNotFoundError:
+        raise HTTPException(status_code=404, detail=f"Document {document_id} not found.")
+    except MetadataValidationError as exc:
+        raise HTTPException(status_code=422, detail=exc.errors)
+
+    # 3. Schedule the per-document reconciliation job when a changed semantic/lexical field needs its
+    #    named vectors re-embedded (a provider/spend call, never in the request) OR when the inline
+    #    filterable repaint failed (the job re-runs it as the durable repair). Best-effort: the edit is
+    #    already committed, so a Redis hiccup here must NOT surface it as a 500 — log and report no job.
+    job_id: str | None = None
+    if result.reembed_fields or result.filter_repaint_failed:
+        try:
+            job_id = await CONTEXT.queue.enqueue_document_metadata_sync(str(document_id))
+        except Exception:
+            CONTEXT.logger.error(
+                f"Failed to enqueue the metadata reconciliation job for {document_id} after the edit "
+                f"committed — Qdrant may stay stale until a retry or a collection backfill",
+                exc_info=True,
+            )
+
+    CONTEXT.logger.info(
+        f"Updated metadata on {document_id}: {result.updated_fields} (reembed job {job_id or 'none'})"
+    )
+    return MetadataUpdateResponse(
+        updated_fields=result.updated_fields,
+        reembedding=bool(result.reembed_fields),
+        reembed_fields=result.reembed_fields,
+        job_id=job_id,
+    )
 
 
 @router.post(

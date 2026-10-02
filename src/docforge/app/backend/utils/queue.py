@@ -248,6 +248,29 @@ class QueueClient(LoggerClass):
         )
         self.logger.info(f"Enqueued filter + meta-vector backfill for collection {collection_id}")
 
+    async def enqueue_document_metadata_sync(self, document_id: str) -> str | None:
+        """
+        Enqueue the lightweight per-document metadata re-embed that follows a value edit.
+
+        Fired after a ``PATCH /documents/{id}/metadata`` where a semantic/lexical field changed: the
+        filterable payload was already repainted synchronously in the request; this re-embeds ONLY
+        the document's short metadata VALUES into their named vectors (never the chunk content).
+        Idempotent — a spurious re-enqueue only recomputes identical vectors. As with every enqueue
+        call, no reserved arq control kwarg rides as a task argument (it would crash the task).
+
+        Args:
+            document_id (str): The document to re-sync (UUID as string; the queue carries strings).
+
+        Returns:
+            str | None: The enqueued arq job id, or None when arq de-duplicated the enqueue.
+        """
+        pool = await self.__get_pool()
+        job = await pool.enqueue_job(
+            "sync_document_metadata", document_id, **self.__correlation_kwargs()
+        )
+        self.logger.info(f"Enqueued metadata re-embed for document {document_id}")
+        return job.job_id if job is not None else None
+
     async def queue_depth(self) -> int:
         """
         Return the arq queue backlog — jobs enqueued but not yet claimed by a worker.

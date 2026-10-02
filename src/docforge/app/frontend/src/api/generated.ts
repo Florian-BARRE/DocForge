@@ -1009,6 +1009,39 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/documents/{document_id}/metadata": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Document Metadata
+         * @description Edit a document's metadata VALUES in place — no re-ingest, chunk content untouched.
+         *
+         *     The cheap per-document value edit: the new values are validated against the collection's schema,
+         *     written to Postgres, and the filterable Qdrant payloads are repainted synchronously (instant, no
+         *     embed). When a CHANGED field feeds a named vector (semantic/lexical), a lightweight worker job is
+         *     enqueued to re-embed ONLY the short metadata values onto the document's points — the index
+         *     signature is unchanged, so this never triggers a reindex. Accepts DOCUMENT-scope USER and
+         *     GENERATED fields (a GENERATED override is overwritten again on the next reingest/metagen);
+         *     chunk-scope and unknown fields are rejected with 422.
+         *
+         *     Returns:
+         *         MetadataUpdateResponse: The fields that actually changed, whether a re-embed was queued, and
+         *             the reconciliation job id (set when a semantic/lexical field changed or a filterable
+         *             repaint needs repair; null otherwise); 404 when the document is unknown.
+         */
+        patch: operations["update_document_metadata_api_v1_documents__document_id__metadata_patch"];
+        trace?: never;
+    };
     "/api/v1/documents/{document_id}/pages": {
         parameters: {
             query?: never;
@@ -5366,6 +5399,39 @@ export interface components {
             value: unknown;
         };
         /**
+         * MetadataUpdateResponse
+         * @description The result of a document metadata value edit.
+         *
+         *     Attributes:
+         *         updated_fields (list[str]): The field names whose values were written.
+         *         reembedding (bool): True when a changed field feeds a named vector (semantic/lexical) and a
+         *             re-embed job was enqueued.
+         *         reembed_fields (list[str]): The changed fields that need their metadata vectors re-embedded.
+         *         job_id (str | None): The enqueued re-embed job's id, or null when nothing needed re-embedding.
+         */
+        MetadataUpdateResponse: {
+            /**
+             * Job Id
+             * @description The re-embed job's UUID, or null.
+             */
+            job_id?: string | null;
+            /**
+             * Reembed Fields
+             * @description Changed fields needing a metadata re-embed.
+             */
+            reembed_fields: string[];
+            /**
+             * Reembedding
+             * @description A semantic/lexical field changed — a re-embed was queued.
+             */
+            reembedding: boolean;
+            /**
+             * Updated Fields
+             * @description Field names whose values were written.
+             */
+            updated_fields: string[];
+        };
+        /**
          * MetadataValue
          * @description One resolved metadata value — the field NAME (joined from the collection schema), the stored
          *     value, and the origin that actually filled THIS value (user upload / pipeline / metagen).
@@ -5383,6 +5449,24 @@ export interface components {
              * @description The stored JSON value (typed by the field).
              */
             value: unknown;
+        };
+        /**
+         * MetadataValuesPatch
+         * @description The metadata VALUES to write on a document (field_name → new value), the cheap value-edit.
+         *
+         *     Attributes:
+         *         values (dict[str, Any]): Map of metadata field name → new value. DOCUMENT-scope USER or
+         *             GENERATED fields only; a chunk-scope or unknown field is rejected (422). A value's shape
+         *             must match its field type (scalar, or a list for the *_list types).
+         */
+        MetadataValuesPatch: {
+            /**
+             * Values
+             * @description Map of metadata field name → new value (document-scope fields only).
+             */
+            values: {
+                [key: string]: unknown;
+            };
         };
         /**
          * ModelRateOverride
@@ -9159,6 +9243,41 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_document_metadata_api_v1_documents__document_id__metadata_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MetadataValuesPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetadataUpdateResponse"];
+                };
             };
             /** @description Validation Error */
             422: {

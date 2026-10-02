@@ -55,7 +55,14 @@ from .corpus import (
 )
 
 # ------------------- Documents models ------------------- #
-from .documents import DocumentEnabledResponse, DocumentView, EnabledPatch, UploadAccepted
+from .documents import (
+    DocumentEnabledResponse,
+    DocumentView,
+    EnabledPatch,
+    MetadataUpdateResponse,
+    MetadataValuesPatch,
+    UploadAccepted,
+)
 
 # ------------------- Estimate models ------------------- #
 from .estimate import (
@@ -228,6 +235,8 @@ __all__ = [
     "UploadAccepted",
     "EnabledPatch",
     "DocumentEnabledResponse",
+    "MetadataValuesPatch",
+    "MetadataUpdateResponse",
     "DocumentView",
     # Snippets
     "SNIPPET_FILE_EXTENSION",

@@ -10,10 +10,11 @@ from typing import Any
 
 # ====== Third-Party Library Imports ======
 from sqlalchemy import delete, func, or_, select, update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # ====== Internal Project Imports ======
-from shared_libs.public_models import FieldOrigin, FieldScope
+from shared_libs.public_models import FieldOrigin, FieldScope, TextSanitizer
 
 from ..tables import (
     Chunk,
@@ -601,6 +602,47 @@ class DocumentApi:
             )
         )
         session.add_all(values)
+
+    @staticmethod
+    async def update_metadata(
+        session: AsyncSession, document_id: uuid.UUID, changes: Sequence[DocumentMetadata]
+    ) -> None:
+        """
+        Partially upsert a document's metadata VALUES — only the listed fields, by (document, field).
+
+        Unlike ``replace_metadata`` (which rewrites the whole GENERATED set on re-ingest), this
+        touches ONLY the given fields: each row is inserted or, when a value already exists for that
+        ``(document_id, field_id)``, its value+origin is overwritten in place — every other stored
+        value is left untouched. This is the value-edit path (correct a single field without a
+        re-ingest). Each value is NUL-stripped at this write boundary (Postgres rejects U+0000 in a
+        text/jsonb value), mirroring the admission path.
+
+        Args:
+            session (AsyncSession): The unit of work.
+            document_id (uuid.UUID): The document whose values are patched.
+            changes (Sequence[DocumentMetadata]): The rows to upsert — each carries its ``field_id``,
+                ``value`` and ``origin``; ``document_id`` is supplied here, not read from the row.
+        """
+        # 1. Nothing listed → nothing to write.
+        if not changes:
+            return
+        # 2. One bulk upsert keyed on the unique (document_id, field_id): insert new rows, overwrite
+        #    the value+origin of any that already exist. Each value is NUL-stripped for Postgres.
+        rows = [
+            {
+                "document_id": document_id,
+                "field_id": row.field_id,
+                "value": TextSanitizer.strip_nul(row.value),
+                "origin": row.origin,
+            }
+            for row in changes
+        ]
+        statement = pg_insert(DocumentMetadata).values(rows)
+        statement = statement.on_conflict_do_update(
+            index_elements=["document_id", "field_id"],
+            set_={"value": statement.excluded.value, "origin": statement.excluded.origin},
+        )
+        await session.execute(statement)
 
     # -------------------- pages --------------------
     @staticmethod
