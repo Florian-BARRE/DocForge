@@ -606,7 +606,12 @@ again on the next reingest/metagen, which rewrites that set). Rejects, with `422
 - an **unknown** field name,
 - a **chunk-scope** field (its value lives per chunk — a reindex is required, there is no cheap
   value-edit path),
-- a value whose shape does not match its field type.
+- a value whose shape does not match its field type,
+- a `null` on a **required** field (a required field cannot be unset).
+
+A `null` value on a **non-required** field **clears** it: the stored row is deleted and its
+denormalised Qdrant footprint (the filterable payload key and/or the `semantic`/`lexical` named
+vectors) is removed synchronously — clearing needs no embedding, so it never enqueues a job.
 
 ```bash
 curl -sX PATCH http://localhost:10040/api/v1/documents/d4c3.../metadata \

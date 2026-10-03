@@ -223,3 +223,12 @@ def test_job_event_null_meter_stays_none(jobs_models) -> None:
     assert event.output_summary is None
     assert event.has_full_input is None
     assert event.has_full_output is None
+
+
+@pytest.mark.parametrize("kind", [JobKind.INGEST, JobKind.METADATA_SYNC])
+def test_job_status_maps_the_job_kind_to_its_string_value(job_model, kind) -> None:
+    job_status, _ = job_model
+    row = _row(JobStatusEnum.RUNNING, idle_seconds=1)
+    row.kind = kind
+
+    assert job_status.from_row(row).kind == kind.value

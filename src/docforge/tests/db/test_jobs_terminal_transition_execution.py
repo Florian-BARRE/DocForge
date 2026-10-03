@@ -26,6 +26,9 @@ ingest-oriented job table):
     healthy DONE document UNCHANGED; only an ingest termination mirrors document status.
   * abandon — a PENDING metadata_sync row whose enqueue failed is flipped FAILED (freeing the
     ``uq_job_active_per_document`` lock) so a subsequent create_metadata_sync no longer wedges.
+  * abandon_ingest — the ingest counterpart: a PENDING ingest job whose queue put failed is flipped
+    FAILED through the terminate path (NOT the RUNNING-only mark_failed, which would no-op), mirrors the
+    document FAILED (it owns the lifecycle), and frees the active lock so a fresh ingest job inserts.
 
 Each test opens its own engine/session against the session-scoped migrated throwaway db and seeds its
 own collection/document/job, so the tests are order-independent (every read is id-scoped).
@@ -38,7 +41,7 @@ from datetime import UTC, datetime, timedelta
 
 # ====== Third-Party Library Imports ======
 import pytest
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 # ====== Internal Project Imports ======
@@ -54,6 +57,7 @@ from shared_libs.services.db.postgresql.tables import (
     JobStageEvent,
     JobStatus,
     SourceKind,
+    WorkerHeartbeat,
 )
 
 pytestmark = pytest.mark.db
@@ -357,6 +361,100 @@ async def test_reclaim_metadata_sync_does_not_flip_the_document(
     )
 
 
+async def _age_job(
+    db_session: AsyncSession, job_id: uuid.UUID, *, seconds: int, worker_id: str | None
+) -> None:
+    """Make a seeded RUNNING job look ``seconds`` old (updated_at + started_at) on ``worker_id``.
+
+    A Core UPDATE that sets ``updated_at`` explicitly bypasses the column's ``onupdate=now()``, so the
+    aged value sticks and the reaper's DB-clock cutoff sees a genuinely old row.
+    """
+    old = datetime.now(UTC) - timedelta(seconds=seconds)
+    await db_session.execute(
+        update(Job)
+        .where(Job.id == job_id)
+        .values(updated_at=old, started_at=old, worker_id=worker_id)
+    )
+    await db_session.commit()
+
+
+async def _doc_status(db_session: AsyncSession, doc_id: uuid.UUID) -> DocumentStatus:
+    db_session.expire_all()
+    return await db_session.scalar(select(Document.status).where(Document.id == doc_id))
+
+
+async def test_reap_stale_metadata_sync_does_not_flip_the_document(
+    migrated_db_dsn: str, session: AsyncSession
+) -> None:
+    """Reaper path (dead worker): a silent RUNNING metadata_sync with no heartbeat is failed
+    ``worker_killed`` but its healthy DONE document stays DONE (kind gate)."""
+    side_job_id, doc_id = await _seed_side_job_over_done_document(session)
+    await _age_job(session, side_job_id, seconds=7200, worker_id=None)
+
+    client = PostgresClient(migrated_db_dsn)
+    try:
+        reaped = await JobsFacade(client).reap_stale(
+            older_than_seconds=3600, heartbeat_stale_seconds=180
+        )
+    finally:
+        await client.dispose()
+
+    assert side_job_id in reaped
+    assert await _status_of(session, side_job_id) == JobStatus.FAILED
+    assert await _doc_status(session, doc_id) == DocumentStatus.DONE
+
+
+async def test_reap_over_job_timeout_metadata_sync_does_not_flip_the_document(
+    migrated_db_dsn: str, session: AsyncSession
+) -> None:
+    """Watchdog path (live worker): a metadata_sync past its job timeout on a FRESH-heartbeat worker is
+    failed ``job_timeout_exceeded`` but its DONE document stays DONE (kind gate)."""
+    worker_id = f"wd-{uuid.uuid4().hex[:8]}"
+    side_job_id, doc_id = await _seed_side_job_over_done_document(session, worker_id=worker_id)
+    now = datetime.now(UTC)
+    session.add(WorkerHeartbeat(worker_id=worker_id, last_seen=now, started_at=now))
+    await session.commit()
+    await _age_job(session, side_job_id, seconds=7200, worker_id=worker_id)
+
+    client = PostgresClient(migrated_db_dsn)
+    try:
+        reaped = await JobsFacade(client).reap_over_job_timeout(
+            default_job_timeout_seconds=60.0, grace_seconds=0.0, heartbeat_stale_seconds=180
+        )
+    finally:
+        await client.dispose()
+
+    assert side_job_id in reaped
+    assert await _status_of(session, side_job_id) == JobStatus.FAILED
+    assert await session.scalar(select(Job.error_type).where(Job.id == side_job_id)) == (
+        "job_timeout_exceeded"
+    )
+    assert await _doc_status(session, doc_id) == DocumentStatus.DONE
+
+
+async def test_reap_stale_ingest_control_still_flips_the_document(
+    migrated_db_dsn: str, session: AsyncSession
+) -> None:
+    """Control for the gate: the SAME reaper on an INGEST job still mirrors FAILED onto its document."""
+    job_id, doc_id = await _seed_job(
+        session, job_status=JobStatus.RUNNING, doc_status=DocumentStatus.PROCESSING
+    )
+    await session.commit()
+    await _age_job(session, job_id, seconds=7200, worker_id=None)
+
+    client = PostgresClient(migrated_db_dsn)
+    try:
+        reaped = await JobsFacade(client).reap_stale(
+            older_than_seconds=3600, heartbeat_stale_seconds=180
+        )
+    finally:
+        await client.dispose()
+
+    assert job_id in reaped
+    assert await _status_of(session, job_id) == JobStatus.FAILED
+    assert await _doc_status(session, doc_id) == DocumentStatus.FAILED
+
+
 async def test_abandon_fails_a_pending_side_job_and_frees_the_active_lock(
     migrated_db_dsn: str, session: AsyncSession
 ) -> None:
@@ -410,6 +508,55 @@ async def test_abandon_fails_a_pending_side_job_and_frees_the_active_lock(
         await session.scalar(select(Document.status).where(Document.id == document_id))
         == DocumentStatus.DONE
     )
+
+
+async def test_abandon_ingest_fails_the_pending_job_doc_and_frees_the_active_lock(
+    migrated_db_dsn: str, session: AsyncSession
+) -> None:
+    """The ingest enqueue-failure cleanup: an admitted ingest job committed PENDING whose queue put then
+    fails must be abandoned via the terminate path, NOT the RUNNING-only ``mark_failed`` (which would
+    silently no-op on the PENDING row, stranding an orphan PENDING that holds ``uq_job_active_per_document``
+    and the reaper never collects). ``abandon_ingest`` (a) flips the PENDING job FAILED, (b) mirrors the
+    document FAILED (it IS kind=ingest, so it owns the document lifecycle — re-ingestable), and (c) frees
+    the active lock so a subsequent active-job insert for the same document is not wedged at
+    ALREADY_ACTIVE."""
+    # 1. A collection + a PENDING document owned by a PENDING ingest job (the just-admitted state).
+    job_id, doc_id = await _seed_job(
+        session, job_status=JobStatus.PENDING, doc_status=DocumentStatus.PENDING
+    )
+    collection_id = await session.scalar(select(Job.collection_id).where(Job.id == job_id))
+    await session.commit()
+
+    client = PostgresClient(migrated_db_dsn)
+    try:
+        facade = JobsFacade(client)
+        # 2. Simulate the enqueue-failure cleanup path.
+        await facade.abandon_ingest(job_id, reason="Enqueue failed: redis down")
+        # 3. The lock is free — a fresh active ingest job for the SAME document must now insert cleanly
+        #    (an orphan PENDING would make this raise on the partial-unique index).
+        async with client.session() as insert_session:
+            fresh = Job(
+                document_id=doc_id,
+                collection_id=collection_id,
+                kind=JobKind.INGEST,
+                status=JobStatus.PENDING,
+            )
+            insert_session.add(fresh)
+            await insert_session.flush()
+            fresh_id = fresh.id
+    finally:
+        await client.dispose()
+
+    # (a) The orphan ingest job is terminal (FAILED, outside the active predicate).
+    assert await _status_of(session, job_id) == JobStatus.FAILED
+    # (b) The never-started document is FAILED (visibly re-ingestable), not stuck PENDING.
+    session.expire_all()
+    assert (
+        await session.scalar(select(Document.status).where(Document.id == doc_id))
+        == DocumentStatus.FAILED
+    )
+    # (c) The fresh active job inserted without wedging — the active lock was freed.
+    assert await _status_of(session, fresh_id) == JobStatus.PENDING
 
 
 # ── mark_failed — closes the open stage row only on a real transition ───────────────────────────────

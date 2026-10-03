@@ -176,7 +176,7 @@ def test_bulk_reingest_enqueue_failure_marks_job_failed_and_continues(client, mo
     _patch_pipeline_validation(monkeypatch)
     docs = [SimpleNamespace(id=uuid.uuid4(), collection_id=COLLECTION_ID) for _ in range(2)]
     jobs = [SimpleNamespace(id=uuid.uuid4()) for _ in docs]
-    mark_failed = AsyncMock()
+    abandon_ingest = AsyncMock()
     monkeypatch.setattr(CONTEXT.database.collections, "get", AsyncMock(return_value=_collection()))
     monkeypatch.setattr(CONTEXT.database.collections, "get_schema", AsyncMock(return_value=[]))
     monkeypatch.setattr(
@@ -190,7 +190,7 @@ def test_bulk_reingest_enqueue_failure_marks_job_failed_and_continues(client, mo
         "reingest",
         AsyncMock(side_effect=[_admitted(docs[0], jobs[0]), _admitted(docs[1], jobs[1])]),
     )
-    monkeypatch.setattr(CONTEXT.database.jobs, "mark_failed", mark_failed)
+    monkeypatch.setattr(CONTEXT.database.jobs, "abandon_ingest", abandon_ingest)
     # First enqueue blows up (Redis blip), second succeeds — batch must survive.
     monkeypatch.setattr(
         CONTEXT.queue,
@@ -202,8 +202,8 @@ def test_bulk_reingest_enqueue_failure_marks_job_failed_and_continues(client, mo
 
     assert response.status_code == 202, response.text
     assert response.json()["count"] == 1  # only the second doc yielded a handle
-    mark_failed.assert_awaited_once()
-    assert mark_failed.await_args.args[0] == jobs[0].id
+    abandon_ingest.assert_awaited_once()
+    assert abandon_ingest.await_args.args[0] == jobs[0].id
 
 
 def test_bulk_reingest_skips_documents_with_an_active_job(client, monkeypatch) -> None:

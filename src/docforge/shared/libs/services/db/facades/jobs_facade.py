@@ -257,6 +257,48 @@ class JobsFacade(LoggerClass):
                 exc_info=True,
             )
 
+    async def abandon_ingest(self, job_id: uuid.UUID, reason: str) -> None:
+        """
+        Fail a just-admitted INGEST job whose enqueue then failed — frees the lock AND fails the doc.
+
+        The ingest counterpart of ``abandon``: an ingestion job is committed PENDING, then handed to
+        the queue; if that put fails (a Redis blip) the row would otherwise (a) hold the
+        ``uq_job_active_per_document`` lock — whose predicate covers PENDING — so the next reingest
+        returns ALREADY_ACTIVE forever, and (b) never be reaped (every reap query is RUNNING-only).
+        It routes through ``_terminate`` (not ``JobApi.mark_failed``, which is RUNNING-only and would
+        silently no-op on the PENDING row): ``mark_terminal`` admits PENDING, so the job flips to FAILED
+        and leaves the lock predicate, and because this IS ``kind == INGEST`` the document is mirrored to
+        FAILED in the SAME transaction — the never-started document ends visibly re-ingestable, exactly
+        like a failed run elsewhere. (Unlike ``abandon``, which deliberately does NOT touch the document:
+        a side-job does not own the document lifecycle, an ingest does.)
+
+        Best-effort: it runs as cleanup on the enqueuer's failure path, which the caller already treats
+        as non-fatal (it returns False and the route surfaces the enqueue error itself), so a DB hiccup
+        here is logged and swallowed rather than raised — never masking the already-reported enqueue
+        error with a secondary 500.
+
+        Args:
+            job_id (uuid.UUID): The orphaned ingest job row to fail.
+            reason (str): The human-readable reason recorded on the row (and mirrored stage).
+        """
+        # 1. Flip the live PENDING job FAILED and mirror the document FAILED, in one transaction
+        #    (best-effort — a cleanup failure must never re-raise over the enqueue error).
+        try:
+            async with self._postgres.session() as session:
+                await self._terminate(
+                    session,
+                    job_id,
+                    job_status=JobStatus.FAILED,
+                    doc_status=DocumentStatus.FAILED,
+                    reason=reason,
+                )
+        except Exception:
+            self.logger.error(
+                f"Failed to abandon orphaned ingest job {job_id} after its enqueue failed — the "
+                f"document may stay locked until the row is reaped or re-ingested",
+                exc_info=True,
+            )
+
     async def mark_running(
         self, job_id: uuid.UUID, worker_id: str, attempt: int, started_at: datetime
     ) -> None:

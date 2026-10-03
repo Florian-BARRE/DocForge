@@ -35,7 +35,10 @@ ARG TORCH_VARIANT=cpu
 WORKDIR /workspace
 
 # Tell uv where to place the project virtual environment.
-ENV UV_PROJECT_ENVIRONMENT=/opt/venv
+# UV_HTTP_TIMEOUT: the GPU extra pulls a ~2 GiB torch (cu126) wheel; uv's default 30s read timeout
+# intermittently aborts that download on slow CI runners — give it room (applies to cpu + gpu syncs).
+ENV UV_PROJECT_ENVIRONMENT=/opt/venv \
+    UV_HTTP_TIMEOUT=600
 
 # Copy lock metadata only — the dependency layer is rebuilt only when these two files
 # change, not when application source code changes.

@@ -163,6 +163,72 @@ class QdrantIndexApi:
         )
 
     @staticmethod
+    async def delete_payload(
+        client: AsyncQdrantClient, name: str, keys: list[str], document_id: uuid.UUID
+    ) -> None:
+        """
+        Delete specific payload keys from every point of a document (the metadata-clear path).
+
+        The inverse of ``set_payload``: when a FILTERABLE document-scope field is cleared, its
+        denormalised payload key must be removed from each of the document's chunk points so the old
+        value stops matching a ``filters={field: value}`` search. Guards the missing-collection case
+        exactly like ``delete_by_document`` (a document that never reached embed has no collection yet,
+        and a filtered op on a missing collection 404s) and no-ops on an empty key list.
+
+        Args:
+            client (AsyncQdrantClient): The connection from QdrantClient.raw.
+            name (str): The Qdrant collection name.
+            keys (list[str]): The payload keys to delete (the cleared fields' names).
+            document_id (uuid.UUID): The document whose points are patched.
+        """
+        if not keys or not await client.collection_exists(name):
+            return
+        await client.delete_payload(
+            collection_name=name,
+            keys=keys,
+            points=models.Filter(
+                must=[
+                    models.FieldCondition(
+                        key=DOCUMENT_ID_KEY, match=models.MatchValue(value=str(document_id))
+                    )
+                ]
+            ),
+        )
+
+    @staticmethod
+    async def delete_vectors(
+        client: AsyncQdrantClient, name: str, vector_names: list[str], document_id: uuid.UUID
+    ) -> None:
+        """
+        Delete named vectors from every point of a document (the metadata-clear path).
+
+        The inverse of ``update_vectors``: when a SEMANTIC/LEXICAL document-scope field is cleared, its
+        ``meta_<slug>_dense`` / ``meta_<slug>_bm25`` named vector must be dropped from each of the
+        document's chunk points so the old value stops contributing to a metadata search. The content
+        vectors (``content_dense`` / ``content_bm25``) are never named here, so they are untouched.
+        Guards the missing-collection case like ``delete_by_document`` and no-ops on an empty list.
+
+        Args:
+            client (AsyncQdrantClient): The connection from QdrantClient.raw.
+            name (str): The Qdrant collection name.
+            vector_names (list[str]): The named vectors to delete (the cleared fields' meta vectors).
+            document_id (uuid.UUID): The document whose points are patched.
+        """
+        if not vector_names or not await client.collection_exists(name):
+            return
+        await client.delete_vectors(
+            collection_name=name,
+            vectors=vector_names,
+            points=models.Filter(
+                must=[
+                    models.FieldCondition(
+                        key=DOCUMENT_ID_KEY, match=models.MatchValue(value=str(document_id))
+                    )
+                ]
+            ),
+        )
+
+    @staticmethod
     async def delete_by_documents(
         client: AsyncQdrantClient, name: str, document_ids: Sequence[uuid.UUID]
     ) -> None:

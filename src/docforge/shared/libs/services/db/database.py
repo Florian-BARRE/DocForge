@@ -84,8 +84,9 @@ class Database(LoggerClass):
         self.enablement = EnablementFacade(postgres, qdrant)
         self.filters = FilterSyncFacade(postgres, qdrant)
         self.meta_vectors = MetaVectorSyncFacade(postgres, qdrant)
-        # Reuses the already-wired filter-sync facade to repaint payloads synchronously on an edit.
-        self.metadata_edit = MetadataEditFacade(postgres, self.filters)
+        # Reuses the already-wired filter-sync facade to repaint payloads synchronously on a SET, and
+        # the qdrant client to remove a cleared field's denormalised footprint synchronously (no job).
+        self.metadata_edit = MetadataEditFacade(postgres, self.filters, qdrant)
         self.search = SearchFacade(postgres, qdrant)
         self.jobs = JobsFacade(postgres)
         self.trace_payloads = TracePayloadFacade(postgres, s3)

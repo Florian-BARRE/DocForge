@@ -121,12 +121,12 @@ def test_reingest_enqueue_failure_marks_job_failed_and_503s(client, monkeypatch)
 
     document = SimpleNamespace(id=DOC_ID, collection_id=uuid.uuid4())
     job = SimpleNamespace(id=JOB_ID)
-    mark_failed = AsyncMock()
+    abandon_ingest = AsyncMock()
     monkeypatch.setattr(CONTEXT.database.documents, "get", AsyncMock(return_value=document))
     monkeypatch.setattr(
         CONTEXT.database.ingestion, "reingest", AsyncMock(return_value=_admitted(document, job))
     )
-    monkeypatch.setattr(CONTEXT.database.jobs, "mark_failed", mark_failed)
+    monkeypatch.setattr(CONTEXT.database.jobs, "abandon_ingest", abandon_ingest)
     monkeypatch.setattr(
         CONTEXT.queue, "enqueue_ingest", AsyncMock(side_effect=RuntimeError("redis down"))
     )
@@ -134,6 +134,8 @@ def test_reingest_enqueue_failure_marks_job_failed_and_503s(client, monkeypatch)
     response = client.post(f"/api/v1/documents/{DOC_ID}/reingest")
 
     assert response.status_code == 503, response.text
-    # The committed PENDING job is marked FAILED so the reaper (RUNNING-only) is not its only hope.
-    mark_failed.assert_awaited_once()
-    assert mark_failed.await_args.args[0] == JOB_ID
+    # The committed PENDING job is failed via the terminate path (not the RUNNING-only mark_failed),
+    # which flips the PENDING row FAILED, frees the per-document active lock and mirrors the document
+    # FAILED — so the reaper (RUNNING-only) is not its only hope and reingest is not wedged forever.
+    abandon_ingest.assert_awaited_once()
+    assert abandon_ingest.await_args.args[0] == JOB_ID

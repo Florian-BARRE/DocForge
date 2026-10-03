@@ -4,6 +4,7 @@ meta-vector sync) previously sent ALL points in one request and 400'd on a large
 breaking the sync; set_payload chunks its per-point operations by count. A fake client records the
 batches — no Qdrant."""
 
+import uuid
 from typing import Any
 
 from shared_libs.services.db.qdrant.apis import QdrantIndexApi
@@ -87,3 +88,65 @@ async def test_set_payload_chunks_operations_by_count() -> None:
     await QdrantIndexApi.set_payload(client, "col", payloads)  # type: ignore[arg-type]
     # 2001 ops over a 2000-op cap → two requests (2000 + 1), never one giant batch.
     assert client.payload_ops == [2000, 1]
+
+
+# -------------------- delete_payload / delete_vectors (metadata-clear primitives) --------------------
+class _FakeDeleteClient:
+    """Records the delete_payload / delete_vectors calls; drives the collection-exists guard."""
+
+    def __init__(self, *, exists: bool = True) -> None:
+        self._exists = exists
+        self.payload_deletes: list[dict[str, Any]] = []
+        self.vector_deletes: list[dict[str, Any]] = []
+
+    async def collection_exists(self, name: str) -> bool:
+        return self._exists
+
+    async def delete_payload(self, *, collection_name: str, keys: list, points: Any) -> None:
+        self.payload_deletes.append({"keys": keys, "points": points})
+
+    async def delete_vectors(self, *, collection_name: str, vectors: list, points: Any) -> None:
+        self.vector_deletes.append({"vectors": vectors, "points": points})
+
+
+async def test_delete_payload_filters_on_document_and_passes_keys() -> None:
+    client = _FakeDeleteClient()
+    doc_id = uuid.uuid4()
+    await QdrantIndexApi.delete_payload(client, "col", ["topic", "year"], doc_id)  # type: ignore[arg-type]
+    assert len(client.payload_deletes) == 1
+    call = client.payload_deletes[0]
+    assert call["keys"] == ["topic", "year"]
+    # The selector filters on the document_id payload (a Filter, not a raw id list).
+    assert str(doc_id) in str(call["points"])
+
+
+async def test_delete_payload_noops_on_empty_keys_or_missing_collection() -> None:
+    present = _FakeDeleteClient()
+    await QdrantIndexApi.delete_payload(present, "col", [], uuid.uuid4())  # type: ignore[arg-type]
+    assert present.payload_deletes == []
+
+    absent = _FakeDeleteClient(exists=False)
+    await QdrantIndexApi.delete_payload(absent, "col", ["topic"], uuid.uuid4())  # type: ignore[arg-type]
+    assert absent.payload_deletes == []
+
+
+async def test_delete_vectors_filters_on_document_and_passes_names() -> None:
+    client = _FakeDeleteClient()
+    doc_id = uuid.uuid4()
+    await QdrantIndexApi.delete_vectors(  # type: ignore[arg-type]
+        client, "col", ["meta_abstract_dense", "meta_abstract_bm25"], doc_id
+    )
+    assert len(client.vector_deletes) == 1
+    call = client.vector_deletes[0]
+    assert call["vectors"] == ["meta_abstract_dense", "meta_abstract_bm25"]
+    assert str(doc_id) in str(call["points"])
+
+
+async def test_delete_vectors_noops_on_empty_names_or_missing_collection() -> None:
+    present = _FakeDeleteClient()
+    await QdrantIndexApi.delete_vectors(present, "col", [], uuid.uuid4())  # type: ignore[arg-type]
+    assert present.vector_deletes == []
+
+    absent = _FakeDeleteClient(exists=False)
+    await QdrantIndexApi.delete_vectors(absent, "col", ["meta_x_dense"], uuid.uuid4())  # type: ignore[arg-type]
+    assert absent.vector_deletes == []

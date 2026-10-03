@@ -172,6 +172,117 @@ def test_job_row_creation_failure_does_not_500(
     wired.abandon.assert_not_awaited()
 
 
+def test_abandon_failure_after_enqueue_failure_does_not_500(
+    client, fastapi_app, edit_result, monkeypatch
+) -> None:
+    """The cleanup is itself best-effort: enqueue fails AND abandon fails -> still 200, job_id null."""
+    document = _document()
+    result = edit_result(updated_fields=["abstract"], reembed_fields=["abstract"])
+    wired = _wire(monkeypatch, document=document, result=result)
+    wired.enqueue.side_effect = RuntimeError("redis down")
+    wired.abandon.side_effect = RuntimeError("postgres down")
+
+    response = client.patch(
+        f"/api/v1/documents/{document.id}/metadata", json={"values": {"abstract": "x"}}
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["job_id"] is None
+    assert body["reembedding"] is True
+    wired.abandon.assert_awaited_once()
+    assert wired.abandon.await_args.args[0] == wired.job_id
+    assert "enqueue failed" in wired.abandon.await_args.args[1]
+
+
+def test_clear_only_edit_is_synchronous_no_job(
+    client, fastapi_app, edit_result, monkeypatch
+) -> None:
+    """A clear (null) that removed its footprint inline reports the field, enqueues nothing, and
+    forwards the null to the facade verbatim."""
+    document = _document()
+    result = edit_result(updated_fields=["topic"], reembed_fields=[])
+    wired = _wire(monkeypatch, document=document, result=result)
+
+    response = client.patch(
+        f"/api/v1/documents/{document.id}/metadata", json={"values": {"topic": None}}
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json() == {
+        "updated_fields": ["topic"],
+        "reembedding": False,
+        "reembed_fields": [],
+        "job_id": None,
+    }
+    from backend.context import CONTEXT  # noqa: PLC0415
+
+    CONTEXT.database.metadata_edit.update_document_metadata.assert_awaited_once_with(
+        document.id, {"topic": None}
+    )
+    wired.create_sync.assert_not_awaited()
+    wired.enqueue.assert_not_awaited()
+
+
+def test_clear_qdrant_failure_enqueues_repair(
+    client, fastapi_app, edit_result, monkeypatch
+) -> None:
+    """A clear whose inline Qdrant removal failed (flag set) still schedules the repair job."""
+    document = _document()
+    result = edit_result(updated_fields=["topic"], reembed_fields=[], filter_repaint_failed=True)
+    wired = _wire(monkeypatch, document=document, result=result)
+
+    response = client.patch(
+        f"/api/v1/documents/{document.id}/metadata", json={"values": {"topic": None}}
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["reembedding"] is False
+    assert body["job_id"] == str(wired.job_id)
+    wired.enqueue.assert_awaited_once_with(str(document.id), str(wired.job_id))
+
+
+def test_no_change_result_enqueues_nothing(client, fastapi_app, edit_result, monkeypatch) -> None:
+    """A no-op edit (empty result) returns an empty, job-less response."""
+    document = _document()
+    wired = _wire(monkeypatch, document=document, result=edit_result())
+
+    response = client.patch(
+        f"/api/v1/documents/{document.id}/metadata", json={"values": {"topic": "ai"}}
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json() == {
+        "updated_fields": [],
+        "reembedding": False,
+        "reembed_fields": [],
+        "job_id": None,
+    }
+    wired.create_sync.assert_not_awaited()
+
+
+def test_mixed_set_and_clear_reports_both_and_enqueues_once(
+    client, fastapi_app, edit_result, monkeypatch
+) -> None:
+    document = _document()
+    result = edit_result(updated_fields=["abstract", "topic"], reembed_fields=["abstract"])
+    wired = _wire(monkeypatch, document=document, result=result)
+
+    response = client.patch(
+        f"/api/v1/documents/{document.id}/metadata",
+        json={"values": {"abstract": "x", "topic": None}},
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["updated_fields"] == ["abstract", "topic"]
+    assert body["reembed_fields"] == ["abstract"]
+    assert body["job_id"] == str(wired.job_id)
+    wired.create_sync.assert_awaited_once()
+    wired.enqueue.assert_awaited_once()
+
+
 # -------------------- error mapping --------------------
 def test_unknown_document_is_404(client, fastapi_app, monkeypatch) -> None:
     """An unknown document id is a 404 before the facade is called."""

@@ -320,3 +320,44 @@ def test_stream_route_unknown_job_is_404(client, monkeypatch) -> None:
     monkeypatch.setattr(CONTEXT.database.jobs, "get", AsyncMock(return_value=None))
     response = client.get("/api/v1/jobs/11111111-1111-1111-1111-111111111111/stream")
     assert response.status_code == 404, response.text
+
+
+def test_status_frame_keeps_the_jobs_own_kind_under_the_frame_envelope() -> None:
+    """The envelope type rides under ``frame``; the job payload's own ``kind`` must survive it, for
+    both job kinds (a ``kind`` envelope would have clobbered it)."""
+    from backend.routers.jobs.stream import stream_job_events
+
+    for kind in ("ingest", "metadata_sync"):
+        job = _job("done", 100, None)
+        job.kind = SimpleNamespace(value=kind)
+        jobs = _FakeJobs(jobs=[job], events=[[]])
+        frames = asyncio.run(
+            _drain(stream_job_events(jobs, "job", poll_interval=0, sleep=_noop_sleep))
+        )
+        statuses = [p for p in _payloads(frames) if p["frame"] == "status"]
+        assert len(statuses) == 1
+        assert statuses[0]["kind"] == kind
+        assert statuses[0]["frame"] == "status"
+
+
+def test_event_frame_is_tagged_event_and_has_no_job_kind() -> None:
+    from backend.routers.jobs.stream import stream_job_events
+
+    jobs = _FakeJobs(jobs=[_job("done", 100, "chunk")], events=[[_event("chunk", "success")]])
+    frames = asyncio.run(_drain(stream_job_events(jobs, "job", poll_interval=0, sleep=_noop_sleep)))
+    events = [p for p in _payloads(frames) if p["frame"] == "event"]
+    assert len(events) == 1
+    assert "kind" not in events[0]
+
+
+def test_gone_frame_uses_the_frame_key() -> None:
+    from backend.routers.jobs.stream import stream_job_events
+
+    class _Gone:
+        async def get(self, _job_id):
+            return None
+
+    frames = asyncio.run(
+        _drain(stream_job_events(_Gone(), "job", poll_interval=0, sleep=_noop_sleep))
+    )
+    assert _payloads(frames) == [{"job_id": "job", "status": "gone", "frame": "status"}]

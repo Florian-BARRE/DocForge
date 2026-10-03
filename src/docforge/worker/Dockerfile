@@ -20,7 +20,11 @@ FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim AS py-build
 WORKDIR /workspace
 
 # Tell uv where to create the project environment (copied into the runtime stage).
-ENV UV_PROJECT_ENVIRONMENT=/opt/venv
+# UV_HTTP_TIMEOUT: the GPU extra pulls a large torch wheel (~2 GiB) plus docling model deps; uv's
+# default 30s read timeout intermittently aborts that download on slow CI runners — give it room
+# (applies to both the cpu and gpu `uv sync` paths).
+ENV UV_PROJECT_ENVIRONMENT=/opt/venv \
+    UV_HTTP_TIMEOUT=600
 
 # Copy lock metadata first to maximise Docker layer-cache reuse: dependency layers
 # only rebuild when pyproject.toml or uv.lock changes.

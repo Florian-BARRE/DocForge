@@ -644,6 +644,33 @@ class DocumentApi:
         )
         await session.execute(statement)
 
+    @staticmethod
+    async def delete_metadata(
+        session: AsyncSession, document_id: uuid.UUID, field_ids: Sequence[int]
+    ) -> None:
+        """
+        Delete a document's metadata rows for the given fields — the value-CLEAR path.
+
+        The inverse of ``update_metadata``: clearing a field (``PATCH … metadata`` with a ``null``
+        value) removes its stored value entirely rather than overwriting it. Only the listed
+        ``(document_id, field_id)`` rows are deleted; every other stored value is left untouched.
+
+        Args:
+            session (AsyncSession): The unit of work.
+            document_id (uuid.UUID): The document whose values are cleared.
+            field_ids (Sequence[int]): The schema field ids whose rows are deleted.
+        """
+        # 1. Nothing listed → nothing to delete.
+        if not field_ids:
+            return
+        # 2. Delete only the listed (document_id, field_id) rows.
+        await session.execute(
+            delete(DocumentMetadata).where(
+                DocumentMetadata.document_id == document_id,
+                DocumentMetadata.field_id.in_(field_ids),
+            )
+        )
+
     # -------------------- pages --------------------
     @staticmethod
     async def replace_pages(
