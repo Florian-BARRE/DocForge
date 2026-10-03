@@ -5027,6 +5027,7 @@ export interface components {
          *         document_id (str): The document being ingested.
          *         collection_id (str): Its collection.
          *         status (str): queued / running / done / failed.
+         *         kind (str): ingest (full pipeline run) or metadata_sync (per-document metadata re-embed).
          *         progress (int): 0–100 (completed pipeline nodes over total).
          *         current_stage (str | None): The node currently (or last) executed.
          *         error (str | None): The failure, verbatim — only set when status is failed.
@@ -5142,6 +5143,11 @@ export interface components {
              * @description The job row's UUID.
              */
             job_id: string;
+            /**
+             * Kind
+             * @description The kind of work this job tracks: 'ingest' (a full document pipeline run) or 'metadata_sync' (a lightweight per-document metadata re-embed after an in-place value edit). Lets the UI/Activity render a side-job distinctly from a full ingestion.
+             */
+            kind: string;
             /**
              * Progress
              * @description 0-100, completed pipeline nodes over total.

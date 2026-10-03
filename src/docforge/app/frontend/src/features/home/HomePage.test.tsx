@@ -64,7 +64,7 @@ const emptyJobPage: JobPage = { total: 0, limit: 6, offset: 0, jobs: [] };
 const emptySearchHealth = { total_runs: 0, error_rate: 0, p95_latency_ms: null, zero_result_rate: 0, avg_hits: null };
 
 const runningJob = {
-  job_id: "job-1", document_id: "doc-1", document_filename: "invoice.pdf", document_title: null,
+  job_id: "job-1", kind: "ingest", document_id: "doc-1", document_filename: "invoice.pdf", document_title: null,
   collection_id: "col-1", collection_name: "Contracts", status: "running", cancel_requested: false,
   progress: 0.5, current_stage: "chunk", error: null, attempt: 1, started_at: "2026-01-01T00:00:00Z",
   finished_at: null, updated_at: "2026-01-01T00:01:00Z", stalled: false, duration_seconds: 60,

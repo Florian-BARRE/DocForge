@@ -19,13 +19,14 @@ import pytest
 
 
 def _import_worker_jobs_modules():
-    """Import jobs.core + jobs.backfill + jobs.transfer + jobs.preview under a fake backend.context."""
+    """Import jobs.core + backfill + transfer + preview + metadata_sync under a fake backend.context."""
     import jobs.backfill as backfill_module  # noqa: PLC0415
     import jobs.core as core_module  # noqa: PLC0415
+    import jobs.metadata_sync as metadata_sync_module  # noqa: PLC0415
     import jobs.preview as preview_module  # noqa: PLC0415
     import jobs.transfer as transfer_module  # noqa: PLC0415
 
-    return core_module, backfill_module, transfer_module, preview_module
+    return core_module, backfill_module, transfer_module, preview_module, metadata_sync_module
 
 
 def _import_with_fake_backend():
@@ -51,7 +52,13 @@ def worker_jobs_modules():
     """(jobs.core, jobs.backfill, jobs.transfer, jobs.preview) modules, imported once for the session."""
     if all(
         name in sys.modules
-        for name in ("jobs.core", "jobs.backfill", "jobs.transfer", "jobs.preview")
+        for name in (
+            "jobs.core",
+            "jobs.backfill",
+            "jobs.transfer",
+            "jobs.preview",
+            "jobs.metadata_sync",
+        )
     ):
         return _import_worker_jobs_modules()
     return _import_with_fake_backend()
@@ -75,3 +82,8 @@ def jobs_transfer(worker_jobs_modules):
 @pytest.fixture
 def jobs_preview(worker_jobs_modules):
     return worker_jobs_modules[3]
+
+
+@pytest.fixture
+def jobs_metadata_sync(worker_jobs_modules):
+    return worker_jobs_modules[4]

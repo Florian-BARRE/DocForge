@@ -21,8 +21,14 @@ from .models import JobEvent, JobStatus
 
 
 def _frame(kind: str, payload: dict[str, Any]) -> str:
-    """Render one well-formed SSE frame — ``data: {json}\\n\\n`` with the frame kind inside the JSON."""
-    return f"data: {json.dumps({'kind': kind, **payload}, default=str)}\n\n"
+    """Render one well-formed SSE frame — ``data: {json}\\n\\n`` with the frame type inside the JSON.
+
+    The frame type (``"status"``/``"event"``) rides under the dedicated ``frame`` key, NOT ``kind``: a
+    status payload is a ``JobStatus`` which now carries its OWN ``kind`` (the job's ingest/metadata_sync
+    type), so reusing ``kind`` for the envelope would clobber the job's real kind in the snapshot the
+    client rebuilds from the frame. ``frame`` can never collide with a payload field.
+    """
+    return f"data: {json.dumps({**payload, 'frame': kind}, default=str)}\n\n"
 
 
 async def stream_job_events(
@@ -36,8 +42,8 @@ async def stream_job_events(
     Yield an SSE frame stream of a job's live progress until it terminates, then close.
 
     Polls the persisted job row + stage-event timeline every ``poll_interval`` seconds and emits
-    only the delta: each newly-landed stage event (``kind: "event"``) in order, plus a status frame
-    (``kind: "status"``) whenever the status snapshot changes (so progress advances flow through). A
+    only the delta: each newly-landed stage event (``frame: "event"``) in order, plus a status frame
+    (``frame: "status"``) whenever the status snapshot changes (so progress advances flow through). A
     final status frame always lands because a terminal status differs from the running one. The loop
     returns as soon as the job is done/failed, which ends the HTTP response.
 

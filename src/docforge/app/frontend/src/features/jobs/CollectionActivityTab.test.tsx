@@ -28,7 +28,7 @@ const { listJobsPage, getWorkersLive, getQueueDepth } = await import("../../api/
 
 function jobFixture(overrides: Partial<JobStatus>): JobStatus {
   return {
-    job_id: "job-1",
+    job_id: "job-1", kind: "ingest",
     document_id: "doc-1",
     document_filename: "report.pdf",
     document_title: null,

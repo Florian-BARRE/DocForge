@@ -59,6 +59,7 @@ def _running_job(collection_id: str, worker_id: str):
         collection_id=uuid.UUID(collection_id),
         worker_id=worker_id,
         status=SimpleNamespace(value="running"),
+        kind=SimpleNamespace(value="ingest"),
         cancel_requested=False,
         progress=50,
         current_stage="embed",

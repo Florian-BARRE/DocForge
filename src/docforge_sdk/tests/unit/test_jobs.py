@@ -23,6 +23,7 @@ _JOB_SAMPLE: dict[str, Any] = {
     "document_id": "d1",
     "collection_id": CID,
     "status": "running",
+    "kind": "ingest",
     "progress": 42,
     "current_stage": "parse",
     "error": None,

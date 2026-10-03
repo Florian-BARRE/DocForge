@@ -17,6 +17,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from shared_libs.services.db.postgresql.tables import JobKind
 from shared_libs.services.db.postgresql.tables import JobStatus as JobStatusEnum
 
 _MODELS_PATH = (
@@ -51,6 +52,7 @@ def _row(status: JobStatusEnum, *, idle_seconds: float) -> SimpleNamespace:
         document_id=uuid.uuid4(),
         collection_id=uuid.uuid4(),
         status=status,
+        kind=JobKind.INGEST,
         progress=42,
         current_stage="parse",
         error=None,

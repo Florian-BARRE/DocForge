@@ -248,28 +248,33 @@ class QueueClient(LoggerClass):
         )
         self.logger.info(f"Enqueued filter + meta-vector backfill for collection {collection_id}")
 
-    async def enqueue_document_metadata_sync(self, document_id: str) -> str | None:
+    async def enqueue_document_metadata_sync(self, document_id: str, job_id: str) -> str:
         """
         Enqueue the lightweight per-document metadata re-embed that follows a value edit.
 
         Fired after a ``PATCH /documents/{id}/metadata`` where a semantic/lexical field changed: the
         filterable payload was already repainted synchronously in the request; this re-embeds ONLY
         the document's short metadata VALUES into their named vectors (never the chunk content).
-        Idempotent — a spurious re-enqueue only recomputes identical vectors. As with every enqueue
-        call, no reserved arq control kwarg rides as a task argument (it would crash the task).
+        Idempotent — a spurious re-enqueue only recomputes identical vectors.
+
+        Like ingestion, this carries the PRE-CREATED tracked job row's id as a TASK ARGUMENT (never
+        arq's reserved ``_job_id`` control kwarg) so the worker drives that row's lifecycle and the id
+        returned to the client is the pollable DB job — not arq's internal id, which 404s on the jobs
+        API. No reserved arq control kwarg rides as a task argument (it would crash the task).
 
         Args:
             document_id (str): The document to re-sync (UUID as string; the queue carries strings).
+            job_id (str): The tracked ``metadata_sync`` job row's id (the worker marks it RUNNING→DONE).
 
         Returns:
-            str | None: The enqueued arq job id, or None when arq de-duplicated the enqueue.
+            str: The DB job id (the pollable, tracked job) — echoed back so the caller returns it.
         """
         pool = await self.__get_pool()
-        job = await pool.enqueue_job(
-            "sync_document_metadata", document_id, **self.__correlation_kwargs()
+        await pool.enqueue_job(
+            "sync_document_metadata", document_id, job_id, **self.__correlation_kwargs()
         )
-        self.logger.info(f"Enqueued metadata re-embed for document {document_id}")
-        return job.job_id if job is not None else None
+        self.logger.info(f"Enqueued metadata re-embed for document {document_id} (job {job_id})")
+        return job_id
 
     async def queue_depth(self) -> int:
         """

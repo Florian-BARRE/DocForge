@@ -46,6 +46,7 @@ def _job_status(status: str) -> JobStatus:
         document_id="33333333-3333-3333-3333-333333333333",
         collection_id="11111111-1111-1111-1111-111111111111",
         status=status,
+        kind="ingest",
         cancel_requested=False,
         progress=0,
         attempt=1,

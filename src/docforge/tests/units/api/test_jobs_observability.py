@@ -99,6 +99,9 @@ def test_job_status_duration_seconds() -> None:
     """from_row computes duration: terminal = finished−started, running = elapsed, queued = None."""
     from backend.routers.jobs.models import JobStatus  # noqa: PLC0415
     from shared_libs.services.db.postgresql.tables import (
+        JobKind,  # noqa: PLC0415
+    )
+    from shared_libs.services.db.postgresql.tables import (
         JobStatus as JobStatusEnum,  # noqa: PLC0415
     )
 
@@ -110,6 +113,7 @@ def test_job_status_duration_seconds() -> None:
             document_id=uuid.uuid4(),
             collection_id=uuid.uuid4(),
             status=JobStatusEnum.DONE,
+            kind=JobKind.INGEST,
             cancel_requested=False,
             progress=100,
             current_stage=None,

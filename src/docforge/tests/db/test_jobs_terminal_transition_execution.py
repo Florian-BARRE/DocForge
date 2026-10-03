@@ -19,6 +19,14 @@ Covered, end to end:
   * mark_failed closes the open stage-event row on a real transition, but leaves the timeline untouched
     when the job was already made terminal by a concurrent writer (rowcount 0).
 
+Also covers the 0.22.1 side-job correctness fixes (a non-ingest ``metadata_sync`` row in the shared
+ingest-oriented job table):
+  * _terminate's KIND GATE — force-cancelling or reaping a metadata_sync side-job (which is the
+    document's LATEST job, so the latest-owner guard alone would pass) terminates the JOB but leaves the
+    healthy DONE document UNCHANGED; only an ingest termination mirrors document status.
+  * abandon — a PENDING metadata_sync row whose enqueue failed is flipped FAILED (freeing the
+    ``uq_job_active_per_document`` lock) so a subsequent create_metadata_sync no longer wedges.
+
 Each test opens its own engine/session against the session-scoped migrated throwaway db and seeds its
 own collection/document/job, so the tests are order-independent (every read is id-scoped).
 """
@@ -26,7 +34,7 @@ own collection/document/job, so the tests are order-independent (every read is i
 # ====== Standard Library Imports ======
 import uuid
 from collections.abc import AsyncIterator
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 # ====== Third-Party Library Imports ======
 import pytest
@@ -42,6 +50,7 @@ from shared_libs.services.db.postgresql.tables import (
     Document,
     DocumentStatus,
     Job,
+    JobKind,
     JobStageEvent,
     JobStatus,
     SourceKind,
@@ -229,6 +238,178 @@ async def test_terminate_does_not_flip_a_fully_ingested_document(
     doc_status = await session.scalar(select(Document.status).where(Document.id == doc_id))
     assert doc_status == DocumentStatus.DONE
     assert await _status_of(session, job_id) == JobStatus.DONE
+
+
+# ── _terminate kind gate — terminating a metadata_sync side-job never writes DOCUMENT status ─────────
+
+
+async def _seed_side_job_over_done_document(
+    db_session: AsyncSession, *, worker_id: str | None = None
+) -> tuple[uuid.UUID, uuid.UUID]:
+    """Seed a DONE document owned by a terminal INGEST job, then a live ``metadata_sync`` side-job that
+    is the document's LATEST job (the trap: the latest-owner guard alone would pass). Commits so a
+    facade on its own connection sees the rows. Returns (metadata_sync_job_id, document_id)."""
+    # 1. Collection + a fully-ingested (DONE) document.
+    collection = Collection(
+        name=f"kind-gate-{uuid.uuid4().hex[:8]}",
+        supported_formats=["pdf"],
+        max_file_size_bytes=10_000_000,
+    )
+    db_session.add(collection)
+    await db_session.flush()
+    document = Document(
+        collection_id=collection.id,
+        source_hash=f"hash-{uuid.uuid4().hex}",
+        filename="doc.pdf",
+        format="pdf",
+        mime_type="application/pdf",
+        file_size=1024,
+        source_kind=SourceKind.DIGITAL_BORN,
+        status=DocumentStatus.DONE,
+        pipeline_version="v1",
+    )
+    db_session.add(document)
+    await db_session.flush()
+
+    # 2. The terminal INGEST run that produced the IR — an EARLIER row (explicit created_at so the
+    #    side-job below is unambiguously the document's latest, independent of UUID tiebreaks).
+    base = datetime.now(UTC)
+    ingest = Job(
+        document_id=document.id,
+        collection_id=collection.id,
+        kind=JobKind.INGEST,
+        status=JobStatus.DONE,
+        created_at=base - timedelta(minutes=5),
+        started_at=base - timedelta(minutes=5),
+        finished_at=base - timedelta(minutes=4),
+    )
+    db_session.add(ingest)
+    await db_session.flush()
+
+    # 3. The live metadata_sync side-job minted AFTER the ingest — the document's LATEST job.
+    side = Job(
+        document_id=document.id,
+        collection_id=collection.id,
+        kind=JobKind.METADATA_SYNC,
+        status=JobStatus.RUNNING,
+        worker_id=worker_id,
+        created_at=base,
+        started_at=base,
+    )
+    db_session.add(side)
+    await db_session.flush()
+    # Capture the plain UUIDs BEFORE commit: commit expires the ORM objects, so a later attribute
+    # access would trigger a sync lazy-load outside the async greenlet (MissingGreenlet).
+    side_id, document_id = side.id, document.id
+    await db_session.commit()
+    return side_id, document_id
+
+
+async def test_force_terminate_metadata_sync_does_not_flip_the_document(
+    migrated_db_dsn: str, session: AsyncSession
+) -> None:
+    """Finding 1 (cancel path): force-cancelling a metadata_sync side-job terminates the JOB but must
+    leave its healthy DONE document untouched — the side-job is the document's latest job, so without
+    the kind gate the latest-owner guard would pass and flip the DONE document to CANCELLED."""
+    side_job_id, doc_id = await _seed_side_job_over_done_document(session)
+
+    client = PostgresClient(migrated_db_dsn)
+    try:
+        facade = JobsFacade(client)
+        returned = await facade.force_terminate(side_job_id, reason="manual cancel")
+    finally:
+        await client.dispose()
+
+    # (a) The side-job row IS terminated (it genuinely is over; terminating frees the active lock).
+    assert returned is not None
+    assert await _status_of(session, side_job_id) == JobStatus.CANCELLED
+    # (b) The DOCUMENT is UNCHANGED — still DONE, never clobbered to CANCELLED.
+    session.expire_all()
+    assert (
+        await session.scalar(select(Document.status).where(Document.id == doc_id))
+        == DocumentStatus.DONE
+    )
+
+
+async def test_reclaim_metadata_sync_does_not_flip_the_document(
+    migrated_db_dsn: str, session: AsyncSession
+) -> None:
+    """Finding 1 (reaper path): the worker-restart reclaim failing a leftover RUNNING metadata_sync job
+    must fail only the JOB, never its DONE document — same kind gate, through the reaper code path."""
+    worker_id = f"worker-{uuid.uuid4().hex[:8]}"
+    side_job_id, doc_id = await _seed_side_job_over_done_document(session, worker_id=worker_id)
+
+    client = PostgresClient(migrated_db_dsn)
+    try:
+        facade = JobsFacade(client)
+        reclaimed = await facade.reclaim_worker_jobs(worker_id)
+    finally:
+        await client.dispose()
+
+    # (a) The side-job row was reclaimed to FAILED.
+    assert side_job_id in reclaimed
+    assert await _status_of(session, side_job_id) == JobStatus.FAILED
+    # (b) The DOCUMENT is UNCHANGED — still DONE, never clobbered to FAILED.
+    session.expire_all()
+    assert (
+        await session.scalar(select(Document.status).where(Document.id == doc_id))
+        == DocumentStatus.DONE
+    )
+
+
+async def test_abandon_fails_a_pending_side_job_and_frees_the_active_lock(
+    migrated_db_dsn: str, session: AsyncSession
+) -> None:
+    """Finding 2: a metadata_sync row whose enqueue failed must be abandoned — ``abandon`` flips the
+    PENDING row to FAILED (mark_terminal admits pending) so it leaves the ``uq_job_active_per_document``
+    predicate, and a subsequent ``create_metadata_sync`` for the same document succeeds instead of
+    hitting the unique violation (the wedge the orphaned PENDING row would otherwise cause)."""
+    # 1. A collection + a document, seeded + committed so the facade's own connection sees them.
+    collection = Collection(
+        name=f"abandon-{uuid.uuid4().hex[:8]}",
+        supported_formats=["pdf"],
+        max_file_size_bytes=10_000_000,
+    )
+    session.add(collection)
+    await session.flush()
+    document = Document(
+        collection_id=collection.id,
+        source_hash=f"hash-{uuid.uuid4().hex}",
+        filename="doc.pdf",
+        format="pdf",
+        mime_type="application/pdf",
+        file_size=1024,
+        source_kind=SourceKind.DIGITAL_BORN,
+        status=DocumentStatus.DONE,
+        pipeline_version="v1",
+    )
+    session.add(document)
+    await session.flush()
+    # Capture the ids BEFORE commit (commit expires the ORM objects — a later ``.id`` would lazy-load
+    # synchronously outside the async greenlet).
+    document_id, collection_id = document.id, collection.id
+    await session.commit()
+
+    client = PostgresClient(migrated_db_dsn)
+    try:
+        facade = JobsFacade(client)
+        # 2. Pre-create the tracked metadata_sync row (the enqueue then "fails"), and abandon it.
+        orphan_id = await facade.create_metadata_sync(document_id, collection_id)
+        await facade.abandon(orphan_id, reason="enqueue failed")
+        # 3. The lock is free — a fresh create_metadata_sync must not hit the unique violation.
+        second_id = await facade.create_metadata_sync(document_id, collection_id)
+    finally:
+        await client.dispose()
+
+    # The orphan is terminal (FAILED, outside the active predicate); the second row is live.
+    assert await _status_of(session, orphan_id) == JobStatus.FAILED
+    assert await _status_of(session, second_id) == JobStatus.PENDING
+    # The DOCUMENT was never touched by the side-job termination.
+    session.expire_all()
+    assert (
+        await session.scalar(select(Document.status).where(Document.id == document_id))
+        == DocumentStatus.DONE
+    )
 
 
 # ── mark_failed — closes the open stage row only on a real transition ───────────────────────────────

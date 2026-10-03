@@ -20,7 +20,7 @@ from sqlalchemy.dialects import postgresql
 
 from shared_libs.services.db.facades import JobsFacade
 from shared_libs.services.db.facades import jobs_facade as facade_module
-from shared_libs.services.db.postgresql.tables import DocumentStatus, JobStatus
+from shared_libs.services.db.postgresql.tables import DocumentStatus, JobKind, JobStatus
 
 
 def _postgres_yielding(session: MagicMock) -> MagicMock:
@@ -173,7 +173,7 @@ async def test_reap_stale_fails_each_stale_job_and_its_document(monkeypatch) -> 
     # returns the terminated job so the facade can mirror its document) + DocumentApi.set_status.
     mark_terminal = AsyncMock(
         side_effect=lambda session, job_id, **kw: SimpleNamespace(
-            id=job_id, document_id=doc_by_job[job_id]
+            id=job_id, document_id=doc_by_job[job_id], kind=JobKind.INGEST
         )
     )
     set_status = AsyncMock()
@@ -243,7 +243,9 @@ async def test_terminate_does_not_clobber_a_newer_jobs_document_state(monkeypatc
     newer_job_id = uuid.uuid4()  # the document's current owner — a different, newer job
     monkeypatch.setattr(facade_module.JobApi, "list_stale", AsyncMock(return_value=[old_job]))
     mark_terminal = AsyncMock(
-        return_value=SimpleNamespace(id=old_job.id, document_id=old_job.document_id)
+        return_value=SimpleNamespace(
+            id=old_job.id, document_id=old_job.document_id, kind=JobKind.INGEST
+        )
     )
     # get_latest_for_document returns the NEWER job, so the old reaped job is not the owner.
     get_latest = AsyncMock(return_value=SimpleNamespace(id=newer_job_id))
@@ -280,7 +282,7 @@ async def test_reap_over_job_timeout_fails_each_wedged_job_with_job_timeout_exce
     )
     mark_terminal = AsyncMock(
         side_effect=lambda session, job_id, **kw: SimpleNamespace(
-            id=job_id, document_id=doc_by_job[job_id]
+            id=job_id, document_id=doc_by_job[job_id], kind=JobKind.INGEST
         )
     )
     get_latest = AsyncMock(
@@ -658,7 +660,7 @@ async def test_reclaim_fails_each_own_orphan_and_its_document(monkeypatch) -> No
     )
     mark_terminal = AsyncMock(
         side_effect=lambda session, job_id, **kw: SimpleNamespace(
-            id=job_id, document_id=doc_by_job[job_id]
+            id=job_id, document_id=doc_by_job[job_id], kind=JobKind.INGEST
         )
     )
     get_latest = AsyncMock(

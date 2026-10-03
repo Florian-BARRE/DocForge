@@ -10,8 +10,26 @@ const BASE = "/api/v1/jobs";
 // terminal state for a stopped job (queued-before-it-ran, cooperative stop honoured, or forced).
 export type JobStatusValue = "pending" | "running" | "done" | "failed" | "cancelled" | string;
 
+/** What a job tracks: a full pipeline run or a lightweight per-document metadata re-embed. Open
+ *  `| string` like JobStatusValue so a future backend kind degrades to its raw label. */
+export type JobKindValue = "ingest" | "metadata_sync" | string;
+
+const JOB_KIND_LABEL: Record<string, string> = { ingest: "ingestion", metadata_sync: "metadata sync" };
+
+/** Human label for a job kind; unknown kinds fall back to the raw enum with underscores softened. */
+export function jobKindLabel(kind: JobKindValue): string {
+  return JOB_KIND_LABEL[kind] ?? kind.replace(/_/g, " ");
+}
+
+/** Only ingest jobs carry cache/force re-run semantics (a missing kind = a pre-kind payload = ingest). */
+export function isIngestJob(job: Pick<JobStatus, "kind">): boolean {
+  return (job.kind ?? "ingest") === "ingest";
+}
+
 export interface JobStatus {
   job_id: string;
+  /** What this job tracks (`ingest` | `metadata_sync`). */
+  kind: JobKindValue;
   document_id: string;
   /** The document's filename, joined at read — null only if the document row is gone. */
   document_filename: string | null;
@@ -447,8 +465,9 @@ export interface JobStreamHandlers {
  *
  * The API is header-only auth (Authorization: Bearer), which the native EventSource cannot set — so
  * we open the stream with `fetch` (which CAN carry the header) and parse the `data: {json}\n\n`
- * frames off the ReadableStream ourselves. Each frame carries a `kind` — `"event"` (a stage event)
- * or `"status"` (a JobStatus snapshot). Resolves when the server closes the stream (job terminal),
+ * frames off the ReadableStream ourselves. Each frame carries a `frame` type — `"event"` (a stage
+ * event) or `"status"` (a JobStatus snapshot, which carries its own job `kind`). Resolves when the
+ * server closes the stream (job terminal),
  * rejects on a non-2xx open or a transport error so callers can fall back to polling.
  */
 export async function streamJobEvents(jobId: string, handlers: JobStreamHandlers): Promise<void> {
@@ -486,8 +505,8 @@ export async function streamJobEvents(jobId: string, handlers: JobStreamHandlers
       } catch {
         continue; // partial/garbled frame — skip it, never crash the stream
       }
-      if (frame.kind === "event") handlers.onEvent(frame as unknown as JobEvent);
-      else if (frame.kind === "status") handlers.onStatus(frame as unknown as JobStatus);
+      if (frame.frame === "event") handlers.onEvent(frame as unknown as JobEvent);
+      else if (frame.frame === "status") handlers.onStatus(frame as unknown as JobStatus);
     }
   }
 }

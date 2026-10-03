@@ -20,6 +20,7 @@ def _job(status: str, progress: int, stage: str | None) -> SimpleNamespace:
         document_id="22222222-2222-2222-2222-222222222222",
         collection_id="33333333-3333-3333-3333-333333333333",
         status=SimpleNamespace(value=status),
+        kind=SimpleNamespace(value="ingest"),
         progress=progress,
         current_stage=stage,
         error=None,
@@ -153,15 +154,15 @@ def test_generator_pushes_events_and_stops_at_terminal() -> None:
     payloads = _payloads(frames)
 
     # 1. Every emitted stage event rode through exactly once (3 distinct events over the 3 polls).
-    event_stages = [p["stage"] for p in payloads if p["kind"] == "event"]
+    event_stages = [p["stage"] for p in payloads if p["frame"] == "event"]
     assert event_stages == ["intake", "chunk", "embed"]
 
     # 2. Status frames only when the snapshot moved (running@10 → running@60 → done@100).
-    statuses = [(p["status"], p["progress"]) for p in payloads if p["kind"] == "status"]
+    statuses = [(p["status"], p["progress"]) for p in payloads if p["frame"] == "status"]
     assert statuses == [("running", 10), ("running", 60), ("done", 100)]
 
     # 3. The stream closed on the terminal status — the last frame is the done status.
-    assert payloads[-1]["kind"] == "status" and payloads[-1]["status"] == "done"
+    assert payloads[-1]["frame"] == "status" and payloads[-1]["status"] == "done"
 
 
 def test_stream_polls_lean_until_terminal_then_full() -> None:
@@ -223,7 +224,7 @@ def test_stream_reads_incrementally_after_a_cursor() -> None:
 
     # 2. Each stage event still rode through exactly once, in order — the incremental read never
     #    re-emits an already-seen row nor drops a new one (the SSE contract is unchanged).
-    event_stages = [p["stage"] for p in _payloads(frames) if p["kind"] == "event"]
+    event_stages = [p["stage"] for p in _payloads(frames) if p["frame"] == "event"]
     assert event_stages == ["intake", "chunk", "embed"]
 
 
@@ -245,7 +246,7 @@ def test_terminal_frame_carries_summaries_lean_frames_do_not() -> None:
         events=[[running_event], [running_event, nested_event]],
     )
     frames = asyncio.run(_drain(stream_job_events(jobs, "job", poll_interval=0, sleep=_noop_sleep)))
-    event_payloads = [p for p in _payloads(frames) if p["kind"] == "event"]
+    event_payloads = [p for p in _payloads(frames) if p["frame"] == "event"]
 
     # The first (lean, mid-run) frame reports null summaries; the terminal poll surfaces the nested
     # row's summaries in full — the same from_row mapper, read two ways per include_summaries.
@@ -272,7 +273,7 @@ def test_generator_closes_on_a_cancelled_job() -> None:
 
     payloads = _payloads(asyncio.run(_run()))
     # The final frame is the cancelled status and the generator returned (no infinite poll).
-    assert payloads[-1]["kind"] == "status" and payloads[-1]["status"] == "cancelled"
+    assert payloads[-1]["frame"] == "status" and payloads[-1]["status"] == "cancelled"
 
 
 def test_generator_closes_on_a_vanished_job() -> None:
@@ -282,7 +283,7 @@ def test_generator_closes_on_a_vanished_job() -> None:
     jobs = SimpleNamespace(get=AsyncMock(return_value=None), list_events=AsyncMock(return_value=[]))
     frames = asyncio.run(_drain(stream_job_events(jobs, "job", poll_interval=0, sleep=_noop_sleep)))
     payloads = _payloads(frames)
-    assert payloads == [{"kind": "status", "job_id": "job", "status": "gone"}]
+    assert payloads == [{"frame": "status", "job_id": "job", "status": "gone"}]
 
 
 def test_stream_route_is_registered(fastapi_app) -> None:
@@ -307,7 +308,7 @@ def test_stream_route_streams_event_stream(client, monkeypatch) -> None:
     assert response.status_code == 200, response.text
     assert response.headers["content-type"].startswith("text/event-stream")
     payloads = _payloads([f + "\n\n" for f in response.text.split("\n\n") if f.strip()])
-    kinds = {p["kind"] for p in payloads}
+    kinds = {p["frame"] for p in payloads}
     assert kinds == {"event", "status"}
     assert payloads[-1]["status"] == "done"
 

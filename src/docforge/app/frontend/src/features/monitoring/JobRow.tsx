@@ -3,7 +3,8 @@
 // WorkerCard (a worker's currently running jobs), since both work off the same JobStatus shape.
 
 import { useState, type ReactNode } from "react";
-import type { JobStatus } from "../../api/jobs";
+import { isIngestJob, type JobStatus } from "../../api/jobs";
+import { JobKindChip } from "../../components/trace/JobKindChip";
 import { JobStatusChip } from "../../components/trace/JobStatusChip";
 import { theme } from "../../theme";
 import { ItemProgressChip } from "./ItemProgressChip";
@@ -54,6 +55,7 @@ export function JobRow({ job, onClick, onUpdated, footer }: JobRowProps) {
       <div style={{ display: "flex", alignItems: "flex-start", gap: theme.space.s }}>
         <JobIdentity job={job} />
         <div style={{ marginLeft: "auto", display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "flex-end", gap: theme.space.xs }}>
+          {!isIngestJob(job) && <JobKindChip kind={job.kind} />}
           <JobStatusChip status={job.status} />
           {job.stalled && (
             <span

@@ -21,13 +21,14 @@ def _full():
 
 
 def _job(*, cancel_requested=False):
-    from shared_libs.services.db.postgresql.tables import JobStatus  # noqa: PLC0415
+    from shared_libs.services.db.postgresql.tables import JobKind, JobStatus  # noqa: PLC0415
 
     return SimpleNamespace(
         id=uuid.uuid4(),
         document_id=uuid.uuid4(),
         collection_id=uuid.UUID(COLL_A),
         status=JobStatus.RUNNING,
+        kind=JobKind.INGEST,
         cancel_requested=cancel_requested,
         progress=40,
         current_stage="chunk",

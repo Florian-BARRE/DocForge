@@ -35,6 +35,7 @@ from .observability import (
     IdempotencyKey,
     IdempotencyState,
     Job,
+    JobKind,
     JobStageEvent,
     JobStatus,
     TransferKind,
@@ -80,6 +81,7 @@ __all__ = [
     "ChunkMetadata",
     # observability
     "Job",
+    "JobKind",
     "JobStatus",
     "JobStageEvent",
     "WorkerHeartbeat",

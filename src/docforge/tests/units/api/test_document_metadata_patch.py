@@ -29,27 +29,44 @@ def _document() -> SimpleNamespace:
     return SimpleNamespace(id=uuid.uuid4(), collection_id=uuid.uuid4())
 
 
-def _wire(monkeypatch, *, document, result=None, error=None) -> AsyncMock:
-    """Point CONTEXT.database + CONTEXT.queue at stubs; return the queue enqueue mock."""
+def _wire(monkeypatch, *, document, result=None, error=None, tracked_job_id=None):
+    """Point CONTEXT.database + CONTEXT.queue at stubs; return the wired mocks.
+
+    The router pre-creates a tracked ``metadata_sync`` job row (``jobs.create_metadata_sync``) and
+    hands its id to the queue, which echoes it back as the returned job id — this mirrors that seam so
+    the returned ``job_id`` is the DB row id, never arq's. Returns a namespace of the three handles.
+    """
     from backend.context import CONTEXT  # noqa: PLC0415
 
     update = AsyncMock(side_effect=error) if error is not None else AsyncMock(return_value=result)
     documents = SimpleNamespace(get=AsyncMock(return_value=document))
     metadata_edit = SimpleNamespace(update_document_metadata=update)
+    job_id = tracked_job_id if tracked_job_id is not None else uuid.uuid4()
+    create_sync = AsyncMock(return_value=job_id)
+    # The enqueue-failure cleanup: the router abandons a minted-but-unqueued row to free its lock.
+    abandon = AsyncMock(return_value=None)
+    jobs = SimpleNamespace(create_metadata_sync=create_sync, abandon=abandon)
     monkeypatch.setattr(
-        CONTEXT, "database", SimpleNamespace(documents=documents, metadata_edit=metadata_edit)
+        CONTEXT,
+        "database",
+        SimpleNamespace(documents=documents, metadata_edit=metadata_edit, jobs=jobs),
     )
-    enqueue = AsyncMock(return_value="job-123")
+    # The real enqueue echoes back the DB job id it was handed — stub that so the response carries it.
+    enqueue = AsyncMock(side_effect=lambda document_id, passed_job_id: passed_job_id)
     monkeypatch.setattr(CONTEXT, "queue", SimpleNamespace(enqueue_document_metadata_sync=enqueue))
-    return enqueue
+    return SimpleNamespace(enqueue=enqueue, create_sync=create_sync, abandon=abandon, job_id=job_id)
 
 
 # -------------------- happy paths --------------------
 def test_semantic_change_enqueues_reembed(client, fastapi_app, edit_result, monkeypatch) -> None:
-    """A changed semantic field enqueues the re-embed job and returns its id + reembedding=True."""
+    """A changed semantic field pre-creates the tracked job row and returns ITS id (never arq's).
+
+    The exact regression: the returned job_id must be the pre-created DB job row's id (kind=
+    metadata_sync), so a poll of GET /jobs/{id} resolves instead of 404-ing on arq's internal id.
+    """
     document = _document()
     result = edit_result(updated_fields=["abstract"], reembed_fields=["abstract"])
-    enqueue = _wire(monkeypatch, document=document, result=result)
+    wired = _wire(monkeypatch, document=document, result=result)
 
     response = client.patch(
         f"/api/v1/documents/{document.id}/metadata", json={"values": {"abstract": "x"}}
@@ -61,9 +78,11 @@ def test_semantic_change_enqueues_reembed(client, fastapi_app, edit_result, monk
         "updated_fields": ["abstract"],
         "reembedding": True,
         "reembed_fields": ["abstract"],
-        "job_id": "job-123",
+        "job_id": str(wired.job_id),
     }
-    enqueue.assert_awaited_once_with(str(document.id))
+    # The tracked row is minted for this document + its collection, then its id is handed to the queue.
+    wired.create_sync.assert_awaited_once_with(document.id, document.collection_id)
+    wired.enqueue.assert_awaited_once_with(str(document.id), str(wired.job_id))
 
 
 def test_filterable_only_change_does_not_enqueue(
@@ -72,7 +91,7 @@ def test_filterable_only_change_does_not_enqueue(
     """A filterable-only change is fully handled synchronously — NO re-embed job, job_id null."""
     document = _document()
     result = edit_result(updated_fields=["topic"], reembed_fields=[])
-    enqueue = _wire(monkeypatch, document=document, result=result)
+    wired = _wire(monkeypatch, document=document, result=result)
 
     response = client.patch(
         f"/api/v1/documents/{document.id}/metadata", json={"values": {"topic": "ai"}}
@@ -83,7 +102,8 @@ def test_filterable_only_change_does_not_enqueue(
     assert body["reembedding"] is False
     assert body["job_id"] is None
     assert body["reembed_fields"] == []
-    enqueue.assert_not_awaited()
+    wired.create_sync.assert_not_awaited()
+    wired.enqueue.assert_not_awaited()
 
 
 def test_filter_repaint_failure_enqueues_repair(
@@ -93,7 +113,7 @@ def test_filter_repaint_failure_enqueues_repair(
     Qdrant payload gets reconciled) and returns 200 — the committed write is never surfaced as a 500."""
     document = _document()
     result = edit_result(updated_fields=["topic"], reembed_fields=[], filter_repaint_failed=True)
-    enqueue = _wire(monkeypatch, document=document, result=result)
+    wired = _wire(monkeypatch, document=document, result=result)
 
     response = client.patch(
         f"/api/v1/documents/{document.id}/metadata", json={"values": {"topic": "ai"}}
@@ -102,8 +122,9 @@ def test_filter_repaint_failure_enqueues_repair(
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["reembedding"] is False
-    assert body["job_id"] == "job-123"  # the durable repair job
-    enqueue.assert_awaited_once_with(str(document.id))
+    assert body["job_id"] == str(wired.job_id)  # the durable repair job's tracked row id
+    wired.create_sync.assert_awaited_once_with(document.id, document.collection_id)
+    wired.enqueue.assert_awaited_once_with(str(document.id), str(wired.job_id))
 
 
 def test_enqueue_failure_does_not_500(client, fastapi_app, edit_result, monkeypatch) -> None:
@@ -111,8 +132,8 @@ def test_enqueue_failure_does_not_500(client, fastapi_app, edit_result, monkeypa
     500 — the response is 200 with job_id null (the write landed; the re-embed just wasn't scheduled)."""
     document = _document()
     result = edit_result(updated_fields=["abstract"], reembed_fields=["abstract"])
-    enqueue = _wire(monkeypatch, document=document, result=result)
-    enqueue.side_effect = RuntimeError("redis down")
+    wired = _wire(monkeypatch, document=document, result=result)
+    wired.enqueue.side_effect = RuntimeError("redis down")
 
     response = client.patch(
         f"/api/v1/documents/{document.id}/metadata", json={"values": {"abstract": "x"}}
@@ -122,6 +143,33 @@ def test_enqueue_failure_does_not_500(client, fastapi_app, edit_result, monkeypa
     body = response.json()
     assert body["job_id"] is None
     assert body["reembedding"] is True
+    # The row was minted before the enqueue blew up, so it is abandoned to free its active-job lock
+    # (otherwise the PENDING row wedges the next edit/reingest and is never reaped).
+    wired.abandon.assert_awaited_once()
+    assert wired.abandon.await_args.args[0] == wired.job_id
+
+
+def test_job_row_creation_failure_does_not_500(
+    client, fastapi_app, edit_result, monkeypatch
+) -> None:
+    """A failure minting the tracked job row (e.g. the active-job unique guard) is best-effort too —
+    the committed edit returns 200 with job_id null, and the queue is never contacted."""
+    document = _document()
+    result = edit_result(updated_fields=["abstract"], reembed_fields=["abstract"])
+    wired = _wire(monkeypatch, document=document, result=result)
+    wired.create_sync.side_effect = RuntimeError("active-job conflict")
+
+    response = client.patch(
+        f"/api/v1/documents/{document.id}/metadata", json={"values": {"abstract": "x"}}
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["job_id"] is None
+    assert body["reembedding"] is True
+    wired.enqueue.assert_not_awaited()
+    # No row was minted (create itself failed), so there is nothing to abandon.
+    wired.abandon.assert_not_awaited()
 
 
 # -------------------- error mapping --------------------

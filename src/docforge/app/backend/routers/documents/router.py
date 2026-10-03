@@ -389,18 +389,44 @@ async def update_document_metadata(
 
     # 3. Schedule the per-document reconciliation job when a changed semantic/lexical field needs its
     #    named vectors re-embedded (a provider/spend call, never in the request) OR when the inline
-    #    filterable repaint failed (the job re-runs it as the durable repair). Best-effort: the edit is
-    #    already committed, so a Redis hiccup here must NOT surface it as a 500 — log and report no job.
+    #    filterable repaint failed (the job re-runs it as the durable repair). A TRACKED job row is
+    #    pre-created first (kind=metadata_sync) and its id handed to the worker as a task argument —
+    #    so the returned job_id is pollable via GET /jobs/{id} and the UI can watch it complete, unlike
+    #    arq's own internal id. Best-effort: the value edit is already committed (the source of truth),
+    #    so a job-row/Redis hiccup here must NOT surface it as a 500 — log and report no job.
     job_id: str | None = None
     if result.reembed_fields or result.filter_repaint_failed:
+        tracked_job_id: uuid.UUID | None = None
         try:
-            job_id = await CONTEXT.queue.enqueue_document_metadata_sync(str(document_id))
+            tracked_job_id = await CONTEXT.database.jobs.create_metadata_sync(
+                document_id, document.collection_id
+            )
+            job_id = await CONTEXT.queue.enqueue_document_metadata_sync(
+                str(document_id), str(tracked_job_id)
+            )
         except Exception:
             CONTEXT.logger.error(
-                f"Failed to enqueue the metadata reconciliation job for {document_id} after the edit "
-                f"committed — Qdrant may stay stale until a retry or a collection backfill",
+                f"Failed to create/enqueue the metadata reconciliation job for {document_id} after "
+                f"the edit committed — Qdrant may stay stale until a retry or a collection backfill",
                 exc_info=True,
             )
+            # If the tracked row was minted but the enqueue failed, abandon it: a PENDING metadata_sync
+            # row holds the uq_job_active_per_document lock (wedging the next edit/reingest) and is never
+            # reaped (reap queries are RUNNING-only), so it must be failed here to free the document.
+            # The cleanup is itself best-effort — the value edit is committed, so a cleanup hiccup must
+            # not surface as a 500 either (the row then stays until a manual retry frees it).
+            if tracked_job_id is not None and job_id is None:
+                try:
+                    await CONTEXT.database.jobs.abandon(
+                        tracked_job_id,
+                        "enqueue failed: the metadata re-sync task could not be scheduled",
+                    )
+                except Exception:
+                    CONTEXT.logger.error(
+                        f"Failed to abandon the orphaned metadata_sync job {tracked_job_id} for "
+                        f"{document_id} — it may hold the active-job lock until a manual retry",
+                        exc_info=True,
+                    )
 
     CONTEXT.logger.info(
         f"Updated metadata on {document_id}: {result.updated_fields} (reembed job {job_id or 'none'})"

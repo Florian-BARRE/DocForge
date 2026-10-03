@@ -55,6 +55,7 @@ def _fake_job(collection_id: str):
         document_id=uuid.uuid4(),
         collection_id=uuid.UUID(collection_id),
         status=SimpleNamespace(value="done"),
+        kind=SimpleNamespace(value="ingest"),
         cancel_requested=False,
         progress=100,
         current_stage="embed",

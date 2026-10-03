@@ -26,6 +26,7 @@ from shared_libs.services.db.postgresql.apis.job_api import (
 from shared_libs.services.db.postgresql.tables import (
     DocumentStatus,
     Job,
+    JobKind,
     JobStageEvent,
     JobStatus,
     WorkerHeartbeat,
@@ -181,6 +182,80 @@ class JobsFacade(LoggerClass):
         """Each collection's last successful ingest in ONE grouped query — the fleet last-ingest."""
         async with self._postgres.session() as session:
             return await JobApi.last_successful_ingest_at_by_collections(session, collection_ids)
+
+    async def create_metadata_sync(
+        self, document_id: uuid.UUID, collection_id: uuid.UUID
+    ) -> uuid.UUID:
+        """
+        Pre-create a tracked ``metadata_sync`` job row (QUEUED) for a per-document value edit.
+
+        The metadata value-edit path mirrors ingestion's "the caller mints the job row, the worker
+        drives its lifecycle" contract: the row exists BEFORE the task is enqueued, so the id handed
+        back to the client is immediately retrievable via ``GET /jobs/{id}`` (never a 404). Only the
+        fields a non-ingest side-job needs are set — ``kind=metadata_sync``, the document + collection,
+        status PENDING (the "queued" state); the ingest-specific nullable columns stay null. This job
+        tracks no pipeline stages, so no stage-event row is opened here.
+
+        NOTE: the ``uq_job_active_per_document`` partial-unique index is kind-agnostic, so this INSERT
+        raises if the document already has a live (PENDING/RUNNING) job of ANY kind — which is the
+        intended guard (a metadata re-embed must not race a full reingest of the same document). The
+        router treats a failure here as best-effort (the value write already committed), so that rare
+        conflict surfaces as ``job_id=null``, never a 500.
+
+        Args:
+            document_id (uuid.UUID): The document whose metadata is being re-synced.
+            collection_id (uuid.UUID): That document's collection.
+
+        Returns:
+            uuid.UUID: The freshly-created job row's id (the tracked, pollable id).
+        """
+        async with self._postgres.session() as session:
+            job = Job(
+                document_id=document_id,
+                collection_id=collection_id,
+                kind=JobKind.METADATA_SYNC,
+                status=JobStatus.PENDING,
+            )
+            await JobApi.create(session, job)
+            return job.id
+
+    async def abandon(self, job_id: uuid.UUID, reason: str) -> None:
+        """
+        Fail a just-created side-job WITHOUT touching its document — frees the active-job lock.
+
+        The cleanup for a pre-created ``metadata_sync`` row whose enqueue then failed: the committed
+        value edit stays the source of truth, but the orphaned row would otherwise (a) hold the
+        ``uq_job_active_per_document`` lock — whose predicate covers PENDING — so the next edit's
+        ``create_metadata_sync`` hits the unique violation and the next reingest returns ALREADY_ACTIVE,
+        and (b) never be reaped (every reap query is RUNNING-only). ``JobApi.mark_terminal`` flips the
+        PENDING (or RUNNING) row to FAILED, so it leaves the lock predicate and the document is free
+        again. The document status is deliberately NOT mirrored — consistent with ``_terminate``'s kind
+        gate (a side-job termination never writes document status).
+
+        Best-effort: it runs as cleanup after the edit already committed, on a path the caller treats as
+        non-fatal (the response is 200 with ``job_id=null`` regardless), so a DB hiccup here is logged
+        and swallowed rather than surfaced as a 500 — never masking the already-reported enqueue error.
+
+        Args:
+            job_id (uuid.UUID): The orphaned side-job row to fail.
+            reason (str): The human-readable reason recorded on the row.
+        """
+        # 1. Flip the live row terminal in its own transaction (best-effort — never re-raise).
+        try:
+            async with self._postgres.session() as session:
+                await JobApi.mark_terminal(
+                    session,
+                    job_id,
+                    status=JobStatus.FAILED,
+                    reason=reason,
+                    finished_at=datetime.now(UTC),
+                )
+        except Exception:
+            self.logger.error(
+                f"Failed to abandon orphaned side-job {job_id} after its enqueue failed — the "
+                f"document may stay locked until the row is reaped or the job completes",
+                exc_info=True,
+            )
 
     async def mark_running(
         self, job_id: uuid.UUID, worker_id: str, attempt: int, started_at: datetime
@@ -423,18 +498,25 @@ class JobsFacade(LoggerClass):
         error_type: str | None = None,
     ) -> Job | None:
         """
-        Transition ONE job to a terminal status AND its document to a terminal status, atomically.
+        Transition ONE job to a terminal status, mirroring onto its document ONLY for ingest jobs.
 
         The single force-terminate code path shared by cancel-force and the cron reaper: it marks the
-        job terminal (closing its open stage row) via ``JobApi.mark_terminal`` and flags its owning
-        document terminal, in the SAME transaction. Session-scoped so the reaper can loop it over many
-        stale jobs in one unit of work.
+        job terminal (closing its open stage row) via ``JobApi.mark_terminal`` and, for an INGEST job,
+        flags its owning document terminal, in the SAME transaction. Session-scoped so the reaper can
+        loop it over many stale jobs in one unit of work.
 
         ``mark_terminal`` is a CONDITIONAL transition (it flips only a still-live job and RETURNs it, or
         None when the job already went terminal). A None therefore means a concurrent writer — the
         worker finishing the same job the live-worker watchdog was reaping — already closed it: this
         returns without touching the document, so a fully-ingested document is never flipped to FAILED
         under that race. The document mirror runs ONLY on a winning transition (``job is not None``).
+
+        KIND GATE: the document mirror runs ONLY for ``kind == INGEST``. A side-job (e.g. a
+        ``metadata_sync`` re-embed) is minted AFTER the last ingest, so it IS ``get_latest_for_document``
+        and the latest-owner guard alone would pass — cancelling/reaping it would then clobber a healthy
+        DONE document to CANCELLED/FAILED. Only an ingest run owns the document lifecycle, so only an
+        ingest termination mirrors status. The job ROW itself is still terminated for every kind (it
+        genuinely is over, and terminating it frees the ``uq_job_active_per_document`` lock).
 
         Args:
             session (AsyncSession): The active DB session (the caller owns the transaction).
@@ -456,13 +538,15 @@ class JobsFacade(LoggerClass):
             finished_at=datetime.now(UTC),
             error_type=error_type,
         )
-        if job is not None and job.document_id is not None:
+        if job is not None and job.document_id is not None and job.kind == JobKind.INGEST:
             # Ownership edge-guard: only mirror the terminal status onto the DOCUMENT when THIS job is
             # still the document's most-recent run. A newer job (a reingest queued while this one
             # wedged, since reingest always mints a fresh job row) OWNS the document state now — an old
             # reaped/cancelled job must never clobber the newer run's terminal/processing state. The
             # job row itself is always terminated (it genuinely is over); only the shared document
-            # write is gated. Mirrors ``DocumentApi.finalize_done``'s guard against a racing terminal.
+            # write is gated — AND gated on ``kind == INGEST`` (see the KIND GATE note above): a
+            # side-job terminating never writes document status. Mirrors ``DocumentApi.finalize_done``'s
+            # guard against a racing terminal.
             latest = await JobApi.get_latest_for_document(session, job.document_id)
             if latest is None or latest.id == job_id:
                 await DocumentApi.set_status(session, job.document_id, doc_status)

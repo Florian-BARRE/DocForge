@@ -8596,6 +8596,11 @@
                         "title": "Status",
                         "description": "queued / running / done / failed / cancelled."
                     },
+                    "kind": {
+                        "type": "string",
+                        "title": "Kind",
+                        "description": "The kind of work this job tracks: 'ingest' (a full document pipeline run) or 'metadata_sync' (a lightweight per-document metadata re-embed after an in-place value edit). Lets the UI/Activity render a side-job distinctly from a full ingestion."
+                    },
                     "cancel_requested": {
                         "type": "boolean",
                         "title": "Cancel Requested",
@@ -8779,6 +8784,7 @@
                     "document_id",
                     "collection_id",
                     "status",
+                    "kind",
                     "progress",
                     "attempt",
                     "updated_at",
@@ -8788,7 +8794,7 @@
                     "cost_usd"
                 ],
                 "title": "JobStatus",
-                "description": "One ingestion job's live state \u2014 written by the worker, only read here.\n\nAttributes:\n    job_id (str): The job row's UUID.\n    document_id (str): The document being ingested.\n    collection_id (str): Its collection.\n    status (str): queued / running / done / failed.\n    progress (int): 0\u2013100 (completed pipeline nodes over total).\n    current_stage (str | None): The node currently (or last) executed.\n    error (str | None): The failure, verbatim \u2014 only set when status is failed.\n    attempt (int): arq retry attempt (1 = first run).\n    started_at (datetime | None): When the worker picked it up.\n    finished_at (datetime | None): When it ended (done or failed).\n    updated_at (datetime): Last progress/lifecycle write \u2014 freezes when a job wedges.\n    stalled (bool): A RUNNING job idle past STALLED_AFTER_SECONDS (an early wedge warning).\n    total_prompt_tokens (int): The document's lifetime input tokens across paid text-gen calls.\n    total_completion_tokens (int): The document's lifetime output tokens.\n    cost_usd (float): The document's lifetime USD cost (0 while no priceable call has run).\n    items_done (int | None): Child items finished in the CURRENT fan-out stage (None off fan-out).\n    items_total (int | None): The current fan-out's width (None when not in a fan-out stage).\n    failed_node_id (str | None): The deepest node that raised (only set on a failed job).\n    failed_node_kind (str | None): That node's kind/family label (only set on a failed job).\n    failed_item_index (int | None): The fan-out item index the failure sits in (None outside one).\n    error_type (str | None): The exception class name (e.g. \"TimeoutError\") \u2014 set on failure."
+                "description": "One ingestion job's live state \u2014 written by the worker, only read here.\n\nAttributes:\n    job_id (str): The job row's UUID.\n    document_id (str): The document being ingested.\n    collection_id (str): Its collection.\n    status (str): queued / running / done / failed.\n    kind (str): ingest (full pipeline run) or metadata_sync (per-document metadata re-embed).\n    progress (int): 0\u2013100 (completed pipeline nodes over total).\n    current_stage (str | None): The node currently (or last) executed.\n    error (str | None): The failure, verbatim \u2014 only set when status is failed.\n    attempt (int): arq retry attempt (1 = first run).\n    started_at (datetime | None): When the worker picked it up.\n    finished_at (datetime | None): When it ended (done or failed).\n    updated_at (datetime): Last progress/lifecycle write \u2014 freezes when a job wedges.\n    stalled (bool): A RUNNING job idle past STALLED_AFTER_SECONDS (an early wedge warning).\n    total_prompt_tokens (int): The document's lifetime input tokens across paid text-gen calls.\n    total_completion_tokens (int): The document's lifetime output tokens.\n    cost_usd (float): The document's lifetime USD cost (0 while no priceable call has run).\n    items_done (int | None): Child items finished in the CURRENT fan-out stage (None off fan-out).\n    items_total (int | None): The current fan-out's width (None when not in a fan-out stage).\n    failed_node_id (str | None): The deepest node that raised (only set on a failed job).\n    failed_node_kind (str | None): That node's kind/family label (only set on a failed job).\n    failed_item_index (int | None): The fan-out item index the failure sits in (None outside one).\n    error_type (str | None): The exception class name (e.g. \"TimeoutError\") \u2014 set on failure."
             },
             "JobTimeseries": {
                 "properties": {

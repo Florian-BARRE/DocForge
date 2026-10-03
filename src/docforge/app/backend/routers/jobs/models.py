@@ -26,6 +26,7 @@ class JobStatus(BaseModel):
         document_id (str): The document being ingested.
         collection_id (str): Its collection.
         status (str): queued / running / done / failed.
+        kind (str): ingest (full pipeline run) or metadata_sync (per-document metadata re-embed).
         progress (int): 0–100 (completed pipeline nodes over total).
         current_stage (str | None): The node currently (or last) executed.
         error (str | None): The failure, verbatim — only set when status is failed.
@@ -63,6 +64,11 @@ class JobStatus(BaseModel):
         description="The collection's name, joined at read (None if the collection is gone).",
     )
     status: str = Field(description="queued / running / done / failed / cancelled.")
+    kind: str = Field(
+        description="The kind of work this job tracks: 'ingest' (a full document pipeline run) or "
+        "'metadata_sync' (a lightweight per-document metadata re-embed after an in-place value edit). "
+        "Lets the UI/Activity render a side-job distinctly from a full ingestion."
+    )
     cancel_requested: bool = Field(
         default=False,
         description="A cooperative stop has been requested; the running job stops at its next stage "
@@ -158,6 +164,7 @@ class JobStatus(BaseModel):
             collection_id=str(job.collection_id),
             collection_name=collection_name,
             status=job.status.value,
+            kind=job.kind.value,
             cancel_requested=bool(getattr(job, "cancel_requested", False)),
             progress=job.progress,
             current_stage=job.current_stage,

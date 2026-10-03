@@ -64,6 +64,11 @@ class JobStatus(BaseModel):
         description="The collection's name, joined at read (None if the collection is gone).",
     )
     status: str = Field(description="queued / running / done / failed / cancelled.")
+    kind: str = Field(
+        description="The kind of work this job tracks: 'ingest' (a full document pipeline run) or "
+        "'metadata_sync' (a lightweight per-document metadata re-embed after an in-place value edit). "
+        "Lets a client render a side-job distinctly from a full ingestion."
+    )
     cancel_requested: bool = Field(
         default=False,
         description="A cooperative stop has been requested; the running job stops at its next "

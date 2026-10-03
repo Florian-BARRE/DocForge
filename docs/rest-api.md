@@ -965,7 +965,9 @@ The response is a `JobPage` — `{ total, limit, offset, jobs }` where `total` i
 order (newest first by default).
 
 A `JobStatus` carries `job_id, document_id, collection_id, status` (`queued`/`running`/`done`/
-`failed`/`cancelled`), `progress` (0–100), `current_stage`, `error` (verbatim, only when failed),
+`failed`/`cancelled`), `kind` (`ingest` — a full pipeline run — or `metadata_sync` — a lightweight
+per-document metadata re-embed following an in-place value edit), `progress` (0–100), `current_stage`,
+`error` (verbatim, only when failed),
 `attempt`, `started_at`, `finished_at`, and `updated_at` (last progress write — freezes on a wedge).
 It also joins display labels (`document_filename`, `document_title`, `collection_name`, each `null`
 if the row is gone), a `cancel_requested` flag and a `stalled` flag (a RUNNING job idle past the
@@ -1014,11 +1016,13 @@ the first (unprimed) tick, or a psutil error — and a UI must render them as "u
 a live UI. The job is resolved and scope-checked **before** the stream opens, so an unknown id is a
 normal `404` and never an error buried mid-stream.
 
-The response is `text/event-stream`; each frame is `data: {...}\n\n` carrying a `kind`:
+The response is `text/event-stream`; each frame is `data: {...}\n\n` carrying a `frame` type (the
+dedicated envelope key — a `status` frame's `JobStatus` payload carries its own `kind`, so the envelope
+never reuses `kind`):
 
-- `kind: "event"` — one newly-landed stage event (the same shape as a `JobEvent`), in execution order.
-- `kind: "status"` — the full `JobStatus` snapshot, emitted only when it actually changes (so progress
-  flows through without a per-tick spam of identical frames). A `{"kind": "status", "status": "gone"}`
+- `frame: "event"` — one newly-landed stage event (the same shape as a `JobEvent`), in execution order.
+- `frame: "status"` — the full `JobStatus` snapshot, emitted only when it actually changes (so progress
+  flows through without a per-tick spam of identical frames). A `{"frame": "status", "status": "gone"}`
   frame means the job row was deleted mid-stream.
 
 The feed is DB-poll-backed (no message bus): it re-reads the job row and its stage-event table every

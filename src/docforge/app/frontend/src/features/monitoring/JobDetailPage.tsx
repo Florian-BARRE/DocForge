@@ -8,12 +8,13 @@
 // derived metric (ETA, running-long, token totals) — lives in `useJobDetail`; the summary card is
 // `JobSummaryCard`. This component is pure top-level layout.
 
-import { jobDisplayName } from "../../api/jobs";
+import { isIngestJob, jobDisplayName } from "../../api/jobs";
 import { Breadcrumb } from "../../components/Breadcrumb";
 import { ErrorState } from "../../components/ErrorState";
 import { LoadingState } from "../../components/LoadingState";
 import { PageHeader } from "../../components/PageHeader";
 import { JobEventItem } from "../../components/trace/JobEventItem";
+import { JobKindChip } from "../../components/trace/JobKindChip";
 import { JobStatusChip } from "../../components/trace/JobStatusChip";
 import type { Navigate } from "../../shell/view";
 import { theme } from "../../theme";
@@ -82,6 +83,7 @@ export function JobDetailPage({ jobId, collectionId, onNavigate }: JobDetailPage
               {job.collection_name ?? "Collection"}
             </button>
             <span>attempt {job.attempt}</span>
+            <JobKindChip kind={job.kind ?? "ingest"} />
             <JobStatusChip status={job.status} />
             {live && running && (
               <span style={{ display: "inline-flex", alignItems: "center", gap: theme.space.xs, color: theme.color.accentSafe, fontSize: theme.font.size.xs, fontWeight: theme.font.weight.semibold }}>
@@ -90,7 +92,7 @@ export function JobDetailPage({ jobId, collectionId, onNavigate }: JobDetailPage
               </span>
             )}
             <JobCancelControl job={job} onUpdated={patchJob} />
-            <JobRerunControl job={job} collectionId={collectionId} onNavigate={onNavigate} />
+            {isIngestJob(job) && <JobRerunControl job={job} collectionId={collectionId} onNavigate={onNavigate} />}
           </span>
         }
       />

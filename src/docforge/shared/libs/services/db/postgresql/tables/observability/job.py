@@ -28,6 +28,13 @@ from sqlalchemy.orm import Mapped, mapped_column
 from ..base import Base, TimestampedMixin, UUIDPrimaryKey, value_enum
 
 
+class JobKind(StrEnum):
+    """The kind of work a job tracks — distinguishes a full ingestion run from lighter side-jobs."""
+
+    INGEST = "ingest"
+    METADATA_SYNC = "metadata_sync"
+
+
 class JobStatus(StrEnum):
     """State of an ingestion job."""
 
@@ -108,6 +115,13 @@ class Job(Base, UUIDPrimaryKey, TimestampedMixin):
     status: Mapped[JobStatus] = mapped_column(
         value_enum(JobStatus), nullable=False, default=JobStatus.PENDING
     )
+    # Discriminator for the kind of work this row tracks. NOT NULL with a server_default of 'ingest'
+    # so every pre-existing row backfills to ingest (all jobs until now ARE ingest runs). Same
+    # value_enum(native_enum=False) VARCHAR strategy as ``status``; the server_default is part of the
+    # schema (kept in the migration, unlike status' Python-only default) so autogenerate sees no drift.
+    kind: Mapped[JobKind] = mapped_column(
+        value_enum(JobKind), nullable=False, server_default=text("'ingest'"), default=JobKind.INGEST
+    )
     # The cooperative-cancel signal: set True to REQUEST a running job stop at its next stage boundary
     # (the job stays RUNNING until the worker honours it, so status-keyed queries — reaper, list_active,
     # queue_depth — are untouched). Also raised by a force-terminate as a backstop stop signal.
@@ -154,4 +168,4 @@ class Job(Base, UUIDPrimaryKey, TimestampedMixin):
     error_type: Mapped[str | None] = mapped_column(String(128), nullable=True)
 
 
-__all__ = ["Job", "JobStatus"]
+__all__ = ["Job", "JobKind", "JobStatus"]
