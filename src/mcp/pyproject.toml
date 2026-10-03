@@ -17,18 +17,18 @@ dependencies = [
     # and move nothing. This server hand-wires an auth middleware on the starlette layer, so an
     # unreviewed jump across a starlette major is exactly what we want to block here.
     "uvicorn[standard]>=0.32.0,<1",
-    "starlette>=1.6.0,<2",
+    "starlette>=1.7.0,<2",
     # Config & logging (internal libraries) — same sources as the main docforge app. Left
     # unbounded on purpose: internally-versioned, not steered by an external release cadence.
-    "loggerplusplus>=1.0.0",
-    "configplusplus>=0.3.0",
+    "loggerplusplus>=1.2.0",
+    "configplusplus>=0.4.0",
 ]
 
 [dependency-groups]
 dev = [
     "pytest>=8.3.0",
     "pytest-asyncio>=0.24.0",
-    "ruff>=0.16.5",
+    "ruff>=0.16.9",
     "mypy>=2.3.1",
 ]
 
