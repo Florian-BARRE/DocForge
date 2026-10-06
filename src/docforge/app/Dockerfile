@@ -42,7 +42,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # - node:22-bookworm-slim matches the version used by the docforge_frontend dev
 #   service (compose/overlays/compose.dev.yml) so dev/prod build with the same Node.
 ###############################################################################
-FROM node:22-bookworm-slim AS ui-build
+FROM node:25-bookworm-slim AS ui-build
 
 WORKDIR /workspace/frontend
 
