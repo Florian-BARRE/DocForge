@@ -8,10 +8,14 @@
 // off-by-default stages ("Provider-hosted — ships off…", see ingest/stages/view.py's `__notes`) —
 // this one is a static client-side string (no backend notes field on the search view today) that
 // also calls out the local BGE cross-encoder's CPU cost, since a naive enable here is the one search
-// stage that can tank latency badly on this deployment's hardware.
+// stage that can tank latency badly on this deployment's hardware. While on, the node's own config
+// form (base_url, api_key, top_n…, straight from the palette's config_schema) renders in the body.
 
+import type { ActionBlob, Palette, ValidationIssue } from "../../api/types";
+import { findNodeCard, hasConfigFields } from "../../components/schema-form/paletteLookup";
 import { theme as t } from "../../theme";
 import { StageSwitch } from "../stage-rail/StageSwitch";
+import { NodeConfigForm } from "./NodeConfigForm";
 import { SearchStageFrame } from "./SearchStageFrame";
 import { RERANK_MINIMAP_KEY } from "./state/searchMinimapEntries";
 import { StepNumberBadge } from "./StepNumberBadge";
@@ -28,9 +32,19 @@ interface SearchRerankCardProps {
   step?: number;
   enabled: boolean;
   onToggle: (next: boolean) => void;
+  /** The blob's rerank node — absent only while the topology has none (i.e. while off). */
+  node?: ActionBlob;
+  palette?: Palette;
+  onChangeConfig?: (field: string, value: unknown) => void;
+  /** Current `/inspect` issues for the whole search blob — see `SchemaForm`'s own `issues` doc. */
+  issues?: ValidationIssue[];
 }
 
-export function SearchRerankCard({ step, enabled, onToggle }: SearchRerankCardProps) {
+export function SearchRerankCard({ step, enabled, onToggle, node, palette, onChangeConfig, issues }: SearchRerankCardProps) {
+  const form =
+    enabled && node && palette && onChangeConfig && hasConfigFields(findNodeCard(palette, node.family, node.kind)) ? (
+      <NodeConfigForm node={node} palette={palette} onChange={onChangeConfig} issues={issues} />
+    ) : null;
   const control = <StageSwitch checked={enabled} onChange={onToggle} title={enabled ? "Disable reranking" : "Enable reranking"} />;
   const left = step === undefined ? control : (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: t.space.xs }}>
@@ -47,6 +61,8 @@ export function SearchRerankCard({ step, enabled, onToggle }: SearchRerankCardPr
       note={enabled ? undefined : OFF_NOTE}
       enabled={enabled}
       anchorKey={RERANK_MINIMAP_KEY}
-    />
+    >
+      {form}
+    </SearchStageFrame>
   );
 }

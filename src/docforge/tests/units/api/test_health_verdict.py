@@ -168,3 +168,21 @@ def test_degraded_when_an_ingest_provider_is_unreachable(fastapi_app) -> None:
     assert rollup.verdict is HealthVerdict.DEGRADED
     assert "unreachable" in rollup.reason.lower()
     assert "ingest" in rollup.reason.lower()
+
+
+def test_degraded_when_a_search_reranker_is_unreachable(fastapi_app) -> None:
+    # The debugging-hunt case: the query embedder is fine (search still serves) but the configured
+    # reranker's base_url was moved, so the SEARCH-side sweep reports it unreachable. That must flip
+    # the overall verdict to degraded and name the search side — never read as Operational.
+    from backend.libs.health import HealthVerdict, HealthVerdictResolver  # noqa: PLC0415
+
+    rollup = HealthVerdictResolver.overall(
+        ingest_buildable=True,
+        search_buildable=True,
+        ingest_providers=[],
+        search_providers=[_ok_embedder(), _down("rerank", side="search")],
+        vector_count=9,
+    )
+    assert rollup.verdict is HealthVerdict.DEGRADED
+    assert "unreachable" in rollup.reason.lower()
+    assert "search" in rollup.reason.lower()

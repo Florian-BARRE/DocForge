@@ -13,7 +13,7 @@ import { StageConnector } from "../stage-rail/StageConnector";
 import { SearchNodeCard } from "./SearchNodeCard";
 import { SearchQueryCard } from "./SearchQueryCard";
 import { SearchRerankCard } from "./SearchRerankCard";
-import { isRerankEnabled, type QueryTransformKind } from "./state/blobOps";
+import { isActionBlob, isRerankEnabled, type QueryTransformKind } from "./state/blobOps";
 // Same anchor ids `useSearchPipelineEditor` used to compute `hasAnchor`/`hasQueryAnchor`.
 import { QUERY_ANCHOR_ID, RERANK_ANCHOR_ID } from "./state/useSearchPipelineEditor";
 
@@ -56,6 +56,21 @@ export function SearchPipelineRail({
   const stepFor = (nodeIndex: number) => (hasAnchor && nodeIndex > rerankIndexInRail ? nodeIndex + 2 : nodeIndex + 1);
   const rerankStep = hasAnchor ? rerankIndexInRail + 2 : railNodes.length + 1;
 
+  const rerankNode = blob.nodes.find((n): n is ActionBlob => isActionBlob(n) && n.family === "rerank");
+  const rerankCard = (
+    <SearchRerankCard
+      step={rerankStep}
+      enabled={isRerankEnabled(blob)}
+      onToggle={onToggleRerank}
+      node={rerankNode}
+      palette={palette}
+      onChangeConfig={(field, value) => {
+        if (rerankNode) onChangeNodeConfig(rerankNode.id, field, value);
+      }}
+      issues={issues}
+    />
+  );
+
   return (
     // One connected rail — the same pattern as the ingestion stage rail. Reranking is the one
     // toggleable step; it's rendered right after `retrieve`, staying visible (greyed) when off
@@ -75,7 +90,7 @@ export function SearchPipelineRail({
           {node.id === RERANK_ANCHOR_ID && (
             <>
               <StageConnector />
-              <SearchRerankCard step={rerankStep} enabled={isRerankEnabled(blob)} onToggle={onToggleRerank} />
+              {rerankCard}
             </>
           )}
         </Fragment>
@@ -99,7 +114,7 @@ export function SearchPipelineRail({
       {!hasAnchor && (
         <>
           {(railNodes.length > 0 || !hasQueryAnchor) && <StageConnector />}
-          <SearchRerankCard step={rerankStep} enabled={isRerankEnabled(blob)} onToggle={onToggleRerank} />
+          {rerankCard}
         </>
       )}
     </div>
