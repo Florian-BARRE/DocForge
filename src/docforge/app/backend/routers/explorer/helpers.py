@@ -11,7 +11,7 @@ from collections.abc import Sequence
 from loggerplusplus import loggerplusplus
 
 # ====== Internal Project Imports ======
-from shared_libs.public_models import ChunkRole, DisplayTitleResolver, role_default_enabled
+from shared_libs.public_models import DisplayTitleResolver
 from shared_libs.services.db.facades import ChunkToggle, IRBundle
 from shared_libs.services.db.postgresql.tables import (
     Chunk,
@@ -24,6 +24,7 @@ from shared_libs.services.db.postgresql.tables import (
 )
 
 # ====== Local Project Imports ======
+from ...libs.reading import ChunkEnablement
 from .models import (
     ChunkEnabledResult,
     ChunkInfo,
@@ -245,8 +246,15 @@ class ExplorerHelpers:
         block_ids: list[str],
         metadata: list[MetadataValue],
         page: int | None,
+        include_geometry: bool = True,
     ) -> ChunkInfo:
-        """Map a chunk row + its composition, metadata and resolved page to the explorer model."""
+        """
+        Map a chunk row + its composition, metadata and resolved page to the explorer model.
+
+        With ``include_geometry=False`` the geometry fields (``block_ids``, the 0-based ``page``) are
+        left UNSET so an ``exclude_unset`` response drops them; ``page_number`` (to cite) stays.
+        """
+        geometry = {"block_ids": block_ids, "page": page} if include_geometry else {}
         return ChunkInfo(
             id=str(chunk.id),
             chunk_index=chunk.chunk_index,
@@ -255,33 +263,18 @@ class ExplorerHelpers:
             is_indexed=chunk.is_indexed,
             strategy=chunk.strategy,
             parent_id=str(chunk.parent_id) if chunk.parent_id is not None else None,
-            block_ids=block_ids,
             metadata=metadata,
             role=chunk.role,
             enabled=cls._effective_enabled(chunk),
             heading_path=chunk.heading_path or [],
-            page=page,
             page_number=None if page is None else page + 1,
+            **geometry,
         )
 
     @classmethod
     def _effective_enabled(cls, chunk: Chunk) -> bool:
         """Resolve a chunk's effective searchability: the user override wins, else the role default."""
-        # 1. An explicit user override always wins over the structural default.
-        if chunk.enabled_override is not None:
-            return chunk.enabled_override
-
-        # 2. No override — defer to the single role -> default-enabled policy. The role column is a
-        #    plain VARCHAR, so an unknown forward-compat/legacy value must degrade (treated as a
-        #    non-body role: disabled by default) rather than 500 the whole chunk read.
-        try:
-            role = ChunkRole(chunk.role)
-        except ValueError:
-            cls.logger.warning(
-                f"Unknown chunk role '{chunk.role}' on chunk {chunk.id}; defaulting to disabled"
-            )
-            return False
-        return role_default_enabled(role)
+        return ChunkEnablement.effective(chunk.role, chunk.enabled_override, chunk.id)
 
     @staticmethod
     def chunk_toggle(

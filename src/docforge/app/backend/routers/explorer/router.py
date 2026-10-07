@@ -19,6 +19,7 @@ from shared_libs.services.db.postgresql.tables import Document, DocumentStatus
 # ====== Local Project Imports ======
 from ...context import CONTEXT
 from ...libs.auth import AuthPrincipal, AuthzGuard, Capability, require
+from ...libs.reading import PageRangeError, PageRangeParser
 from ...utils.error_handling import auto_handle_errors
 from ..jobs.models import JobEvent
 from .helpers import ExplorerHelpers
@@ -36,6 +37,9 @@ from .models_ir import DocumentIRModel, DocumentProvenance
 from .views import DocumentViewHelpers
 
 router = APIRouter(tags=["explorer"])
+
+# Ceiling of one paginated chunk page (the unpaginated default stays "every chunk" for compatibility).
+_MAX_CHUNK_PAGE_SIZE = 500
 
 
 async def _require_document(document_id: uuid.UUID, principal: AuthPrincipal):
@@ -86,6 +90,26 @@ async def _assert_chunk_scope(chunk_ids: list[uuid.UUID], principal: AuthPrincip
     collections = await CONTEXT.database.documents.collections_for_chunks(chunk_ids)
     for collection_id in collections:
         AuthzGuard.assert_collection_scope(principal, collection_id)
+
+
+def _selected_pages(pages: str | None, document: Document) -> list[int] | None:
+    """Validate a view's ``pages`` selector against the document (422 naming its page count)."""
+    # 1. No selector → the whole document (the pre-selector default, unchanged).
+    if pages is None:
+        return None
+
+    # 2. Parse + bound-check; a malformed or out-of-range selector is the caller's error.
+    try:
+        return PageRangeParser.parse(pages, document.page_count or 0)
+    except PageRangeError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+
+_PAGES_QUERY_DESCRIPTION = (
+    "Render only these 1-based pages: a page ('5'), a range ('5-7') or a list ('5,7-9'). Each page "
+    "is preceded by a citable page marker. Omit for the whole document. 422 when malformed or "
+    "beyond the document's page count."
+)
 
 
 @router.get(
@@ -268,6 +292,7 @@ async def get_document_markdown(
     download: bool = Query(
         False, description="When true, return an attachment download instead of an inline view."
     ),
+    pages: str | None = Query(default=None, description=_PAGES_QUERY_DESCRIPTION),
     principal: AuthPrincipal = Depends(require(Capability.READ)),
 ) -> Response:
     """
@@ -276,16 +301,20 @@ async def get_document_markdown(
     Args:
         document_id (uuid.UUID): The document to render.
         download (bool): Attach a ``Content-Disposition`` (``<stem>.md``) instead of rendering inline.
+        pages (str | None): 1-based page selector; each selected page follows a
+            ``<!-- page N -->`` marker line.
 
     Returns:
-        Response: ``text/markdown; charset=utf-8``; 404 when the document is unknown.
+        Response: ``text/markdown; charset=utf-8``; 404 when the document is unknown, 422 on a bad
+        page selector.
     """
-    # 1. Existence + scope guard, then the stored IR rows.
+    # 1. Existence + scope guard, the page selector, then the stored IR rows.
     document = await _require_document(document_id, principal)
+    selected = _selected_pages(pages, document)
     bundle = await CONTEXT.database.documents.get_ir(document_id)
 
     # 2. Adapt the rows to a DocumentIR, linearize, and wrap (inline or attachment).
-    return DocumentViewHelpers.markdown(document, bundle, download)
+    return DocumentViewHelpers.markdown(document, bundle, download, selected)
 
 
 @router.get("/documents/{document_id}/html", response_class=Response)
@@ -295,6 +324,7 @@ async def get_document_html(
     download: bool = Query(
         False, description="When true, return an attachment download instead of an inline view."
     ),
+    pages: str | None = Query(default=None, description=_PAGES_QUERY_DESCRIPTION),
     principal: AuthPrincipal = Depends(require(Capability.READ)),
 ) -> Response:
     """
@@ -303,29 +333,53 @@ async def get_document_html(
     Args:
         document_id (uuid.UUID): The document to render.
         download (bool): Attach a ``Content-Disposition`` (``<stem>.html``) instead of rendering inline.
+        pages (str | None): 1-based page selector; each selected page renders in a
+            ``<section data-page="N">`` of the one HTML5 document.
 
     Returns:
-        Response: ``text/html; charset=utf-8``; 404 when the document is unknown.
+        Response: ``text/html; charset=utf-8``; 404 when the document is unknown, 422 on a bad
+        page selector.
     """
-    # 1. Existence + scope guard, then the stored IR rows.
+    # 1. Existence + scope guard, the page selector, then the stored IR rows.
     document = await _require_document(document_id, principal)
+    selected = _selected_pages(pages, document)
     bundle = await CONTEXT.database.documents.get_ir(document_id)
 
     # 2. Adapt the rows to a DocumentIR, linearize, and wrap (inline or attachment).
-    return DocumentViewHelpers.html(document, bundle, download)
+    return DocumentViewHelpers.html(document, bundle, download, selected)
 
 
-@router.get("/documents/{document_id}/chunks", response_model=list[ChunkInfo])
+@router.get(
+    "/documents/{document_id}/chunks",
+    response_model=list[ChunkInfo],
+    # Lean mode leaves block_ids/page UNSET → absent from the wire; the default mode sets every field.
+    response_model_exclude_unset=True,
+)
 @auto_handle_errors
 async def get_document_chunks(
     document_id: uuid.UUID,
+    response: Response,
+    limit: int | None = Query(
+        default=None,
+        ge=1,
+        le=_MAX_CHUNK_PAGE_SIZE,
+        description="Max chunks to return (in chunk_index order); omit for every chunk. The total "
+        "is returned in the X-Total-Count header.",
+    ),
+    offset: int = Query(default=0, ge=0, description="Chunks to skip (paging; 0 = the first)."),
+    include_geometry: bool = Query(
+        default=True,
+        description="False drops block_ids and the 0-based 'page' (keeps the 1-based page_number) — "
+        "the lean, agent-sized shape.",
+    ),
     principal: AuthPrincipal = Depends(require(Capability.READ)),
 ) -> list[ChunkInfo]:
     """
     Return a document's chunks — enriched text, composition (block ids) and generated metadata.
 
     Returns:
-        list[ChunkInfo]: One row per chunk, in order; 404 when the document is unknown.
+        list[ChunkInfo]: One row per chunk of the requested page, in order (header ``X-Total-Count``
+        = the document's chunk count); 404 when the document is unknown.
     """
     # 1. The document (404 guard + scope gate) — its collection scopes the field-name resolution.
     document = await _require_document(document_id, principal)
@@ -333,18 +387,27 @@ async def get_document_chunks(
         await CONTEXT.database.collections.get_schema(document.collection_id)
     )
 
-    # 2. Chunks + their composition and metadata in bulk (three queries, no per-chunk N+1).
-    chunks = await CONTEXT.database.documents.get_chunks(document_id)
-    composition = await CONTEXT.database.documents.get_document_chunk_composition(document_id)
+    # 2. The requested page of chunks + the total (an extra count only when a page was cut).
+    chunks = await CONTEXT.database.documents.get_chunks(document_id, limit=limit, offset=offset)
+    paged = limit is not None or offset > 0
+    total = await CONTEXT.database.documents.count_chunks(document_id) if paged else len(chunks)
+    response.headers["X-Total-Count"] = str(total)
+
+    # 3. Composition (geometry only) + metadata in bulk (no per-chunk N+1).
+    composition = (
+        await CONTEXT.database.documents.get_document_chunk_composition(document_id)
+        if include_geometry
+        else []
+    )
     metadata = await CONTEXT.database.documents.get_document_chunk_metadata(document_id)
 
-    # 3. Resolve each chunk's page from its primary (leading) block in ONE bulk query — the same
+    # 4. Resolve each chunk's page from its primary (leading) block in ONE bulk query — the same
     #    location read search-hit hydration uses, so the two surfaces agree on the page.
     locations = await CONTEXT.database.documents.get_block_locations_for_chunks(
         [chunk.id for chunk in chunks]
     )
 
-    # 4. Group the child rows by chunk id (composition already ordered by position).
+    # 5. Group the child rows by chunk id (composition already ordered by position).
     blocks_by_chunk: dict[uuid.UUID, list[str]] = defaultdict(list)
     for link in composition:
         blocks_by_chunk[link.chunk_id].append(link.block_id)
@@ -352,7 +415,7 @@ async def get_document_chunks(
     for value in metadata:
         meta_by_chunk[value.chunk_id].append(value)
 
-    # 5. Map each chunk with its grouped composition, resolved metadata and primary-block page (the
+    # 6. Map each chunk with its grouped composition, resolved metadata and primary-block page (the
     #    first entry per chunk is its leading block, so its page is the chunk's page).
     return [
         ExplorerHelpers.chunk(
@@ -360,6 +423,7 @@ async def get_document_chunks(
             blocks_by_chunk[chunk.id],
             ExplorerHelpers.metadata_values(meta_by_chunk[chunk.id], names),
             page=(located[0]["page"] if (located := locations.get(str(chunk.id))) else None),
+            include_geometry=include_geometry,
         )
         for chunk in chunks
     ]

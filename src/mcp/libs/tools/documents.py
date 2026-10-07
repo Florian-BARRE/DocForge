@@ -8,11 +8,12 @@
 from __future__ import annotations
 
 # ====== Standard Library Imports ======
-from typing import Any
+from typing import Annotated, Any
 
 # ====== Third-Party Library Imports ======
 from docforge_sdk import AsyncClient
 from mcp.server.fastmcp import FastMCP
+from pydantic import Field
 
 # ====== Local Project Imports ======
 from ..path_guard import PathGuard
@@ -96,15 +97,45 @@ def register(
         return result.model_dump(mode="json")
 
     @mcp.tool()
-    async def get_document_markdown(document_id: str) -> Any:
-        """The document rendered as Markdown, generated on the fly from the canonical IR."""
-        view = await sdk.documents.get_markdown(document_id)
+    async def get_document_markdown(
+        document_id: str,
+        pages: Annotated[
+            str | None,
+            Field(
+                description="1-based pages to render: '5', '5-7' or '5,7-9'. Omit for the whole "
+                "document (can be ~50k chars). 422 when malformed or past the last page."
+            ),
+        ] = None,
+    ) -> Any:
+        """
+        The document rendered as Markdown, generated on the fly from the canonical IR.
+
+        Prefer `pages` (1-based, e.g. '5' or '5-7'): call get_document_outline first to find the
+        pages of a section; the whole document can be ~50k chars. With `pages`, each page is
+        preceded by a citable page marker.
+        """
+        view = await sdk.documents.get_markdown(document_id, pages=pages)
         return view.model_dump(mode="json")
 
     @mcp.tool()
-    async def get_document_html(document_id: str) -> Any:
-        """The document rendered as HTML, generated on the fly from the canonical IR."""
-        view = await sdk.documents.get_html(document_id)
+    async def get_document_html(
+        document_id: str,
+        pages: Annotated[
+            str | None,
+            Field(
+                description="1-based pages to render: '5', '5-7' or '5,7-9'. Omit for the whole "
+                "document (can be ~50k chars). 422 when malformed or past the last page."
+            ),
+        ] = None,
+    ) -> Any:
+        """
+        The document rendered as HTML, generated on the fly from the canonical IR.
+
+        Prefer `pages` (1-based, e.g. '5' or '5-7'): call get_document_outline first to find the
+        pages of a section; the whole document can be ~50k chars. With `pages`, each page is
+        preceded by a citable page marker.
+        """
+        view = await sdk.documents.get_html(document_id, pages=pages)
         return view.model_dump(mode="json")
 
     @mcp.tool()

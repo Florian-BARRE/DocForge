@@ -33,6 +33,8 @@ ROUTES: set[tuple[str, str]] = {
     ("GET", "/api/v1/documents/{document_id}/ir"),
     ("GET", "/api/v1/documents/{document_id}/provenance"),
     ("GET", "/api/v1/documents/{document_id}/chunks"),
+    ("GET", "/api/v1/documents/{document_id}/outline"),
+    ("GET", "/api/v1/chunks/{chunk_id}/context"),
     ("DELETE", "/api/v1/documents/{document_id}"),
     # Collections — resources/collections.py
     ("GET", "/api/v1/collections"),

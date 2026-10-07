@@ -125,12 +125,82 @@ class ChunkApi:
         return list(result.scalars())
 
     @staticmethod
-    async def get_for_document(session: AsyncSession, document_id: uuid.UUID) -> list[Chunk]:
-        """Return a document's chunks in order."""
-        result = await session.execute(
-            select(Chunk).where(Chunk.document_id == document_id).order_by(Chunk.chunk_index)
+    async def get_for_document(
+        session: AsyncSession,
+        document_id: uuid.UUID,
+        *,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> list[Chunk]:
+        """
+        Return a document's chunks in ``chunk_index`` order, optionally one page of them.
+
+        Args:
+            session (AsyncSession): The unit of work.
+            document_id (uuid.UUID): The document whose chunks are returned.
+            limit (int | None): Page size; None returns every chunk from ``offset`` on.
+            offset (int): Chunks to skip (in chunk_index order).
+
+        Returns:
+            list[Chunk]: The chunks of the requested page.
+        """
+        statement = (
+            select(Chunk)
+            .where(Chunk.document_id == document_id)
+            .order_by(Chunk.chunk_index)
+            .offset(offset)
         )
+        if limit is not None:
+            statement = statement.limit(limit)
+        result = await session.execute(statement)
         return list(result.scalars().all())
+
+    @staticmethod
+    async def count_for_document(session: AsyncSession, document_id: uuid.UUID) -> int:
+        """Return how many chunks a document has (the paginated chunk listing's total)."""
+        result = await session.execute(
+            select(func.count()).select_from(Chunk).where(Chunk.document_id == document_id)
+        )
+        return int(result.scalar_one())
+
+    @staticmethod
+    async def get_index_for_document(
+        session: AsyncSession, document_id: uuid.UUID
+    ) -> list[tuple[uuid.UUID, int, str, bool | None, list[str] | None, int | None]]:
+        """
+        Return every chunk of a document as (id, chunk_index, role, enabled_override, heading_path,
+        last_reading_order).
+
+        Column-only — no chunk text is loaded — so the neighbour walk and the outline's heading→chunk
+        link can scan a whole document cheaply. ``last_reading_order`` is the highest reading order of
+        the chunk's blocks (None for a chunk with no block composition): it places the chunk in the
+        document structurally, so a heading links by position rather than by its (repeatable) text.
+        Ordered by ``chunk_index``.
+
+        Args:
+            session (AsyncSession): The unit of work.
+            document_id (uuid.UUID): The document whose chunk index is returned.
+
+        Returns:
+            list[tuple[uuid.UUID, int, str, bool | None, list[str] | None, int | None]]: One row per
+            chunk.
+        """
+        result = await session.execute(
+            select(
+                Chunk.id,
+                Chunk.chunk_index,
+                Chunk.role,
+                Chunk.enabled_override,
+                Chunk.heading_path,
+                func.max(Block.reading_order),
+            )
+            .outerjoin(ChunkBlock, ChunkBlock.chunk_id == Chunk.id)
+            .outerjoin(Block, Block.id == ChunkBlock.block_id)
+            .where(Chunk.document_id == document_id)
+            .group_by(Chunk.id)
+            .order_by(Chunk.chunk_index)
+        )
+        return [(row[0], row[1], row[2], row[3], row[4], row[5]) for row in result.all()]
 
     @staticmethod
     async def get_indexed_ids_for_document(

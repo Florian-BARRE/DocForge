@@ -55,5 +55,30 @@ class IRLinearizer(LoggerClass):
         """
         return self._html.render(ir)
 
+    def to_html_body(self, ir: DocumentIR) -> str:
+        """
+        Render only the escaped HTML body fragment (no document skeleton).
+
+        Args:
+            ir (DocumentIR): The canonical parsed document (or a block subset of it).
+
+        Returns:
+            str: The body fragment, to be composed and wrapped by :meth:`to_html_document`.
+        """
+        return self._html.render_body(ir)
+
+    def to_html_document(self, ir: DocumentIR, body: str) -> str:
+        """
+        Wrap an already-rendered (escaped) body in the standalone UTF-8 HTML5 skeleton.
+
+        Args:
+            ir (DocumentIR): The document supplying the language and title.
+            body (str): The escaped body markup (e.g. several composed :meth:`to_html_body` outputs).
+
+        Returns:
+            str: The full HTML document.
+        """
+        return self._html.wrap_document(ir, body)
+
 
 __all__ = ["IRLinearizer"]

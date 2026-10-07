@@ -683,9 +683,11 @@ collection scope; an unknown id is `404`.
 | `GET` | `/api/v1/documents/{document_id}/pages` | `read` | Pages, in order (geometry + render blob ref) |
 | `GET` | `/api/v1/documents/{document_id}/ir` | `read` | The full canonical IR (large) |
 | `GET` | `/api/v1/documents/{document_id}/provenance` | `read` | Ingestion provenance — the parser/model pipeline (per-stage trace) that produced the IR + chunks |
-| `GET` | `/api/v1/documents/{document_id}/chunks` | `read` | Chunks (enriched text, block ids, metadata) |
-| `GET` | `/api/v1/documents/{document_id}/markdown` | `read` | Markdown view, generated on the fly from the IR |
-| `GET` | `/api/v1/documents/{document_id}/html` | `read` | HTML view, generated on the fly from the IR |
+| `GET` | `/api/v1/documents/{document_id}/chunks` | `read` | Chunks (enriched text, block ids, metadata) — optionally paginated (`limit`/`offset`) and lean (`include_geometry=false`) |
+| `GET` | `/api/v1/documents/{document_id}/markdown` | `read` | Markdown view, generated on the fly from the IR (`?pages=` for a page range) |
+| `GET` | `/api/v1/documents/{document_id}/html` | `read` | HTML view, generated on the fly from the IR (`?pages=` for a page range) |
+| `GET` | `/api/v1/documents/{document_id}/outline` | `read` | Heading outline (`DocumentOutline`) — level, text, 1-based page, section-opening chunk |
+| `GET` | `/api/v1/chunks/{chunk_id}/context` | `read` | A chunk + its enabled neighbours by `chunk_index` (`ChunkContext`) |
 | `DELETE` | `/api/v1/documents/{document_id}` | `write` | Delete everywhere (`204`) |
 | `POST` | `/api/v1/documents/{document_id}/trace-payloads/purge` | `write` | Reclaim a single document's stored full execution-trace payloads (`TracePurgeResult`) |
 
@@ -716,6 +718,44 @@ AND not known-empty; a `failed` or `0`-chunk document is never `searchable`, reg
 parent_id, block_ids[], metadata[]`. Pages (`PageInfo`) reference a `render_blob_hash` you fetch
 via §8.
 
+**Chunk listing paging + lean mode.** `GET /documents/{id}/chunks` takes optional query params —
+defaults reproduce the historical full listing:
+
+| Query param | Type | Default | Meaning |
+|---|---|---|---|
+| `limit` | int `1..500` | none (every chunk) | Page size, in `chunk_index` order |
+| `offset` | int `>= 0` | `0` | Chunks to skip |
+| `include_geometry` | bool | `true` | `false` drops `block_ids` and the 0-based `page` from each item (keys absent, `page_number` kept) — the agent-sized shape |
+
+The response stays a JSON array; the document's total chunk count is in the **`X-Total-Count`**
+response header (always set). `422` on an out-of-bounds `limit`/`offset`.
+
+### Reading a document piecemeal (outline + chunk context)
+
+`GET /api/v1/documents/{document_id}/outline` — capability `read`, scoped by the document's
+collection; `404` unknown. Returns `DocumentOutline{document_id, display_title, page_count,
+headings[]}`, built from the IR heading blocks in reading order. Each heading is
+`{level, text, page_number, chunk_id}`: `page_number` is 1-based (`null` on a page-less document);
+`chunk_id` is the chunk covering the heading's position — the first chunk (in `chunk_index` order)
+whose last block sits at or after the heading in reading order. Linking is structural, never by
+heading text, so a title repeated under two chapters links to its own section; `null` for a heading
+after the last chunk. No body text — cheap even on a very large document.
+
+`GET /api/v1/chunks/{chunk_id}/context?before=1&after=1` — capability `read`, scoped by the chunk's
+collection; `404` unknown chunk; `before`/`after` are `0..5` (default `1`, `422` outside).
+Returns `ChunkContext{document_id, display_title, chunks[]}`: the target plus up to `before`
+preceding and `after` following chunks of the same document, in `chunk_index` order. Disabled
+neighbours (non-body roles, user-hidden chunks) are skipped — the window reaches past them
+(chunk-level state only: a disabled document's chunks still read as neighbours); the target is
+always included (`is_target: true`) whatever its state; a document edge simply yields fewer
+neighbours. Items are lean: `{chunk_id, chunk_index, text, page_number, heading_path, token_count,
+is_target}` (no geometry, no metadata).
+
+```bash
+curl -s http://localhost:10040/api/v1/documents/d4c3.../outline
+curl -s "http://localhost:10040/api/v1/chunks/8a1f.../context?before=2&after=2"
+```
+
 **Page numbering.** `page` / `PageInfo.page_number` are **0-based indexes** (legacy, kept for
 backward compatibility). The reader's page number is **1-based** and additive: `page_number` on
 `ChunkInfo`, on each `IRBlock`, and on search hits/`block_locations`; `page_label` on `PageInfo`
@@ -736,6 +776,7 @@ IR is canonical; markdown/HTML are always generated, never stored sources — §
 | Query param | Type | Default | Meaning |
 |---|---|---|---|
 | `download` | bool | `false` | Truthy → `Content-Disposition: attachment; filename="<stem>.md"` (or `.html`). Falsy → inline (renders in a browser tab). |
+| `pages` | string | none (whole document) | Render only these **1-based** pages: `5`, `5-7`, `5,7-9` (ascending, de-duplicated). In markdown each page is preceded by a marker line `<!-- page N -->`; in HTML each page is a `<section data-page="N">` inside the one standalone UTF-8 HTML5 document. An empty page keeps its marker. `422` (message names the page count) on bad syntax, page `0`, a reversed range, a page beyond `page_count`, or any selector on a page-less document. |
 
 ```bash
 # Inline in a browser
@@ -743,11 +784,14 @@ curl -s http://localhost:10040/api/v1/documents/d4c3.../markdown
 
 # Force a download with the right filename
 curl -s "http://localhost:10040/api/v1/documents/d4c3.../html?download=true" -O -J
+
+# Only pages 5 to 7 (each behind a <!-- page N --> marker)
+curl -s "http://localhost:10040/api/v1/documents/d4c3.../markdown?pages=5-7"
 ```
 
 Responses are `text/markdown` and `text/html` respectively. `404` when the document is unknown,
 `403` when it belongs to a collection outside the caller's scope, `422` on a malformed document
-UUID.
+UUID or `pages` selector.
 
 ### The document grid & bulk operations
 

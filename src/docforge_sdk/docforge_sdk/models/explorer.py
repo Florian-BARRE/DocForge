@@ -236,6 +236,107 @@ class ChunkInfo(BaseModel):
     )
 
 
+class ChunkPage(BaseModel):
+    """
+    One page of a document's chunks together with the document's total chunk count.
+
+    SDK-only wrapper (not an OpenAPI schema): the REST body is a bare chunk array and the total
+    travels in the ``X-Total-Count`` response header.
+
+    Attributes:
+        items (list[ChunkInfo]): The chunks of this page, in chunk_index order.
+        total (int | None): The document's total chunk count; None against a server that predates
+            the header.
+    """
+
+    items: list[ChunkInfo] = Field(description="The chunks of this page, in chunk_index order.")
+    total: int | None = Field(
+        default=None, description="The document's total chunk count (X-Total-Count header)."
+    )
+
+
+class OutlineHeading(BaseModel):
+    """
+    One heading of a document's table of contents.
+
+    Attributes:
+        level (int): Heading depth (1 = top level).
+        text (str): The heading text.
+        page_number (int | None): 1-based page the heading sits on; None for page-less documents.
+        chunk_id (str | None): The first chunk of this section; None when no chunk carries it.
+    """
+
+    level: int = Field(description="Heading depth (1 = top level; 1 when the parser set none).")
+    text: str = Field(description="The heading text.")
+    page_number: int | None = Field(
+        default=None, description="1-based page the heading sits on; null for a page-less document."
+    )
+    chunk_id: str | None = Field(
+        default=None, description="The first chunk of this section; null when none carries it."
+    )
+
+
+class DocumentOutline(BaseModel):
+    """
+    A document's heading tree - the cheap table of contents to read before fetching content.
+
+    Attributes:
+        document_id (str): The document's UUID.
+        display_title (str): The title to show ('' when none).
+        page_count (int | None): Pages of the document; None before parse / for page-less formats.
+        headings (list[OutlineHeading]): Every heading, in reading order.
+    """
+
+    document_id: str = Field(description="The document's UUID.")
+    display_title: str = Field(description="The title to show ('' when none).")
+    page_count: int | None = Field(default=None, description="Pages of the document.")
+    headings: list[OutlineHeading] = Field(
+        default_factory=list, description="Every heading, in reading order ([] when none)."
+    )
+
+
+class ContextChunk(BaseModel):
+    """
+    One chunk of a context window (lean projection of a chunk).
+
+    Attributes:
+        chunk_id (str): The chunk UUID.
+        chunk_index (int): Position of the chunk within its document.
+        text (str): The chunk's (enriched) text.
+        page_number (int | None): 1-based page of the chunk's leading block; None when unlocated.
+        heading_path (list[str]): The chunk's section breadcrumb (outer to inner).
+        token_count (int): Token length of the text.
+        is_target (bool): True for the chunk the window was requested around.
+    """
+
+    chunk_id: str = Field(description="The chunk UUID.")
+    chunk_index: int = Field(description="Position of the chunk within its document.")
+    text: str = Field(description="The chunk's (enriched) text.")
+    page_number: int | None = Field(default=None, description="1-based page; null when unlocated.")
+    heading_path: list[str] = Field(
+        default_factory=list, description="The chunk's section breadcrumb (outer to inner)."
+    )
+    token_count: int = Field(description="Token length of the text.")
+    is_target: bool = Field(description="True for the chunk the window was requested around.")
+
+
+class ChunkContext(BaseModel):
+    """
+    A chunk and its neighbours within the same document (a reading window around a search hit).
+
+    Attributes:
+        document_id (str): The owning document's UUID.
+        display_title (str): The owning document's display title.
+        chunks (list[ContextChunk]): The window in chunk_index order, the target flagged.
+    """
+
+    document_id: str = Field(description="The owning document's UUID.")
+    display_title: str = Field(description="The owning document's display title.")
+    chunks: list[ContextChunk] = Field(
+        description="The window in chunk_index order, the target flagged is_target."
+    )
+
+
 class ChunkEnabledPatch(BaseModel):
     """
     The desired searchability state for one chunk (its enabled_override).
@@ -321,6 +422,11 @@ __all__ = [
     "DocumentDetail",
     "PageInfo",
     "ChunkInfo",
+    "ChunkPage",
+    "OutlineHeading",
+    "DocumentOutline",
+    "ContextChunk",
+    "ChunkContext",
     "ChunkEnabledPatch",
     "BulkChunkEnabledPatch",
     "ChunkEnabledResult",

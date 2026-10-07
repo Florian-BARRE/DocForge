@@ -212,7 +212,9 @@ class AsyncDocuments(AsyncResource, _DocumentsSpecs):
             self._purge_trace_payloads_spec(document_id), TracePurgeResult
         )
 
-    async def get_markdown(self, document_id: str, download: bool = False) -> DocumentView:
+    async def get_markdown(
+        self, document_id: str, download: bool = False, pages: str | None = None
+    ) -> DocumentView:
         """
         Render a document as an on-the-fly markdown view generated from the canonical IR.
 
@@ -220,16 +222,20 @@ class AsyncDocuments(AsyncResource, _DocumentsSpecs):
             document_id (str): The document to render.
             download (bool): When true, ask the server for the attachment-style response (the caller
                 still only gets the text back; the flag only affects the server-side response header).
+            pages (str | None): Render only these 1-based pages ('5', '5-7', '5,7-9'); the whole
+                document when None (the parameter is then not sent at all).
 
         Returns:
             DocumentView: The rendered markdown body and its ``text/markdown`` content type.
         """
         content, mime_type = await self._transport.get_text_typed(
-            self._markdown_path(document_id), params={"download": download}
+            self._markdown_path(document_id), params={"download": download, "pages": pages}
         )
         return DocumentView(content=content, mime_type=mime_type)
 
-    async def get_html(self, document_id: str, download: bool = False) -> DocumentView:
+    async def get_html(
+        self, document_id: str, download: bool = False, pages: str | None = None
+    ) -> DocumentView:
         """
         Render a document as an on-the-fly HTML view generated from the canonical IR.
 
@@ -237,12 +243,14 @@ class AsyncDocuments(AsyncResource, _DocumentsSpecs):
             document_id (str): The document to render.
             download (bool): When true, ask the server for the attachment-style response (the caller
                 still only gets the text back; the flag only affects the server-side response header).
+            pages (str | None): Render only these 1-based pages ('5', '5-7', '5,7-9'); the whole
+                document when None (the parameter is then not sent at all).
 
         Returns:
             DocumentView: The rendered HTML body and its ``text/html`` content type.
         """
         content, mime_type = await self._transport.get_text_typed(
-            self._html_path(document_id), params={"download": download}
+            self._html_path(document_id), params={"download": download, "pages": pages}
         )
         return DocumentView(content=content, mime_type=mime_type)
 
@@ -303,7 +311,9 @@ class SyncDocuments(SyncResource, _DocumentsSpecs):
             self._purge_trace_payloads_spec(document_id), TracePurgeResult
         )
 
-    def get_markdown(self, document_id: str, download: bool = False) -> DocumentView:
+    def get_markdown(
+        self, document_id: str, download: bool = False, pages: str | None = None
+    ) -> DocumentView:
         """
         Render a document as an on-the-fly markdown view generated from the canonical IR.
 
@@ -311,16 +321,20 @@ class SyncDocuments(SyncResource, _DocumentsSpecs):
             document_id (str): The document to render.
             download (bool): When true, ask the server for the attachment-style response (the caller
                 still only gets the text back; the flag only affects the server-side response header).
+            pages (str | None): Render only these 1-based pages ('5', '5-7', '5,7-9'); the whole
+                document when None (the parameter is then not sent at all).
 
         Returns:
             DocumentView: The rendered markdown body and its ``text/markdown`` content type.
         """
         content, mime_type = self._transport.get_text_typed(
-            self._markdown_path(document_id), params={"download": download}
+            self._markdown_path(document_id), params={"download": download, "pages": pages}
         )
         return DocumentView(content=content, mime_type=mime_type)
 
-    def get_html(self, document_id: str, download: bool = False) -> DocumentView:
+    def get_html(
+        self, document_id: str, download: bool = False, pages: str | None = None
+    ) -> DocumentView:
         """
         Render a document as an on-the-fly HTML view generated from the canonical IR.
 
@@ -328,12 +342,14 @@ class SyncDocuments(SyncResource, _DocumentsSpecs):
             document_id (str): The document to render.
             download (bool): When true, ask the server for the attachment-style response (the caller
                 still only gets the text back; the flag only affects the server-side response header).
+            pages (str | None): Render only these 1-based pages ('5', '5-7', '5,7-9'); the whole
+                document when None (the parameter is then not sent at all).
 
         Returns:
             DocumentView: The rendered HTML body and its ``text/html`` content type.
         """
         content, mime_type = self._transport.get_text_typed(
-            self._html_path(document_id), params={"download": download}
+            self._html_path(document_id), params={"download": download, "pages": pages}
         )
         return DocumentView(content=content, mime_type=mime_type)
 

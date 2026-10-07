@@ -215,7 +215,7 @@ client.collections.update(
 | `documents.upload(collection_id, file, metadata=None, filename=None)` | `UploadAccepted` | Upload a file (path, `Path` or raw `bytes`) for asynchronous ingestion. |
 | `documents.set_enabled(document_id, enabled)` | `DocumentEnabledResponse` | Toggle a document's searchability (hides/reveals all its chunks). |
 | `documents.reingest(document_id, force=False)` | `UploadAccepted` | Re-run the full pipeline over one document (async). |
-| `documents.get_markdown(document_id, download=False)` | `DocumentView` | The document rendered as Markdown (a generated view of the IR). |
+| `documents.get_markdown(document_id, download=False, pages=None)` | `DocumentView` | The document rendered as Markdown (a generated view of the IR); `pages` (1-based: `"5"`, `"5-7"`, `"5,7-9"`) renders only those pages and is not sent when `None`. `get_html` takes the same arguments. |
 | `documents.get_html(document_id, download=False)` | `DocumentView` | The document rendered as HTML (a generated view of the IR). |
 
 Upload is asynchronous: the call returns immediately with a `document_id` and a `job_id` you poll
@@ -258,12 +258,15 @@ server-side (required fields must be present, enum values must be allowed, etc.)
 
 | Method | Returns | Description |
 |---|---|---|
-| `explorer.list_documents(collection_id)` | `list[DocumentListItem]` | List a collection's documents, newest first. |
+| `explorer.list_documents(collection_id, limit=None, offset=None)` | `list[DocumentListItem]` | List a collection's documents, newest first; paging args are sent only when set. |
 | `explorer.get_document(document_id)` | `DocumentDetail` | One document's full facts + resolved document-level metadata. |
 | `explorer.get_pages(document_id)` | `list[PageInfo]` | A document's pages (geometry, routing, render blob refs). |
 | `explorer.get_ir(document_id)` | `DocumentIRModel` | The full canonical IR (blocks, tables, figures, enrichments). |
 | `explorer.get_provenance(document_id)` | `DocumentProvenance` | The document's ingestion trace — how each chunk maps back to its IR/source (the Layout view's data). |
-| `explorer.get_chunks(document_id)` | `list[ChunkInfo]` | A document's retrieval chunks. |
+| `explorer.get_chunks(document_id, limit=None, offset=None, include_geometry=None)` | `list[ChunkInfo]` | A document's retrieval chunks (every chunk when no argument is set; each argument is sent only when set). With `include_geometry=False`, `block_ids`/`page` come back empty/`None`. |
+| `explorer.get_chunks_page(document_id, limit=None, offset=None, include_geometry=None)` | `ChunkPage` | Same window plus `total` (the `X-Total-Count` header; `None` against an older server) - `ChunkPage.items` / `.total`. |
+| `explorer.get_outline(document_id)` | `DocumentOutline` | The heading tree: `headings[]` of `level`, `text`, 1-based `page_number`, first `chunk_id`. |
+| `explorer.get_chunk_context(chunk_id, before=None, after=None)` | `ChunkContext` | The chunk and its neighbours (0-5 each, server default 1), target flagged `is_target`. |
 | `explorer.delete_document(document_id)` | `None` | Delete a document and everything derived from it. |
 | `explorer.set_chunk_enabled(chunk_id, enabled)` | `ChunkEnabledResult` | Toggle one chunk's searchability. |
 | `explorer.set_chunks_enabled(patch)` | `BulkChunkEnabledResponse` | Toggle several chunks at once (`BulkChunkEnabledPatch`). |

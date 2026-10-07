@@ -36,14 +36,35 @@ class HtmlLinearizer(BaseIRLinearizer):
         Returns:
             str: The full HTML document (skeleton + escaped body).
         """
-        # 1. Walk the IR into the escaped semantic body (shared reading-order traversal).
-        body = super().render(ir)
+        # 1. Walk the IR into the escaped semantic body, then wrap it in the UTF-8 HTML5 skeleton.
+        return self.wrap_document(ir, self.render_body(ir))
 
-        # 2. Wrap it in a UTF-8-declaring HTML5 skeleton carrying the document's language and title.
-        return self.__document(ir, body)
+    def render_body(self, ir: DocumentIR) -> str:
+        """
+        Render only the escaped semantic body fragment (no document skeleton).
 
-    def __document(self, ir: DocumentIR, body: str) -> str:
-        """Wrap a rendered body fragment in a minimal UTF-8 HTML5 document skeleton."""
+        Lets a caller compose several bodies (e.g. one per selected page, each in its own section)
+        into ONE document via :meth:`wrap_document`.
+
+        Args:
+            ir (DocumentIR): The canonical parsed document (or a block subset of it).
+
+        Returns:
+            str: The body fragment ("" when nothing renders).
+        """
+        return super().render(ir)
+
+    def wrap_document(self, ir: DocumentIR, body: str) -> str:
+        """
+        Wrap a rendered body fragment in a minimal UTF-8 HTML5 document skeleton.
+
+        Args:
+            ir (DocumentIR): The document supplying the ``lang`` attribute and the ``<title>``.
+            body (str): The already-escaped body markup.
+
+        Returns:
+            str: The full HTML document.
+        """
         lang_attr = f' lang="{escape(ir.language, quote=True)}"' if ir.language else ""
         title = escape(ir.title) if ir.title else "Document"
         return (

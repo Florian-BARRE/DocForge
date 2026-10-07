@@ -11,6 +11,7 @@ from .payloads import (
     ReingestOutcome,
     ReingestResult,
 )
+from .reading_payloads import ChunkIndexEntry, HeadingEntry
 from .transfer_payloads import DocumentExportRows
 from .trace_payloads import TracePayloadRead
 from .idempotency_payloads import IdempotencyBegin, IdempotencyRecord
@@ -59,6 +60,8 @@ __all__ = [
     "IRBundle",
     "ReingestOutcome",
     "ReingestResult",
+    "ChunkIndexEntry",
+    "HeadingEntry",
     "DocumentExportRows",
     "TracePayloadRead",
     "IdempotencyBegin",

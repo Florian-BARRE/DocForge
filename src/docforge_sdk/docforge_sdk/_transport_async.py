@@ -91,6 +91,30 @@ class AsyncTransport(_TransportBase):
         self._raise_for_status(response)
         return self._parse(response, model)
 
+    async def request_with_total(self, spec: RequestSpec, model: type[T]) -> tuple[T, int | None]:
+        """
+        Execute a request spec and also return the ``X-Total-Count`` header it carried.
+
+        Args:
+            spec (RequestSpec): The request description.
+            model (type[T]): The target type to validate the response into.
+
+        Returns:
+            tuple[T, int | None]: The validated body and the integer total, or None when the
+            header is absent or not an integer (older servers).
+        """
+        response = await self._send(
+            spec.method,
+            self._url(spec.path),
+            params=self._clean(spec.params),
+            json=spec.json,
+            files=spec.files,
+        )
+        self._raise_for_status(response)
+        raw_total = response.headers.get("x-total-count", "")
+        total = int(raw_total) if raw_total.isdigit() else None
+        return self._parse(response, model), total
+
     async def request_bare(self, spec: RequestSpec, model: type[T]) -> T:
         """
         Execute a request spec against the BARE origin (outside ``/api/v1``) and parse it.

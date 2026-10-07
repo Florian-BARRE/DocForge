@@ -37,6 +37,7 @@ from shared_libs.services.db.s3 import S3Client, S3ObjectApi
 # ====== Local Project Imports ======
 from .helpers import DatabaseHelpers
 from .payloads import IRBundle
+from .reading_payloads import ChunkIndexEntry, HeadingEntry
 from .trace_purge import TracePurgeHelper
 
 
@@ -168,10 +169,42 @@ class DocumentsFacade(LoggerClass):
                 enrichments=await IRApi.get_document_enrichments(session, document_id),
             )
 
-    async def get_chunks(self, document_id: uuid.UUID) -> list[Chunk]:
-        """The document's chunks (stored = the enriched, embedded form), in order."""
+    async def get_chunks(
+        self, document_id: uuid.UUID, *, limit: int | None = None, offset: int = 0
+    ) -> list[Chunk]:
+        """The document's chunks (stored = the enriched, embedded form), in order — all, or a page."""
         async with self._postgres.session() as session:
-            return await ChunkApi.get_for_document(session, document_id)
+            return await ChunkApi.get_for_document(session, document_id, limit=limit, offset=offset)
+
+    async def count_chunks(self, document_id: uuid.UUID) -> int:
+        """How many chunks the document has (the total behind a paginated chunk listing)."""
+        async with self._postgres.session() as session:
+            return await ChunkApi.count_for_document(session, document_id)
+
+    async def get_chunk_index(self, document_id: uuid.UUID) -> list[ChunkIndexEntry]:
+        """The document's chunks reduced to order/searchability/breadcrumb (no text), in order."""
+        async with self._postgres.session() as session:
+            rows = await ChunkApi.get_index_for_document(session, document_id)
+        return [
+            ChunkIndexEntry(
+                id=chunk_id,
+                chunk_index=chunk_index,
+                role=role,
+                enabled_override=enabled_override,
+                heading_path=list(heading_path or []),
+                last_reading_order=last_reading_order,
+            )
+            for chunk_id, chunk_index, role, enabled_override, heading_path, last_reading_order in rows
+        ]
+
+    async def get_headings(self, document_id: uuid.UUID) -> list[HeadingEntry]:
+        """The document's HEADING blocks (text, level, page, reading order), in reading order."""
+        async with self._postgres.session() as session:
+            rows = await IRApi.get_headings(session, document_id)
+        return [
+            HeadingEntry(text=text or "", level=level, page=page, reading_order=reading_order)
+            for text, level, page, reading_order in rows
+        ]
 
     async def get_chunks_by_ids(self, chunk_ids: list[uuid.UUID]) -> list[Chunk]:
         """Fetch chunks by id — the search-graph hydration path (bulk read, read-only)."""

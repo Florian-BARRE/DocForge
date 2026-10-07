@@ -2877,7 +2877,7 @@
                     "explorer"
                 ],
                 "summary": "Get Document Markdown",
-                "description": "Render the document as an on-the-fly markdown VIEW generated from the canonical IR.\n\nArgs:\n    document_id (uuid.UUID): The document to render.\n    download (bool): Attach a ``Content-Disposition`` (``<stem>.md``) instead of rendering inline.\n\nReturns:\n    Response: ``text/markdown; charset=utf-8``; 404 when the document is unknown.",
+                "description": "Render the document as an on-the-fly markdown VIEW generated from the canonical IR.\n\nArgs:\n    document_id (uuid.UUID): The document to render.\n    download (bool): Attach a ``Content-Disposition`` (``<stem>.md``) instead of rendering inline.\n    pages (str | None): 1-based page selector; each selected page follows a\n        ``<!-- page N -->`` marker line.\n\nReturns:\n    Response: ``text/markdown; charset=utf-8``; 404 when the document is unknown, 422 on a bad\n    page selector.",
                 "operationId": "get_document_markdown_api_v1_documents__document_id__markdown_get",
                 "parameters": [
                     {
@@ -2901,6 +2901,24 @@
                             "title": "Download"
                         },
                         "description": "When true, return an attachment download instead of an inline view."
+                    },
+                    {
+                        "name": "pages",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "description": "Render only these 1-based pages: a page ('5'), a range ('5-7') or a list ('5,7-9'). Each page is preceded by a citable page marker. Omit for the whole document. 422 when malformed or beyond the document's page count.",
+                            "title": "Pages"
+                        },
+                        "description": "Render only these 1-based pages: a page ('5'), a range ('5-7') or a list ('5,7-9'). Each page is preceded by a citable page marker. Omit for the whole document. 422 when malformed or beyond the document's page count."
                     }
                 ],
                 "responses": {
@@ -2926,7 +2944,7 @@
                     "explorer"
                 ],
                 "summary": "Get Document Html",
-                "description": "Render the document as an on-the-fly HTML VIEW generated from the canonical IR.\n\nArgs:\n    document_id (uuid.UUID): The document to render.\n    download (bool): Attach a ``Content-Disposition`` (``<stem>.html``) instead of rendering inline.\n\nReturns:\n    Response: ``text/html; charset=utf-8``; 404 when the document is unknown.",
+                "description": "Render the document as an on-the-fly HTML VIEW generated from the canonical IR.\n\nArgs:\n    document_id (uuid.UUID): The document to render.\n    download (bool): Attach a ``Content-Disposition`` (``<stem>.html``) instead of rendering inline.\n    pages (str | None): 1-based page selector; each selected page renders in a\n        ``<section data-page=\"N\">`` of the one HTML5 document.\n\nReturns:\n    Response: ``text/html; charset=utf-8``; 404 when the document is unknown, 422 on a bad\n    page selector.",
                 "operationId": "get_document_html_api_v1_documents__document_id__html_get",
                 "parameters": [
                     {
@@ -2950,6 +2968,24 @@
                             "title": "Download"
                         },
                         "description": "When true, return an attachment download instead of an inline view."
+                    },
+                    {
+                        "name": "pages",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "description": "Render only these 1-based pages: a page ('5'), a range ('5-7') or a list ('5,7-9'). Each page is preceded by a citable page marker. Omit for the whole document. 422 when malformed or beyond the document's page count.",
+                            "title": "Pages"
+                        },
+                        "description": "Render only these 1-based pages: a page ('5'), a range ('5-7') or a list ('5,7-9'). Each page is preceded by a citable page marker. Omit for the whole document. 422 when malformed or beyond the document's page count."
                     }
                 ],
                 "responses": {
@@ -2975,7 +3011,7 @@
                     "explorer"
                 ],
                 "summary": "Get Document Chunks",
-                "description": "Return a document's chunks \u2014 enriched text, composition (block ids) and generated metadata.\n\nReturns:\n    list[ChunkInfo]: One row per chunk, in order; 404 when the document is unknown.",
+                "description": "Return a document's chunks \u2014 enriched text, composition (block ids) and generated metadata.\n\nReturns:\n    list[ChunkInfo]: One row per chunk of the requested page, in order (header ``X-Total-Count``\n    = the document's chunk count); 404 when the document is unknown.",
                 "operationId": "get_document_chunks_api_v1_documents__document_id__chunks_get",
                 "parameters": [
                     {
@@ -2987,6 +3023,51 @@
                             "format": "uuid",
                             "title": "Document Id"
                         }
+                    },
+                    {
+                        "name": "limit",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "integer",
+                                    "maximum": 500,
+                                    "minimum": 1
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "description": "Max chunks to return (in chunk_index order); omit for every chunk. The total is returned in the X-Total-Count header.",
+                            "title": "Limit"
+                        },
+                        "description": "Max chunks to return (in chunk_index order); omit for every chunk. The total is returned in the X-Total-Count header."
+                    },
+                    {
+                        "name": "offset",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "description": "Chunks to skip (paging; 0 = the first).",
+                            "default": 0,
+                            "title": "Offset"
+                        },
+                        "description": "Chunks to skip (paging; 0 = the first)."
+                    },
+                    {
+                        "name": "include_geometry",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "boolean",
+                            "description": "False drops block_ids and the 0-based 'page' (keeps the 1-based page_number) \u2014 the lean, agent-sized shape.",
+                            "default": true,
+                            "title": "Include Geometry"
+                        },
+                        "description": "False drops block_ids and the 0-based 'page' (keeps the 1-based page_number) \u2014 the lean, agent-sized shape."
                     }
                 ],
                 "responses": {
@@ -3096,6 +3177,122 @@
                             "application/json": {
                                 "schema": {
                                     "$ref": "#/components/schemas/BulkChunkEnabledResponse"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/documents/{document_id}/outline": {
+            "get": {
+                "tags": [
+                    "explorer"
+                ],
+                "summary": "Get Document Outline",
+                "description": "Return a document's heading outline \u2014 level, text, 1-based page and section-opening chunk.\n\nReturns:\n    DocumentOutline: The outline (headings in reading order); 404 when the document is unknown,\n    403 when it is outside the caller's collection scope.",
+                "operationId": "get_document_outline_api_v1_documents__document_id__outline_get",
+                "parameters": [
+                    {
+                        "name": "document_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid",
+                            "title": "Document Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/DocumentOutline"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/chunks/{chunk_id}/context": {
+            "get": {
+                "tags": [
+                    "explorer"
+                ],
+                "summary": "Get Chunk Context",
+                "description": "Return a chunk with its neighbours by chunk_index in the same document (disabled ones skipped).\n\nReturns:\n    ChunkContext: The ordered window, the requested chunk flagged ``is_target``; 404 when the\n    chunk is unknown, 403 when its collection is outside the caller's scope.",
+                "operationId": "get_chunk_context_api_v1_chunks__chunk_id__context_get",
+                "parameters": [
+                    {
+                        "name": "chunk_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid",
+                            "title": "Chunk Id"
+                        }
+                    },
+                    {
+                        "name": "before",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "maximum": 5,
+                            "minimum": 0,
+                            "description": "Searchable chunks to include before the target (0-5).",
+                            "default": 1,
+                            "title": "Before"
+                        },
+                        "description": "Searchable chunks to include before the target (0-5)."
+                    },
+                    {
+                        "name": "after",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "maximum": 5,
+                            "minimum": 0,
+                            "description": "Searchable chunks to include after the target (0-5).",
+                            "default": 1,
+                            "title": "After"
+                        },
+                        "description": "Searchable chunks to include after the target (0-5)."
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ChunkContext"
                                 }
                             }
                         }
@@ -5148,6 +5345,36 @@
                 "title": "ChunkBrowseResponse",
                 "description": "One page of browsed chunks.\n\nAttributes:\n    chunks (list[SearchHitModel]): The page, ordered by document id then chunk_index.\n    next_cursor (str | None): Pass back as ``cursor`` for the next page; None on the last page.\n    hints (list[SearchHint]): Filter hints (a value nothing stores; the culprit of an empty page)."
             },
+            "ChunkContext": {
+                "properties": {
+                    "document_id": {
+                        "type": "string",
+                        "title": "Document Id",
+                        "description": "The owning document's UUID."
+                    },
+                    "display_title": {
+                        "type": "string",
+                        "title": "Display Title",
+                        "description": "The owning document's display title."
+                    },
+                    "chunks": {
+                        "items": {
+                            "$ref": "#/components/schemas/ContextChunk"
+                        },
+                        "type": "array",
+                        "title": "Chunks",
+                        "description": "The window in chunk_index order: up to 'before' preceding chunks, the target (is_target=true) and up to 'after' following chunks. Disabled neighbours are skipped (the window reaches past them); fewer are returned at a document edge."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "document_id",
+                    "display_title",
+                    "chunks"
+                ],
+                "title": "ChunkContext",
+                "description": "A chunk and its enabled neighbours by chunk_index within the same document."
+            },
             "ChunkEnabledPatch": {
                 "properties": {
                     "enabled": {
@@ -6025,6 +6252,65 @@
                         "when_equals": "#/components/schemas/WhenEquals"
                     }
                 }
+            },
+            "ContextChunk": {
+                "properties": {
+                    "chunk_id": {
+                        "type": "string",
+                        "title": "Chunk Id",
+                        "description": "The chunk UUID."
+                    },
+                    "chunk_index": {
+                        "type": "integer",
+                        "title": "Chunk Index",
+                        "description": "Position of the chunk within its document."
+                    },
+                    "text": {
+                        "type": "string",
+                        "title": "Text",
+                        "description": "The chunk's (enriched) text."
+                    },
+                    "page_number": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Page Number",
+                        "description": "1-based page of the chunk's leading block; null when it has no located block."
+                    },
+                    "heading_path": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array",
+                        "title": "Heading Path",
+                        "description": "The chunk's section breadcrumb (outer\u2192inner)."
+                    },
+                    "token_count": {
+                        "type": "integer",
+                        "title": "Token Count",
+                        "description": "Token length of the text."
+                    },
+                    "is_target": {
+                        "type": "boolean",
+                        "title": "Is Target",
+                        "description": "True for the chunk the window was requested around."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "chunk_id",
+                    "chunk_index",
+                    "text",
+                    "token_count",
+                    "is_target"
+                ],
+                "title": "ContextChunk",
+                "description": "One chunk of a context window \u2014 lean: text and citation facts, no geometry or metadata."
             },
             "CostEstimate": {
                 "properties": {
@@ -7025,6 +7311,47 @@
                 ],
                 "title": "DocumentListItem",
                 "description": "One row of a collection's document catalogue (the browse list)."
+            },
+            "DocumentOutline": {
+                "properties": {
+                    "document_id": {
+                        "type": "string",
+                        "title": "Document Id",
+                        "description": "The document's UUID."
+                    },
+                    "display_title": {
+                        "type": "string",
+                        "title": "Display Title",
+                        "description": "The title to show: the collection's title_field value when set, else the parsed title ('' when none)."
+                    },
+                    "page_count": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Page Count",
+                        "description": "Pages of the document (null before parse / page-less formats)."
+                    },
+                    "headings": {
+                        "items": {
+                            "$ref": "#/components/schemas/OutlineHeading"
+                        },
+                        "type": "array",
+                        "title": "Headings",
+                        "description": "Every heading, in reading order ([] when none)."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "document_id",
+                    "display_title"
+                ],
+                "title": "DocumentOutline",
+                "description": "A document's heading outline \u2014 its table of contents, built from the IR heading blocks."
             },
             "DocumentProvenance": {
                 "properties": {
@@ -9918,6 +10245,51 @@
                 "type": "object",
                 "title": "OnSuccess",
                 "description": "Follow the edge only when the source node succeeded."
+            },
+            "OutlineHeading": {
+                "properties": {
+                    "level": {
+                        "type": "integer",
+                        "title": "Level",
+                        "description": "Heading depth (1 = top level; 1 when the parser set none)."
+                    },
+                    "text": {
+                        "type": "string",
+                        "title": "Text",
+                        "description": "The heading text."
+                    },
+                    "page_number": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Page Number",
+                        "description": "1-based page the heading sits on; null for a page-less document (e.g. HTML)."
+                    },
+                    "chunk_id": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Chunk Id",
+                        "description": "The first chunk of this section (whose heading_path ends with \u2014 else contains \u2014 this heading); read around it with GET /chunks/{chunk_id}/context. Null when no chunk carries this heading in its breadcrumb."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "level",
+                    "text"
+                ],
+                "title": "OutlineHeading",
+                "description": "One heading of a document's outline, in reading order."
             },
             "PageInfo": {
                 "properties": {

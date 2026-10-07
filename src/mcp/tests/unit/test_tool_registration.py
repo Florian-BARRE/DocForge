@@ -24,7 +24,8 @@ from libs.server import build_mcp
 # 71 -> 72: update_document_metadata (documents) — PATCH /documents/{id}/metadata.
 # 72 -> 73: describe_collection (collections) — GET /collections/{id}/describe, the agent guide.
 # 73 -> 74: browse_chunks (search) - POST /collections/{id}/chunks/browse.
-EXPECTED_TOOL_COUNT = 74
+# 74 -> 76 (wave D, document reading): get_document_outline + get_chunk_context (explorer).
+EXPECTED_TOOL_COUNT = 76
 
 EXPECTED_TOOL_NAMES = {
     # health
@@ -70,6 +71,8 @@ EXPECTED_TOOL_NAMES = {
     "reingest_documents",
     # explorer
     "list_documents",
+    "get_document_outline",
+    "get_chunk_context",
     "get_document",
     "get_document_pages",
     "get_document_ir",

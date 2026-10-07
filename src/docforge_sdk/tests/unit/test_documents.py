@@ -51,3 +51,15 @@ def test_sync_set_enabled_patches_and_returns_state() -> None:
     assert route.calls.last.request.url.path == f"/api/v1/documents/{DID}/enabled"
     assert isinstance(result, DocumentEnabledResponse)
     assert result.enabled is False
+
+
+@respx.mock
+async def test_get_markdown_sends_pages_only_when_set() -> None:
+    route = respx.get(f"{API}/documents/{DID}/markdown").mock(
+        return_value=httpx.Response(200, text="# x", headers={"content-type": "text/markdown"})
+    )
+    async with AsyncClient(BASE) as client:
+        await client.documents.get_markdown(DID)
+        assert "pages" not in route.calls.last.request.url.params
+        await client.documents.get_markdown(DID, pages="5-7")
+    assert route.calls.last.request.url.params["pages"] == "5-7"

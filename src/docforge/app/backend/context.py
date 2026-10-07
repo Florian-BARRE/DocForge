@@ -29,6 +29,7 @@ if TYPE_CHECKING:
     from .libs.health import CollectionHealthService
     from .libs.metrics import MetricsService
     from .libs.preview import PreviewService
+    from .libs.reading import DocumentReader
     from .libs.search import ChunkBrowser, SearchService
     from .utils.queue import QueueClient
 
@@ -62,6 +63,8 @@ class CONTEXT:
     search_service: SearchService
     # Backs POST /collections/{id}/chunks/browse — the query-less, filter-only ordered chunk listing.
     chunk_browser: ChunkBrowser
+    # Backs GET /documents/{id}/outline + GET /chunks/{id}/context — reading a document piecemeal.
+    document_reader: DocumentReader
 
     # ── Collection health (on-demand, zero-spend reachability + build probe) ──
     # Backs GET /collections/{id}/health — builds both graphs, sweeps their providers, rolls up.

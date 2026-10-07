@@ -68,12 +68,16 @@ from docforge_sdk.models.estimate import (
 from docforge_sdk.models.explorer import (
     BulkChunkEnabledPatch,
     BulkChunkEnabledResponse,
+    ChunkContext,
     ChunkEnabledPatch,
     ChunkEnabledResult,
     ChunkInfo,
+    ContextChunk,
     DocumentDetail,
     DocumentListItem,
+    DocumentOutline,
     MetadataValue,
+    OutlineHeading,
     PageInfo,
 )
 from docforge_sdk.models.health import (
@@ -237,6 +241,10 @@ MODELS: dict[str, type[BaseModel]] = {
     "DocumentDetail": DocumentDetail,
     "PageInfo": PageInfo,
     "ChunkInfo": ChunkInfo,
+    "DocumentOutline": DocumentOutline,
+    "OutlineHeading": OutlineHeading,
+    "ChunkContext": ChunkContext,
+    "ContextChunk": ContextChunk,
     "ChunkEnabledPatch": ChunkEnabledPatch,
     "BulkChunkEnabledPatch": BulkChunkEnabledPatch,
     "ChunkEnabledResult": ChunkEnabledResult,

@@ -169,6 +169,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/chunks/{chunk_id}/context": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Chunk Context
+         * @description Return a chunk with its neighbours by chunk_index in the same document (disabled ones skipped).
+         *
+         *     Returns:
+         *         ChunkContext: The ordered window, the requested chunk flagged ``is_target``; 404 when the
+         *         chunk is unknown, 403 when its collection is outside the caller's scope.
+         */
+        get: operations["get_chunk_context_api_v1_chunks__chunk_id__context_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/chunks/{chunk_id}/enabled": {
         parameters: {
             query?: never;
@@ -949,7 +973,8 @@ export interface paths {
          * @description Return a document's chunks — enriched text, composition (block ids) and generated metadata.
          *
          *     Returns:
-         *         list[ChunkInfo]: One row per chunk, in order; 404 when the document is unknown.
+         *         list[ChunkInfo]: One row per chunk of the requested page, in order (header ``X-Total-Count``
+         *         = the document's chunk count); 404 when the document is unknown.
          */
         get: operations["get_document_chunks_api_v1_documents__document_id__chunks_get"];
         put?: never;
@@ -1000,9 +1025,12 @@ export interface paths {
          *     Args:
          *         document_id (uuid.UUID): The document to render.
          *         download (bool): Attach a ``Content-Disposition`` (``<stem>.html``) instead of rendering inline.
+         *         pages (str | None): 1-based page selector; each selected page renders in a
+         *             ``<section data-page="N">`` of the one HTML5 document.
          *
          *     Returns:
-         *         Response: ``text/html; charset=utf-8``; 404 when the document is unknown.
+         *         Response: ``text/html; charset=utf-8``; 404 when the document is unknown, 422 on a bad
+         *         page selector.
          */
         get: operations["get_document_html_api_v1_documents__document_id__html_get"];
         put?: never;
@@ -1050,9 +1078,12 @@ export interface paths {
          *     Args:
          *         document_id (uuid.UUID): The document to render.
          *         download (bool): Attach a ``Content-Disposition`` (``<stem>.md``) instead of rendering inline.
+         *         pages (str | None): 1-based page selector; each selected page follows a
+         *             ``<!-- page N -->`` marker line.
          *
          *     Returns:
-         *         Response: ``text/markdown; charset=utf-8``; 404 when the document is unknown.
+         *         Response: ``text/markdown; charset=utf-8``; 404 when the document is unknown, 422 on a bad
+         *         page selector.
          */
         get: operations["get_document_markdown_api_v1_documents__document_id__markdown_get"];
         put?: never;
@@ -1094,6 +1125,30 @@ export interface paths {
          *             repaint needs repair; null otherwise); 404 when the document is unknown.
          */
         patch: operations["update_document_metadata_api_v1_documents__document_id__metadata_patch"];
+        trace?: never;
+    };
+    "/api/v1/documents/{document_id}/outline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Document Outline
+         * @description Return a document's heading outline — level, text, 1-based page and section-opening chunk.
+         *
+         *     Returns:
+         *         DocumentOutline: The outline (headings in reading order); 404 when the document is unknown,
+         *         403 when it is outside the caller's collection scope.
+         */
+        get: operations["get_document_outline_api_v1_documents__document_id__outline_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/documents/{document_id}/pages": {
@@ -2838,6 +2893,27 @@ export interface components {
             next_cursor?: string | null;
         };
         /**
+         * ChunkContext
+         * @description A chunk and its enabled neighbours by chunk_index within the same document.
+         */
+        ChunkContext: {
+            /**
+             * Chunks
+             * @description The window in chunk_index order: up to 'before' preceding chunks, the target (is_target=true) and up to 'after' following chunks. Disabled neighbours are skipped (the window reaches past them); fewer are returned at a document edge.
+             */
+            chunks: components["schemas"]["ContextChunk"][];
+            /**
+             * Display Title
+             * @description The owning document's display title.
+             */
+            display_title: string;
+            /**
+             * Document Id
+             * @description The owning document's UUID.
+             */
+            document_id: string;
+        };
+        /**
          * ChunkEnabledPatch
          * @description The desired searchability state for one chunk (its enabled_override).
          */
@@ -3448,6 +3524,47 @@ export interface components {
         };
         Condition: components["schemas"]["Always"] | components["schemas"]["OnSuccess"] | components["schemas"]["OnFailure"] | components["schemas"]["ScoreBelow"] | components["schemas"]["WhenEquals"];
         /**
+         * ContextChunk
+         * @description One chunk of a context window — lean: text and citation facts, no geometry or metadata.
+         */
+        ContextChunk: {
+            /**
+             * Chunk Id
+             * @description The chunk UUID.
+             */
+            chunk_id: string;
+            /**
+             * Chunk Index
+             * @description Position of the chunk within its document.
+             */
+            chunk_index: number;
+            /**
+             * Heading Path
+             * @description The chunk's section breadcrumb (outer→inner).
+             */
+            heading_path?: string[];
+            /**
+             * Is Target
+             * @description True for the chunk the window was requested around.
+             */
+            is_target: boolean;
+            /**
+             * Page Number
+             * @description 1-based page of the chunk's leading block; null when it has no located block.
+             */
+            page_number?: number | null;
+            /**
+             * Text
+             * @description The chunk's (enriched) text.
+             */
+            text: string;
+            /**
+             * Token Count
+             * @description Token length of the text.
+             */
+            token_count: number;
+        };
+        /**
          * CostEstimate
          * @description The full pre-hoc breakdown — an ESTIMATE, with its assumptions and caveats surfaced.
          *
@@ -4013,6 +4130,32 @@ export interface components {
              * @description Non-fatal warning on a DONE document (e.g. a 0-chunk run); None when none.
              */
             warning_reason?: string | null;
+        };
+        /**
+         * DocumentOutline
+         * @description A document's heading outline — its table of contents, built from the IR heading blocks.
+         */
+        DocumentOutline: {
+            /**
+             * Display Title
+             * @description The title to show: the collection's title_field value when set, else the parsed title ('' when none).
+             */
+            display_title: string;
+            /**
+             * Document Id
+             * @description The document's UUID.
+             */
+            document_id: string;
+            /**
+             * Headings
+             * @description Every heading, in reading order ([] when none).
+             */
+            headings?: components["schemas"]["OutlineHeading"][];
+            /**
+             * Page Count
+             * @description Pages of the document (null before parse / page-less formats).
+             */
+            page_count?: number | null;
         };
         /**
          * DocumentProvenance
@@ -5892,6 +6035,32 @@ export interface components {
              * @enum {string}
              */
             kind: OnSuccessKind;
+        };
+        /**
+         * OutlineHeading
+         * @description One heading of a document's outline, in reading order.
+         */
+        OutlineHeading: {
+            /**
+             * Chunk Id
+             * @description The first chunk of this section (whose heading_path ends with — else contains — this heading); read around it with GET /chunks/{chunk_id}/context. Null when no chunk carries this heading in its breadcrumb.
+             */
+            chunk_id?: string | null;
+            /**
+             * Level
+             * @description Heading depth (1 = top level; 1 when the parser set none).
+             */
+            level: number;
+            /**
+             * Page Number
+             * @description 1-based page the heading sits on; null for a page-less document (e.g. HTML).
+             */
+            page_number?: number | null;
+            /**
+             * Text
+             * @description The heading text.
+             */
+            text: string;
         };
         /**
          * PageInfo
@@ -8562,6 +8731,42 @@ export interface operations {
             };
         };
     };
+    get_chunk_context_api_v1_chunks__chunk_id__context_get: {
+        parameters: {
+            query?: {
+                /** @description Searchable chunks to include after the target (0-5). */
+                after?: number;
+                /** @description Searchable chunks to include before the target (0-5). */
+                before?: number;
+            };
+            header?: never;
+            path: {
+                chunk_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChunkContext"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     set_chunk_enabled_api_v1_chunks__chunk_id__enabled_patch: {
         parameters: {
             query?: never;
@@ -9572,7 +9777,14 @@ export interface operations {
     };
     get_document_chunks_api_v1_documents__document_id__chunks_get: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description False drops block_ids and the 0-based 'page' (keeps the 1-based page_number) — the lean, agent-sized shape. */
+                include_geometry?: boolean;
+                /** @description Max chunks to return (in chunk_index order); omit for every chunk. The total is returned in the X-Total-Count header. */
+                limit?: number | null;
+                /** @description Chunks to skip (paging; 0 = the first). */
+                offset?: number;
+            };
             header?: never;
             path: {
                 document_id: string;
@@ -9641,6 +9853,8 @@ export interface operations {
             query?: {
                 /** @description When true, return an attachment download instead of an inline view. */
                 download?: boolean;
+                /** @description Render only these 1-based pages: a page ('5'), a range ('5-7') or a list ('5,7-9'). Each page is preceded by a citable page marker. Omit for the whole document. 422 when malformed or beyond the document's page count. */
+                pages?: string | null;
             };
             header?: never;
             path: {
@@ -9704,6 +9918,8 @@ export interface operations {
             query?: {
                 /** @description When true, return an attachment download instead of an inline view. */
                 download?: boolean;
+                /** @description Render only these 1-based pages: a page ('5'), a range ('5-7') or a list ('5,7-9'). Each page is preceded by a citable page marker. Omit for the whole document. 422 when malformed or beyond the document's page count. */
+                pages?: string | null;
             };
             header?: never;
             path: {
@@ -9753,6 +9969,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MetadataUpdateResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_document_outline_api_v1_documents__document_id__outline_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentOutline"];
                 };
             };
             /** @description Validation Error */

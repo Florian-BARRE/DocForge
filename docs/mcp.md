@@ -93,16 +93,22 @@ vector space is fixed at creation), plus optional ingestion/search pipeline blob
 
 ### Explorer (read-only browse)
 
+Reading a document piecemeal (agent path): `get_document_outline` -> `get_document_markdown(pages=...)`
+for a section, or `get_chunk_context(chunk_id)` around a search hit; `get_document_chunks` to walk
+chunks page by page. Text outputs use ASCII ` | ` separators.
+
 | Tool | Purpose |
 |---|---|
-| `list_documents` | A collection's documents, newest first — the browse catalogue. |
+| `list_documents` | A collection's documents, newest first - the browse catalogue (`limit`/`offset` to page). |
 | `get_document` | One document's full facts + resolved document-level metadata. |
 | `get_document_pages` | The document's pages in order — geometry, routing, render-blob reference. |
-| `get_document_ir` | The full canonical **IR** — blocks, tables, figures, enrichments (can be large). |
-| `get_document_provenance` | Ingestion provenance — the parser/model pipeline (per-stage trace) that produced the IR + chunks. |
-| `get_document_chunks` | The retrieval chunks — enriched text, composition, generated metadata. |
-| `get_document_markdown` | The document rendered as Markdown, generated on the fly from the canonical IR. |
-| `get_document_html` | The document rendered as HTML, generated on the fly from the canonical IR. |
+| `get_document_ir` | The full canonical **IR** — blocks, tables, figures, enrichments. Very large: to read, prefer the outline / chunks / context tools below. |
+| `get_document_provenance` | Ingestion provenance — the parser/model pipeline (per-stage trace) that produced the IR + chunks. Large; about processing, not content. |
+| `get_document_outline` | The document's table of contents - one indented line per heading with its 1-based page and first chunk id (`format="text"` default, `"json"` compact). The cheap first step to read a long document. |
+| `get_chunk_context` | A chunk plus its neighbours (`before`/`after`, 0-5, default 1) - the #1 way to read around a search hit. Text: `[index*] p.N \| heading` + text, target marked `*`. |
+| `get_document_chunks` | The retrieval chunks, **paginated** (`limit=20`, `offset=0`) and **without geometry** by default (`include_geometry=false`). Output starts `chunks A-B of TOTAL` (from `X-Total-Count`); `format="json"` gives `{total, offset, chunks}`. |
+| `get_document_markdown` | The document as Markdown, generated on the fly from the IR. Prefer `pages` (1-based: `5`, `5-7`, `5,7-9`) - the whole document can be ~50k chars. |
+| `get_document_html` | The document as HTML (same `pages` parameter). |
 | `delete_document` | Delete a document everywhere (Qdrant points, PG cascade, orphan-only blob purge). Irreversible. |
 | `set_chunk_enabled` | Toggle one chunk's searchability (reversible, no re-embed). |
 | `set_chunks_enabled` | Toggle several chunks to the same state in one call (multi-select). |
@@ -190,7 +196,7 @@ multi-GB) — `get_export_download_ref` instead points the caller at the REST do
 | `list_audit` | One keyset-paginated page of the audit trail, newest first — one row per mutating API action (who/what/target/outcome). Filter by actor (`actor_user_id`/`actor_key_id`), target (`target_type`+`target_id`), `correlation_id`, and an ISO-8601 time window (`created_from`/`created_to`); walk it with `cursor`. **ROOT / full-access keys only** (a collection-scoped key is rejected `403`). |
 
 
-**Total: 74 tools** across 13 sections.
+**Total: 76 tools** across 13 sections.
 
 ---
 
@@ -317,7 +323,7 @@ Add an entry to your client's MCP config (`.mcp.json`-style):
 }
 ```
 
-The client launches the process and speaks MCP over stdio; the model can then call any of the 74
+The client launches the process and speaks MCP over stdio; the model can then call any of the 76
 tools. (Use an absolute path to `entrypoint.py` if your client does not run from the repo root, and
 run it through `uv`/the project venv so `docforge_sdk` and `mcp` are importable.)
 

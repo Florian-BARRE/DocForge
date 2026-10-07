@@ -4,6 +4,9 @@
 # orchestration the two view endpoints share: adapt the DB-shaped IRBundle to a canonical
 # DocumentIR, run the pure IRLinearizer, and wrap the string in a Response with the right
 # content-type and an optional attachment Content-Disposition derived from the document's filename.
+# A page selection renders each selected page on its own (the IR restricted to that page's blocks,
+# the linearizer unchanged) behind a citable page marker: ``<!-- page N -->`` in markdown, a
+# ``<section data-page="N">`` inside the one HTML5 document.
 
 # ====== Standard Library Imports ======
 from __future__ import annotations
@@ -21,6 +24,7 @@ from shared_libs.services.db.facades import IRBundle
 from shared_libs.services.db.postgresql.tables import Document
 
 # ====== Local Project Imports ======
+from ...libs.reading import IRPageFilter
 from .ir_adapter import IRBundleAdapter
 
 # Charset-qualified media types — the body is a unicode string, always encoded as UTF-8.
@@ -40,43 +44,70 @@ class DocumentViewHelpers:
         raise TypeError("DocumentViewHelpers is a static-only class and cannot be instantiated.")
 
     @classmethod
-    def markdown(cls, document: Document, bundle: IRBundle, download: bool) -> Response:
+    def markdown(
+        cls, document: Document, bundle: IRBundle, download: bool, pages: list[int] | None = None
+    ) -> Response:
         """
-        Render the document as a markdown view Response.
+        Render the document (or only the selected pages) as a markdown view Response.
 
         Args:
             document (Document): The document row (supplies the download filename stem).
             bundle (IRBundle): The document's stored IR rows.
             download (bool): When True, attach a Content-Disposition so browsers save the file.
+            pages (list[int] | None): Validated 1-based pages to render, each behind a
+                ``<!-- page N -->`` marker line; None renders the whole document unmarked.
 
         Returns:
             Response: The markdown body as ``text/markdown; charset=utf-8``.
         """
-        # 1. Adapt the DB rows to the canonical IR, then linearize to markdown.
+        # 1. Adapt the DB rows to the canonical IR.
         ir = IRBundleAdapter.to_document_ir(document, bundle)
-        body = cls._linearizer.to_markdown(ir)
 
-        # 2. Wrap with the markdown media type and the ".md" download name.
+        # 2. Whole document, or one marked section per selected page (an empty page keeps its marker).
+        if pages is None:
+            body = cls._linearizer.to_markdown(ir)
+        else:
+            sections = [
+                f"<!-- page {page_number} -->\n\n{cls._linearizer.to_markdown(page_ir)}".rstrip()
+                for page_number, page_ir in IRPageFilter.by_page(ir, pages)
+            ]
+            body = "\n\n".join(sections)
+
+        # 3. Wrap with the markdown media type and the ".md" download name.
         return cls._response(body, _MARKDOWN_MEDIA_TYPE, document.filename, "md", download)
 
     @classmethod
-    def html(cls, document: Document, bundle: IRBundle, download: bool) -> Response:
+    def html(
+        cls, document: Document, bundle: IRBundle, download: bool, pages: list[int] | None = None
+    ) -> Response:
         """
-        Render the document as an HTML view Response.
+        Render the document (or only the selected pages) as an HTML view Response.
 
         Args:
             document (Document): The document row (supplies the download filename stem).
             bundle (IRBundle): The document's stored IR rows.
             download (bool): When True, attach a Content-Disposition so browsers save the file.
+            pages (list[int] | None): Validated 1-based pages to render, each in a
+                ``<section data-page="N">`` of the one HTML5 document; None renders it whole.
 
         Returns:
             Response: The HTML body as ``text/html; charset=utf-8``.
         """
-        # 1. Adapt the DB rows to the canonical IR, then linearize to HTML.
+        # 1. Adapt the DB rows to the canonical IR.
         ir = IRBundleAdapter.to_document_ir(document, bundle)
-        body = cls._linearizer.to_html(ir)
 
-        # 2. Wrap with the HTML media type and the ".html" download name.
+        # 2. Whole document, or one section per selected page inside a single standalone document.
+        if pages is None:
+            body = cls._linearizer.to_html(ir)
+        else:
+            sections = [
+                f'<section data-page="{page_number}">\n{cls._linearizer.to_html_body(page_ir)}'
+                "\n</section>"
+                for page_number, page_ir in IRPageFilter.by_page(ir, pages)
+            ]
+            body = cls._linearizer.to_html_document(ir, "\n".join(sections))
+
+        # 3. Wrap with the HTML media type and the ".html" download name.
         return cls._response(body, _HTML_MEDIA_TYPE, document.filename, "html", download)
 
     @staticmethod

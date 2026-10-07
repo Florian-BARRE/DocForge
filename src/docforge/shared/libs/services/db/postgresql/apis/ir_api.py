@@ -13,11 +13,14 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # ====== Internal Project Imports ======
+from shared_libs.public_models import BlockType
+
 from ..tables import (
     Block,
     BlockEnrichment,
     BlockFigure,
     BlockTable,
+    Document,
 )
 
 
@@ -64,6 +67,32 @@ class IRApi:
             select(Block).where(Block.document_id == document_id).order_by(Block.reading_order)
         )
         return list(result.scalars().all())
+
+    @staticmethod
+    async def get_headings(
+        session: AsyncSession, document_id: uuid.UUID
+    ) -> list[tuple[str | None, int | None, int | None, int]]:
+        """
+        Return a document's HEADING blocks as (text, level, page, reading_order), in reading order.
+
+        Column-only (no other block, no detail row) — the cheap outline read. ``page`` is None for a
+        page-less document (falsy ``page_count``: its blocks carry the placeholder index 0), the same
+        rule as the chunk block-location read.
+
+        Args:
+            session (AsyncSession): The unit of work.
+            document_id (uuid.UUID): The document whose headings are returned.
+
+        Returns:
+            list[tuple[str | None, int | None, int | None, int]]: One row per heading block.
+        """
+        result = await session.execute(
+            select(Block.text, Block.level, Block.page, Block.reading_order, Document.page_count)
+            .join(Document, Document.id == Block.document_id)
+            .where(Block.document_id == document_id, Block.block_type == BlockType.HEADING.value)
+            .order_by(Block.reading_order)
+        )
+        return [(row[0], row[1], row[2] if row[4] else None, row[3]) for row in result.all()]
 
     @staticmethod
     async def get_tables(session: AsyncSession, document_id: uuid.UUID) -> list[BlockTable]:

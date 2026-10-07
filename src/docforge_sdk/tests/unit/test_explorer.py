@@ -95,3 +95,100 @@ def test_sync_set_chunks_enabled_posts_body_and_returns_response() -> None:
     assert route.calls.last.request.method == "PATCH"
     assert json.loads(route.calls.last.request.content) == {"chunk_ids": [CHUNK], "enabled": True}
     assert isinstance(result, BulkChunkEnabledResponse)
+
+
+_LEAN_CHUNK: dict[str, Any] = {
+    "id": CHUNK,
+    "chunk_index": 0,
+    "text": "t",
+    "token_count": 1,
+    "is_indexed": True,
+    "role": "body",
+    "enabled": True,
+    "strategy": "recursive",
+}
+
+
+@respx.mock
+async def test_get_chunks_sends_no_query_when_nothing_set() -> None:
+    route = respx.get(f"{API}/documents/{DID}/chunks").mock(
+        return_value=httpx.Response(200, json=[_LEAN_CHUNK])
+    )
+    async with AsyncClient(BASE) as client:
+        result = await client.explorer.get_chunks(DID)
+    assert route.calls.last.request.url.query == b""
+    # A lean (geometry-less) item parses: block_ids/page are absent from the wire.
+    assert result[0].block_ids == [] and result[0].page is None
+
+
+@respx.mock
+async def test_get_chunks_page_forwards_set_params_and_reads_total() -> None:
+    route = respx.get(f"{API}/documents/{DID}/chunks").mock(
+        return_value=httpx.Response(200, json=[_LEAN_CHUNK], headers={"X-Total-Count": "42"})
+    )
+    with Client(BASE) as client:
+        page = client.explorer.get_chunks_page(DID, limit=20, offset=0, include_geometry=False)
+    query = route.calls.last.request.url.params
+    assert dict(query) == {"limit": "20", "offset": "0", "include_geometry": "false"}
+    assert page.total == 42 and len(page.items) == 1
+
+
+@respx.mock
+async def test_get_chunks_page_total_none_without_header() -> None:
+    respx.get(f"{API}/documents/{DID}/chunks").mock(return_value=httpx.Response(200, json=[]))
+    async with AsyncClient(BASE) as client:
+        page = await client.explorer.get_chunks_page(DID)
+    assert page.total is None and page.items == []
+
+
+@respx.mock
+async def test_list_documents_forwards_paging_only_when_set() -> None:
+    route = respx.get(f"{API}/collections/{CID}/documents").mock(
+        return_value=httpx.Response(200, json=[])
+    )
+    async with AsyncClient(BASE) as client:
+        await client.explorer.list_documents(CID)
+        assert route.calls.last.request.url.query == b""
+        await client.explorer.list_documents(CID, limit=5, offset=10)
+    assert dict(route.calls.last.request.url.params) == {"limit": "5", "offset": "10"}
+
+
+@respx.mock
+async def test_get_outline_and_chunk_context_typed() -> None:
+    respx.get(f"{API}/documents/{DID}/outline").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "document_id": DID,
+                "display_title": "T",
+                "page_count": 3,
+                "headings": [{"level": 1, "text": "Intro", "page_number": 1, "chunk_id": CHUNK}],
+            },
+        )
+    )
+    ctx_route = respx.get(f"{API}/chunks/{CHUNK}/context").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "document_id": DID,
+                "display_title": "T",
+                "chunks": [
+                    {
+                        "chunk_id": CHUNK,
+                        "chunk_index": 0,
+                        "text": "x",
+                        "token_count": 1,
+                        "is_target": True,
+                    }
+                ],
+            },
+        )
+    )
+    async with AsyncClient(BASE) as client:
+        outline = await client.explorer.get_outline(DID)
+        assert outline.headings[0].chunk_id == CHUNK and outline.page_count == 3
+        context = await client.explorer.get_chunk_context(CHUNK)
+        assert ctx_route.calls.last.request.url.query == b""
+        await client.explorer.get_chunk_context(CHUNK, before=2, after=0)
+    assert context.chunks[0].is_target
+    assert dict(ctx_route.calls.last.request.url.params) == {"before": "2", "after": "0"}
