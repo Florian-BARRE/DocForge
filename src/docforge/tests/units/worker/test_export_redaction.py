@@ -108,6 +108,7 @@ def _collection() -> SimpleNamespace:
         trace_verbosity="shape",
         needs_reindex=False,
         indexed_signature=None,
+        title_field=None,
         pipeline=_leaky_pipeline(),
         search=_leaky_search(),
     )
@@ -123,11 +124,11 @@ async def test_export_contract_redacts_every_provider_secret() -> None:
     for secret in (VLM_KEY, OCR_KEY, RERANK_KEY, HISTORIC_KEY):
         assert secret not in dumped
     # And the masks ARE present (an operator still sees a key WAS set, and must re-enter it on import).
-    assert contract.pipeline["nodes"][0]["config"]["api_key"] == "__redacted__1234"
-    assert contract.pipeline["nodes"][1]["nodes"][0]["config"]["api_key"] == "__redacted__xyz9"
-    assert contract.search["nodes"][0]["config"]["api_key"] == "__redacted__qwer"
+    assert contract.pipeline["nodes"][0]["config"]["api_key"] == "__redacted__"
+    assert contract.pipeline["nodes"][1]["nodes"][0]["config"]["api_key"] == "__redacted__"
+    assert contract.search["nodes"][0]["config"]["api_key"] == "__redacted__"
     historic = contract.config_versions[0].config["pipeline"]["nodes"][0]["config"]["api_key"]
-    assert historic == "__redacted__8888"
+    assert historic == "__redacted__"
 
 
 async def test_export_contract_does_not_mutate_the_stored_blob() -> None:

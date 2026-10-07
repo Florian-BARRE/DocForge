@@ -6,13 +6,15 @@
 
 import { useEffect, useState } from "react";
 import { getCollection, type Collection } from "../../api/collections";
-import { classifySearchError, search, type SearchErrorInfo, type SearchResponse } from "../../api/search";
+import { classifySearchError, search, type SearchErrorInfo, type SearchHint, type SearchResponse } from "../../api/search";
 import { queryDocuments } from "../../api/corpus";
 import { ErrorState } from "../../components/ErrorState";
 import type { Navigate } from "../../shell/view";
 import { theme } from "../../theme";
+import { applyHintSuggestion } from "./hintSubstitution";
 import { SearchExampleQueries } from "./SearchExampleQueries";
 import { SearchFilterBuilder } from "./SearchFilterBuilder";
+import { SearchHintsNotice } from "./SearchHintsNotice";
 import { SearchQueryBar } from "./SearchQueryBar";
 import { SearchRestHint } from "./SearchRestHint";
 import { SearchResultSkeleton } from "./SearchResultSkeleton";
@@ -78,15 +80,16 @@ export function SearchLabPage({ collectionId }: SearchLabPageProps) {
     }));
   };
 
-  const runSearch = () => {
+  const runSearch = (filtersOverride?: Record<string, unknown>) => {
     if (!query.trim()) return;
+    const effectiveFilters = filtersOverride ?? filters;
     setLoading(true);
     setError(null);
     search(collectionId, {
       query,
       limit,
       // No filter set → omitted entirely, so the backend defers to its defaults.
-      filters: Object.keys(filters).length > 0 ? filters : null,
+      filters: Object.keys(effectiveFilters).length > 0 ? effectiveFilters : null,
       // Default selection (content, both modalities) or nothing ticked → null, so the backend
       // defers to its own default path unchanged.
       search_in: buildSearchIn(targetSelection),
@@ -97,6 +100,13 @@ export function SearchLabPage({ collectionId }: SearchLabPageProps) {
         setLoading(false);
         setHasSearchedOnce(true);
       });
+  };
+
+  // Substitute the suggested value into the filter, show it in the builder, and re-run at once.
+  const handlePickSuggestion = (hint: SearchHint, suggestion: string) => {
+    const next = applyHintSuggestion(filters, hint, suggestion);
+    setFilters(next);
+    runSearch(next);
   };
 
   return (
@@ -113,7 +123,7 @@ export function SearchLabPage({ collectionId }: SearchLabPageProps) {
             limit={limit}
             onLimitChange={setLimit}
             loading={loading}
-            onSubmit={runSearch}
+            onSubmit={() => runSearch()}
           />
           <SearchTargetPicker
             fields={collection?.fields ?? []}
@@ -128,7 +138,7 @@ export function SearchLabPage({ collectionId }: SearchLabPageProps) {
         {error && !loading && (
           <ErrorState
             message={error.message}
-            onRetry={error.kind === "config" ? undefined : runSearch}
+            onRetry={error.kind === "config" ? undefined : () => runSearch()}
           />
         )}
         {/* Loading state — the ONLY place the skeleton renders now (it used to sit at rest and
@@ -144,7 +154,12 @@ export function SearchLabPage({ collectionId }: SearchLabPageProps) {
             <SearchResultSkeleton />
           </div>
         )}
-        {!loading && !error && response && <SearchResultsList response={response} />}
+        {!loading && !error && response && (
+          <>
+            <SearchHintsNotice hints={response.hints ?? []} onPickSuggestion={handlePickSuggestion} />
+            <SearchResultsList response={response} />
+          </>
+        )}
         {/* Resting state — sits exactly where the hit-card column will render, left-aligned like
             the rest of this page. Teaches with clickable example queries and a static (non-loading) hint. */}
         {!loading && !error && !response && (

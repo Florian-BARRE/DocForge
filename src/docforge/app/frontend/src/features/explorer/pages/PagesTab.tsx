@@ -6,7 +6,6 @@ import { useState } from "react";
 import type { PageInfo } from "../../../api/explorer";
 import { PageBoxLightbox } from "../../../components/PageBoxLightbox";
 import { theme } from "../../../theme";
-import { displayPage } from "../format";
 import { PageThumbnail } from "./PageThumbnail";
 
 export function PagesTab({ pages }: { pages: PageInfo[] }) {
@@ -29,7 +28,7 @@ export function PagesTab({ pages }: { pages: PageInfo[] }) {
           width={openPage.width}
           height={openPage.height}
           boxes={[]}
-          caption={`Page ${displayPage(openPage.page_number)}`}
+          caption={`Page ${openPage.page_label}`}
           onClose={() => setOpenIndex(null)}
           onPrev={openIndex > 0 ? () => setOpenIndex(openIndex - 1) : undefined}
           onNext={openIndex < pages.length - 1 ? () => setOpenIndex(openIndex + 1) : undefined}

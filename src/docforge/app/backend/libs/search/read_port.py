@@ -8,11 +8,16 @@
 # hydrated once (by the hydrate node, on the cut top_k). A rerank node, when present, additionally
 # reads ONLY the passage text of its top_n through this same port to score them — a separate scoped
 # read, not a re-hydration of the delivered pool. hydrate delegates to the documents facade's bulk
-# chunk read. Constructed per-request, scoped to one collection; carries no cross-request state.
+# chunk read. Constructed per-request, scoped to one collection; carries no cross-request state. Two
+# per-request facts ride in from the request edge: the filtered fields that are FULL-TEXT indexed (so
+# their filters translate to a full-text match, not an exact one) and the collection's display-title
+# field (so a hit's document_title resolves through DisplayTitleResolver, batch-read once per page).
 
 # ====== Standard Library Imports ======
 import asyncio
 import uuid
+from collections.abc import Collection
+from typing import Any
 
 # ====== Third-Party Library Imports ======
 from loggerplusplus import LoggerClass
@@ -20,8 +25,10 @@ from loggerplusplus import LoggerClass
 # ====== Internal Project Imports ======
 from config import RUNTIME_CONFIG
 from shared_libs.pipelines.search import CollectionReadPort
+from shared_libs.public_models import DisplayTitleResolver
 from shared_libs.public_models.search import Candidate, EncodedQuery, Hit, SearchTarget
 from shared_libs.services.db import Database
+from shared_libs.services.db.postgresql.tables import MetadataField
 from shared_libs.services.db.qdrant import build_match_conditions
 
 # ====== Local Project Imports ======
@@ -41,15 +48,27 @@ _RETRIEVAL_SOURCE = "hybrid"
 class CollectionReadPortImpl(CollectionReadPort, LoggerClass):
     """Read-only retrieval over SearchFacade (exclusion baked in) + the documents chunk read."""
 
-    def __init__(self, database: Database, collection_id: uuid.UUID) -> None:
+    def __init__(
+        self,
+        database: Database,
+        collection_id: uuid.UUID,
+        text_fields: Collection[str] = frozenset(),
+        title_field: MetadataField | None = None,
+    ) -> None:
         """
         Args:
             database (Database): The shared data facade (its search + documents facades are used).
             collection_id (uuid.UUID): The collection every read is scoped to.
+            text_fields (Collection[str]): Filterable fields with a FULL-TEXT payload index (text /
+                text_list) — their filters become full-text matches instead of exact matches.
+            title_field (MetadataField | None): The collection's document-scope display-title field
+                (``collection.title_field`` resolved against its schema); None = parser titles.
         """
         LoggerClass.__init__(self)
         self._database = database
         self._collection_id = collection_id
+        self._text_fields = frozenset(text_fields)
+        self._title_field = title_field
         # Per-request retrieval probe — the app-side accumulator the SearchMetricsEmitter reads at
         # the runner boundary. The port is constructed per request (SearchService), so this rides
         # along with per-request scope; it is NOT part of the shared CollectionReadPort protocol (an
@@ -105,7 +124,7 @@ class CollectionReadPortImpl(CollectionReadPort, LoggerClass):
 
         # 2. Delegate to the LEAN facade retrieval — exclusion invariant lives inside it (reused,
         #    not re-derived), and it returns (chunk_id, score) pairs with NO Postgres hydration.
-        conditions = build_match_conditions(filters)
+        conditions = build_match_conditions(filters, self._text_fields)
         scored = await self._database.search.hybrid_ids(
             self._collection_id,
             dense=dense,
@@ -242,6 +261,9 @@ class CollectionReadPortImpl(CollectionReadPort, LoggerClass):
         block_locations = await self._database.documents.get_block_locations_for_chunks(
             [row.id for row in rows]
         )
+        # 4b. Each document's DISPLAY title (the collection's title_field value when configured and
+        #     set, else the parser title) — at most one extra batch read for the whole hit page.
+        titles = await self.__display_titles(documents)
 
         # 5. Shape each row into a Hit; chunk_index/token_count + the source identity/metadata + the
         #    block location ride along in the metadata bag (lifted into the flat hit model by the router).
@@ -259,7 +281,7 @@ class CollectionReadPortImpl(CollectionReadPort, LoggerClass):
                     "token_count": row.token_count,
                     "heading_path": row.heading_path or [],
                     "filename": document.filename if document else None,
-                    "document_title": (document.title or None) if document else None,
+                    "document_title": titles.get(row.document_id),
                     "document_metadata": doc_metadata.get(row.document_id, {}),
                     "block_ids": [loc["block_id"] for loc in locations],
                     "page": primary["page"] if primary else None,
@@ -271,6 +293,35 @@ class CollectionReadPortImpl(CollectionReadPort, LoggerClass):
             )
         self.logger.debug(f"Hydrated {len(hydrated)}/{len(chunk_ids)} chunk(s)")
         return hydrated
+
+    async def __display_titles(
+        self, documents: dict[uuid.UUID, Any]
+    ) -> dict[uuid.UUID, str | None]:
+        """
+        Resolve each hit document's display title (the title_field value, else the parser title).
+
+        Args:
+            documents (dict[uuid.UUID, Any]): The hit page's document rows by id.
+
+        Returns:
+            dict[uuid.UUID, str | None]: document id → display title (empty titles → None).
+        """
+        # 1. The configured title field's values in ONE batch read (none when not configured).
+        name = self._title_field.field_name if self._title_field is not None else None
+        values: dict[uuid.UUID, Any] = {}
+        if self._title_field is not None and documents:
+            values = await self._database.metadata_values.document_values(
+                self._title_field, list(documents)
+            )
+
+        # 2. Apply the single display-title rule per document; a blank result reads as None.
+        return {
+            doc_id: DisplayTitleResolver.resolve(
+                document.title or None, {name: values.get(doc_id)} if name else {}, name
+            )
+            or None
+            for doc_id, document in documents.items()
+        }
 
 
 __all__ = ["CollectionReadPortImpl"]

@@ -66,7 +66,7 @@ def test_query_unknown_collection_is_404(client, monkeypatch) -> None:
 
 
 def test_query_unknown_metadata_field_is_422(client, monkeypatch) -> None:
-    _wire(monkeypatch, collection=SimpleNamespace(id=COLLECTION_ID), schema=[])
+    _wire(monkeypatch, collection=SimpleNamespace(id=COLLECTION_ID, title_field=None), schema=[])
     response = client.post(
         f"/api/v1/collections/{COLLECTION_ID}/documents/query",
         json={"filter": {"metadata": [{"field": "ghost", "op": "eq", "value": 1}]}},
@@ -77,7 +77,9 @@ def test_query_unknown_metadata_field_is_422(client, monkeypatch) -> None:
 
 def test_query_non_filterable_metadata_field_is_422(client, monkeypatch) -> None:
     schema = [_field(1, "notes", "text", filterable=False)]
-    _wire(monkeypatch, collection=SimpleNamespace(id=COLLECTION_ID), schema=schema)
+    _wire(
+        monkeypatch, collection=SimpleNamespace(id=COLLECTION_ID, title_field=None), schema=schema
+    )
     response = client.post(
         f"/api/v1/collections/{COLLECTION_ID}/documents/query",
         json={"filter": {"metadata": [{"field": "notes", "op": "contains", "value": "x"}]}},
@@ -88,7 +90,9 @@ def test_query_non_filterable_metadata_field_is_422(client, monkeypatch) -> None
 
 def test_query_bad_operator_for_type_is_422(client, monkeypatch) -> None:
     schema = [_field(1, "year", "integer")]
-    _wire(monkeypatch, collection=SimpleNamespace(id=COLLECTION_ID), schema=schema)
+    _wire(
+        monkeypatch, collection=SimpleNamespace(id=COLLECTION_ID, title_field=None), schema=schema
+    )
     response = client.post(
         f"/api/v1/collections/{COLLECTION_ID}/documents/query",
         json={"filter": {"metadata": [{"field": "year", "op": "contains", "value": "2"}]}},
@@ -98,7 +102,7 @@ def test_query_bad_operator_for_type_is_422(client, monkeypatch) -> None:
 
 
 def test_query_unknown_sort_field_is_422(client, monkeypatch) -> None:
-    _wire(monkeypatch, collection=SimpleNamespace(id=COLLECTION_ID), schema=[])
+    _wire(monkeypatch, collection=SimpleNamespace(id=COLLECTION_ID, title_field=None), schema=[])
     response = client.post(
         f"/api/v1/collections/{COLLECTION_ID}/documents/query",
         json={"sort": {"field": "nope", "direction": "asc"}},
@@ -112,7 +116,11 @@ def test_query_page_size_is_clamped_to_ceiling(client, monkeypatch) -> None:
 
     monkeypatch.setattr(RUNTIME_CONFIG, "CORPUS_MAX_PAGE_SIZE", 50)
     _, documents_facade = _wire(
-        monkeypatch, collection=SimpleNamespace(id=COLLECTION_ID), schema=[], documents=[], total=0
+        monkeypatch,
+        collection=SimpleNamespace(id=COLLECTION_ID, title_field=None),
+        schema=[],
+        documents=[],
+        total=0,
     )
     response = client.post(
         f"/api/v1/collections/{COLLECTION_ID}/documents/query",
@@ -136,7 +144,7 @@ def test_query_shapes_rows_with_metadata_map(client, monkeypatch) -> None:
     }
     _wire(
         monkeypatch,
-        collection=SimpleNamespace(id=COLLECTION_ID),
+        collection=SimpleNamespace(id=COLLECTION_ID, title_field=None),
         schema=schema,
         documents=[doc],
         total=1,

@@ -11,7 +11,7 @@ from collections.abc import Sequence
 from qdrant_client import AsyncQdrantClient, models
 
 # ====== Local Project Imports ======
-from ..vectors import Condition, Match, MatchAny, SparseVec
+from ..vectors import Condition, Match, MatchAny, MatchText, SparseVec
 
 
 class QdrantSearchApi:
@@ -21,12 +21,22 @@ class QdrantSearchApi:
         raise TypeError("QdrantSearchApi is a static-only class and cannot be instantiated.")
 
     @staticmethod
-    def _to_field_condition(cond: Condition) -> models.FieldCondition:
-        """Translate one clean condition into a qdrant FieldCondition."""
+    def _to_field_condition(cond: Condition) -> models.FieldCondition | models.Filter:
+        """Translate one clean condition into a qdrant FieldCondition (or a nested any-of Filter)."""
         if isinstance(cond, Match):
             return models.FieldCondition(key=cond.field, match=models.MatchValue(value=cond.value))
         if isinstance(cond, MatchAny):
             return models.FieldCondition(key=cond.field, match=models.MatchAny(any=cond.values))
+        if isinstance(cond, MatchText):
+            # Full-text: one text is a plain condition; several are OR-ed in a nested `should`.
+            # An empty `should` is "no constraint" to Qdrant — it would silently drop the filter.
+            if not cond.texts:
+                raise ValueError(f"full-text condition on field '{cond.field}' has no texts")
+            texts = [
+                models.FieldCondition(key=cond.field, match=models.MatchText(text=text))
+                for text in cond.texts
+            ]
+            return texts[0] if len(texts) == 1 else models.Filter(should=texts)
         # Range — datetime bounds need qdrant's DatetimeRange; numeric bounds its Range.
         range_cls = models.DatetimeRange if cond.is_datetime else models.Range
         return models.FieldCondition(

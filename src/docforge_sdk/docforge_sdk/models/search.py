@@ -68,7 +68,12 @@ class BlockLocation(BaseModel):
     """
 
     page: int | None = Field(
-        description="The page the block sits on; None for a page-less document (no page render)."
+        description="The page the block sits on (0-based); None for a page-less document (no page "
+        "render)."
+    )
+    page_number: int | None = Field(
+        default=None,
+        description="The same page, 1-based (as a reader counts it); None for a page-less document.",
     )
     bbox: list[float] = Field(
         description="Bounding box [x0, y0, x1, y1] NORMALISED to [0, 1] — multiply by the page "
@@ -88,7 +93,8 @@ class SearchHit(BaseModel):
         chunk_index (int): The chunk's ordinal within its document.
         token_count (int): The chunk's token count.
         block_ids (list[str]): The IR block ids the chunk was assembled from (assembly order).
-        page (int | None): The page of the chunk's primary (leading) block — draw the box here.
+        page (int | None): The page of the chunk's primary (leading) block, 0-based.
+        page_number (int | None): The same page, 1-based — the one to cite.
         bbox (list[float] | None): The primary block's NORMALISED [0, 1] bounding box.
         block_locations (list[BlockLocation]): Every source block's page + bbox (draw them all).
     """
@@ -122,8 +128,12 @@ class SearchHit(BaseModel):
     )
     page: int | None = Field(
         default=None,
-        description="The page of the chunk's primary (leading) block — where to draw the box. "
-        "None when the chunk carries no block location.",
+        description="The page of the chunk's primary (leading) block, 0-based — where to draw the "
+        "box. None when the chunk carries no block location.",
+    )
+    page_number: int | None = Field(
+        default=None,
+        description="The same page, 1-based (as a reader counts it) — cite this. None when unlocated.",
     )
     bbox: list[float] | None = Field(
         default=None,
@@ -158,6 +168,26 @@ class SearchCost(BaseModel):
     )
 
 
+class SearchHint(BaseModel):
+    """
+    An actionable explanation about one filter, attached to a (200) search response.
+
+    Attributes:
+        field (str): The filtered metadata field the hint is about.
+        value (Any): The filter value as sent.
+        message (str): Human/agent-readable explanation.
+        suggestions (list[str]): Closest stored values to retry with, best first (may be empty).
+    """
+
+    field: str = Field(description="The filtered metadata field the hint is about.")
+    value: Any = Field(description="The filter value as sent (one list item, or the whole value).")
+    message: str = Field(description="Human/agent-readable explanation of the problem.")
+    suggestions: list[str] = Field(
+        default_factory=list,
+        description="Closest stored values of the field to retry with, best first (may be empty).",
+    )
+
+
 class SearchResponse(BaseModel):
     """
     The result of a hybrid search — the echoed query and its ranked hits.
@@ -168,6 +198,7 @@ class SearchResponse(BaseModel):
         score_kind (str): What each hit's ``score`` represents — so the UI can label it correctly.
         cost (SearchCost | None): The run's priced paid-LLM spend, or None when no paid call was made.
         debug_info (dict[str, Any] | None): Non-fatal diagnostics; None when there is nothing to report.
+        hints (list[SearchHint]): Actionable filter explanations (unknown value + closest stored values).
     """
 
     query: str = Field(description="The query that was searched.")
@@ -187,6 +218,11 @@ class SearchResponse(BaseModel):
     debug_info: dict[str, Any] | None = Field(
         default=None,
         description="Non-fatal diagnostics about how the search ran. None when empty.",
+    )
+    hints: list[SearchHint] = Field(
+        default_factory=list,
+        description="Actionable filter explanations: a filter value no document stores, with the "
+        "closest stored values to retry with. Read these before concluding nothing exists.",
     )
 
 
@@ -231,6 +267,7 @@ __all__ = [
     "BlockLocation",
     "SearchHit",
     "SearchCost",
+    "SearchHint",
     "SearchResponse",
     "SearchHealthSummary",
 ]

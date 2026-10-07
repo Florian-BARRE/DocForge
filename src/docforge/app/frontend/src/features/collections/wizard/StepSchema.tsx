@@ -8,12 +8,16 @@ import { Button } from "../../../components/Button";
 import { theme } from "../../../theme";
 import type { WizardMode } from "./CollectionWizard";
 import { FieldRow } from "./FieldRow";
+import { TitleFieldSelect } from "./TitleFieldSelect";
 import { blankField, type DraftField } from "./wizardTypes";
 
 interface StepSchemaProps {
   mode: WizardMode;
   fields: DraftField[];
   onFieldsChange: (fields: DraftField[]) => void;
+  titleField: string | null;
+  onTitleFieldChange: (value: string | null) => void;
+  titleFieldError?: string | null;
   onBack: () => void;
   onNext: () => void;
 }
@@ -24,7 +28,7 @@ const headStyle: React.CSSProperties = {
   textTransform: "uppercase", letterSpacing: "0.04em",
 };
 
-export function StepSchema({ mode, fields, onFieldsChange, onBack, onNext }: StepSchemaProps) {
+export function StepSchema({ mode, fields, onFieldsChange, titleField, onTitleFieldChange, titleFieldError, onBack, onNext }: StepSchemaProps) {
   const invalidRows = fields
     .map((f, i) => ({ f, i }))
     .filter(({ f }) => f.field_name.trim().length === 0 || (f.field_type === "enum" && !f.enum_values?.length));
@@ -79,6 +83,7 @@ export function StepSchema({ mode, fields, onFieldsChange, onBack, onNext }: Ste
       <div>
         <Button onClick={() => onFieldsChange([...fields, blankField()])}>+ Add field</Button>
       </div>
+      <TitleFieldSelect fields={fields} value={titleField} onChange={onTitleFieldChange} error={titleFieldError} />
       <div style={{ display: "flex", flexDirection: "column", gap: theme.space.xs }}>
         <div style={{ display: "flex", gap: theme.space.s }}>
           <Button onClick={onBack}>Back</Button>

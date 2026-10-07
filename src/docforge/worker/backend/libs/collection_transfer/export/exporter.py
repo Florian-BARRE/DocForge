@@ -127,8 +127,8 @@ class CollectionExporter:
         Provider secrets (every provider node's ``api_key`` across the live ``pipeline`` and ``search``
         blobs AND every archived ``config_versions[].config`` snapshot) are REDACTED here — the same
         masking every outbound collection GET applies — so a portable bundle never carries live keys
-        off the server. A READ-scoped key can export→download a collection; the mask (last 4 chars,
-        non-reversible) is all it ever sees. On import the redacted placeholder restores as a plain
+        off the server. A READ-scoped key can export→download a collection; the mask (a constant
+        marker — no key character survives) is all it ever sees. On import the redacted placeholder restores as a plain
         string, so the operator re-enters each provider key on the new server.
         """
         versions = await self._facade.list_config_versions(collection.id)
@@ -141,6 +141,7 @@ class CollectionExporter:
             trace_verbosity=getattr(collection, "trace_verbosity", None) or "shape",
             needs_reindex=collection.needs_reindex,
             indexed_signature=collection.indexed_signature,
+            title_field=collection.title_field,
             pipeline=redact_blob_secrets(collection.pipeline) or {},
             search=redact_blob_secrets(collection.search) or {},
             config_versions=[

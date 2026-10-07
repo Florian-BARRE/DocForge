@@ -52,7 +52,13 @@ export function blankField(): DraftField {
     enum_values: null,
     origin: "user",
     scope: "document",
+    description: null,
   };
+}
+
+/** Names of the draft's non-blank document-scope fields — the only valid `title_field` choices. */
+export function documentFieldNames(fields: DraftField[]): string[] {
+  return fields.filter((f) => f.scope === "document" && f.field_name.trim() !== "").map((f) => f.field_name);
 }
 
 /** Strip the client-only key before the payload goes to the API. */
@@ -72,7 +78,7 @@ export function toDraftField(spec: FieldSpec): DraftField {
 // the loaded collection is a contract field the wizard doesn't know about by name yet.
 const NAMED_OR_STRUCTURAL_KEYS = new Set([
   "id", "name", "supported_formats", "tags", "max_file_size_bytes", "job_timeout_seconds",
-  "needs_reindex", "created_at", "pipeline", "search", "fields",
+  "needs_reindex", "created_at", "pipeline", "search", "fields", "title_field",
 ]);
 
 /**
@@ -98,6 +104,7 @@ export function draftFromCollection(collection: Collection): {
   maxSizeBytesOriginal: number;
   jobTimeoutSeconds: number | null;
   fields: DraftField[];
+  titleField: string | null;
   extraContract: Record<string, unknown>;
 } {
   return {
@@ -108,6 +115,7 @@ export function draftFromCollection(collection: Collection): {
     maxSizeBytesOriginal: collection.max_file_size_bytes,
     jobTimeoutSeconds: collection.job_timeout_seconds,
     fields: collection.fields.map(toDraftField),
+    titleField: collection.title_field,
     extraContract: extraContractFromCollection(collection),
   };
 }
@@ -134,6 +142,8 @@ export interface WizardDraftSlices {
   maxSizeBytesOriginal: number | null;
   jobTimeoutSeconds: number | null;
   fields: DraftField[];
+  /** Document-scope field supplying the display title; `null` = use the parsed title. */
+  titleField: string | null;
 }
 
 /**
@@ -151,5 +161,8 @@ export function buildWizardPayload(draft: WizardDraftSlices): CreateCollectionRe
     max_file_size_bytes: resolveMaxFileSizeBytes(draft.maxSizeMb, draft.maxSizeBytesOriginal),
     job_timeout_seconds: draft.jobTimeoutSeconds,
     fields: draft.fields.map(toFieldSpec),
+    // Cleared when the chosen field is no longer a document-scope field of the draft (renamed /
+    // removed / re-scoped) — mirrors the backend's auto-clear instead of provoking a 422.
+    title_field: draft.titleField !== null && documentFieldNames(draft.fields).includes(draft.titleField) ? draft.titleField : null,
   };
 }

@@ -25,8 +25,9 @@ from loggerplusplus import loggerplusplus
 
 # ====== Internal Project Imports ======
 from shared_libs.pipelines.validation import BlobStructureValidator, BlobValidationError
+from shared_libs.public_models import FieldScope
 from shared_libs.services.db.facades import CollectionTransferFacade
-from shared_libs.services.db.postgresql.tables import Blob, Collection
+from shared_libs.services.db.postgresql.tables import Blob, Collection, MetadataField
 from shared_libs.services.db.qdrant import QdrantPoint, SparseVec
 from shared_libs.services.db.s3 import S3Object
 
@@ -119,7 +120,7 @@ class CollectionImporterV1:
                 for row in self._reader.iter_rows(BundlePaths.METADATA_FIELDS)
             ]
             created = await self._facade.create_collection(
-                self._collection_row(contract, name), fields
+                self._collection_row(contract, name, fields), fields
             )
             self._progress("collection", 5)
 
@@ -201,9 +202,17 @@ class CollectionImporterV1:
             counter += 1
         return candidate
 
-    @staticmethod
-    def _collection_row(contract: CollectionContractModel, name: str) -> Collection:
-        """Build the new Collection row from the bundle contract (fresh id assigned by the DB)."""
+    @classmethod
+    def _collection_row(
+        cls, contract: CollectionContractModel, name: str, fields: list[MetadataField]
+    ) -> Collection:
+        """Build the new Collection row from the bundle contract (fresh id assigned by the DB).
+
+        ``title_field`` is a soft reference to a document-scope field; a bundle whose setting names no
+        such field among the restored ``fields`` (tampered/hand-built) gets it dropped to NULL with a
+        warning — the uniform dangling-reference policy — never stored pointing at nothing.
+        """
+        title_field = cls._restorable_title_field(contract.title_field, fields)
         return Collection(
             name=name,
             supported_formats=list(contract.supported_formats),
@@ -213,9 +222,28 @@ class CollectionImporterV1:
             trace_verbosity=contract.trace_verbosity,
             needs_reindex=contract.needs_reindex,
             indexed_signature=contract.indexed_signature,
+            title_field=title_field,
             pipeline=contract.pipeline,
             search=contract.search,
         )
+
+    @classmethod
+    def _restorable_title_field(
+        cls, title_field: str | None, fields: list[MetadataField]
+    ) -> str | None:
+        """Return ``title_field`` when it names a restored document-scope field, else None (logged)."""
+        # 1. Unset (incl. every legacy bundle) → nothing to check.
+        if title_field is None:
+            return None
+
+        # 2. Keep it only when it resolves to a document-scope field of the restored schema.
+        if any(f.field_name == title_field and f.scope == FieldScope.DOCUMENT for f in fields):
+            return title_field
+        cls.logger.warning(
+            f"Bundle title_field '{title_field}' names no document-scope field of the restored "
+            f"schema — dropping it to NULL; import proceeds."
+        )
+        return None
 
     async def _restore(
         self, collection_id: uuid.UUID, ctx: RemapContext, dense_dim: int

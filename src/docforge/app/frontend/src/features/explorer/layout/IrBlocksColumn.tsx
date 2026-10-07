@@ -6,8 +6,8 @@ import type { MutableRefObject, RefObject } from "react";
 
 import type { ChunkInfo, IRBlock, IREnrichment } from "../../../api/explorer";
 import { theme } from "../../../theme";
-import { displayPage } from "../format";
 import { ReadingOrderEntry } from "./ReadingOrderEntry";
+import { blockPageNumberOf } from "../format";
 
 interface IrBlocksColumnProps {
   midColRef: RefObject<HTMLDivElement>;
@@ -51,7 +51,7 @@ export function IrBlocksColumn({
               <div style={{ display: "flex", alignItems: "center", gap: theme.space.s, margin: `${theme.space.xs}px 0` }} aria-hidden="true">
                 <div style={{ flex: 1, height: 1, background: theme.color.line }} />
                 <span style={{ fontFamily: theme.font.mono, fontSize: theme.font.size.xs, color: theme.color.mute, whiteSpace: "nowrap" }}>
-                  page {displayPage(prev.page)} → {displayPage(block.page)}
+                  page {blockPageNumberOf(prev)} → {blockPageNumberOf(block)}
                 </span>
                 <div style={{ flex: 1, height: 1, background: theme.color.line }} />
               </div>

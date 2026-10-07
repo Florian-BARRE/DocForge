@@ -44,7 +44,7 @@ const { getSearchHealth } = await import("../../api/search");
 const collection: Collection = {
   id: "col-1", name: "Contracts", supported_formats: ["pdf"], max_file_size_bytes: 1000,
   job_timeout_seconds: null, needs_reindex: false, created_at: "2026-01-01T00:00:00Z",
-  pipeline: {}, search: {}, fields: [], estimate_overrides: null, trace_verbosity: "shape", tags: [],
+  pipeline: {}, search: {}, fields: [], estimate_overrides: null, trace_verbosity: "shape", title_field: null, tags: [],
 };
 
 const downHealth: CollectionHealth = {

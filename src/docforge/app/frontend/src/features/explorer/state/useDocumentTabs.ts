@@ -12,7 +12,6 @@ import {
 } from "../../../api/explorer";
 import type { OverlayBox } from "../../../components/PageBoxOverlay";
 import { useToast } from "../../../shell/toast";
-import { displayPage } from "../format";
 
 export type DocumentTabKey = "overview" | "pages" | "layout" | "ir" | "chunks" | "trace";
 
@@ -128,7 +127,7 @@ export function useDocumentTabs(documentId: string, activeTab: DocumentTabKey) {
       width: page?.width ?? null,
       height: page?.height ?? null,
       boxes,
-      caption: `Page ${displayPage(targetPage)} · chunk #${chunk.chunk_index}`,
+      caption: `Page ${blocks[0].page_number} · chunk #${chunk.chunk_index}`,
     });
   };
   const chunkLocator = ir && pages ? showChunkOnPage : undefined;

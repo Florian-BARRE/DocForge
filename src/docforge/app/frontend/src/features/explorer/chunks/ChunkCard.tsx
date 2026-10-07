@@ -8,7 +8,6 @@ import { useState } from "react";
 import type { ChunkInfo } from "../../../api/explorer";
 import { Chip } from "../../../components/Chip";
 import { theme } from "../../../theme";
-import { displayPage } from "../format";
 import { ChunkMetadataBlock } from "../metadata/ChunkMetadataBlock";
 import { ChunkBlockLinks } from "./ChunkBlockLinks";
 import { ChunkDetails } from "./ChunkDetails";
@@ -47,7 +46,7 @@ export function ChunkCard({ chunk, selected, onToggleSelect, onJumpToBlock, onEn
         <Chip tone={chunk.is_indexed ? "ok" : "dim"}>{chunk.is_indexed ? "indexed" : "not indexed"}</Chip>
         <span style={{ color: theme.color.dim, fontSize: theme.font.size.xs }}>{chunk.strategy}</span>
         <ChunkRoleBadge role={chunk.role} />
-        {chunk.page !== null && <Chip tone="dim">page {displayPage(chunk.page)}</Chip>}
+        {chunk.page_number != null && <Chip tone="dim">page {chunk.page_number}</Chip>}
         {!chunk.enabled && <Chip tone="warn">disabled</Chip>}
         <span style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: theme.space.s }}>
           {onShowOnPage && chunk.block_ids.length > 0 && (
@@ -96,7 +95,7 @@ export function ChunkCard({ chunk, selected, onToggleSelect, onJumpToBlock, onEn
           headingPath={chunk.heading_path}
           charCount={chunk.text.length}
           blockCount={chunk.block_ids.length}
-          page={chunk.page}
+          page={chunk.page_number ?? null}
         />
       </div>
     </div>

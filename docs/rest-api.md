@@ -253,6 +253,7 @@ later), so declare the **full** schema up front.
 | `POST` | `/api/v1/collections` | `create` | Create a collection (`201`); a scoped creator is auto-granted ownership of it |
 | `PATCH` | `/api/v1/collections/{id}` | `write` | Patch identity/limits/schema/config |
 | `DELETE` | `/api/v1/collections/{id}` | `write` | Delete a collection (`204`) |
+| `GET` | `/api/v1/collections/{id}/describe` | `read` | Lean agent guide: fields (meaning, type, real example values), valid `search_in` targets, filter grammar, example requests (`CollectionDescription`) |
 | `GET` | `/api/v1/collections/{id}/health` | `read` | Zero-spend provider preflight sweep + an overall verdict |
 | `GET` | `/api/v1/collections/{id}/storage` | `read` | Material footprint across all three stores (exact S3, estimated PG/Qdrant) |
 | `POST` | `/api/v1/collections/{id}/reingest` | `write` | Re-run the full pipeline over the whole collection (`202`) |
@@ -448,6 +449,27 @@ curl -sX PATCH http://localhost:10040/api/v1/collections/7f1c9d2e-... \
   -H "Content-Type: application/json" \
   -d '{"tags": ["legal", "archived"], "max_file_size_bytes": 104857600, "note": "raise upload ceiling to 100 MB"}'
 ```
+
+Each `fields[]` entry may carry an optional `description` (max 1000 chars — what the field means;
+surfaced by `/describe`). The collection carries an optional **`title_field`**: the name of a
+**document-scope** field whose value becomes each document's `display_title` (read-time only — no
+re-ingest). On create/PATCH it must name a document-scope field of the (post-PATCH) schema, else
+`422`; on PATCH, omitted = unchanged and an explicit `null` clears it; it is auto-cleared when a
+schema PATCH removes, renames or moves that field to chunk scope. `GET` collection responses mask
+every provider secret in the `pipeline`/`search` blobs as the constant `__redacted__` (no suffix);
+echoing `__redacted__` (or an older `__redacted__<last4>` form) back in a PATCH keeps the stored
+secret.
+
+### Describe a collection (agent guide)
+
+`GET /api/v1/collections/{collection_id}/describe` (READ, collection-scoped; 404 if unknown) — a
+compact agent-oriented guide to one collection: `collection_id`, `name`, `document_count`,
+`title_field`, `page_numbering` (which page field to cite), `fields[]` (`name`, `type`, `description`,
+`scope`, `origin`, `filterable`, `semantic`, `lexical`, `required`, `enum_values`, `example_values` —
+up to 10 real stored values, most frequent first — `distinct_count`, `note`),
+`searchable_targets[]` (the valid `search_in` entries `{field, semantic, lexical}`), `filter_grammar[]`
+(the accepted filter value forms) and `example_requests[]` (ready-to-send search bodies built from the
+collection's real fields). It never includes pipeline/search config or secrets.
 
 ### Collection health
 
@@ -694,6 +716,14 @@ AND not known-empty; a `failed` or `0`-chunk document is never `searchable`, reg
 parent_id, block_ids[], metadata[]`. Pages (`PageInfo`) reference a `render_blob_hash` you fetch
 via §8.
 
+**Page numbering.** `page` / `PageInfo.page_number` are **0-based indexes** (legacy, kept for
+backward compatibility). The reader's page number is **1-based** and additive: `page_number` on
+`ChunkInfo`, on each `IRBlock`, and on search hits/`block_locations`; `page_label` on `PageInfo`
+(named differently there because `PageInfo.page_number` predates it with the 0-based meaning).
+Cite the 1-based value. **Titles**: `DocumentListItem`, grid rows and `DocumentDetail` carry
+`display_title` (the collection's `title_field` value when set and present, else the parsed title);
+`title` stays the raw parsed title.
+
 > The IR payload (`/ir`) is the whole canonical document (blocks, tables, figures, enrichments)
 > and can be large — fetch it deliberately.
 
@@ -807,14 +837,15 @@ Hybrid retrieval over one collection. Runs **inline** in the request (sub-second
 |---|---|---|---|
 | `query` | string | — | Natural-language query (non-blank). Embedded with the collection's own embedder. |
 | `limit` | int (1–100) | `10` | Number of fused results. |
-| `filters` | object/null | `null` | Constraints on **filterable** fields: a scalar → equality, a list → any-of, or a range mapping of `gte`/`gt`/`lte`/`lt` bounds → numeric or ISO-8601 datetime range (e.g. `{"published": {"gte": "2024-01-01", "lte": "2024-12-31"}}`). |
+| `filters` | object/null | `null` | Constraints on **filterable** fields: a scalar → equality (string equality is case-insensitive), a list → any-of, or a range mapping of `gte`/`gt`/`lte`/`lt` bounds → numeric or ISO-8601 datetime range (e.g. `{"published": {"gte": "2024-01-01", "lte": "2024-12-31"}}`). |
 | `search_in` | list/null | `null` | Fields × modalities to query. `null` → content on both semantic + lexical. |
 
 Each `search_in` entry is a **SearchTarget**: `{ "field": "content"|<metadata field>,
 "semantic": bool, "lexical": bool }`. `field` defaults to `"content"` (the chunk body).
 
-Gates (all `422`, before any spend): a filter naming a non-filterable field; a malformed or
-misapplied range filter (a range on a non-range-typed field); a `search_in` target naming a vector
+Gates (all `422`, before any spend): a list filter that is empty (`[]` matches nothing — omit the
+filter instead) or carries more than 100 values; a filter naming a non-filterable field; an enum
+value outside the field's declared values; a malformed or misapplied range filter (a range on a non-range-typed field); a `search_in` target naming a vector
 the collection never indexed (or a selection with no modality). `404` when the collection is
 unknown; `409` when it has no embed node wired.
 
@@ -846,14 +877,16 @@ Runtime failures are surfaced as typed errors (each carries a machine-readable `
       "token_count": 148,
       "block_ids": ["b41", "b42"],
       "page": 6,
+      "page_number": 7,
       "bbox": [0.12, 0.34, 0.88, 0.41],
       "block_locations": [
-        {"page": 6, "bbox": [0.12, 0.34, 0.88, 0.41]}
+        {"page": 6, "page_number": 7, "bbox": [0.12, 0.34, 0.88, 0.41]}
       ]
     }
   ],
   "score_kind": "rrf_fusion",
-  "debug_info": null
+  "debug_info": null,
+  "hints": []
 }
 ```
 
@@ -869,6 +902,14 @@ chunk (e.g. a page-less document). `score` is the fused RRF score (higher is bet
 `cross_encoder_rerank` (when a reranker is enabled). It is rank-based, comparable only **within** one
 response — a round `1.0000` on a tiny/single-doc corpus is normal, not a bug. `debug_info` is `null`
 unless there is a non-fatal note.
+
+`page` is the **0-based** index; `page_number` (on the hit and on each `block_locations` entry) is the
+same page **1-based**, as a reader counts it — cite that one (`null` when unlocated).
+
+**`hints`** (always present, `[]` when none): when a filter value matches no stored value of its field
+(even ignoring case) — or a filtered search returned no hits — the (still `200`) response carries
+`[{field, value, message, suggestions[]}]`, where `suggestions` are the closest stored values to retry
+with, best first. An agent should read them before concluding nothing exists.
 
 ### Example
 

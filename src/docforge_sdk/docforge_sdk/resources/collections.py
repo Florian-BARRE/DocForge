@@ -21,6 +21,7 @@ from ..models.collections import (
     BulkReingestAccepted,
     BulkReingestRequest,
     CollectionContractSchemaResponse,
+    CollectionDescription,
     CollectionListItem,
     CollectionModel,
     CreateCollectionRequest,
@@ -113,6 +114,18 @@ class _CollectionsSpecs(_ResourceMixin):
             RequestSpec: A GET on the collection's health sub-resource.
         """
         return RequestSpec("GET", f"{self._COLLECTIONS_PATH}/{collection_id}/health")
+
+    def _describe_spec(self, collection_id: str) -> RequestSpec:
+        """
+        Build the spec for the lean agent-oriented collection guide.
+
+        Args:
+            collection_id (str): The collection's UUID.
+
+        Returns:
+            RequestSpec: A GET on the collection's describe sub-resource.
+        """
+        return RequestSpec("GET", f"{self._COLLECTIONS_PATH}/{collection_id}/describe")
 
     def _storage_spec(self, collection_id: str) -> RequestSpec:
         """
@@ -306,6 +319,21 @@ class AsyncCollections(AsyncResource, _CollectionsSpecs):
         """
         return await self._transport.request(
             self._health_spec(collection_id), CollectionHealthResponse
+        )
+
+    async def describe(self, collection_id: str) -> CollectionDescription:
+        """
+        Fetch the agent guide: fields (meaning, type, example values), valid search targets, the
+        filter grammar and ready-to-send example requests. Never includes pipeline/search config.
+
+        Args:
+            collection_id (str): The collection's UUID.
+
+        Returns:
+            CollectionDescription: The lean guide to query this collection.
+        """
+        return await self._transport.request(
+            self._describe_spec(collection_id), CollectionDescription
         )
 
     async def storage(self, collection_id: str) -> CollectionStorageResponse:
@@ -561,6 +589,19 @@ class SyncCollections(SyncResource, _CollectionsSpecs):
             CollectionHealthResponse: Per-provider reachability, index stats and the rolled-up verdict.
         """
         return self._transport.request(self._health_spec(collection_id), CollectionHealthResponse)
+
+    def describe(self, collection_id: str) -> CollectionDescription:
+        """
+        Fetch the agent guide: fields (meaning, type, example values), valid search targets, the
+        filter grammar and ready-to-send example requests. Never includes pipeline/search config.
+
+        Args:
+            collection_id (str): The collection's UUID.
+
+        Returns:
+            CollectionDescription: The lean guide to query this collection.
+        """
+        return self._transport.request(self._describe_spec(collection_id), CollectionDescription)
 
     def storage(self, collection_id: str) -> CollectionStorageResponse:
         """

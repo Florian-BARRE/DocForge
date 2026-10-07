@@ -66,6 +66,7 @@ export function CollectionWizard({ onNavigate, mode = "create", initial, collect
   // field survives onto the form instead of falling back to the schema default.
   const [extraContract, setExtraContract] = useState<Record<string, unknown>>(prefill?.extraContract ?? {});
   const [fields, setFields] = useState<DraftField[]>(prefill?.fields ?? []);
+  const [titleField, setTitleField] = useState<string | null>(prefill?.titleField ?? null);
   const toast = useToast();
   const [submitting, setSubmitting] = useState(false);
   const [issues, setIssues] = useState<ApiIssue[]>([]);
@@ -83,7 +84,7 @@ export function CollectionWizard({ onNavigate, mode = "create", initial, collect
 
   // Shared by the submit call below and the live preview panel — the two can never drift apart.
   const draftPayload = buildWizardPayload({
-    extraContract, name, formats, tags, maxSizeMb, maxSizeBytesOriginal, jobTimeoutSeconds, fields,
+    extraContract, name, formats, tags, maxSizeMb, maxSizeBytesOriginal, jobTimeoutSeconds, fields, titleField,
   });
 
   const handleSubmit = async () => {
@@ -144,7 +145,11 @@ export function CollectionWizard({ onNavigate, mode = "create", initial, collect
         </div>
       )}
       {step === 1 && (
-        <StepSchema mode={mode} fields={fields} onFieldsChange={setFields} onBack={() => setStep(0)} onNext={() => setStep(2)} />
+        <StepSchema
+          mode={mode} fields={fields} onFieldsChange={setFields}
+          titleField={titleField} onTitleFieldChange={setTitleField}
+          titleFieldError={issues.find((i) => i.message.includes("title_field") || i.location?.includes("title_field"))?.message ?? null}
+          onBack={() => setStep(0)} onNext={() => setStep(2)} />
       )}
       {step === 2 && (
         <StepReview

@@ -22,6 +22,9 @@ from .ir import (
 # ---------------------- Text sanitization (NUL-stripping primitive) ---------------------- #
 from .sanitize import TextSanitizer
 
+# ---------------------- Display title (title_field resolution) ---------------------- #
+from .display_title import DisplayTitleResolver
+
 # ---------------------- Collection contract vocabulary ---------------------- #
 from .contract import (
     CollectionContract,
@@ -86,6 +89,7 @@ __all__ = [
     "first_heading",
     "IrTextSanitizer",
     "TextSanitizer",
+    "DisplayTitleResolver",
     "FieldType",
     "FieldOrigin",
     "FieldScope",

@@ -25,6 +25,9 @@ from ...libs.estimate import EstimateOverrides
 from ...libs.health import CollectionHealthSummary
 from ...libs.preview import PreviewResponse
 
+# Upper bound of a metadata field's free-text description (a sentence or two, not a document).
+FIELD_DESCRIPTION_MAX_LENGTH = 1000
+
 
 class FieldSpecModel(BaseModel):
     """One metadata field of the collection's contract (declared OR generated)."""
@@ -48,6 +51,22 @@ class FieldSpecModel(BaseModel):
     scope: FieldScope = Field(
         default=FieldScope.DOCUMENT, description="document or chunk level value."
     )
+    description: str | None = Field(
+        default=None,
+        max_length=FIELD_DESCRIPTION_MAX_LENGTH,
+        description=(
+            "What the field means, for humans and agents (e.g. 'Business process the document "
+            "belongs to'). Documentation only: editing it never triggers a reindex. null = none."
+        ),
+    )
+
+
+# Shared description of the display-title setting, reused by the read model and both write requests.
+_TITLE_FIELD_DESCRIPTION = (
+    "Name of a DOCUMENT-scope metadata field whose value is shown as each document's display title "
+    "(search hits, document lists). null = use the parser-derived title. When the named field is "
+    "unset or blank on a document, that document falls back to its parsed title."
+)
 
 
 class CollectionModel(BaseModel):
@@ -85,6 +104,7 @@ class CollectionModel(BaseModel):
         description="The search pipeline graph blob ({} = use the stock default)."
     )
     fields: list[FieldSpecModel] = Field(default_factory=list, description="The metadata schema.")
+    title_field: str | None = Field(default=None, description=_TITLE_FIELD_DESCRIPTION)
     estimate_overrides: EstimateOverrides | None = Field(
         default=None,
         description="Per-collection PARTIAL cost-estimate overrides (rates/assumptions); null = "
@@ -178,6 +198,11 @@ class CreateCollectionRequest(CollectionContractModel):
         default=None,
         description="The pipeline blob; omitted → the stock blob selected by ``preset``.",
     )
+    title_field: str | None = Field(
+        default=None,
+        description=_TITLE_FIELD_DESCRIPTION
+        + " Must name a document-scope field declared in ``fields`` (else 422).",
+    )
 
 
 class UpdateCollectionRequest(BaseModel):
@@ -230,6 +255,13 @@ class UpdateCollectionRequest(BaseModel):
         default=None,
         description="Partial cost-estimate overrides. Omitted = leave unchanged; explicit null = "
         "clear back to the global defaults; a value replaces the stored overrides.",
+    )
+    title_field: str | None = Field(
+        default=None,
+        description=_TITLE_FIELD_DESCRIPTION
+        + " Omitted = leave unchanged; explicit null = clear; a name must be a document-scope field "
+        "of the (post-PATCH) schema, else 422. A schema PATCH that removes the current title field "
+        "(or moves it to chunk scope) clears it automatically.",
     )
     note: str | None = Field(default=None, description="Version note shown in the history.")
 

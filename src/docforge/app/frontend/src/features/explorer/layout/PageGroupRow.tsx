@@ -21,12 +21,12 @@ import { useMemo, useState } from "react";
 import type { ChunkInfo, IRBlock, IREnrichment, IRTable, PageInfo } from "../../../api/explorer";
 import { PageBoxOverlay, type OverlayBox } from "../../../components/PageBoxOverlay";
 import { theme } from "../../../theme";
-import { displayPage } from "../format";
 import { blockStyle } from "./blockColors";
 import { pageBlocksLackLayout, unionBbox } from "./chunkGrouping";
 import { IrChunkGraph } from "./IrChunkGraph";
 import { computeTargetWidthPx, type PageZoomState } from "./pageZoom";
 import { useContainerWidth } from "./useContainerWidth";
+import { pageLabelOf } from "../format";
 
 interface PageGroupRowProps {
   pages: PageInfo[];
@@ -221,7 +221,7 @@ export function PageGroupRow({ pages, blocks, enrichmentsByBlock, tablesByBlock,
           return (
             <div key={page.page_number} style={{ display: "flex", flexDirection: "column", gap: theme.space.xs }}>
               <div style={{ fontSize: theme.font.size.s, fontWeight: theme.font.weight.semibold, color: theme.color.text }}>
-                Page {displayPage(page.page_number)}
+                Page {pageLabelOf(page)}
                 <span style={{ color: theme.color.mute, fontWeight: theme.font.weight.normal }}>
                   {" "}
                   · {blocks.filter((b) => b.page === page.page_number).length} blocks
@@ -235,7 +235,7 @@ export function PageGroupRow({ pages, blocks, enrichmentsByBlock, tablesByBlock,
                   width={page.width}
                   height={page.height}
                   boxes={boxesByPage.get(page.page_number) ?? []}
-                  alt={`Page ${displayPage(page.page_number)} layout`}
+                  alt={`Page ${pageLabelOf(page)} layout`}
                   style={{ width: targetWidthPx, height: "auto" }}
                   // The Layout tab can render a whole document's pages at once — defer each page's
                   // fetch until it scrolls near view instead of firing one request per page up front.

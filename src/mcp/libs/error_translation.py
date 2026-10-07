@@ -111,6 +111,7 @@ class ErrorTranslatingFastMCP(FastMCP):
         structured_output: bool | None = None,
     ) -> None:
         """Register `fn` wrapped by `translate_sdk_errors` — see `FastMCP.add_tool` for the args."""
+        # 1. Register normally (the wrapper keeps the original signature for introspection)
         super().add_tool(
             translate_sdk_errors(fn),
             name=name,
@@ -121,6 +122,25 @@ class ErrorTranslatingFastMCP(FastMCP):
             meta=meta,
             structured_output=structured_output,
         )
+        # 2. Reject unknown arguments: FastMCP's ArgModelBase silently drops extras, so a wrong
+        #    argument name (e.g. `page=5` where no `page` exists) would "succeed" unnoticed.
+        self._forbid_extra_arguments(name or fn.__name__)
+
+    def _forbid_extra_arguments(self, tool_name: str) -> None:
+        """
+        Make a registered tool's argument model reject unknown arguments.
+
+        Args:
+            tool_name (str): The registered tool's name.
+        """
+        tool = self._tool_manager.get_tool(tool_name)
+        if tool is None:
+            return
+        arg_model = tool.fn_metadata.arg_model
+        arg_model.model_config["extra"] = "forbid"
+        arg_model.model_rebuild(force=True)
+        # The advertised JSON schema must reflect it (additionalProperties: false).
+        tool.parameters = arg_model.model_json_schema(by_alias=True)
 
 
 __all__ = ["ErrorTranslatingFastMCP", "translate_sdk_errors"]

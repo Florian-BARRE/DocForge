@@ -84,6 +84,9 @@ class CollectionUpdateSpec:
         note (str | None): The snapshot note stored with the config version.
         apply_overrides (bool): Write the cost-estimate overrides below (True even to CLEAR to None).
         estimate_overrides (dict | None): The overrides to store (None clears back to the defaults).
+        apply_title_field (bool): Write the display-title field below (True even to CLEAR to None).
+        title_field (str | None): The document-scope field naming each document's display title
+            (already validated against the post-PATCH schema by the caller).
     """
 
     # identity/limits (each None = leave unchanged)
@@ -104,6 +107,9 @@ class CollectionUpdateSpec:
     # cost-estimate overrides (apply=True writes even a clearing None)
     apply_overrides: bool = False
     estimate_overrides: dict | None = None
+    # display-title field (apply=True writes even a clearing None)
+    apply_title_field: bool = False
+    title_field: str | None = None
 
 
 @dataclass(slots=True)

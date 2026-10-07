@@ -15,7 +15,7 @@ import { DEFAULT_PAGE_ZOOM } from "./pageZoom";
 import { PageGroupRow } from "./PageGroupRow";
 
 function page(n: number): PageInfo {
-  return { page_number: n, width: 800, height: 1000, is_scanned: false, language: "en", render_blob_hash: `hash-${n}` };
+  return { page_number: n, page_label: n + 1, width: 800, height: 1000, is_scanned: false, language: "en", render_blob_hash: `hash-${n}` };
 }
 
 function block(id: string, pageNumber: number, order: number, bbox: number[]): IRBlock {
@@ -23,6 +23,7 @@ function block(id: string, pageNumber: number, order: number, bbox: number[]): I
     id,
     block_type: "text",
     page: pageNumber,
+    page_number: pageNumber + 1,
     bbox,
     reading_order: order,
     parent_id: null,

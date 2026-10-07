@@ -56,7 +56,7 @@ export function buildBaseColumns({ onOpen, onEnabledChanged, supportedFormats }:
       header: "Title",
       size: 200,
       meta: { filterKind: "text", filterable: true, group: "document" },
-      cell: ({ row }) => <span style={truncateStyle}>{row.original.title || "—"}</span>,
+      cell: ({ row }) => <span style={truncateStyle}>{row.original.display_title || row.original.title || "—"}</span>,
     },
     {
       id: "status",

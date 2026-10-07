@@ -60,6 +60,7 @@ class RowSerializer:
             "enum_values": row.enum_values,
             "origin": _enum(row.origin),
             "scope": _enum(row.scope),
+            "description": row.description,
         }
 
     @staticmethod

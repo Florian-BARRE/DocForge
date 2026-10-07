@@ -40,7 +40,12 @@ class DocumentListItem(BaseModel):
     page_count: int | None = Field(default=None, description="Pages once parsed (None before).")
     file_size: int = Field(description="Original size in bytes.")
     created_at: datetime | None = Field(default=None, description="Admission timestamp.")
-    title: str = Field(description="Learned title ('' before parse).")
+    title: str = Field(description="Parser-learned title ('' before parse).")
+    display_title: str = Field(
+        default="",
+        description="The title to SHOW for this document: the value of the collection's "
+        "title_field when configured and non-empty on this document, else the parsed 'title'.",
+    )
     language: str | None = Field(default=None, description="Detected language (None before parse).")
     enabled: bool = Field(
         description="Document-level searchability toggle; False hides all its chunks from retrieval."
@@ -66,7 +71,12 @@ class DocumentDetail(BaseModel):
     file_size: int = Field(description="Original size in bytes.")
     page_count: int | None = Field(default=None, description="Pages once parsed.")
     language: str | None = Field(default=None, description="Detected document language.")
-    title: str = Field(description="Learned title ('' before parse).")
+    title: str = Field(description="Parser-learned title ('' before parse).")
+    display_title: str = Field(
+        default="",
+        description="The title to SHOW for this document: the value of the collection's "
+        "title_field when configured and non-empty on this document, else the parsed 'title'.",
+    )
     source_kind: SourceKind = Field(description="Acquisition routing: digital_born/scanned/mixed.")
     status: DocumentStatus = Field(description="Ingestion lifecycle state.")
     source_hash: str = Field(description="Content address of the original bytes (blob key).")
@@ -105,7 +115,17 @@ class DocumentDetail(BaseModel):
 class PageInfo(BaseModel):
     """One page's geometry, routing and its render blob reference."""
 
-    page_number: int = Field(description="0-based page index (first page = 0).")
+    page_number: int = Field(
+        description="0-based page INDEX (first page = 0) — NOT the reader's page number; for that "
+        "use 'page_label'."
+    )
+    # Always set by this server; defaulted only so the field is optional in the published contract
+    # (an SDK on this version must still parse a pre-0.23 server's pages, which lack it).
+    page_label: int | None = Field(
+        default=None,
+        description="1-based page number as a reader counts it (= page_number + 1). Named "
+        "page_label here because 'page_number' predates it with a 0-based meaning.",
+    )
     width: float | None = Field(default=None, description="Page width in points (None if unknown).")
     height: float | None = Field(
         default=None, description="Page height in points (None if unknown)."
@@ -137,7 +157,12 @@ class ChunkInfo(BaseModel):
     )
     page: int | None = Field(
         default=None,
-        description="Page of the chunk's primary (leading) block; None when it has no located block.",
+        description="0-based page index of the chunk's primary (leading) block; None when it has no "
+        "located block.",
+    )
+    page_number: int | None = Field(
+        default=None,
+        description="1-based page number as a reader counts it (= page + 1); None when 'page' is.",
     )
     strategy: str = Field(description="The chunking strategy that produced it.")
     parent_id: str | None = Field(default=None, description="Parent chunk (hierarchical chunking).")

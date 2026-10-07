@@ -14,6 +14,7 @@ function block(id: string, blockType: string, text: string | null, order: number
     id,
     block_type: blockType,
     page: 1,
+    page_number: 2,
     bbox: [0, 0, 1, 1],
     reading_order: order,
     parent_id: null,

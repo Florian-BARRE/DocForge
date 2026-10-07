@@ -19,22 +19,27 @@ from typing import Any
 # future field named "api_key"/"password" is auto-covered — audited across the node Config models.
 SECRET_FIELDS: frozenset[str] = frozenset({"api_key", "password"})
 
-# Marker prefixing every masked secret. A masked value is NON-reversible (only the last 4 chars of the
-# real key survive, purely so an operator can tell a key is set and which one) and is recognisable on
-# write via this prefix, which lets the round-trip keep the stored key instead of persisting the mask.
-# The prefix is deliberately un-key-like so no real provider key collides with it.
+# The redaction marker that replaces every masked secret on the way out. It is a CONSTANT — no part of
+# the real key survives (an earlier format leaked the last 4 chars as ``<MASK_PREFIX><last4>``) — so a
+# client only learns that a key IS set. The value is deliberately un-key-like so no real provider key
+# collides with it, and it doubles as the prefix the write path recognises.
 MASK_PREFIX = "__redacted__"
+MASK = MASK_PREFIX
 
 
 def _mask_secret(value: Any) -> Any:
-    """Mask one secret value: empty/blank stays empty, a real key becomes a non-reversible marker."""
+    """Mask one secret value: empty/blank stays empty, a real key becomes the constant marker."""
     if not isinstance(value, str) or value == "":
         return value
-    return f"{MASK_PREFIX}{value[-4:]}"
+    return MASK
 
 
 def is_masked(value: Any) -> bool:
-    """True when a value is a redaction marker this module produced (recognised on write)."""
+    """True when a value is a redaction marker — the current constant OR the legacy last-4 form.
+
+    Matching on the prefix keeps the round-trip contract for clients/UIs that still hold a mask read
+    before the constant format (``__redacted__<last4>``): echoing it back still means "keep the key".
+    """
     return isinstance(value, str) and value.startswith(MASK_PREFIX)
 
 
@@ -210,6 +215,7 @@ def restore_blob_secrets(incoming: dict | None, stored: dict | None) -> dict | N
 __all__ = [
     "SECRET_FIELDS",
     "MASK_PREFIX",
+    "MASK",
     "is_masked",
     "has_blob_secrets",
     "redact_blob_secrets",

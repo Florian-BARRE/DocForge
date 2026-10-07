@@ -20,7 +20,7 @@ import { theme } from "../../theme";
 import { ChunksTab } from "./chunks/ChunksTab";
 import { DocumentPageActions } from "./DocumentPageActions";
 import { DocumentStatusChip } from "./DocumentStatusChip";
-import { formatBytes, formatDateTime } from "./format";
+import { documentDisplayName, formatBytes, formatDateTime } from "./format";
 import { IRTab } from "./ir/IRTab";
 import { mergeSavedMetadata, type DraftValues } from "./metadata/edit/metadataDraft";
 import { LayoutTab } from "./layout/LayoutTab";
@@ -69,8 +69,8 @@ export function DocumentPage({ collectionId, documentId, onNavigate }: DocumentP
   // hook's own cleanup) on unmount or while `document` is still loading.
   const breadcrumbExtra = useMemo<BreadcrumbItem[]>(() => [
     { label: "Documents", view: { name: "collection-documents", collectionId } },
-    { label: document?.filename ?? "" },
-  ], [collectionId, document?.filename]);
+    { label: document ? documentDisplayName(document) : "" },
+  ], [collectionId, document]);
   useCollectionBreadcrumbExtra(document ? breadcrumbExtra : null);
 
   const jumpToBlock = (blockId: string) => {
@@ -93,11 +93,11 @@ export function DocumentPage({ collectionId, documentId, onNavigate }: DocumentP
     <div className="df-rise" style={{ padding: `${theme.space.m}px ${theme.space.xl}px ${theme.space.xl}px`, overflowY: "auto", height: "100%", display: "flex", flexDirection: "column", maxWidth: activeTab === "layout" ? 1560 : 1200, margin: "0 auto", width: "100%" }}>
       <PageHeader
         compact
-        title={<span style={{ wordBreak: "break-word" }}>{document.filename}</span>}
+        title={<span style={{ wordBreak: "break-word" }}>{documentDisplayName(document)}</span>}
         subtitle={
           <span style={{ display: "inline-flex", alignItems: "center", gap: theme.space.s, flexWrap: "wrap" }}>
             <span>
-              {document.format.toUpperCase()} · {document.page_count ?? "—"} page(s) · {formatBytes(document.file_size)} · created {formatDateTime(document.created_at)}
+              {document.filename} · {document.format.toUpperCase()} · {document.page_count ?? "—"} page(s) · {formatBytes(document.file_size)} · created {formatDateTime(document.created_at)}
             </span>
             <DocumentStatusChip status={document.status} hasWarning={!!document.warning_reason} />
             {!document.enabled && <Chip tone="warn">disabled</Chip>}

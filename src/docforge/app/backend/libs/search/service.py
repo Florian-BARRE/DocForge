@@ -9,6 +9,7 @@
 
 # ====== Standard Library Imports ======
 import uuid
+from collections.abc import Collection
 from functools import lru_cache
 from typing import Any
 
@@ -29,6 +30,7 @@ from shared_libs.public_models.search import (
     SearchTarget,
 )
 from shared_libs.services.db import Database
+from shared_libs.services.db.postgresql.tables import MetadataField
 
 # ====== Local Project Imports ======
 from ..blob_hash import BlobHasher
@@ -144,6 +146,8 @@ class SearchService(LoggerClass):
         filters: dict | None = None,
         search_targets: list[SearchTarget] | None = None,
         collection: Any | None = None,
+        text_fields: Collection[str] = frozenset(),
+        title_field: MetadataField | None = None,
     ) -> tuple[SearchResult, tuple[int, int, float | None, int]]:
         """
         Run the search graph against a collection and return the ranked SearchResult plus its cost.
@@ -155,6 +159,11 @@ class SearchService(LoggerClass):
             filters (dict | None): The raw field → value filter map (None = no filters).
             search_targets (list[SearchTarget] | None): The fields × modalities to search (content
                 and/or metadata). None searches content on both axes (unchanged default).
+            collection (Any | None): The already-loaded collection row (skips a second read).
+            text_fields (Collection[str]): Filtered fields with a full-text payload index (their
+                filters become full-text matches) — resolved at the request edge from the schema.
+            title_field (MetadataField | None): The collection's display-title field (resolved at
+                the request edge); None keeps the parser titles on the hits.
 
         Returns:
             tuple[SearchResult, tuple[int, int, float | None, int]]: the ranked hits (best first) and
@@ -178,7 +187,9 @@ class SearchService(LoggerClass):
         contract = SearchContractBuilder.build(collection)
 
         # 3. Construct the read port scoped to this collection (exclusion baked into the facade).
-        read_port = CollectionReadPortImpl(self._database, collection_id)
+        read_port = CollectionReadPortImpl(
+            self._database, collection_id, text_fields=text_fields, title_field=title_field
+        )
 
         # 4. Assemble the search run-input the graph binds by FromRunInput. When the caller named no
         #    targets we pass an EMPTY list through, so the normalize node owns the content-target

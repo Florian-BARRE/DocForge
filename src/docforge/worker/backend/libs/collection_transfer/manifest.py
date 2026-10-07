@@ -103,6 +103,9 @@ class CollectionContractModel(BaseModel):
     # the baseline and the imported collection is not spuriously flagged needs_reindex. Defaulted so a
     # bundle exported before it existed imports cleanly (legacy bundle → NULL = never indexed).
     indexed_signature: str | None = None
+    # The document-scope field shown as each document's display title. Defaulted so a bundle exported
+    # before the setting existed imports cleanly (legacy bundle → NULL = parsed titles).
+    title_field: str | None = None
     pipeline: dict = Field(default_factory=dict)
     search: dict = Field(default_factory=dict)
     config_versions: list[ConfigVersionModel] = Field(default_factory=list)

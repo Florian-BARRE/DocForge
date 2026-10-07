@@ -50,7 +50,7 @@ export function SystemMetadataPanel({ document, pages }: SystemMetadataPanelProp
       </MetaGroup>
 
       <MetaGroup title="Parsed">
-        <Fact label="Title" value={document.title || "—"} />
+        <Fact label="Parsed title" value={document.title || "—"} />
         <Fact label="Page count" value={document.page_count === null ? "—" : String(document.page_count)} mono />
         <Fact label="Language" value={document.language || "undetected"} mono />
         <Fact label="Pipeline version" value={document.pipeline_version} mono />

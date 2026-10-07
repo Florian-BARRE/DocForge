@@ -22,6 +22,7 @@ class IRBlock(BaseModel):
         id (str): Document-namespaced block id.
         block_type (str): text / heading / list / table / figure / …
         page (int): 0-based page the block sits on (first page = 0).
+        page_number (int): 1-based page number as a reader counts it.
         bbox (list[float]): Bounding box [x0, y0, x1, y1] in page coordinates.
         reading_order (int): Global reading-order rank within the document.
         parent_id (str | None): Parent block in the heading tree.
@@ -34,6 +35,10 @@ class IRBlock(BaseModel):
     id: str = Field(description="Document-namespaced block id.")
     block_type: str = Field(description="text / heading / list / table / figure / …")
     page: int = Field(description="0-based page the block sits on (first page = 0).")
+    # Defaulted (not required) so this SDK still parses responses from pre-0.23 servers.
+    page_number: int | None = Field(
+        default=None, description="1-based page number as a reader counts it (= page + 1)."
+    )
     bbox: list[float] = Field(description="Bounding box [x0, y0, x1, y1] in page coordinates.")
     reading_order: int = Field(description="Global reading-order rank within the document.")
     parent_id: str | None = Field(default=None, description="Parent block in the heading tree.")

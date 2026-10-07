@@ -150,8 +150,8 @@ def test_redact_masks_every_provider_key_and_leaves_empties(fastapi_app) -> None
     assert VLM_KEY not in dumped
     assert OCR_KEY not in dumped
     # top-level, nested-group and foreach-body nodes are all masked
-    assert masked["nodes"][0]["config"]["api_key"] == f"{MASK_PREFIX}1234"
-    assert masked["nodes"][1]["nodes"][0]["config"]["api_key"] == f"{MASK_PREFIX}xyz9"
+    assert masked["nodes"][0]["config"]["api_key"] == MASK_PREFIX
+    assert masked["nodes"][1]["nodes"][0]["config"]["api_key"] == MASK_PREFIX
     # an empty key is left empty (there is no secret to hide)
     assert masked["nodes"][2]["body"]["nodes"][0]["config"]["api_key"] == ""
 
@@ -161,7 +161,7 @@ def test_redact_masks_search_blob_reranker_key(fastapi_app) -> None:
 
     masked = redact_blob_secrets(_leaky_search())
     assert RERANK_KEY not in str(masked)
-    assert masked["nodes"][0]["config"]["api_key"] == f"{MASK_PREFIX}qwer"
+    assert masked["nodes"][0]["config"]["api_key"] == MASK_PREFIX
 
 
 def test_redact_does_not_mutate_the_stored_blob(fastapi_app) -> None:
@@ -268,7 +268,7 @@ def test_redact_masks_gotenberg_password_but_not_username(fastapi_app) -> None:
     masked = redact_blob_secrets(_gotenberg_basic_auth_pipeline())
     config = masked["nodes"][0]["config"]
     assert GOTENBERG_PASSWORD not in str(masked)
-    assert config["password"] == f"{MASK_PREFIX}pass"
+    assert config["password"] == MASK_PREFIX
     assert config["username"] == "forge"  # the username is not a secret — never masked
 
 
@@ -331,8 +331,8 @@ def test_detail_response_masks_every_secret(client, monkeypatch) -> None:
     assert VLM_KEY not in response.text
     assert OCR_KEY not in response.text
     assert RERANK_KEY not in response.text
-    assert payload["pipeline"]["nodes"][0]["config"]["api_key"] == "__redacted__1234"
-    assert payload["search"]["nodes"][0]["config"]["api_key"] == "__redacted__qwer"
+    assert payload["pipeline"]["nodes"][0]["config"]["api_key"] == "__redacted__"
+    assert payload["search"]["nodes"][0]["config"]["api_key"] == "__redacted__"
 
 
 # ─────────────────────────── HTTP surface: PATCH round-trip keeps the key ───────────────────────────

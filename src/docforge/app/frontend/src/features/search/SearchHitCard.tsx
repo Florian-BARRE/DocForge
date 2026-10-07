@@ -17,7 +17,6 @@ import { PageBoxLightbox } from "../../components/PageBoxLightbox";
 import type { OverlayBox } from "../../components/PageBoxOverlay";
 import { useToast } from "../../shell/toast";
 import { theme } from "../../theme";
-import { displayPage } from "../explorer/format";
 import { SearchHitCitation } from "./SearchHitCitation";
 import { SearchHitTechnicalDetails } from "./SearchHitTechnicalDetails";
 import { SearchHitText } from "./SearchHitText";
@@ -41,7 +40,7 @@ interface HitBoxState {
  *  The PRIMARY (leading) block — `hit.bbox` when present, else the first located one — is flagged
  *  `primary: true` so PageBoxOverlay draws it in full forge-orange while the chunk's other spanned
  *  blocks (same chunk, secondary context) draw muted: only ONE thing reads as "the match". */
-function primaryPageBoxes(hit: SearchHitModel): { page: number; boxes: OverlayBox[] } | null {
+function primaryPageBoxes(hit: SearchHitModel): { page: number; label: number | null; boxes: OverlayBox[] } | null {
   const locations: BlockLocationModel[] = hit.block_locations ?? [];
   if (locations.length) {
     const page = hit.page ?? locations[0].page;
@@ -51,13 +50,14 @@ function primaryPageBoxes(hit: SearchHitModel): { page: number; boxes: OverlayBo
     const boxed = onPage.length ? onPage : [locations[0]];
     return {
       page,
+      label: hit.page_number ?? boxed[0].page_number ?? null,
       boxes: boxed.map((loc, index) => ({
         bbox: loc.bbox,
         primary: hit.bbox ? loc.bbox.join(",") === hit.bbox.join(",") : index === 0,
       })),
     };
   }
-  if (hit.page != null && hit.bbox) return { page: hit.page, boxes: [{ bbox: hit.bbox, primary: true }] };
+  if (hit.page != null && hit.bbox) return { page: hit.page, label: hit.page_number ?? null, boxes: [{ bbox: hit.bbox, primary: true }] };
   return null;
 }
 
@@ -80,7 +80,7 @@ export function SearchHitCard({ hit, topScore }: SearchHitCardProps) {
         width: page?.width ?? null,
         height: page?.height ?? null,
         boxes: located.boxes,
-        caption: `Page ${displayPage(located.page)} · ${hit.filename ?? hit.document_id.slice(0, 8)}`,
+        caption: `${located.label != null ? `Page ${located.label} · ` : ""}${hit.filename ?? hit.document_id.slice(0, 8)}`,
       });
     } catch (error) {
       toast.error(`Could not load page — ${error instanceof HttpError ? error.message : String(error)}`);

@@ -30,6 +30,7 @@ const warnedDocument: DocumentDetail = {
   page_count: 3,
   language: "en",
   title: "Empty Scan",
+  display_title: "Empty Scan",
   source_kind: "scanned",
   status: "done",
   source_hash: "abc123",
@@ -70,7 +71,7 @@ describe("DocumentPage — done-with-warning document", () => {
 
     // The System metadata panel's "Source" group also shows the filename (see SystemMetadataPanel),
     // so this now matches twice — scope to the page's own <h1> title, which is unique.
-    await waitFor(() => expect(screen.getByRole("heading", { name: "empty-scan.pdf" })).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Empty Scan" })).toBeInTheDocument());
     expect(screen.queryByText("loading document…")).not.toBeInTheDocument();
 
     // The warn-toned "0 chunks" Chip, titled with the full warning_reason.
@@ -100,7 +101,7 @@ describe("DocumentPage — failed document", () => {
       ),
     ).not.toThrow();
 
-    await waitFor(() => expect(screen.getByRole("heading", { name: "empty-scan.pdf" })).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Empty Scan" })).toBeInTheDocument());
 
     expect(screen.getByText("Ingestion failed")).toBeInTheDocument();
     // The chained "PipelineRunError: ...: ValueError: " prefix is stripped down to the useful tail.

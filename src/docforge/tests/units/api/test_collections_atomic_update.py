@@ -103,7 +103,11 @@ async def test_all_parts_commit_in_one_transaction(monkeypatch) -> None:
     monkeypatch.setattr(
         cf_module.CollectionApi,
         "get",
-        AsyncMock(return_value=SimpleNamespace(pipeline={"p": 1}, indexed_signature=None)),
+        AsyncMock(
+            return_value=SimpleNamespace(
+                pipeline={"p": 1}, indexed_signature=None, title_field=None
+            )
+        ),
     )
     # The config snapshot locks the collection row FOR UPDATE before minting the next version.
     monkeypatch.setattr(

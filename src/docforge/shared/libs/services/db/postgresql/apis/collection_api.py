@@ -127,6 +127,20 @@ class CollectionApi:
         collection.estimate_overrides = overrides
 
     @staticmethod
+    async def set_title_field(
+        session: AsyncSession, collection_id: uuid.UUID, title_field: str | None
+    ) -> None:
+        """Set the collection's display-title field (None clears it → the parsed title is shown).
+
+        Like ``set_estimate_overrides`` this ALWAYS writes, so None is an explicit clear. The name is a
+        soft reference to a document-scope ``metadata_field`` — validated by the caller, not by a FK.
+        """
+        collection = await session.get(Collection, collection_id)
+        if collection is None:
+            return
+        collection.title_field = title_field
+
+    @staticmethod
     async def delete(session: AsyncSession, collection_id: uuid.UUID) -> bool:
         """Delete a collection (cascading its schema, documents, jobs); return whether it existed."""
         collection = await session.get(Collection, collection_id)

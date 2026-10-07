@@ -6,7 +6,6 @@ import { useState } from "react";
 import { BlobImage } from "../../../components/BlobImage";
 import { type PageInfo } from "../../../api/explorer";
 import { theme } from "../../../theme";
-import { displayPage } from "../format";
 
 export function PageThumbnail({ page, onClick }: { page: PageInfo; onClick: () => void }) {
   const [hover, setHover] = useState(false);
@@ -32,7 +31,7 @@ export function PageThumbnail({ page, onClick }: { page: PageInfo; onClick: () =
         {page.render_blob_hash ? (
           <BlobImage
             hash={page.render_blob_hash}
-            alt={`Page ${displayPage(page.page_number)}`}
+            alt={`Page ${page.page_label}`}
             style={{ width: "100%", height: "100%", objectFit: "contain" }}
           />
         ) : (
@@ -40,7 +39,7 @@ export function PageThumbnail({ page, onClick }: { page: PageInfo; onClick: () =
         )}
       </div>
       <div style={{ textAlign: "center", color: theme.color.dim, fontSize: theme.font.size.xs }}>
-        Page {displayPage(page.page_number)}{page.is_scanned ? " · scanned" : ""}
+        Page {page.page_label}{page.is_scanned ? " · scanned" : ""}
       </div>
     </div>
   );

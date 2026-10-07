@@ -8,9 +8,9 @@ import { forwardRef } from "react";
 import type { IREnrichment, IRBlock, IRFigure, IRTable } from "../../../api/explorer";
 import { Chip } from "../../../components/Chip";
 import { theme } from "../../../theme";
-import { displayPage } from "../format";
 import { FigureBlock } from "./FigureBlock";
 import { TableBlock } from "./TableBlock";
+import { blockPageNumberOf } from "../format";
 
 interface BlockRowProps {
   block: IRBlock;
@@ -48,7 +48,7 @@ export const BlockRow = forwardRef<HTMLDivElement, BlockRowProps>(function Block
           {block.block_type}
         </Chip>
         <span style={{ color: theme.color.dim, fontSize: theme.font.size.xs, fontFamily: theme.font.mono }}>
-          page {displayPage(block.page)}
+          page {blockPageNumberOf(block)}
         </span>
         {block.is_boilerplate && <span style={{ color: theme.color.mute, fontSize: theme.font.size.xs }}>boilerplate</span>}
       </div>

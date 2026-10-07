@@ -22,7 +22,7 @@ vi.mock("./PageScrubber", () => ({ PageScrubber: () => <div data-testid="page-sc
 vi.mock("./BlockTypeLegend", () => ({ BlockTypeLegend: () => <div data-testid="block-legend" /> }));
 
 function page(n: number): PageInfo {
-  return { page_number: n, width: 800, height: 1000, is_scanned: false, language: "en", render_blob_hash: `hash-${n}` };
+  return { page_number: n, page_label: n + 1, width: 800, height: 1000, is_scanned: false, language: "en", render_blob_hash: `hash-${n}` };
 }
 
 function block(id: string, pageNumber: number, order: number): IRBlock {
@@ -30,6 +30,7 @@ function block(id: string, pageNumber: number, order: number): IRBlock {
     id,
     block_type: "text",
     page: pageNumber,
+    page_number: pageNumber + 1,
     bbox: [0.1, 0.1, 0.9, 0.2],
     reading_order: order,
     parent_id: null,

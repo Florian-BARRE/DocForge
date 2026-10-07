@@ -15,7 +15,7 @@ from loggerplusplus import loggerplusplus
 # ====== Internal Project Imports ======
 from shared_libs.pipelines.blob_secrets import has_blob_secrets, redact_blob_secrets
 from shared_libs.pipelines.ingest import BlobNormalizer, FormatProbeHelpers
-from shared_libs.public_models import FieldOrigin, FieldScope, FieldType
+from shared_libs.public_models import FieldOrigin, FieldScope, FieldType, TextSanitizer
 from shared_libs.services.db.postgresql.tables import Collection, MetadataField
 from shared_libs.services.db.qdrant import RESERVED_PAYLOAD_KEYS
 
@@ -97,6 +97,7 @@ class CollectionHelpers:
             pipeline=mask(cls.public_pipeline(collection.pipeline)),
             search=mask(collection.search),
             fields=cls.to_field_specs(fields),
+            title_field=getattr(collection, "title_field", None),
             estimate_overrides=cls.__estimate_overrides(collection),
         )
 
@@ -153,6 +154,7 @@ class CollectionHelpers:
                 enum_values=row.enum_values,
                 origin=row.origin,
                 scope=row.scope,
+                description=getattr(row, "description", None),
             )
             for row in fields
         ]
@@ -229,6 +231,40 @@ class CollectionHelpers:
                 )
 
     @staticmethod
+    def document_scope_field_names(fields: list[FieldSpecModel] | list[MetadataField]) -> list[str]:
+        """The sorted names of the document-scope fields — the only valid ``title_field`` choices."""
+        return sorted(f.field_name for f in fields if f.scope == FieldScope.DOCUMENT)
+
+    @classmethod
+    def validate_title_field(
+        cls, title_field: str | None, fields: list[FieldSpecModel] | list[MetadataField]
+    ) -> None:
+        """Guard a ``title_field`` against the schema it will live with (None = clear, always valid).
+
+        A display title is ONE value per document, so only a document-scope field qualifies — a
+        chunk-scope field has no single per-document value to show.
+
+        Args:
+            title_field (str | None): The requested title field name, or None to clear it.
+            fields (list): The schema the collection will have once the write lands.
+
+        Raises:
+            HTTPException: 422 naming the valid choices when the name is not a document-scope field.
+        """
+        # 1. Clearing is always allowed.
+        if title_field is None:
+            return
+
+        # 2. The name must be one of the schema's document-scope fields.
+        choices = cls.document_scope_field_names(fields)
+        if title_field not in choices:
+            raise HTTPException(
+                status_code=422,
+                detail=f"title_field '{title_field}' is not a document-scope metadata field of this "
+                f"collection — valid choices: {choices} (or null to clear).",
+            )
+
+    @staticmethod
     def validate_search_blob(search: dict) -> None:
         """Guard a non-empty search blob's shape and validate it as a genuine SEARCH graph.
 
@@ -268,9 +304,23 @@ class CollectionHelpers:
                 enum_values=f.enum_values,
                 origin=f.origin,
                 scope=f.scope,
+                description=CollectionHelpers.clean_description(f.description),
             )
             for f in fields
         ]
+
+    @staticmethod
+    def clean_description(description: str | None) -> str | None:
+        """Normalise a field description for storage: NUL-stripped and trimmed; blank → None.
+
+        Postgres TEXT cannot hold U+0000, so every caller-supplied text bound for a column goes through
+        ``TextSanitizer.strip_nul``; an all-whitespace description carries no meaning and is stored as
+        "no description" rather than an invisible value.
+        """
+        if description is None:
+            return None
+        cleaned = TextSanitizer.strip_nul(description).strip()
+        return cleaned or None
 
 
 __all__ = ["CollectionHelpers"]

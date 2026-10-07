@@ -22,7 +22,8 @@ from libs.server import build_mcp
 # 66 -> 68: submit_preview_job + get_preview_job (collections) — async worker-side non-persisting
 # dry-run (covers every pipeline incl. docling) + its poll.
 # 71 -> 72: update_document_metadata (documents) — PATCH /documents/{id}/metadata.
-EXPECTED_TOOL_COUNT = 72
+# 72 -> 73: describe_collection (collections) — GET /collections/{id}/describe, the agent guide.
+EXPECTED_TOOL_COUNT = 73
 
 EXPECTED_TOOL_NAMES = {
     # health
@@ -37,6 +38,7 @@ EXPECTED_TOOL_NAMES = {
     # collections
     "list_collections",
     "get_collection",
+    "describe_collection",
     "create_collection",
     "update_collection",
     "delete_collection",

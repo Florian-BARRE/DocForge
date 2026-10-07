@@ -107,6 +107,8 @@ class RowDeserializer:
             enum_values=data["enum_values"],
             origin=FieldOrigin(data["origin"]),
             scope=FieldScope(data["scope"]),
+            # Absent from bundles exported before field descriptions existed → no description.
+            description=TextSanitizer.strip_nul(data.get("description")),
         )
 
     @staticmethod

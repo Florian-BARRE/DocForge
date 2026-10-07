@@ -15,7 +15,7 @@ from datetime import datetime
 from loggerplusplus import loggerplusplus
 
 # ====== Internal Project Imports ======
-from shared_libs.public_models import FieldType
+from shared_libs.public_models import DisplayTitleResolver, FieldType
 from shared_libs.services.db.postgresql.apis import (
     DocumentQuerySpec,
     MetadataCondition,
@@ -241,8 +241,13 @@ class CorpusMapper:
         document: Document,
         metadata_rows: Sequence[DocumentMetadata],
         names: dict[int, str],
+        title_field: str | None = None,
     ) -> DocumentGridRow:
-        """Map a document row + its metadata values into a grid row (a compact name→value map)."""
+        """Map a document row + its metadata values into a grid row (a compact name→value map).
+
+        ``title_field`` (the collection's display-title setting) drives ``display_title``; None keeps
+        the parsed title.
+        """
         # 1. Resolve each metadata value's field name (drop values whose field left the schema).
         values = {names[row.field_id]: row.value for row in metadata_rows if row.field_id in names}
         return DocumentGridRow(
@@ -254,6 +259,7 @@ class CorpusMapper:
             file_size=document.file_size,
             created_at=document.created_at,
             title=document.title,
+            display_title=DisplayTitleResolver.resolve(document.title, values, title_field) or "",
             language=document.language,
             enabled=document.enabled,
             chunk_count=document.chunk_count,

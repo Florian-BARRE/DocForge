@@ -31,6 +31,7 @@ class FieldSpec(BaseModel):
         enum_values (list[str] | None): Allowed values when ``field_type`` is enum.
         origin (FieldOrigin): user (declared at upload) or generated (metagen).
         scope (FieldScope): document or chunk level value.
+        description (str | None): What the field means (max 1000 chars).
     """
 
     field_name: str = Field(description="Unique field name within the collection.")
@@ -48,6 +49,11 @@ class FieldSpec(BaseModel):
     scope: FieldScope = Field(
         default=FieldScope.DOCUMENT, description="document or chunk level value."
     )
+    description: str | None = Field(
+        default=None,
+        max_length=1000,
+        description="What the field means, in plain words — surfaced to search clients (max 1000).",
+    )
 
 
 class CollectionModel(BaseModel):
@@ -63,6 +69,7 @@ class CollectionModel(BaseModel):
             seconds. None = inherit the worker's global WORKER_JOB_TIMEOUT_SECONDS default.
         needs_reindex (bool): True when a config change requires reindexing.
         created_at (datetime | None): Creation timestamp.
+        title_field (str | None): Document-scope field used as the display title (None = parsed).
         pipeline (dict[str, Any]): The ingestion pipeline blob (the graph).
         search (dict[str, Any]): The search pipeline graph blob ({} = the stock default).
         fields (list[FieldSpec]): The metadata schema.
@@ -97,6 +104,11 @@ class CollectionModel(BaseModel):
     )
     needs_reindex: bool = Field(description="True when a config change requires reindexing.")
     created_at: datetime | None = Field(default=None, description="Creation timestamp.")
+    title_field: str | None = Field(
+        default=None,
+        description="Document-scope field whose value is each document's display title (None = the "
+        "parser-derived title).",
+    )
     pipeline: dict[str, Any] = Field(description="The ingestion pipeline blob (the graph).")
     search: dict[str, Any] = Field(
         description="The search pipeline graph blob ({} = use the stock default)."
@@ -134,6 +146,7 @@ class CreateCollectionRequest(BaseModel):
         max_file_size_bytes (int): Upload size ceiling, bytes.
         job_timeout_seconds (float | None): Per-collection whole-ingest-job wall-clock job timeout,
             seconds. None = inherit the worker's global WORKER_JOB_TIMEOUT_SECONDS default.
+        title_field (str | None): Document-scope field used as the display title.
         fields (list[FieldSpec]): The FULL schema, declared up front (vector space is fixed).
         pipeline (dict[str, Any] | None): The pipeline blob; omitted → the product default.
     """
@@ -161,6 +174,11 @@ class CreateCollectionRequest(BaseModel):
             "stores the raw payload in the object store (clamped by the operator ceiling "
             "WORKER_TRACE_MAX_VERBOSITY)."
         ),
+    )
+    title_field: str | None = Field(
+        default=None,
+        description="Document-scope field whose value is each document's display title (must name a "
+        "document-scope field of the schema); None = the parser-derived title.",
     )
     fields: list[FieldSpec] = Field(
         default_factory=list,
@@ -194,6 +212,7 @@ class UpdateCollectionRequest(BaseModel):
         max_file_size_bytes (int | None): New size ceiling, bytes.
         job_timeout_seconds (float | None): New per-collection whole-ingest-job wall-clock
             job timeout, seconds. Omitted = leave the current value unchanged.
+        title_field (str | None): Display-title field. Omitted = unchanged; explicit null = clear.
         fields (list[FieldSpec] | None): The TARGET schema (diffed by field name).
         pipeline (dict[str, Any] | None): New pipeline blob (validated before storage).
         search (dict[str, Any] | None): New search graph blob ({} = stock default).
@@ -228,6 +247,12 @@ class UpdateCollectionRequest(BaseModel):
             "value unchanged. 'full' also stores raw node payloads, clamped by the operator "
             "ceiling WORKER_TRACE_MAX_VERBOSITY."
         ),
+    )
+    title_field: str | None = Field(
+        default=None,
+        description="Document-scope field shown as each document's display title. Omitted = leave "
+        "unchanged; explicit null = clear (back to the parsed title); a name must be a document-scope "
+        "field of the post-PATCH schema. Auto-cleared when that field is removed or renamed.",
     )
     fields: list[FieldSpec] | None = Field(
         default=None,
@@ -319,6 +344,87 @@ class CollectionContractSchemaResponse(BaseModel):
     )
 
 
+class FieldGuide(BaseModel):
+    """
+    One metadata field, described for a client that wants to filter or search on it.
+
+    Attributes:
+        name (str): The field name (the key used in ``filters`` / ``search_in``).
+        type (FieldType): The declared data type.
+        description (str | None): What the field means (None when the schema sets none).
+        scope (FieldScope): Where the value lives — one per document, or one per chunk.
+        origin (FieldOrigin): Who fills it.
+        filterable (bool): Usable as a ``filters`` key.
+        semantic (bool): Searchable on its dense vector.
+        lexical (bool): Searchable on its sparse vector.
+        required (bool): Required at upload.
+        enum_values (list[str] | None): The allowed values of an enum field.
+        example_values (list[str]): Up to 10 stored values, most frequent first.
+        distinct_count (int): Number of distinct stored values.
+        note (str | None): Why examples are omitted, when they are.
+    """
+
+    name: str = Field(description="The field name (key used in filters / search_in).")
+    type: FieldType = Field(description="The declared data type.")
+    description: str | None = Field(default=None, description="What the field means.")
+    scope: FieldScope = Field(description="One value per document, or one per chunk.")
+    origin: FieldOrigin = Field(description="Who fills the field.")
+    filterable: bool = Field(description="Usable as a filters key.")
+    semantic: bool = Field(description="Searchable on its dense vector.")
+    lexical: bool = Field(description="Searchable on its sparse vector.")
+    required: bool = Field(description="Required at upload.")
+    enum_values: list[str] | None = Field(default=None, description="Allowed values of an enum.")
+    example_values: list[str] = Field(
+        default_factory=list, description="Up to 10 stored values, most frequent first."
+    )
+    distinct_count: int = Field(description="Number of distinct stored values.")
+    note: str | None = Field(default=None, description="Why examples are omitted, when they are.")
+
+
+class SearchTargetGuide(BaseModel):
+    """
+    One valid ``search_in`` entry of the collection.
+
+    Attributes:
+        field (str): ``"content"`` (the chunk body) or a metadata field name.
+        semantic (bool): The field has a dense vector to query.
+        lexical (bool): The field has a sparse vector to query.
+    """
+
+    field: str = Field(description="'content' or a metadata field name.")
+    semantic: bool = Field(description="The field has a dense vector to query.")
+    lexical: bool = Field(description="The field has a sparse vector to query.")
+
+
+class CollectionDescription(BaseModel):
+    """
+    The lean agent guide to one collection — what is in it and how to query it.
+
+    Attributes:
+        collection_id (str): The collection id.
+        name (str): The collection name.
+        document_count (int): Number of documents in the collection.
+        title_field (str | None): The document-scope field used as each hit's display title.
+        page_numbering (str): How hits locate pages (which field to cite).
+        fields (list[FieldGuide]): Every metadata field of the schema.
+        searchable_targets (list[SearchTargetGuide]): The valid ``search_in`` entries.
+        filter_grammar (list[str]): The filter value forms the search route accepts.
+        example_requests (list[dict[str, Any]]): Ready-to-send search request bodies.
+    """
+
+    collection_id: str = Field(description="The collection id.")
+    name: str = Field(description="The collection name.")
+    document_count: int = Field(description="Number of documents in the collection.")
+    title_field: str | None = Field(default=None, description="Display-title field, if any.")
+    page_numbering: str = Field(description="How hits locate pages (which field to cite).")
+    fields: list[FieldGuide] = Field(description="Every metadata field of the schema.")
+    searchable_targets: list[SearchTargetGuide] = Field(description="Valid search_in entries.")
+    filter_grammar: list[str] = Field(description="The accepted filter value forms.")
+    example_requests: list[dict[str, Any]] = Field(
+        description="Ready-to-send search request bodies for this collection."
+    )
+
+
 __all__ = [
     "FieldSpec",
     "CollectionModel",
@@ -329,4 +435,7 @@ __all__ = [
     "ReingestJobHandle",
     "BulkReingestAccepted",
     "CollectionContractSchemaResponse",
+    "FieldGuide",
+    "SearchTargetGuide",
+    "CollectionDescription",
 ]

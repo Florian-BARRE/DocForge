@@ -3,8 +3,9 @@
 # gate (404 unknown collection · 409 no embed node · 422 non-filterable filter), then DELEGATES the
 # actual retrieval to the graph-based search pipeline via CONTEXT.search_service (the graph embeds
 # the query with the collection's own embedder and runs the hybrid fusion + hydration). The router
-# keeps the filterability gate (the graph trusts the filters it is handed), then flattens the graph's
-# Hits into the client response.
+# keeps the filterability gate (the graph trusts the filters it is handed), resolves string-ish filter
+# values to their stored spelling (Postgres is the value oracle — case-insensitive filters + "did you
+# mean" hints), then flattens the graph's Hits and the filter hints into the client response.
 
 # ====== Standard Library Imports ======
 import uuid
@@ -18,9 +19,11 @@ from ...libs.auth import Capability, require
 from ...libs.metrics.search_health import SearchHealthReader
 from ...libs.search import (
     QueryEmbedderProbe,
+    SearchFilterResolver,
     SearchRunError,
     SearchRunTimeout,
     SearchUnavailableError,
+    ZeroHitHintBuilder,
 )
 from ...utils.error_handling import auto_handle_errors
 from .helpers import SearchHelpers
@@ -67,8 +70,9 @@ async def search_collection(collection_id: uuid.UUID, request: SearchRequest) ->
     stays the request-side gate and diagnostic layer.
 
     Returns:
-        SearchResponse: The echoed query and its hits, best first. 404 when the collection is
-        unknown, 409 when it has no embedder wired, 422 when a filter names a non-filterable field.
+        SearchResponse: The echoed query, its hits (best first) and any filter hints. 404 when the
+        collection is unknown, 409 when it has no embedder wired, 422 when a filter names a
+        non-filterable field, a value outside a field's enum, or an empty/oversized value list.
     """
     # 1. The collection must exist — everything (its embedder, its schema) derives from it.
     collection = await CONTEXT.database.collections.get(collection_id)
@@ -86,7 +90,13 @@ async def search_collection(collection_id: uuid.UUID, request: SearchRequest) ->
     #    names a non-filterable field is rejected 422 BEFORE the service is invoked.
     schema = await CONTEXT.database.collections.get_schema(collection_id)
 
-    # 3a. Gate RANGE filters first (before build_conditions, which builds the range and would raise
+    # 3a. Reject empty (Qdrant would read an empty any-of as "no constraint" → a WIDER search) and
+    #     oversized list filters before anything else looks at them.
+    list_errors = SearchHelpers.list_violations(request.filters)
+    if list_errors:
+        raise HTTPException(status_code=422, detail=f"Invalid filter value(s): {list_errors}")
+
+    # 3b. Gate RANGE filters (before build_conditions, which builds the range and would raise
     #     on a malformed one): a range mapping is only valid on a range-typed filterable field
     #     (integer/float/datetime), well-formed, and with bounds whose kind matches the field.
     range_errors = SearchHelpers.range_violations(request.filters, schema)
@@ -100,9 +110,10 @@ async def search_collection(collection_id: uuid.UUID, request: SearchRequest) ->
             detail=f"Not a filterable field for this collection: {sorted(invalid)}",
         )
 
-    # 3b. A filterable ENUM field only accepts its declared members — a value outside the enum is a
-    #     caller error rejected 422 (else it silently returns 0 hits and reads as "nothing matches").
-    enum_errors = SearchHelpers.enum_violations(request.filters, schema)
+    # 3c. A filterable ENUM field only accepts its declared members: a case-only difference is mapped
+    #     to the member, a value outside the enum is a caller error rejected 422 listing the allowed
+    #     values (else it silently returns 0 hits and reads as "nothing matches").
+    filters, enum_errors = SearchHelpers.canonical_enum_filters(request.filters, schema)
     if enum_errors:
         raise HTTPException(status_code=422, detail=f"Invalid filter value(s): {enum_errors}")
 
@@ -111,6 +122,14 @@ async def search_collection(collection_id: uuid.UUID, request: SearchRequest) ->
     target_errors = SearchHelpers.validate_search_targets(request.search_in, schema)
     if target_errors:
         raise HTTPException(status_code=422, detail=f"Invalid search target(s): {target_errors}")
+
+    # 4b. Resolve string-ish filter values against the stored values (case-insensitive → the exact
+    #     stored spellings) and flag full-text fields — BEFORE the map reaches the pure graph. A value
+    #     nothing stores keeps its literal and yields a "did you mean" hint.
+    #     The as-sent map rides along so hints quote the caller's own value (pre-enum-mapping).
+    resolution = await SearchFilterResolver(CONTEXT.database.metadata_values).resolve(
+        filters, schema, sent=request.filters
+    )
 
     # 5. Delegate the retrieval to the graph-based search pipeline. The failure classes are mapped
     #    distinctly so the caller can tell "retry shortly" from "fix your config":
@@ -127,9 +146,11 @@ async def search_collection(collection_id: uuid.UUID, request: SearchRequest) ->
             collection_id,
             request.query,
             top_k=request.limit,
-            filters=request.filters,
+            filters=resolution.filters if filters is not None else None,
             search_targets=SearchHelpers.to_search_targets(request.search_in),
             collection=collection,
+            text_fields=resolution.text_fields,
+            title_field=SearchHelpers.title_field_spec(collection, schema),
         )
     except SearchRunTimeout as exc:
         raise HTTPException(
@@ -153,6 +174,7 @@ async def search_collection(collection_id: uuid.UUID, request: SearchRequest) ->
     #    pipeline threads through SearchResult.debug["degraded"]) is visible to the client instead of
     #    silently returning partial results. A healthy run carries only a minimal bag (hit count).
     #    The metered search-time LLM spend (rewrite/HyDE) rides ``cost`` — None when no paid call ran.
+    #    Filter hints = the early "no stored value" ones + the zero-hit "likely culprit" ones.
     prompt_tokens, completion_tokens, cost_usd, call_count = usage
     cost = (
         SearchCostModel(
@@ -164,6 +186,7 @@ async def search_collection(collection_id: uuid.UUID, request: SearchRequest) ->
         if call_count > 0
         else None
     )
+    hints = resolution.hints + ZeroHitHintBuilder.build(resolution, len(result.hits))
     return SearchResponse(
         query=request.query,
         hits=[SearchHelpers.to_hit_model(hit) for hit in result.hits],
@@ -172,6 +195,7 @@ async def search_collection(collection_id: uuid.UUID, request: SearchRequest) ->
         ),
         cost=cost,
         debug_info=result.debug,
+        hints=[SearchHelpers.to_hint_model(hint) for hint in hints],
     )
 
 

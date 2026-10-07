@@ -118,7 +118,8 @@ async def list_documents(
         unknown.
     """
     # 1. The collection must exist — an empty list would otherwise hide a bad id.
-    if await CONTEXT.database.collections.get(collection_id) is None:
+    collection = await CONTEXT.database.collections.get(collection_id)
+    if collection is None:
         raise HTTPException(status_code=404, detail=f"Collection {collection_id} not found.")
 
     # 2. Clamp the page size to the server ceiling, then read one bounded page.
@@ -126,7 +127,26 @@ async def list_documents(
     documents = await CONTEXT.database.documents.list_for_collection(
         collection_id, limit=bounded_limit, offset=offset
     )
-    return [ExplorerHelpers.list_item(document) for document in documents]
+
+    # 3. No title_field → the display title IS the parsed title (no extra reads). Otherwise bulk-load
+    #    the page's metadata once (no N+1) and resolve each row's display title.
+    if not collection.title_field:
+        return [ExplorerHelpers.list_item(document) for document in documents]
+    names = ExplorerHelpers.field_names(
+        await CONTEXT.database.collections.get_schema(collection_id)
+    )
+    metadata = await CONTEXT.database.documents.get_metadata_for_documents(
+        [document.id for document in documents]
+    )
+    return [
+        ExplorerHelpers.list_item(
+            document,
+            ExplorerHelpers.display_title(
+                document, metadata.get(document.id, []), names, collection.title_field
+            ),
+        )
+        for document in documents
+    ]
 
 
 @router.get("/documents/{document_id}", response_model=DocumentDetail)
@@ -153,8 +173,15 @@ async def get_document(
     # 3. For a non-successful document, surface WHY from its latest job (the reason lives on the job,
     #    not the document) so the detail page can explain the failure instead of a bare status.
     failure_reason = await _failure_reason(document)
+
+    # 4. The display title follows the collection's title_field (read-time, no re-ingest).
+    collection = await CONTEXT.database.collections.get(document.collection_id)
+    title_field = collection.title_field if collection is not None else None
     return ExplorerHelpers.detail(
-        document, ExplorerHelpers.metadata_values(rows, names), failure_reason=failure_reason
+        document,
+        ExplorerHelpers.metadata_values(rows, names),
+        failure_reason=failure_reason,
+        display_title=ExplorerHelpers.display_title(document, rows, names, title_field),
     )
 
 

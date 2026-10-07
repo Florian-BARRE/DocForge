@@ -23,6 +23,8 @@ export interface SearchRequest {
 export interface BlockLocationModel {
   /** Null for a page-less document (no page render) — caught missing by `_contractParity.ts`, 2026-09. */
   page: number | null;
+  /** 1-based page number for display (`page` stays 0-based). */
+  page_number?: number | null;
   /** Bounding box [x0, y0, x1, y1] normalised to [0, 1]. */
   bbox: number[];
 }
@@ -42,6 +44,8 @@ export interface SearchHitModel {
   block_ids?: string[];
   /** Page of the chunk's primary (leading) block — where to draw the box. Null when unlocated. */
   page?: number | null;
+  /** 1-based page number for display (`page` stays 0-based). */
+  page_number?: number | null;
   /** The primary block's NORMALISED [0, 1] bounding box. Null when unlocated. */
   bbox?: number[] | null;
   /** Every source block's page + NORMALISED bbox — draw one box per block. */
@@ -57,9 +61,19 @@ export interface SearchCostModel {
   call_count: number;
 }
 
+/** Actionable note about one filter — a value no document stores, with the closest stored values. */
+export interface SearchHint {
+  field: string;
+  value: unknown;
+  message: string;
+  suggestions?: string[];
+}
+
 export interface SearchResponse {
   query: string;
   hits: SearchHitModel[];
+  /** Filter hints; empty/absent when every filter value matched something. */
+  hints?: SearchHint[];
   /** What every hit's `score` represents — 'rrf_fusion' (default), 'dbsf_fusion', or 'cross_encoder_rerank'. */
   score_kind?: string;
   /** The run's priced paid-LLM spend, or absent/null when the run made no paid call. */

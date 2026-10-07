@@ -21,11 +21,14 @@ from docforge_sdk.models.collections import (
     BulkReingestAccepted,
     BulkReingestRequest,
     CollectionContractSchemaResponse,
+    CollectionDescription,
     CollectionListItem,
     CollectionModel,
     CreateCollectionRequest,
+    FieldGuide,
     FieldSpec,
     ReingestJobHandle,
+    SearchTargetGuide,
     UpdateCollectionRequest,
 )
 from docforge_sdk.models.corpus import (
@@ -133,6 +136,7 @@ from docforge_sdk.models.search import (
     BlockLocation,
     SearchCost,
     SearchHealthSummary,
+    SearchHint,
     SearchHit,
     SearchRequest,
     SearchResponse,
@@ -192,6 +196,9 @@ MODELS: dict[str, type[BaseModel]] = {
     "CollectionHealthSummary": CollectionHealthSummary,
     # Collections
     "FieldSpecModel": FieldSpec,
+    "CollectionDescription": CollectionDescription,
+    "FieldGuide": FieldGuide,
+    "SearchTargetGuide": SearchTargetGuide,
     "CollectionModel": CollectionModel,
     "CollectionListItem": CollectionListItem,
     "CreateCollectionRequest": CreateCollectionRequest,
@@ -245,6 +252,7 @@ MODELS: dict[str, type[BaseModel]] = {
     "BlockLocationModel": BlockLocation,
     "SearchHitModel": SearchHit,
     "SearchCostModel": SearchCost,
+    "SearchHint": SearchHint,
     "SearchResponse": SearchResponse,
     "SearchHealthSummary": SearchHealthSummary,
     # Jobs

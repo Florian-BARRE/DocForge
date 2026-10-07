@@ -37,7 +37,10 @@ The server surfaces a short instruction string to the connected model so it know
 ## 2. The tool catalogue
 
 All tools are registered over the SDK in `src/mcp/libs/tools/`. Tool inputs are plain dicts/scalars;
-outputs are the JSON returned by the REST API.
+outputs are the JSON returned by the REST API. **Unknown arguments are rejected**: every tool's
+argument model is `extra="forbid"` (FastMCP would otherwise silently drop them), so a wrong
+parameter name (e.g. `page=5` on a tool that has no `page`) fails with an explicit validation error
+instead of quietly succeeding; each tool's advertised input schema carries `additionalProperties: false`.
 
 ### Health
 
@@ -63,10 +66,11 @@ vector space is fixed at creation), plus optional ingestion/search pipeline blob
 
 | Tool | Purpose |
 |---|---|
-| `list_collections` | List every collection with its full contract (schema, pipeline, search blobs). |
-| `get_collection` | Return one collection's full contract — including which fields are filterable/semantic/lexical. |
-| `create_collection` | Create a collection A-to-Z: `name`, `supported_formats`, `max_file_size_bytes`, `fields` (metadata schema), optional `pipeline` blob (omit for the product default) or `preset="light"` for a fast config-free pipeline, plus `job_timeout_seconds`/`trace_verbosity`. Call `get_collection_contract_schema` first for the exact enum vocabulary. |
-| `update_collection` | Patch identity/limits, the schema (diffed by `field_name` — omitted = removed), and/or the `pipeline`/`search` config blobs. Schema changes flip `needs_reindex`. |
+| `list_collections` | List every collection (identity, limits, health, schema incl. field descriptions). **Lean by default**: the heavy `pipeline`/`search` blobs are omitted; `include_pipelines=true` opts in. |
+| `get_collection` | Return one collection's contract (identity, `title_field`, schema — which fields are filterable/semantic/lexical, with descriptions). **Lean by default** (no `pipeline`/`search` blobs, which weigh tens of thousands of characters); `include_pipelines=true` opts in. |
+| `describe_collection` | **Call this FIRST before searching a collection**: fields (meaning, type, real example values), valid `search_in` targets, the filter grammar and ready-to-use example requests (`GET /collections/{id}/describe`). Never includes pipeline/search config or secrets. |
+| `create_collection` | Create a collection A-to-Z: `name`, `supported_formats`, `max_file_size_bytes`, `fields` (metadata schema), optional `pipeline` blob (omit for the product default) or `preset="light"` for a fast config-free pipeline, plus `job_timeout_seconds`/`trace_verbosity`/`title_field`; each field may carry a `description`. Call `get_collection_contract_schema` first for the exact enum vocabulary. |
+| `update_collection` | Patch identity/limits, the schema (diffed by `field_name` — omitted = removed), and/or the `pipeline`/`search` config blobs. Schema changes flip `needs_reindex`. `title_field` sets the display-title field; `clear_title_field=true` clears it. Returns the lean collection (blobs echoed back only when this call edited `pipeline`/`search`; `create_collection` is lean too — read blobs with `get_collection(include_pipelines=true)`). |
 | `delete_collection` | Delete a collection (irreversible). |
 | `collection_storage_footprint` | Measure a collection's material footprint per store — S3 bytes exact (deduped), Postgres/Qdrant estimated — plus a per-document breakdown, heaviest first. |
 | `estimate_collection_cost` | Dry-run cost/volume projection before spending anything (`collection_id`, `scope="pending"`, `document_ids=None`, `filter=None`). Defaults to pending (not-yet-ingested) documents; pass `document_ids` to estimate a specific selection, or `filter` (same shape as the documents-grid filter) for a corpus slice — either one overrides `scope`. Per-stage token/page + dollar breakdown; unpriced models come back with a null cost, never fabricated. |
@@ -107,7 +111,7 @@ vector space is fixed at creation), plus optional ingestion/search pipeline blob
 
 | Tool | Purpose |
 |---|---|
-| `search_collection` | Hybrid semantic + keyword search (dense + sparse fusion). Supports `filters` on filterable fields (scalar / any-of / range), `search_in` targets (`content` or metadata fields, semantic/lexical axes). Returns ranked hits. |
+| `search_collection` | Hybrid semantic + keyword search (dense + sparse fusion). **Typed parameters**: `filters` is `{field: value}` where value is a scalar (equality; strings case-insensitive), a list (any-of) or a `{gte,gt,lte,lt}` range; `search_in` is a list of `{field, semantic, lexical}` targets — both are documented in the tool's JSON schema, and the docstring tells the agent to call `describe_collection` first. Returns ranked hits (cite the 1-based `page_number` and `document_title`) plus `hints`: a filter value no document stores yields the closest stored values — read them before concluding nothing exists. |
 
 ### Jobs
 
@@ -185,7 +189,7 @@ multi-GB) — `get_export_download_ref` instead points the caller at the REST do
 | `list_audit` | One keyset-paginated page of the audit trail, newest first — one row per mutating API action (who/what/target/outcome). Filter by actor (`actor_user_id`/`actor_key_id`), target (`target_type`+`target_id`), `correlation_id`, and an ISO-8601 time window (`created_from`/`created_to`); walk it with `cursor`. **ROOT / full-access keys only** (a collection-scoped key is rejected `403`). |
 
 
-**Total: 68 tools** across 13 sections.
+**Total: 73 tools** across 13 sections.
 
 ---
 
@@ -312,7 +316,7 @@ Add an entry to your client's MCP config (`.mcp.json`-style):
 }
 ```
 
-The client launches the process and speaks MCP over stdio; the model can then call any of the 65
+The client launches the process and speaks MCP over stdio; the model can then call any of the 73
 tools. (Use an absolute path to `entrypoint.py` if your client does not run from the repo root, and
 run it through `uv`/the project venv so `docforge_sdk` and `mcp` are importable.)
 

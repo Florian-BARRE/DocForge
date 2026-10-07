@@ -20,6 +20,7 @@ const baseDocument: DocumentDetail = {
   page_count: 4,
   language: "en",
   title: "Quarterly Report",
+  display_title: "Quarterly Report",
   source_kind: "mixed",
   status: "done",
   source_hash: "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6",
@@ -36,7 +37,7 @@ const baseDocument: DocumentDetail = {
 };
 
 function page(n: number, scanned: boolean, language: string | null): PageInfo {
-  return { page_number: n, width: 800, height: 1000, is_scanned: scanned, language, render_blob_hash: `hash-${n}` };
+  return { page_number: n, page_label: n + 1, width: 800, height: 1000, is_scanned: scanned, language, render_blob_hash: `hash-${n}` };
 }
 
 describe("SystemMetadataPanel", () => {

@@ -146,7 +146,7 @@ export function SearchQueryCard({ active, config, palette, onSelect, onChangeCon
         />
       </Field>
       <Field label="API key">
-        {/* A stored key is masked on read (`__redacted__<last4>`) — show it as the placeholder and
+        {/* A stored key is masked on read (the constant `__redacted__`) — show it as the placeholder and
             keep the field blank so leaving it untouched restores the real key server-side; typing
             overwrites it. */}
         <input

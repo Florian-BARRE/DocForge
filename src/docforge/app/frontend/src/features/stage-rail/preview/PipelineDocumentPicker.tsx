@@ -77,7 +77,7 @@ export function PipelineDocumentPicker({ collectionId, selectedId, onSelect }: P
                   overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                 }}
               >
-                {row.title || row.filename}
+                {row.display_title || row.title || row.filename}
               </span>
               <span style={{ fontSize: t.font.size.xs, color: t.color.mute, fontFamily: t.font.mono }}>
                 {row.filename} · {row.format}

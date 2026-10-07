@@ -9,7 +9,7 @@ import type { ChunkInfo, IRBlock, PageInfo } from "../../../api/explorer";
 import { buildPageGroups, pageBlocksLackLayout } from "./chunkGrouping";
 
 function page(n: number): PageInfo {
-  return { page_number: n, width: null, height: null, is_scanned: false, language: null, render_blob_hash: null };
+  return { page_number: n, page_label: n + 1, width: null, height: null, is_scanned: false, language: null, render_blob_hash: null };
 }
 
 function block(id: string, pageNumber: number, order: number): IRBlock {
@@ -17,6 +17,7 @@ function block(id: string, pageNumber: number, order: number): IRBlock {
     id,
     block_type: "text",
     page: pageNumber,
+    page_number: pageNumber + 1,
     bbox: [0, 0, 1, 1],
     reading_order: order,
     parent_id: null,

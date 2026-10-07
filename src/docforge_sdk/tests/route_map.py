@@ -41,6 +41,7 @@ ROUTES: set[tuple[str, str]] = {
     ("DELETE", "/api/v1/collections/{collection_id}"),
     ("GET", "/api/v1/collections/{collection_id}"),
     ("PATCH", "/api/v1/collections/{collection_id}"),
+    ("GET", "/api/v1/collections/{collection_id}/describe"),
     ("GET", "/api/v1/collections/{collection_id}/health"),
     ("GET", "/api/v1/collections/{collection_id}/storage"),
     ("POST", "/api/v1/collections/{collection_id}/reingest"),

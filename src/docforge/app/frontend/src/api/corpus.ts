@@ -81,7 +81,10 @@ export interface DocumentGridRow {
   page_count: number | null;
   file_size: number;
   created_at: string | null;
+  /** The raw parsed title. */
   title: string;
+  /** The collection's title_field value when set and present, else the parsed title. */
+  display_title: string;
   language: string | null;
   enabled: boolean;
   /** Chunks persisted at ingestion (0 = empty; null = unknown/legacy or not yet run). */

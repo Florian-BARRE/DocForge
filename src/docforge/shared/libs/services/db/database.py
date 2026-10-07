@@ -28,6 +28,7 @@ from .facades import (
     IngestionFacade,
     JobsFacade,
     MetadataEditFacade,
+    MetadataValueResolver,
     MetaVectorSyncFacade,
     SearchFacade,
     StorageFootprintFacade,
@@ -62,6 +63,8 @@ class Database(LoggerClass):
         audit (AuditFacade): The append-only audit trail (record, keyset read, retention prune).
         idempotency (IdempotencyFacade): The Stripe-style idempotency store (guard insert, cache
             complete/drop, expiry prune) backing the app's Idempotency-Key middleware.
+        metadata_values (MetadataValueResolver): The metadata VALUE oracle — case-insensitive
+            canonicalization, closest-value suggestions and distinct values of a field.
     """
 
     def __init__(self, postgres: PostgresClient, qdrant: QdrantClient, s3: S3Client) -> None:
@@ -96,6 +99,7 @@ class Database(LoggerClass):
         self.transfer_tracker = TransferTrackerFacade(postgres)
         self.audit = AuditFacade(postgres)
         self.idempotency = IdempotencyFacade(postgres)
+        self.metadata_values = MetadataValueResolver(postgres)
         self.logger.info(f"Database facade ready (postgres + qdrant + s3)")
 
     async def ensure_object_store(self) -> None:

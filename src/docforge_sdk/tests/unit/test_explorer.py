@@ -44,6 +44,7 @@ _IR_SAMPLE: dict[str, Any] = {
             "id": "b1",
             "block_type": "text",
             "page": 0,
+            "page_number": 1,
             "bbox": [0.0, 0.0, 1.0, 1.0],
             "reading_order": 0,
             "column_index": 0,

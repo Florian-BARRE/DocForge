@@ -19,6 +19,9 @@ export const FIELD_TYPES: FieldType[] = ["string", "integer", "float", "bool", "
 export const FIELD_ORIGINS: FieldOrigin[] = ["system", "user", "generated"];
 export const FIELD_SCOPES: FieldScope[] = ["document", "chunk"];
 
+/** Mirror of the backend's FieldSpecModel.description max_length. */
+export const FIELD_DESCRIPTION_MAX_LENGTH = 1000;
+
 export interface FieldSpec {
   field_name: string;
   field_type: FieldType;
@@ -29,6 +32,8 @@ export interface FieldSpec {
   enum_values: string[] | null;
   origin: FieldOrigin;
   scope: FieldScope;
+  /** What the field means — shown to search agents and in describe_collection; null when unset. */
+  description: string | null;
 }
 
 export interface Collection {
@@ -53,6 +58,8 @@ export interface Collection {
    *  wizard's first-class `TraceVerbosityField` (StepIdentity) — plumbed through the contract's
    *  `extraContract` overflow bag, same as every other schema-driven field with no named slot. */
   trace_verbosity: "shape" | "full";
+  /** Document-scope field whose value is shown as each document's title; null = use the parsed title. */
+  title_field: string | null;
 }
 
 /** Stock ingestion pipeline a new collection starts on when no explicit `pipeline` is posted. */
@@ -67,6 +74,8 @@ export interface CreateCollectionRequest {
   /** `null`/omitted inherits the worker's global default job timeout. */
   job_timeout_seconds?: number | null;
   fields: FieldSpec[];
+  /** Document-scope field used as the display title (must name a document-scope field). */
+  title_field?: string | null;
   pipeline?: Record<string, unknown> | null;
   /** Stock-blob selector (ignored when `pipeline` is set): "light" = fast, enrichment-free core. */
   preset?: CollectionPreset | null;
@@ -86,6 +95,8 @@ export interface UpdateCollectionRequest {
   /** `null` reverts to inheriting the worker's global default job timeout. */
   job_timeout_seconds?: number | null;
   fields?: FieldSpec[] | null;
+  /** Display-title field; explicit `null` clears it. Backend answers 422 listing valid choices on a bad name. */
+  title_field?: string | null;
   pipeline?: Record<string, unknown> | null;
   search?: Record<string, unknown> | null;
   /** Partial cost-estimate overrides. Omitted = leave unchanged; explicit `null` clears back to the

@@ -18,6 +18,12 @@ from .runner import (
     SearchUnavailableError,
 )
 
+# ---------------------- Filter value resolution + hints ---------------------- #
+from .filter_hint import FilterHint
+from .filter_resolution import FilterResolution
+from .filter_resolver import SearchFilterResolver
+from .zero_hit_hints import ZeroHitHintBuilder
+
 # ---------------------- Invocation seam ---------------------- #
 from .service import SearchService, SearchServiceError
 
@@ -32,6 +38,10 @@ __all__ = [
     "SearchRunError",
     "SearchRunTimeout",
     "SearchUnavailableError",
+    "FilterHint",
+    "FilterResolution",
+    "SearchFilterResolver",
+    "ZeroHitHintBuilder",
     "SearchService",
     "SearchServiceError",
 ]

@@ -26,7 +26,10 @@ export function SchemaTableRow({ field }: { field: FieldSpec }) {
       onMouseLeave={() => setHover(false)}
       style={{ borderBottom: `1px solid ${t.color.line}`, background: hover ? t.color.surface2 : "transparent", transition: "background .12s ease" }}
     >
-      <td style={{ ...cellStyle, fontFamily: t.font.mono, color: t.color.text }}>{field.field_name}</td>
+      <td style={cellStyle}>
+        <div style={{ fontFamily: t.font.mono, color: t.color.text }}>{field.field_name}</div>
+        {field.description && <div style={{ color: t.color.dim, fontSize: t.font.size.s, marginTop: 2, maxWidth: 320 }}>{field.description}</div>}
+      </td>
       <td style={{ ...cellStyle, fontFamily: t.font.mono, color: t.color.dim }}>{field.field_type}</td>
       <td style={{ ...cellStyle, textAlign: "center" }}>{flagChip(field.required, "required", "capability")}</td>
       <td style={{ ...cellStyle, textAlign: "center" }}>{flagChip(field.filterable, "filter", "capability")}</td>

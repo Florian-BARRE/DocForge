@@ -37,7 +37,10 @@ export interface DocumentListItem {
   page_count: number | null;
   file_size: number;
   created_at: string | null;
+  /** The raw parsed title. Prefer `display_title` for anything shown to a human. */
   title: string;
+  /** The collection's title_field value when set and present, else the parsed title. */
+  display_title: string;
   language: string | null;
   /** The document-level searchability toggle — disabling hides every chunk regardless of role. */
   enabled: boolean;
@@ -64,7 +67,10 @@ export interface DocumentDetail {
   file_size: number;
   page_count: number | null;
   language: string | null;
+  /** The raw parsed title (shown as "Parsed title"). */
   title: string;
+  /** The collection's title_field value when set and present, else the parsed title. */
+  display_title: string;
   source_kind: SourceKind;
   status: DocumentStatus;
   source_hash: string;
@@ -89,7 +95,10 @@ export interface DocumentDetail {
 
 /** One page's geometry, routing and its render blob reference. */
 export interface PageInfo {
+  /** 0-based legacy index — geometry/render only. */
   page_number: number;
+  /** 1-based page number as a reader counts it — what humans see (null only from a pre-0.23 server). */
+  page_label?: number | null;
   width: number | null;
   height: number | null;
   is_scanned: boolean;
@@ -102,6 +111,8 @@ export interface IRBlock {
   id: string;
   block_type: string;
   page: number;
+  /** 1-based page number for display (`page` stays 0-based; null only from a pre-0.23 server). */
+  page_number?: number | null;
   bbox: number[];
   reading_order: number;
   parent_id: string | null;
@@ -166,6 +177,8 @@ export interface ChunkInfo {
   heading_path: string[];
   /** Page of the chunk's primary (leading) block; null when it has no located block. */
   page: number | null;
+  /** 1-based page number for display (`page` stays 0-based). */
+  page_number?: number | null;
 }
 
 /** The desired searchability state for one chunk (its enabled_override). */

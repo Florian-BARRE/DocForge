@@ -31,7 +31,7 @@ const { getJob } = await import("../../../../api/jobs");
 function spec(name: string, overrides: Partial<FieldSpec> = {}): FieldSpec {
   return {
     field_name: name, field_type: "string", required: false, filterable: false, lexical: false,
-    semantic: false, enum_values: null, origin: "user", scope: "document", ...overrides,
+    semantic: false, enum_values: null, origin: "user", scope: "document", description: null, ...overrides,
   };
 }
 

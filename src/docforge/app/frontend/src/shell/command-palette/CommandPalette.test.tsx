@@ -12,12 +12,12 @@ const collections: Collection[] = [
   {
     id: "c1", name: "Regulatory filings", supported_formats: ["pdf"], tags: ["legal"],
     max_file_size_bytes: 1, job_timeout_seconds: null, needs_reindex: false, created_at: null,
-    pipeline: {}, search: {}, fields: [], estimate_overrides: null, trace_verbosity: "shape",
+    pipeline: {}, search: {}, fields: [], estimate_overrides: null, trace_verbosity: "shape", title_field: null,
   },
   {
     id: "c2", name: "Support tickets", supported_formats: ["pdf"], tags: [],
     max_file_size_bytes: 1, job_timeout_seconds: null, needs_reindex: false, created_at: null,
-    pipeline: {}, search: {}, fields: [], estimate_overrides: null, trace_verbosity: "shape",
+    pipeline: {}, search: {}, fields: [], estimate_overrides: null, trace_verbosity: "shape", title_field: null,
   },
 ];
 

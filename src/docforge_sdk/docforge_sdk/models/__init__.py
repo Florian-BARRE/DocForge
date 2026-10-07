@@ -28,11 +28,14 @@ from .collections import (
     BulkReingestAccepted,
     BulkReingestRequest,
     CollectionContractSchemaResponse,
+    CollectionDescription,
     CollectionListItem,
     CollectionModel,
     CreateCollectionRequest,
+    FieldGuide,
     FieldSpec,
     ReingestJobHandle,
+    SearchTargetGuide,
     UpdateCollectionRequest,
 )
 
@@ -162,6 +165,7 @@ from .preview import (
 from .search import (
     BlockLocation,
     SearchHealthSummary,
+    SearchHint,
     SearchHit,
     SearchRequest,
     SearchResponse,
@@ -280,6 +284,7 @@ __all__ = [
     "SearchTarget",
     "SearchRequest",
     "BlockLocation",
+    "SearchHint",
     "SearchHit",
     "SearchResponse",
     "SearchHealthSummary",
@@ -342,6 +347,9 @@ __all__ = [
     "CollectionCost",
     # Discovery + introspection
     "CollectionContractSchemaResponse",
+    "CollectionDescription",
+    "FieldGuide",
+    "SearchTargetGuide",
     "WhoAmI",
     # Transfers
     "TransferAccepted",

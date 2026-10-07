@@ -13,6 +13,7 @@ from .storage_footprint_api import StorageFootprintApi
 from .transfer_api import TransferApi
 from .audit_api import AuditApi
 from .idempotency_api import IdempotencyApi
+from .metadata_value_api import MetadataValueApi
 
 # ---------------------- Query spec (grid filter/sort) ---------------------- #
 from .document_query_spec import (
@@ -40,6 +41,7 @@ __all__ = [
     "TransferApi",
     "AuditApi",
     "IdempotencyApi",
+    "MetadataValueApi",
     "DocumentQuerySpec",
     "MetadataCondition",
     "MetadataOp",

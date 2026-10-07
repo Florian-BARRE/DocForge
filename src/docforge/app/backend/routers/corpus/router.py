@@ -93,7 +93,7 @@ async def query_documents(
             422 on an unknown/non-filterable metadata field, a bad operator or an unknown sort field.
     """
     # 1. Existence + scope, then load the schema (resolves + validates every dynamic reference).
-    await _require_scoped_collection(collection_id, principal)
+    collection = await _require_scoped_collection(collection_id, principal)
     schema = await CONTEXT.database.collections.get_schema(collection_id)
 
     # 2. Validate + map the request to the framework-free spec (a bad field/op is a clean 422).
@@ -111,10 +111,13 @@ async def query_documents(
         [document.id for document in documents]
     )
 
-    # 4. Shape each row with its resolved metadata map (field ids → names from the schema).
+    # 4. Shape each row with its resolved metadata map (field ids → names from the schema) and its
+    #    display title (the collection's title_field value, else the parsed title).
     names = {field.id: field.field_name for field in schema}
     rows = [
-        CorpusMapper.grid_row(document, metadata.get(document.id, []), names)
+        CorpusMapper.grid_row(
+            document, metadata.get(document.id, []), names, collection.title_field
+        )
         for document in documents
     ]
     return DocumentQueryResponse(

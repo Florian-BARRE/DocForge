@@ -45,6 +45,7 @@ from .transfer_facade import CollectionTransferFacade
 from .transfer_tracker_facade import TransferTrackerFacade
 from .audit_facade import AuditFacade
 from .idempotency_facade import IdempotencyFacade
+from .metadata_value_resolver import MetadataValueResolver
 
 # ------------------- Public API ------------------- #
 __all__ = [
@@ -89,4 +90,5 @@ __all__ = [
     "TransferTrackerFacade",
     "AuditFacade",
     "IdempotencyFacade",
+    "MetadataValueResolver",
 ]

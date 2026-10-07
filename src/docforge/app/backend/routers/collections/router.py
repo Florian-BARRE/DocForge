@@ -25,6 +25,7 @@ from shared_libs.services.db.postgresql.tables import Collection
 from ...context import CONTEXT
 from ...libs.auth import AuthPrincipal, AuthzGuard, Capability, require
 from ...libs.corpus import DocumentFilter, DocumentSelector, DocumentSelectorResolver
+from ...libs.describe import CollectionDescriber, CollectionDescription
 from ...libs.estimate import CollectionEstimateRequest, EstimateInputError
 from ...libs.health import CollectionHealthResponse
 from ...libs.logsafe import LogSafeHelpers
@@ -173,6 +174,31 @@ async def get_collection_health(collection_id: uuid.UUID) -> CollectionHealthRes
     if result is None:
         raise HTTPException(status_code=404, detail=f"Collection {collection_id} not found.")
     return result
+
+
+@router.get(
+    "/{collection_id}/describe",
+    response_model=CollectionDescription,
+    dependencies=[Depends(require(Capability.READ))],
+)
+@auto_handle_errors
+async def describe_collection(collection_id: uuid.UUID) -> CollectionDescription:
+    """
+    Return a LEAN, agent-oriented guide to querying one collection — call it before searching.
+
+    Fields (meaning, type, flags, real example values), the valid ``search_in`` targets, the filter
+    grammar and ready-to-send example search bodies. No pipeline/search config, no secret.
+
+    Returns:
+        CollectionDescription: The guide (404 when the collection is unknown).
+    """
+    # 1. Compose the guide (read-only, bounded per-field value reads).
+    description = await CollectionDescriber(CONTEXT.database).describe(collection_id)
+
+    # 2. Unknown collection → 404, mirroring the other collection reads.
+    if description is None:
+        raise HTTPException(status_code=404, detail=f"Collection {collection_id} not found.")
+    return description
 
 
 @router.get(
@@ -580,6 +606,7 @@ async def create_collection(
     #    Fields, then the pipeline blob: the caller's explicit graph wins, otherwise the stock blob the
     #    ``preset`` selects (light = enrichment-free core), healed to the current engine and validated.
     CollectionHelpers.validate_fields(request.fields)
+    CollectionHelpers.validate_title_field(request.title_field, request.fields)
     blob = CollectionBlobHelpers.canonical_pipeline(
         request.pipeline or CollectionBlobHelpers.preset_blob(request.preset)
     )
@@ -610,6 +637,7 @@ async def create_collection(
                 trace_verbosity=request.trace_verbosity,
                 pipeline=blob,
                 search=search_blob,
+                title_field=request.title_field,
             ),
             rows,
         )
@@ -687,6 +715,17 @@ async def update_collection(
     if request.fields is not None:
         CollectionHelpers.validate_fields(request.fields)
 
+    # 3d. An explicit title_field must name a document-scope field of the POST-PATCH schema (the new
+    #     fields when this PATCH also edits them, else the stored schema); null clears it.
+    apply_title_field = "title_field" in request.model_fields_set
+    if apply_title_field:
+        effective_schema = (
+            request.fields
+            if request.fields is not None
+            else await CONTEXT.database.collections.get_schema(collection_id)
+        )
+        CollectionHelpers.validate_title_field(request.title_field, effective_schema)
+
     # 4. Apply EVERY DB part in ONE transaction — a mid-sequence failure rolls the WHOLE patch back,
     #    so a collection is never left half-updated (e.g. contract changed but schema not). The
     #    pipeline is stored in its stamped canonical form (subsequent runs/uploads fast-path). A
@@ -720,6 +759,8 @@ async def update_collection(
         estimate_overrides=request.estimate_overrides.model_dump(mode="json", exclude_none=True)
         if request.estimate_overrides is not None
         else None,
+        apply_title_field=apply_title_field,
+        title_field=request.title_field,
     )
     try:
         result = await CONTEXT.database.collections.apply_update(collection_id, spec)

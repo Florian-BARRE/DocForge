@@ -757,6 +757,50 @@
                 }
             }
         },
+        "/api/v1/collections/{collection_id}/describe": {
+            "get": {
+                "tags": [
+                    "collections"
+                ],
+                "summary": "Describe Collection",
+                "description": "Return a LEAN, agent-oriented guide to querying one collection \u2014 call it before searching.\n\nFields (meaning, type, flags, real example values), the valid ``search_in`` targets, the filter\ngrammar and ready-to-send example search bodies. No pipeline/search config, no secret.\n\nReturns:\n    CollectionDescription: The guide (404 when the collection is unknown).",
+                "operationId": "describe_collection_api_v1_collections__collection_id__describe_get",
+                "parameters": [
+                    {
+                        "name": "collection_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid",
+                            "title": "Collection Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/CollectionDescription"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/collections/{collection_id}/storage": {
             "get": {
                 "tags": [
@@ -3370,7 +3414,7 @@
                     "search"
                 ],
                 "summary": "Search Collection",
-                "description": "Run a hybrid search over a collection and return ranked, hydrated chunk hits.\n\nDelegates retrieval to the graph-based search pipeline (CONTEXT.search_service); the router\nstays the request-side gate and diagnostic layer.\n\nReturns:\n    SearchResponse: The echoed query and its hits, best first. 404 when the collection is\n    unknown, 409 when it has no embedder wired, 422 when a filter names a non-filterable field.",
+                "description": "Run a hybrid search over a collection and return ranked, hydrated chunk hits.\n\nDelegates retrieval to the graph-based search pipeline (CONTEXT.search_service); the router\nstays the request-side gate and diagnostic layer.\n\nReturns:\n    SearchResponse: The echoed query, its hits (best first) and any filter hints. 404 when the\n    collection is unknown, 409 when it has no embedder wired, 422 when a filter names a\n    non-filterable field, a value outside a field's enum, or an empty/oversized value list.",
                 "operationId": "search_collection_api_v1_collections__collection_id__search_post",
                 "parameters": [
                     {
@@ -4177,7 +4221,19 @@
                             }
                         ],
                         "title": "Page",
-                        "description": "The page the block sits on; None for a page-less document (no page render)."
+                        "description": "0-based page index the block sits on (prefer page_number for citation); None for a page-less document (no page render)."
+                    },
+                    "page_number": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Page Number",
+                        "description": "1-based page number (page + 1) \u2014 the page as a reader counts it; use it to cite. None for a page-less document."
                     },
                     "bbox": {
                         "items": {
@@ -4194,7 +4250,7 @@
                     "bbox"
                 ],
                 "title": "BlockLocationModel",
-                "description": "One source block's location on the page \u2014 enough for a UI to draw a box over the hit.\n\nAttributes:\n    page (int | None): The page the block sits on (as stored on the IR block). None for a\n        page-less document (no page render) \u2014 distinct from a genuine 0-based page index 0.\n    bbox (list[float]): The block's bounding box as ``[x0, y0, x1, y1]``, NORMALISED to [0, 1] \u2014\n        the frontend multiplies each component by the page image's width/height to get pixels."
+                "description": "One source block's location on the page \u2014 enough for a UI to draw a box over the hit.\n\nAttributes:\n    page (int | None): The 0-based page index the block sits on (as stored on the IR block). None\n        for a page-less document (no page render) \u2014 distinct from a genuine page index 0.\n    page_number (int | None): The 1-based page number (``page + 1``) \u2014 the page as a reader counts\n        it; prefer it for citation. None when ``page`` is None.\n    bbox (list[float]): The block's bounding box as ``[x0, y0, x1, y1]``, NORMALISED to [0, 1] \u2014\n        the frontend multiplies each component by the page image's width/height to get pixels."
             },
             "Body_import_collection_api_v1_collections_import_post": {
                 "properties": {
@@ -5061,7 +5117,19 @@
                             }
                         ],
                         "title": "Page",
-                        "description": "Page of the chunk's primary (leading) block; None when it has no located block."
+                        "description": "0-based page index of the chunk's primary (leading) block; None when it has no located block."
+                    },
+                    "page_number": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Page Number",
+                        "description": "1-based page number as a reader counts it (= page + 1); None when 'page' is."
                     },
                     "strategy": {
                         "type": "string",
@@ -5181,6 +5249,80 @@
                 ],
                 "title": "CollectionCost",
                 "description": "The collection's paid text-gen roll-up \u2014 tokens and USD summed over its documents' jobs."
+            },
+            "CollectionDescription": {
+                "properties": {
+                    "collection_id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "title": "Collection Id"
+                    },
+                    "name": {
+                        "type": "string",
+                        "title": "Name"
+                    },
+                    "document_count": {
+                        "type": "integer",
+                        "title": "Document Count"
+                    },
+                    "title_field": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Title Field"
+                    },
+                    "page_numbering": {
+                        "type": "string",
+                        "title": "Page Numbering"
+                    },
+                    "fields": {
+                        "items": {
+                            "$ref": "#/components/schemas/FieldGuide"
+                        },
+                        "type": "array",
+                        "title": "Fields"
+                    },
+                    "searchable_targets": {
+                        "items": {
+                            "$ref": "#/components/schemas/SearchTargetGuide"
+                        },
+                        "type": "array",
+                        "title": "Searchable Targets"
+                    },
+                    "filter_grammar": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array",
+                        "title": "Filter Grammar"
+                    },
+                    "example_requests": {
+                        "items": {
+                            "additionalProperties": true,
+                            "type": "object"
+                        },
+                        "type": "array",
+                        "title": "Example Requests"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "collection_id",
+                    "name",
+                    "document_count",
+                    "page_numbering",
+                    "fields",
+                    "searchable_targets",
+                    "filter_grammar",
+                    "example_requests"
+                ],
+                "title": "CollectionDescription",
+                "description": "The lean agent guide to one collection \u2014 what is in it and how to query it.\n\nAttributes:\n    collection_id (uuid.UUID): The collection id.\n    name (str): The collection name.\n    document_count (int): Number of documents in the collection.\n    title_field (str | None): The document-scope field used as each hit's display title.\n    page_numbering (str): How hits locate pages (which field to cite).\n    fields (list[FieldGuide]): Every metadata field of the schema.\n    searchable_targets (list[SearchTargetGuide]): The valid ``search_in`` entries.\n    filter_grammar (list[str]): The filter value forms the search route accepts.\n    example_requests (list[dict]): Ready-to-send search request bodies for this collection."
             },
             "CollectionEstimateRequest": {
                 "properties": {
@@ -5435,6 +5577,18 @@
                         "title": "Fields",
                         "description": "The metadata schema."
                     },
+                    "title_field": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Title Field",
+                        "description": "Name of a DOCUMENT-scope metadata field whose value is shown as each document's display title (search hits, document lists). null = use the parser-derived title. When the named field is unset or blank on a document, that document falls back to its parsed title."
+                    },
                     "estimate_overrides": {
                         "anyOf": [
                             {
@@ -5568,6 +5722,18 @@
                         "type": "array",
                         "title": "Fields",
                         "description": "The metadata schema."
+                    },
+                    "title_field": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Title Field",
+                        "description": "Name of a DOCUMENT-scope metadata field whose value is shown as each document's display title (search hits, document lists). null = use the parser-derived title. When the named field is unset or blank on a document, that document falls back to its parsed title."
                     },
                     "estimate_overrides": {
                         "anyOf": [
@@ -5903,6 +6069,18 @@
                         ],
                         "title": "Pipeline",
                         "description": "The pipeline blob; omitted \u2192 the stock blob selected by ``preset``."
+                    },
+                    "title_field": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Title Field",
+                        "description": "Name of a DOCUMENT-scope metadata field whose value is shown as each document's display title (search hits, document lists). null = use the parser-derived title. When the named field is unset or blank on a document, that document falls back to its parsed title. Must name a document-scope field declared in ``fields`` (else 422)."
                     }
                 },
                 "additionalProperties": false,
@@ -6137,7 +6315,13 @@
                     "title": {
                         "type": "string",
                         "title": "Title",
-                        "description": "Learned title ('' before parse)."
+                        "description": "Parser-learned title ('' before parse)."
+                    },
+                    "display_title": {
+                        "type": "string",
+                        "title": "Display Title",
+                        "description": "The title to SHOW for this document: the value of the collection's title_field when configured and non-empty on this document, else the parsed 'title'.",
+                        "default": ""
                     },
                     "source_kind": {
                         "$ref": "#/components/schemas/SourceKind",
@@ -6471,7 +6655,13 @@
                     "title": {
                         "type": "string",
                         "title": "Title",
-                        "description": "Learned title ('' before parse)."
+                        "description": "Parser-learned title ('' before parse)."
+                    },
+                    "display_title": {
+                        "type": "string",
+                        "title": "Display Title",
+                        "description": "The title to SHOW for this document: the value of the collection's title_field when configured and non-empty on this document, else the parsed 'title'.",
+                        "default": ""
                     },
                     "language": {
                         "anyOf": [
@@ -6627,7 +6817,13 @@
                     "title": {
                         "type": "string",
                         "title": "Title",
-                        "description": "Learned title ('' before parse)."
+                        "description": "Parser-learned title ('' before parse)."
+                    },
+                    "display_title": {
+                        "type": "string",
+                        "title": "Display Title",
+                        "description": "The title to SHOW for this document: the value of the collection's title_field when configured and non-empty on this document, else the parsed 'title'.",
+                        "default": ""
                     },
                     "language": {
                         "anyOf": [
@@ -7434,6 +7630,100 @@
                 "title": "FamilyMode",
                 "description": "How the nodes of a family are meant to be USED together \u2014 the palette's usage semantics.\n\nAttributes:\n    EXCLUSIVE: Pick ONE node of the family per pipeline (chunker, converter, parser, embed).\n    STACKABLE: The nodes chain and ACCUMULATE \u2014 wiring order = application order\n        (contextualize).\n    CHAIN: Interchangeable providers meant for ESCALATION chains \u2014 same kind may repeat\n        with different configs, joined back with score_below/on_failure + from_first\n        (ocr, vlm, llm).\n    STAGE: The complementary logic nodes of one pipeline stage \u2014 each plays a distinct,\n        usually single-use role (intake, enrich, metagen)."
             },
+            "FieldGuide": {
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "title": "Name"
+                    },
+                    "type": {
+                        "$ref": "#/components/schemas/FieldType"
+                    },
+                    "description": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Description"
+                    },
+                    "scope": {
+                        "$ref": "#/components/schemas/FieldScope"
+                    },
+                    "origin": {
+                        "$ref": "#/components/schemas/FieldOrigin"
+                    },
+                    "filterable": {
+                        "type": "boolean",
+                        "title": "Filterable"
+                    },
+                    "semantic": {
+                        "type": "boolean",
+                        "title": "Semantic"
+                    },
+                    "lexical": {
+                        "type": "boolean",
+                        "title": "Lexical"
+                    },
+                    "required": {
+                        "type": "boolean",
+                        "title": "Required"
+                    },
+                    "enum_values": {
+                        "anyOf": [
+                            {
+                                "items": {
+                                    "type": "string"
+                                },
+                                "type": "array"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Enum Values"
+                    },
+                    "example_values": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array",
+                        "title": "Example Values"
+                    },
+                    "distinct_count": {
+                        "type": "integer",
+                        "title": "Distinct Count"
+                    },
+                    "note": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Note"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "name",
+                    "type",
+                    "scope",
+                    "origin",
+                    "filterable",
+                    "semantic",
+                    "lexical",
+                    "required",
+                    "distinct_count"
+                ],
+                "title": "FieldGuide",
+                "description": "One metadata field, described for a client that wants to filter or search on it.\n\nAttributes:\n    name (str): The field name (the key used in ``filters`` / ``search_in``).\n    type (FieldType): The declared data type.\n    description (str | None): What the field means (None when the schema sets none).\n    scope (FieldScope): Where the value lives \u2014 one per document, or one per chunk.\n    origin (FieldOrigin): Who fills it \u2014 user, system or generated.\n    filterable (bool): Usable as a ``filters`` key.\n    semantic (bool): Searchable on its dense vector (``search_in`` semantic).\n    lexical (bool): Searchable on its sparse vector (``search_in`` lexical).\n    required (bool): Required at upload.\n    enum_values (list[str] | None): The allowed values of an enum field.\n    example_values (list[str]): Up to 10 stored values, most frequent first (truncated).\n    distinct_count (int): Number of distinct stored values (list items counted individually).\n    note (str | None): Why examples are omitted, when they are."
+            },
             "FieldOrigin": {
                 "type": "string",
                 "enum": [
@@ -7512,6 +7802,19 @@
                         "$ref": "#/components/schemas/FieldScope",
                         "description": "document or chunk level value.",
                         "default": "document"
+                    },
+                    "description": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "maxLength": 1000
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Description",
+                        "description": "What the field means, for humans and agents (e.g. 'Business process the document belongs to'). Documentation only: editing it never triggers a reindex. null = none."
                     }
                 },
                 "additionalProperties": false,
@@ -7833,6 +8136,18 @@
                         "type": "integer",
                         "title": "Page",
                         "description": "0-based page the block sits on (first page = 0)."
+                    },
+                    "page_number": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Page Number",
+                        "description": "1-based page number as a reader counts it (= page + 1)."
                     },
                     "bbox": {
                         "items": {
@@ -9463,7 +9778,19 @@
                     "page_number": {
                         "type": "integer",
                         "title": "Page Number",
-                        "description": "0-based page index (first page = 0)."
+                        "description": "0-based page INDEX (first page = 0) \u2014 NOT the reader's page number; for that use 'page_label'."
+                    },
+                    "page_label": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Page Label",
+                        "description": "1-based page number as a reader counts it (= page_number + 1). Named page_label here because 'page_number' predates it with a 0-based meaning."
                     },
                     "width": {
                         "anyOf": [
@@ -10801,6 +11128,40 @@
                 "title": "SearchHealthSummary",
                 "description": "A compact, tile-friendly roll-up of search-runtime health for the deployment cockpit.\n\nSearch runs INLINE in the request (no job/fleet surface), so this mirrors the operational tiles\nthe jobs endpoints power (``GET /jobs/queue``, ``GET /jobs/workers/live``) with a JSON summary the\nOverview cockpit can poll. Every figure is CUMULATIVE since process start, read straight off the\nin-process ``docforge_search_*`` Prometheus series (the single source of truth \u2014 no parallel\ncounters). Trends and rates over time stay in Grafana; this is the at-a-glance snapshot.\n\nAttributes:\n    total_runs (int): Total search runs since process start (a RUNNER run \u2014 the router can 4xx\n        before a run ever starts, so those are not counted).\n    error_rate (float): Failed/timeout/unavailable runs over total, in [0, 1] (0.0 when there\n        have been no runs yet).\n    p95_latency_ms (float | None): 95th-percentile whole-run latency in milliseconds, a\n        bucket-based approximation from the run-duration histogram; None when no run has been\n        recorded yet.\n    zero_result_rate (float): Zero-result runs over total, in [0, 1] (0.0 when there have been\n        no runs yet).\n    avg_hits (float | None): Mean delivered hits per search (over successful runs); None when no\n        hits have been observed yet."
             },
+            "SearchHint": {
+                "properties": {
+                    "field": {
+                        "type": "string",
+                        "title": "Field",
+                        "description": "The filtered metadata field the hint is about."
+                    },
+                    "value": {
+                        "title": "Value",
+                        "description": "The filter value as sent (one list item, or the whole value)."
+                    },
+                    "message": {
+                        "type": "string",
+                        "title": "Message",
+                        "description": "English, human/agent-readable explanation of the problem."
+                    },
+                    "suggestions": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array",
+                        "title": "Suggestions",
+                        "description": "Closest stored values of the field to retry with, best first (may be empty)."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "field",
+                    "value",
+                    "message"
+                ],
+                "title": "SearchHint",
+                "description": "An actionable explanation about one filter, attached to a (200) search response.\n\nEmitted when a filter value matches no stored value of its field (even ignoring case) \u2014 with the\nclosest stored values to retry with \u2014 or when a filtered search returned no hits (naming the\nlikely culprit filter).\n\nAttributes:\n    field (str): The filtered metadata field the hint is about.\n    value (Any): The filter value as sent (one list item, or the whole filter value).\n    message (str): English, human/agent-readable explanation.\n    suggestions (list[str]): Closest stored values to retry with (may be empty)."
+            },
             "SearchHitModel": {
                 "properties": {
                     "chunk_id": {
@@ -10835,7 +11196,7 @@
                             }
                         ],
                         "title": "Document Title",
-                        "description": "The source document's title (empty parsed titles \u2192 null)."
+                        "description": "The source document's DISPLAY title: the value of the collection's title_field when configured and set on the document, else the parsed title (empty \u2192 null)."
                     },
                     "heading_path": {
                         "items": {
@@ -10889,7 +11250,19 @@
                             }
                         ],
                         "title": "Page",
-                        "description": "The page of the chunk's primary (leading) block \u2014 where to draw the box. None when the chunk carries no block location."
+                        "description": "0-based page index of the chunk's primary (leading) block \u2014 where to draw the box (prefer page_number for citation). None when the chunk carries no block location."
+                    },
+                    "page_number": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Page Number",
+                        "description": "1-based page number (page + 1) of the chunk's primary block \u2014 the page as a reader counts it; use it to cite. None when the chunk carries no block location."
                     },
                     "bbox": {
                         "anyOf": [
@@ -10925,7 +11298,7 @@
                     "token_count"
                 ],
                 "title": "SearchHitModel",
-                "description": "One ranked search result \u2014 the flat view of a hydrated chunk hit.\n\nAttributes:\n    chunk_id (str): The chunk's UUID (doubles as its Qdrant point id).\n    document_id (str): The document the chunk belongs to.\n    score (float): The fused RRF score (higher is better).\n    text (str): The chunk's enriched text.\n    chunk_index (int): The chunk's ordinal within its document.\n    token_count (int): The chunk's token count.\n    block_ids (list[str]): The IR block ids the chunk was assembled from (assembly order).\n    page (int | None): The page of the chunk's primary (leading) block \u2014 draw the box here.\n    bbox (list[float] | None): The primary block's NORMALISED [0, 1] bounding box.\n    block_locations (list[BlockLocationModel]): Every source block's page + bbox (draw them all)."
+                "description": "One ranked search result \u2014 the flat view of a hydrated chunk hit.\n\nAttributes:\n    chunk_id (str): The chunk's UUID (doubles as its Qdrant point id).\n    document_id (str): The document the chunk belongs to.\n    score (float): The fused RRF score (higher is better).\n    text (str): The chunk's enriched text.\n    chunk_index (int): The chunk's ordinal within its document.\n    token_count (int): The chunk's token count.\n    block_ids (list[str]): The IR block ids the chunk was assembled from (assembly order).\n    page (int | None): The 0-based page index of the chunk's primary (leading) block.\n    page_number (int | None): The 1-based page number (``page + 1``) \u2014 cite this one.\n    bbox (list[float] | None): The primary block's NORMALISED [0, 1] bounding box.\n    block_locations (list[BlockLocationModel]): Every source block's page + bbox (draw them all)."
             },
             "SearchIndex": {
                 "properties": {
@@ -10982,7 +11355,7 @@
                             }
                         ],
                         "title": "Filters",
-                        "description": "Constraints on the FILTERABLE metadata fields \u2014 field \u2192 a scalar (equality), a list (any-of), or a range mapping of gte/gt/lte/lt bounds (numeric or ISO-8601 datetime, e.g. {\"published\": {\"gte\": \"2024-01-01\", \"lte\": \"2024-12-31\"}})."
+                        "description": "Constraints on the FILTERABLE metadata fields \u2014 field \u2192 a scalar (equality), a list (any-of), or a range mapping of gte/gt/lte/lt bounds (numeric or ISO-8601 datetime, e.g. {\"published\": {\"gte\": \"2024-01-01\", \"lte\": \"2024-12-31\"}}). String/enum/keyword_list values match case-insensitively; text/text_list values are full-text matched. A value no document stores yields a response hint with the closest stored values."
                     },
                     "search_in": {
                         "anyOf": [
@@ -11006,7 +11379,7 @@
                     "query"
                 ],
                 "title": "SearchRequest",
-                "description": "A hybrid search over one collection.\n\nAttributes:\n    query (str): The natural-language query, embedded with the collection's own embedder.\n    limit (int): Number of fused results to return.\n    filters (dict | None): Constraints on the collection's FILTERABLE fields \u2014 a scalar becomes\n        an equality match, a list becomes a set-membership (any-of) match, and a mapping of range\n        bounds (``gte``/``gt``/``lte``/``lt``) becomes a numeric or datetime range (e.g.\n        ``{\"published\": {\"gte\": \"2024-01-01\", \"lte\": \"2024-12-31\"}}`` or ``{\"pages\": {\"gt\": 10}}``).\n        A range on a non-range-typed (keyword/bool) field, or a malformed range, is rejected 422.\n    search_in (list[SearchTargetModel] | None): What to search \u2014 the fields (content and/or\n        metadata) and modalities (semantic/lexical). None searches content on both axes\n        (unchanged default). A target naming a vector the collection never indexed \u2192 422."
+                "description": "A hybrid search over one collection.\n\nAttributes:\n    query (str): The natural-language query, embedded with the collection's own embedder.\n    limit (int): Number of fused results to return.\n    filters (dict | None): Constraints on the collection's FILTERABLE fields \u2014 a scalar becomes\n        an equality match, a list becomes a set-membership (any-of) match, and a mapping of range\n        bounds (``gte``/``gt``/``lte``/``lt``) becomes a numeric or datetime range (e.g.\n        ``{\"published\": {\"gte\": \"2024-01-01\", \"lte\": \"2024-12-31\"}}`` or ``{\"pages\": {\"gt\": 10}}``).\n        A range on a non-range-typed (keyword/bool) field, or a malformed range, is rejected 422.\n        String / enum / keyword_list values match case-insensitively (resolved to the stored\n        spelling); text / text_list values are full-text matched (all words present).\n    search_in (list[SearchTargetModel] | None): What to search \u2014 the fields (content and/or\n        metadata) and modalities (semantic/lexical). None searches content on both axes\n        (unchanged default). A target naming a vector the collection never indexed \u2192 422."
             },
             "SearchResponse": {
                 "properties": {
@@ -11052,6 +11425,14 @@
                         ],
                         "title": "Debug Info",
                         "description": "Non-fatal diagnostics about how the search ran. None when empty."
+                    },
+                    "hints": {
+                        "items": {
+                            "$ref": "#/components/schemas/SearchHint"
+                        },
+                        "type": "array",
+                        "title": "Hints",
+                        "description": "Filter hints: a filter value that matches no stored value (even ignoring case) with the closest stored values, or the likely culprit filter of a filtered search that returned no hits. Empty when there is nothing to report."
                     }
                 },
                 "type": "object",
@@ -11059,7 +11440,31 @@
                     "query"
                 ],
                 "title": "SearchResponse",
-                "description": "The result of a hybrid search \u2014 the echoed query and its ranked hits.\n\nAttributes:\n    query (str): The query that was searched (echoed for the client).\n    hits (list[SearchHitModel]): The hydrated hits, best first.\n    score_kind (str): What each hit's ``score`` represents \u2014 so the UI can label it correctly.\n    cost (SearchCostModel | None): The run's priced paid-LLM spend (rewrite/HyDE), or None when\n        the run made no paid call (a stock lexical/dense search with no query-side LLM).\n    debug_info (dict | None): Non-fatal diagnostics about how the search ran. None when there\n        is nothing to report."
+                "description": "The result of a hybrid search \u2014 the echoed query and its ranked hits.\n\nAttributes:\n    query (str): The query that was searched (echoed for the client).\n    hits (list[SearchHitModel]): The hydrated hits, best first.\n    score_kind (str): What each hit's ``score`` represents \u2014 so the UI can label it correctly.\n    cost (SearchCostModel | None): The run's priced paid-LLM spend (rewrite/HyDE), or None when\n        the run made no paid call (a stock lexical/dense search with no query-side LLM).\n    debug_info (dict | None): Non-fatal diagnostics about how the search ran. None when there\n        is nothing to report.\n    hints (list[SearchHint]): Filter hints \u2014 a value no document stores, or the likely culprit\n        of a filtered zero-hit search. Empty otherwise."
+            },
+            "SearchTargetGuide": {
+                "properties": {
+                    "field": {
+                        "type": "string",
+                        "title": "Field"
+                    },
+                    "semantic": {
+                        "type": "boolean",
+                        "title": "Semantic"
+                    },
+                    "lexical": {
+                        "type": "boolean",
+                        "title": "Lexical"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "field",
+                    "semantic",
+                    "lexical"
+                ],
+                "title": "SearchTargetGuide",
+                "description": "One valid ``search_in`` entry of the collection (exactly what the search route accepts).\n\nAttributes:\n    field (str): ``\"content\"`` (the chunk body) or a metadata field name.\n    semantic (bool): The field has a dense vector to query.\n    lexical (bool): The field has a sparse vector to query."
             },
             "SearchTargetModel": {
                 "properties": {
@@ -12466,6 +12871,18 @@
                             }
                         ],
                         "description": "Partial cost-estimate overrides. Omitted = leave unchanged; explicit null = clear back to the global defaults; a value replaces the stored overrides."
+                    },
+                    "title_field": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Title Field",
+                        "description": "Name of a DOCUMENT-scope metadata field whose value is shown as each document's display title (search hits, document lists). null = use the parser-derived title. When the named field is unset or blank on a document, that document falls back to its parsed title. Omitted = leave unchanged; explicit null = clear; a name must be a document-scope field of the (post-PATCH) schema, else 422. A schema PATCH that removes the current title field (or moves it to chunk scope) clears it automatically."
                     },
                     "note": {
                         "anyOf": [

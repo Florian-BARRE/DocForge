@@ -12,7 +12,15 @@
 import uuid
 
 # ====== Third-Party Library Imports ======
-from sqlalchemy import Boolean, CheckConstraint, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -43,6 +51,9 @@ class MetadataField(Base):
     )
     field_name: Mapped[str] = mapped_column(String(255), nullable=False)
     field_type: Mapped[FieldType] = mapped_column(value_enum(FieldType), nullable=False)
+    # Free-text, human/agent-facing explanation of what the field means (e.g. "Business process the
+    # document belongs to"). NULL = no description set.
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
     required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     filterable: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     lexical: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)

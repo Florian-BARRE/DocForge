@@ -26,6 +26,10 @@ class IRBlock(BaseModel):
     id: str = Field(description="Document-namespaced block id.")
     block_type: str = Field(description="text / heading / list / table / figure / …")
     page: int = Field(description="0-based page the block sits on (first page = 0).")
+    # Always set by this server; optional in the contract so a newer SDK still parses older servers.
+    page_number: int | None = Field(
+        default=None, description="1-based page number as a reader counts it (= page + 1)."
+    )
     bbox: list[float] = Field(description="Bounding box [x0, y0, x1, y1] in page coordinates.")
     reading_order: int = Field(description="Global reading-order rank within the document.")
     parent_id: str | None = Field(default=None, description="Parent block in the heading tree.")

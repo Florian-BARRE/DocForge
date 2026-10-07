@@ -56,7 +56,7 @@ const baseCollection: Collection = {
   search: {},
   fields: [],
   estimate_overrides: null,
-  trace_verbosity: "shape",
+  trace_verbosity: "shape", title_field: null,
   tags: [],
 };
 
@@ -89,6 +89,7 @@ function documentFixture(id: string): DocumentListItem {
     file_size: 1234,
     created_at: "2026-01-01T00:00:00Z",
     title: `Document ${id}`,
+    display_title: `Document ${id}`,
     language: "en",
     enabled: true,
     chunk_count: 5,

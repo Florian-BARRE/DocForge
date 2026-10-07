@@ -6,7 +6,6 @@
 
 import type { SearchHitModel } from "../../api/search";
 import { theme } from "../../theme";
-import { displayPage } from "../explorer/format";
 
 /** Best available human label for the source document — title, else filename, else a short id. */
 function documentLabel(hit: SearchHitModel): string {
@@ -25,7 +24,7 @@ export function SearchHitCitation({ hit }: { hit: SearchHitModel }) {
         title={documentLabel(hit)}
       >
         {documentLabel(hit)}
-        {hit.page != null && <span style={{ color: theme.color.dim, fontWeight: theme.font.weight.normal }}> · p.{displayPage(hit.page)}</span>}
+        {hit.page_number != null && <span style={{ color: theme.color.dim, fontWeight: theme.font.weight.normal }}> · p.{hit.page_number}</span>}
       </div>
       {headingPath.length > 0 && (
         <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 4, color: theme.color.dim, fontSize: theme.font.size.xs }}>

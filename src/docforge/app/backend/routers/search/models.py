@@ -47,6 +47,8 @@ class SearchRequest(BaseModel):
             bounds (``gte``/``gt``/``lte``/``lt``) becomes a numeric or datetime range (e.g.
             ``{"published": {"gte": "2024-01-01", "lte": "2024-12-31"}}`` or ``{"pages": {"gt": 10}}``).
             A range on a non-range-typed (keyword/bool) field, or a malformed range, is rejected 422.
+            String / enum / keyword_list values match case-insensitively (resolved to the stored
+            spelling); text / text_list values are full-text matched (all words present).
         search_in (list[SearchTargetModel] | None): What to search — the fields (content and/or
             metadata) and modalities (semantic/lexical). None searches content on both axes
             (unchanged default). A target naming a vector the collection never indexed → 422.
@@ -60,7 +62,9 @@ class SearchRequest(BaseModel):
         default=None,
         description="Constraints on the FILTERABLE metadata fields — field → a scalar (equality), "
         "a list (any-of), or a range mapping of gte/gt/lte/lt bounds (numeric or ISO-8601 datetime, "
-        'e.g. {"published": {"gte": "2024-01-01", "lte": "2024-12-31"}}).',
+        'e.g. {"published": {"gte": "2024-01-01", "lte": "2024-12-31"}}). String/enum/keyword_list '
+        "values match case-insensitively; text/text_list values are full-text matched. A value no "
+        "document stores yields a response hint with the closest stored values.",
     )
     search_in: list[SearchTargetModel] | None = Field(
         default=None,
@@ -84,14 +88,22 @@ class BlockLocationModel(BaseModel):
     One source block's location on the page — enough for a UI to draw a box over the hit.
 
     Attributes:
-        page (int | None): The page the block sits on (as stored on the IR block). None for a
-            page-less document (no page render) — distinct from a genuine 0-based page index 0.
+        page (int | None): The 0-based page index the block sits on (as stored on the IR block). None
+            for a page-less document (no page render) — distinct from a genuine page index 0.
+        page_number (int | None): The 1-based page number (``page + 1``) — the page as a reader counts
+            it; prefer it for citation. None when ``page`` is None.
         bbox (list[float]): The block's bounding box as ``[x0, y0, x1, y1]``, NORMALISED to [0, 1] —
             the frontend multiplies each component by the page image's width/height to get pixels.
     """
 
     page: int | None = Field(
-        description="The page the block sits on; None for a page-less document (no page render).",
+        description="0-based page index the block sits on (prefer page_number for citation); None "
+        "for a page-less document (no page render).",
+    )
+    page_number: int | None = Field(
+        default=None,
+        description="1-based page number (page + 1) — the page as a reader counts it; use it to "
+        "cite. None for a page-less document.",
     )
     bbox: list[float] = Field(
         description="Bounding box [x0, y0, x1, y1] NORMALISED to [0, 1] — multiply by the page "
@@ -111,7 +123,8 @@ class SearchHitModel(BaseModel):
         chunk_index (int): The chunk's ordinal within its document.
         token_count (int): The chunk's token count.
         block_ids (list[str]): The IR block ids the chunk was assembled from (assembly order).
-        page (int | None): The page of the chunk's primary (leading) block — draw the box here.
+        page (int | None): The 0-based page index of the chunk's primary (leading) block.
+        page_number (int | None): The 1-based page number (``page + 1``) — cite this one.
         bbox (list[float] | None): The primary block's NORMALISED [0, 1] bounding box.
         block_locations (list[BlockLocationModel]): Every source block's page + bbox (draw them all).
     """
@@ -122,7 +135,9 @@ class SearchHitModel(BaseModel):
         default=None, description="The source document's filename — the hit's human identity."
     )
     document_title: str | None = Field(
-        default=None, description="The source document's title (empty parsed titles → null)."
+        default=None,
+        description="The source document's DISPLAY title: the value of the collection's "
+        "title_field when configured and set on the document, else the parsed title (empty → null).",
     )
     heading_path: list[str] = Field(
         default_factory=list,
@@ -154,8 +169,13 @@ class SearchHitModel(BaseModel):
     )
     page: int | None = Field(
         default=None,
-        description="The page of the chunk's primary (leading) block — where to draw the box. "
-        "None when the chunk carries no block location.",
+        description="0-based page index of the chunk's primary (leading) block — where to draw the "
+        "box (prefer page_number for citation). None when the chunk carries no block location.",
+    )
+    page_number: int | None = Field(
+        default=None,
+        description="1-based page number (page + 1) of the chunk's primary block — the page as a "
+        "reader counts it; use it to cite. None when the chunk carries no block location.",
     )
     bbox: list[float] | None = Field(
         default=None,
@@ -196,6 +216,30 @@ class SearchCostModel(BaseModel):
     )
 
 
+class SearchHint(BaseModel):
+    """
+    An actionable explanation about one filter, attached to a (200) search response.
+
+    Emitted when a filter value matches no stored value of its field (even ignoring case) — with the
+    closest stored values to retry with — or when a filtered search returned no hits (naming the
+    likely culprit filter).
+
+    Attributes:
+        field (str): The filtered metadata field the hint is about.
+        value (Any): The filter value as sent (one list item, or the whole filter value).
+        message (str): English, human/agent-readable explanation.
+        suggestions (list[str]): Closest stored values to retry with (may be empty).
+    """
+
+    field: str = Field(description="The filtered metadata field the hint is about.")
+    value: Any = Field(description="The filter value as sent (one list item, or the whole value).")
+    message: str = Field(description="English, human/agent-readable explanation of the problem.")
+    suggestions: list[str] = Field(
+        default_factory=list,
+        description="Closest stored values of the field to retry with, best first (may be empty).",
+    )
+
+
 class SearchResponse(BaseModel):
     """
     The result of a hybrid search — the echoed query and its ranked hits.
@@ -208,6 +252,8 @@ class SearchResponse(BaseModel):
             the run made no paid call (a stock lexical/dense search with no query-side LLM).
         debug_info (dict | None): Non-fatal diagnostics about how the search ran. None when there
             is nothing to report.
+        hints (list[SearchHint]): Filter hints — a value no document stores, or the likely culprit
+            of a filtered zero-hit search. Empty otherwise.
     """
 
     query: str = Field(description="The query that was searched.")
@@ -229,6 +275,12 @@ class SearchResponse(BaseModel):
     debug_info: dict[str, Any] | None = Field(
         default=None,
         description="Non-fatal diagnostics about how the search ran. None when empty.",
+    )
+    hints: list[SearchHint] = Field(
+        default_factory=list,
+        description="Filter hints: a filter value that matches no stored value (even ignoring case) "
+        "with the closest stored values, or the likely culprit filter of a filtered search that "
+        "returned no hits. Empty when there is nothing to report.",
     )
 
 
@@ -281,6 +333,7 @@ __all__ = [
     "BlockLocationModel",
     "SearchHitModel",
     "SearchCostModel",
+    "SearchHint",
     "SearchResponse",
     "SearchHealthSummary",
 ]

@@ -41,7 +41,8 @@ class DocumentListItem(BaseModel):
         page_count (int | None): Pages once parsed (None before).
         file_size (int): Original size in bytes.
         created_at (datetime | None): Admission timestamp.
-        title (str): Learned title ('' before parse).
+        title (str): Raw parsed title ('' before parse).
+        display_title (str): The title to display (title_field value, else the parsed title).
         language (str | None): Detected language (None before parse).
         enabled (bool): Document-level searchability toggle.
         chunk_count (int | None): Chunks persisted at ingestion (0 = empty; None = unknown/legacy).
@@ -55,7 +56,12 @@ class DocumentListItem(BaseModel):
     page_count: int | None = Field(default=None, description="Pages once parsed (None before).")
     file_size: int = Field(description="Original size in bytes.")
     created_at: datetime | None = Field(default=None, description="Admission timestamp.")
-    title: str = Field(description="Learned title ('' before parse).")
+    title: str = Field(description="Raw parsed title ('' before parse).")
+    display_title: str = Field(
+        default="",
+        description="The title to show: the collection's title_field value when set and present, "
+        "else the parsed title.",
+    )
     language: str | None = Field(default=None, description="Detected language (None before parse).")
     enabled: bool = Field(description="Document-level searchability toggle.")
     chunk_count: int | None = Field(
@@ -81,7 +87,8 @@ class DocumentDetail(BaseModel):
         file_size (int): Original size in bytes.
         page_count (int | None): Pages once parsed.
         language (str | None): Detected document language.
-        title (str): Learned title ('' before parse).
+        title (str): Raw parsed title ('' before parse).
+        display_title (str): The title to display (title_field value, else the parsed title).
         source_kind (SourceKind): Acquisition routing.
         status (DocumentStatus): Ingestion lifecycle state.
         source_hash (str): Content address of the original bytes (blob key).
@@ -105,7 +112,12 @@ class DocumentDetail(BaseModel):
     file_size: int = Field(description="Original size in bytes.")
     page_count: int | None = Field(default=None, description="Pages once parsed.")
     language: str | None = Field(default=None, description="Detected document language.")
-    title: str = Field(description="Learned title ('' before parse).")
+    title: str = Field(description="Raw parsed title ('' before parse).")
+    display_title: str = Field(
+        default="",
+        description="The title to show: the collection's title_field value when set and present, "
+        "else the parsed title.",
+    )
     source_kind: SourceKind = Field(description="Acquisition routing.")
     status: DocumentStatus = Field(description="Ingestion lifecycle state.")
     source_hash: str = Field(description="Content address of the original bytes (blob key).")
@@ -144,7 +156,8 @@ class PageInfo(BaseModel):
     One page's geometry, routing and its render blob reference.
 
     Attributes:
-        page_number (int): 0-based page index (first page = 0).
+        page_number (int): 0-based page INDEX (legacy; first page = 0).
+        page_label (int): 1-based page number as a reader counts it (cite this).
         width (float | None): Page width in points (None if unknown).
         height (float | None): Page height in points (None if unknown).
         is_scanned (bool): Whether this page was routed as image-only (OCR/VLM).
@@ -152,7 +165,16 @@ class PageInfo(BaseModel):
         render_blob_hash (str | None): Blob of the rasterized page (None when render was off).
     """
 
-    page_number: int = Field(description="0-based page index (first page = 0).")
+    page_number: int = Field(
+        description="0-based page INDEX (first page = 0) — NOT the reader's page number; use "
+        "page_label for that."
+    )
+    # Defaulted (not required) so this SDK still parses responses from pre-0.23 servers that
+    # don't send the field yet.
+    page_label: int | None = Field(
+        default=None,
+        description="1-based page number as a reader counts it (= page_number + 1).",
+    )
     width: float | None = Field(default=None, description="Page width in points (None if unknown).")
     height: float | None = Field(
         default=None, description="Page height in points (None if unknown)."
@@ -181,7 +203,8 @@ class ChunkInfo(BaseModel):
         block_ids (list[str]): Composing IR block ids, in assembly order.
         metadata (list[MetadataValue]): Per-chunk generated metadata values.
         heading_path (list[str]): The chunk's section breadcrumb (outer→inner headings).
-        page (int | None): Page of the chunk's primary block; None when it has no located block.
+        page (int | None): Page of the chunk's primary block (0-based); None when unlocated.
+        page_number (int | None): The same page, 1-based (as a reader counts it); None when unlocated.
     """
 
     id: str = Field(description="The chunk UUID (doubles as the Qdrant point id).")
@@ -205,7 +228,11 @@ class ChunkInfo(BaseModel):
     )
     page: int | None = Field(
         default=None,
-        description="Page of the chunk's primary block; None when it has no located block.",
+        description="Page of the chunk's primary block (0-based); None when it has no located block.",
+    )
+    page_number: int | None = Field(
+        default=None,
+        description="The same page, 1-based (as a reader counts it); None when unlocated.",
     )
 
 

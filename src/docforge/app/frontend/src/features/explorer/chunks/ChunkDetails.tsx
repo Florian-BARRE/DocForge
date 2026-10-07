@@ -9,7 +9,6 @@
 
 import type { ReactNode } from "react";
 import { theme } from "../../../theme";
-import { displayPage } from "../format";
 import { ChunkHeadingPath } from "./ChunkHeadingPath";
 
 interface ChunkDetailsProps {
@@ -18,6 +17,7 @@ interface ChunkDetailsProps {
   headingPath: string[];
   charCount: number;
   blockCount: number;
+  /** 1-based page number as a reader counts it; null when the chunk has no located block. */
   page: number | null;
 }
 
@@ -50,7 +50,7 @@ export function ChunkDetails({ id, parentId, headingPath, charCount, blockCount,
         <Row label="parent chunk">
           {parentId ? <span style={{ fontFamily: theme.font.mono }} title={parentId}>{parentId}</span> : "—"}
         </Row>
-        <Row label="page">{page !== null ? `page ${displayPage(page)}` : "unlocated"}</Row>
+        <Row label="page">{page !== null ? `page ${page}` : "unlocated"}</Row>
         <Row label="characters">{charCount.toLocaleString()}</Row>
         <Row label="source blocks">{blockCount}</Row>
         {headingPath.length > 0 && (

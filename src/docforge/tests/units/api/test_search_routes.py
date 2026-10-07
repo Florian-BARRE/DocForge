@@ -86,6 +86,14 @@ def wired(fastapi_app, monkeypatch):
     # The service returns (SearchResult, usage-tuple); a stock search runs no paid LLM → count 0.
     search = AsyncMock(side_effect=lambda _cid, query, **_kw: (_result(query), (0, 0, None, 0)))
     monkeypatch.setattr(CONTEXT.search_service, "search", search)
+    # The value oracle: every requested value is stored exactly as sent (identity canonicalization),
+    # so the pre-existing exact-case filter assertions keep their byte-identical filter map.
+    monkeypatch.setattr(
+        CONTEXT.database.metadata_values,
+        "canonicalize",
+        AsyncMock(side_effect=lambda _field, values: {v: [v] for v in values}),
+    )
+    monkeypatch.setattr(CONTEXT.database.metadata_values, "suggest", AsyncMock(return_value=[]))
     return search
 
 
@@ -757,3 +765,196 @@ async def test_query_embedder_probe_blocks_a_disallowed_host(fastapi_app, monkey
 
     status = await QueryEmbedderProbe().classify(_pipeline_with_embed())
     assert status is ProbeStatus.BLOCKED
+
+
+# --------------------------------------------------------------------------- #
+# Wave A — case-insensitive filters, hints, page_number, display title
+# --------------------------------------------------------------------------- #
+
+_SEARCH_URL = "/api/v1/collections/33333333-3333-3333-3333-333333333333/search"
+
+
+def test_search_enum_filter_case_only_difference_maps_to_the_member(client, wired) -> None:
+    response = client.post(_SEARCH_URL, json={"query": "q", "filters": {"doc_type": "POLICY"}})
+    assert response.status_code == 200, response.text
+    assert wired.await_args.kwargs["filters"] == {"doc_type": "policy"}
+
+
+def test_search_unknown_enum_value_422_lists_the_allowed_values(client, wired) -> None:
+    response = client.post(_SEARCH_URL, json={"query": "q", "filters": {"doc_type": ["x"]}})
+    assert response.status_code == 422, response.text
+    assert "allowed values: policy, contract" in response.text
+    wired.assert_not_awaited()
+
+
+def test_search_wrong_case_value_is_canonicalized_before_the_service(
+    client, wired, monkeypatch
+) -> None:
+    from backend.context import CONTEXT
+
+    monkeypatch.setattr(
+        CONTEXT.database.metadata_values,
+        "canonicalize",
+        AsyncMock(return_value={"AI": ["ai", "Ai"]}),
+    )
+    response = client.post(_SEARCH_URL, json={"query": "q", "filters": {"topic": "AI"}})
+    assert response.status_code == 200, response.text
+    assert wired.await_args.kwargs["filters"] == {"topic": ["ai", "Ai"]}
+    assert response.json()["hints"] == []
+
+
+def test_search_unknown_value_returns_200_with_a_suggestion_hint(
+    client, wired, monkeypatch
+) -> None:
+    from backend.context import CONTEXT
+
+    monkeypatch.setattr(
+        CONTEXT.database.metadata_values, "canonicalize", AsyncMock(return_value={"aj": []})
+    )
+    monkeypatch.setattr(
+        CONTEXT.database.metadata_values, "suggest", AsyncMock(return_value=["ai", "ml"])
+    )
+    response = client.post(_SEARCH_URL, json={"query": "q", "filters": {"topic": "aj"}})
+    assert response.status_code == 200, response.text
+    assert response.json()["hints"] == [
+        {
+            "field": "topic",
+            "value": "aj",
+            "message": 'No document has topic = "aj". Closest stored values: ai, ml.',
+            "suggestions": ["ai", "ml"],
+        }
+    ]
+
+
+def test_search_zero_hits_with_filters_names_the_culprit(client, wired) -> None:
+    wired.side_effect = lambda _cid, query, **_kw: (
+        SearchResult(query=query, hits=[]),
+        (0, 0, None, 0),
+    )
+    response = client.post(_SEARCH_URL, json={"query": "q", "filters": {"topic": "ai"}})
+    assert response.status_code == 200, response.text
+    (hint,) = response.json()["hints"]
+    assert hint["field"] == "topic" and "likely culprit" in hint["message"]
+
+
+def test_search_threads_text_fields_and_title_field_to_the_service(
+    client, wired, monkeypatch
+) -> None:
+    from backend.context import CONTEXT
+
+    schema = _schema() + [
+        SimpleNamespace(field_name="summary", filterable=True, field_type=FieldType.TEXT),
+        SimpleNamespace(field_name="ref", filterable=False, field_type=FieldType.STRING),
+    ]
+    collection = SimpleNamespace(pipeline=_pipeline_with_embed(), search={}, title_field="ref")
+    monkeypatch.setattr(CONTEXT.database.collections, "get", AsyncMock(return_value=collection))
+    monkeypatch.setattr(CONTEXT.database.collections, "get_schema", AsyncMock(return_value=schema))
+
+    response = client.post(_SEARCH_URL, json={"query": "q", "filters": {"summary": "audit"}})
+    assert response.status_code == 200, response.text
+    kwargs = wired.await_args.kwargs
+    assert kwargs["text_fields"] == frozenset({"summary"})
+    assert kwargs["title_field"].field_name == "ref"
+
+
+def test_hit_page_number_is_one_based_and_null_when_pageless(fastapi_app) -> None:
+    from backend.routers.search.helpers import SearchHelpers
+
+    paged = Hit(
+        chunk_id="c",
+        document_id="d",
+        score=0.1,
+        rank=1,
+        metadata={"page": 4, "block_locations": [{"page": 0, "bbox": [0, 0, 1, 1]}]},
+    )
+    model = SearchHelpers.to_hit_model(paged)
+    assert (model.page, model.page_number) == (4, 5)
+    assert model.block_locations[0].page_number == 1
+    bare = Hit(chunk_id="c", document_id="d", score=0.1, rank=1, metadata={})
+    assert SearchHelpers.to_hit_model(bare).page_number is None
+
+
+def _hydrate_with_title(title_field, value) -> str | None:
+    import asyncio
+    import uuid as _uuid
+
+    from backend.libs.search import CollectionReadPortImpl
+
+    chunk_uuid, doc_uuid = _uuid.uuid4(), _uuid.uuid4()
+    row = SimpleNamespace(
+        id=chunk_uuid, document_id=doc_uuid, text="t", chunk_index=0, token_count=1, heading_path=[]
+    )
+    document = SimpleNamespace(id=doc_uuid, filename="f.pdf", title="1 GENERALITES")
+    database = SimpleNamespace(
+        documents=SimpleNamespace(
+            get_chunks_by_ids=AsyncMock(return_value=[row]),
+            get_by_ids=AsyncMock(return_value=[document]),
+            get_filterable_metadata_for_documents=AsyncMock(return_value={}),
+            get_block_locations_for_chunks=AsyncMock(return_value={}),
+        ),
+        metadata_values=SimpleNamespace(
+            document_values=AsyncMock(return_value={doc_uuid: value} if value else {})
+        ),
+    )
+    port = CollectionReadPortImpl(database, _uuid.uuid4(), title_field=title_field)
+    hit = asyncio.run(port.hydrate([str(chunk_uuid)]))[str(chunk_uuid)]
+    return hit.metadata["document_title"]
+
+
+def test_read_port_display_title_uses_title_field_when_set(fastapi_app) -> None:
+    field = SimpleNamespace(field_name="ref", id=1, scope="document")
+    assert _hydrate_with_title(field, "AFD-P0153") == "AFD-P0153"
+    # Configured but unset on the document → the parser title.
+    assert _hydrate_with_title(field, None) == "1 GENERALITES"
+    # Not configured → the parser title, and no metadata read happens.
+    assert _hydrate_with_title(None, "ignored") == "1 GENERALITES"
+
+
+# ──────────── list filters: empty / oversized → 422; hints quote the sent value ────────────
+
+
+def _with_list_fields(monkeypatch) -> None:
+    from backend.context import CONTEXT
+
+    schema = _schema() + [
+        SimpleNamespace(field_name="summary", filterable=True, field_type=FieldType.TEXT),
+        SimpleNamespace(field_name="tags", filterable=True, field_type=FieldType.KEYWORD_LIST),
+    ]
+    monkeypatch.setattr(CONTEXT.database.collections, "get_schema", AsyncMock(return_value=schema))
+
+
+@pytest.mark.parametrize("field", ["summary", "tags", "topic"])
+def test_search_empty_list_filter_is_422(client, wired, monkeypatch, field) -> None:
+    """An empty any-of list would reach Qdrant as an empty `should` ("no constraint") and silently
+    WIDEN the search — it is rejected 422 for every field type, before any spend."""
+    _with_list_fields(monkeypatch)
+    response = client.post(_SEARCH_URL, json={"query": "q", "filters": {field: []}})
+    assert response.status_code == 422, response.text
+    assert (
+        f"filter '{field}': an empty list matches nothing — omit the filter or give at least one "
+        "value"
+    ) in response.text
+    wired.assert_not_awaited()
+
+
+def test_search_oversized_list_filter_is_422(client, wired) -> None:
+    values = [f"v{i}" for i in range(1000)]
+    response = client.post(_SEARCH_URL, json={"query": "q", "filters": {"topic": values}})
+    assert response.status_code == 422, response.text
+    assert "1000 values exceed the maximum of 100" in response.text
+    wired.assert_not_awaited()
+
+
+def test_search_hint_quotes_the_enum_value_as_sent(client, wired, monkeypatch) -> None:
+    """The enum gate maps "POLICY" → "policy" before resolution; the hint must still quote "POLICY"
+    so a client can locate (and swap) its own value."""
+    from backend.context import CONTEXT
+
+    monkeypatch.setattr(
+        CONTEXT.database.metadata_values, "canonicalize", AsyncMock(return_value={"policy": []})
+    )
+    response = client.post(_SEARCH_URL, json={"query": "q", "filters": {"doc_type": ["POLICY"]}})
+    assert response.status_code == 200, response.text
+    (hint,) = response.json()["hints"]
+    assert hint["value"] == "POLICY"
+    assert '"POLICY"' in hint["message"]

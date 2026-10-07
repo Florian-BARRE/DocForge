@@ -11,7 +11,7 @@ from collections.abc import Sequence
 from loggerplusplus import loggerplusplus
 
 # ====== Internal Project Imports ======
-from shared_libs.public_models import ChunkRole, role_default_enabled
+from shared_libs.public_models import ChunkRole, DisplayTitleResolver, role_default_enabled
 from shared_libs.services.db.facades import ChunkToggle, IRBundle
 from shared_libs.services.db.postgresql.tables import (
     Chunk,
@@ -65,10 +65,36 @@ class ExplorerHelpers:
             for row in rows
         ]
 
+    @staticmethod
+    def display_title(
+        document: Document,
+        metadata_rows: Sequence[DocumentMetadata],
+        names: dict[int, str],
+        title_field: str | None,
+    ) -> str:
+        """Resolve a document's display title from its metadata and the collection's title_field.
+
+        Args:
+            document (Document): The document row (its ``title`` is the parsed fallback).
+            metadata_rows (Sequence[DocumentMetadata]): The document's metadata value rows.
+            names (dict[int, str]): The {field_id: field_name} map of the collection schema.
+            title_field (str | None): The collection's configured title field, if any.
+
+        Returns:
+            str: The title_field value when set and non-empty, else the parsed title ('' when none).
+        """
+        # 1. Only the configured field's value matters — skip the map build when none is configured.
+        if not title_field:
+            return document.title or ""
+
+        # 2. Name the values, then apply the single display-title rule.
+        values = {names[row.field_id]: row.value for row in metadata_rows if row.field_id in names}
+        return DisplayTitleResolver.resolve(document.title, values, title_field) or ""
+
     # -------------------- documents --------------------
     @staticmethod
-    def list_item(document: Document) -> DocumentListItem:
-        """Map a document row to a catalogue list item."""
+    def list_item(document: Document, display_title: str | None = None) -> DocumentListItem:
+        """Map a document row to a catalogue list item (``display_title`` defaults to the parsed title)."""
         return DocumentListItem(
             id=str(document.id),
             filename=document.filename,
@@ -78,6 +104,7 @@ class ExplorerHelpers:
             file_size=document.file_size,
             created_at=document.created_at,
             title=document.title,
+            display_title=document.title if display_title is None else display_title,
             language=document.language,
             enabled=document.enabled,
             chunk_count=document.chunk_count,
@@ -90,6 +117,7 @@ class ExplorerHelpers:
         document: Document,
         metadata: list[MetadataValue],
         failure_reason: str | None = None,
+        display_title: str | None = None,
     ) -> DocumentDetail:
         """Map a document row + resolved metadata to the full detail model.
 
@@ -98,6 +126,7 @@ class ExplorerHelpers:
             metadata (list[MetadataValue]): Its resolved document-level metadata values.
             failure_reason (str | None): The failing job's error, passed by the route only for a
                 non-successful document; None otherwise.
+            display_title (str | None): The resolved display title; None = the parsed title.
         """
         return DocumentDetail(
             id=str(document.id),
@@ -109,6 +138,7 @@ class ExplorerHelpers:
             page_count=document.page_count,
             language=document.language,
             title=document.title,
+            display_title=document.title if display_title is None else display_title,
             source_kind=document.source_kind,
             status=document.status,
             source_hash=document.source_hash,
@@ -146,6 +176,7 @@ class ExplorerHelpers:
         """Map a page row to its explorer model."""
         return PageInfo(
             page_number=page.page_number,
+            page_label=page.page_number + 1,
             width=page.width,
             height=page.height,
             is_scanned=page.is_scanned,
@@ -163,6 +194,7 @@ class ExplorerHelpers:
                     id=block.id,
                     block_type=block.block_type,
                     page=block.page,
+                    page_number=block.page + 1,
                     bbox=list(block.bbox),
                     reading_order=block.reading_order,
                     parent_id=block.parent_id,
@@ -229,6 +261,7 @@ class ExplorerHelpers:
             enabled=cls._effective_enabled(chunk),
             heading_path=chunk.heading_path or [],
             page=page,
+            page_number=None if page is None else page + 1,
         )
 
     @classmethod

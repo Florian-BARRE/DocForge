@@ -286,3 +286,58 @@ def test_sync_estimate_defaults_to_pending_scope() -> None:
     assert json.loads(route.calls.last.request.content) == {"scope": "pending"}
     assert result.cost_complete is True
     assert result.volume.chunks == 12
+
+
+_DESCRIBE_SAMPLE: dict[str, Any] = {
+    "collection_id": CID,
+    "name": "docs",
+    "document_count": 3,
+    "title_field": "title",
+    "page_numbering": "page_number is 1-based",
+    "fields": [
+        {
+            "name": "topic",
+            "type": "string",
+            "scope": "document",
+            "origin": "user",
+            "filterable": True,
+            "semantic": False,
+            "lexical": False,
+            "required": False,
+            "distinct_count": 2,
+            "example_values": ["a", "b"],
+        }
+    ],
+    "searchable_targets": [{"field": "content", "semantic": True, "lexical": True}],
+    "filter_grammar": ["equality"],
+    "example_requests": [{"query": "x"}],
+}
+
+
+@respx.mock
+async def test_describe_returns_typed_guide() -> None:
+    route = respx.get(f"{API}/collections/{CID}/describe").mock(
+        return_value=httpx.Response(200, json=_DESCRIBE_SAMPLE)
+    )
+    async with AsyncClient(BASE) as client:
+        result = await client.collections.describe(CID)
+    assert route.calls.last.request.method == "GET"
+    assert result.fields[0].example_values == ["a", "b"]
+    assert result.searchable_targets[0].field == "content"
+
+
+@respx.mock
+def test_sync_describe_returns_typed_guide() -> None:
+    respx.get(f"{API}/collections/{CID}/describe").mock(
+        return_value=httpx.Response(200, json=_DESCRIBE_SAMPLE)
+    )
+    with Client(BASE) as client:
+        result = client.collections.describe(CID)
+    assert result.title_field == "title"
+
+
+def test_update_title_field_omitted_vs_null() -> None:
+    omitted = UpdateCollectionRequest(name="x").model_dump(mode="json", exclude_unset=True)
+    cleared = UpdateCollectionRequest(title_field=None).model_dump(mode="json", exclude_unset=True)
+    assert "title_field" not in omitted
+    assert cleared == {"title_field": None}

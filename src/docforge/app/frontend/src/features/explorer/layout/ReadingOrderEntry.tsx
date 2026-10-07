@@ -10,7 +10,6 @@ import { useState } from "react";
 import type { IRBlock, IREnrichment } from "../../../api/explorer";
 import { humanizeEnumOption } from "../../../components/schema-form/fieldLabels";
 import { theme } from "../../../theme";
-import { displayPage } from "../format";
 import { blockStyle } from "./blockColors";
 
 interface ReadingOrderEntryProps {
@@ -71,7 +70,7 @@ function ParserChain({ chain }: { chain: { kind: string; status: string }[] }) {
 
 /** Compact machine-fact line describing HOW this block was extracted and where it sits. */
 function ExtractionFacts({ block, parseChain }: { block: IRBlock; parseChain?: { kind: string; status: string }[] }) {
-  const facts: string[] = [`p${displayPage(block.page)}`, `#${block.reading_order}`];
+  const facts: string[] = [`p${block.page_number}`, `#${block.reading_order}`];
   if (block.language) facts.push(block.language);
   return (
     <div style={{ display: "flex", alignItems: "center", gap: theme.space.xs, flexWrap: "wrap" }}>

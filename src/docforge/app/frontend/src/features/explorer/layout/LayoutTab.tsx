@@ -12,7 +12,6 @@ import { EmptyState } from "../../../components/EmptyState";
 import { ErrorState } from "../../../components/ErrorState";
 import { LoadingState } from "../../../components/LoadingState";
 import { theme } from "../../../theme";
-import { displayPage } from "../format";
 import { BlockTypeLegend } from "./BlockTypeLegend";
 import { buildChunkByBlockId, buildPageGroups } from "./chunkGrouping";
 import { PageGroupRow } from "./PageGroupRow";
@@ -20,12 +19,14 @@ import { PageScrubber, type PageScrubEntry } from "./PageScrubber";
 import { PageZoomControl } from "./PageZoomControl";
 import { PARSER_KINDS } from "./parserKinds";
 import { usePageZoom } from "./usePageZoom";
+import { pageLabelOf } from "../format";
 
 /** Anchor id + short label ("3" or "3–4") for a page group, shared by the scrubber and its row. */
-function pageGroupNav(group: { pages: { page_number: number }[] }): PageScrubEntry {
+function pageGroupNav(group: { pages: { page_number: number; page_label?: number | null }[] }): PageScrubEntry {
   const first = group.pages[0].page_number;
-  const last = group.pages[group.pages.length - 1].page_number;
-  const label = group.pages.length > 1 ? `${displayPage(first)}–${displayPage(last)}` : `${displayPage(first)}`;
+  const firstLabel = pageLabelOf(group.pages[0]);
+  const lastLabel = pageLabelOf(group.pages[group.pages.length - 1]);
+  const label = group.pages.length > 1 ? `${firstLabel}–${lastLabel}` : `${firstLabel}`;
   return { id: `layout-pg-${first}`, label };
 }
 

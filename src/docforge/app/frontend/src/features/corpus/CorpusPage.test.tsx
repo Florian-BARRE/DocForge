@@ -56,7 +56,7 @@ const baseCollection: Collection = {
   search: {},
   fields: [],
   estimate_overrides: null,
-  trace_verbosity: "shape",
+  trace_verbosity: "shape", title_field: null,
 };
 
 function documentRowFixture(id: string): DocumentGridRow {
@@ -69,6 +69,7 @@ function documentRowFixture(id: string): DocumentGridRow {
     file_size: 1234,
     created_at: "2026-01-01T00:00:00Z",
     title: `Document ${id}`,
+    display_title: `Document ${id}`,
     language: "en",
     enabled: true,
     chunk_count: 5,
@@ -146,6 +147,7 @@ describe("CorpusPage — loading to loaded transition", () => {
       enum_values: null,
       origin: "user",
       scope: "document",
+      description: null,
     };
     vi.mocked(getCollection).mockResolvedValue({ ...baseCollection, fields: [topicField] });
     const row = { ...documentRowFixture("doc-1"), metadata: { topic: "finance" } };
@@ -178,6 +180,7 @@ describe("CorpusPage — loading to loaded transition", () => {
       enum_values: null,
       origin: "user",
       scope: "document",
+      description: null,
     };
     vi.mocked(getCollection).mockResolvedValue({ ...baseCollection, fields: [topicField] });
     vi.mocked(queryDocuments).mockResolvedValue(queryResponse([documentRowFixture("doc-1")]));

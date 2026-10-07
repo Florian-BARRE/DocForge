@@ -298,6 +298,32 @@ export interface paths {
         patch: operations["update_collection_api_v1_collections__collection_id__patch"];
         trace?: never;
     };
+    "/api/v1/collections/{collection_id}/describe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Describe Collection
+         * @description Return a LEAN, agent-oriented guide to querying one collection — call it before searching.
+         *
+         *     Fields (meaning, type, flags, real example values), the valid ``search_in`` targets, the filter
+         *     grammar and ready-to-send example search bodies. No pipeline/search config, no secret.
+         *
+         *     Returns:
+         *         CollectionDescription: The guide (404 when the collection is unknown).
+         */
+        get: operations["describe_collection_api_v1_collections__collection_id__describe_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/collections/{collection_id}/documents": {
         parameters: {
             query?: never;
@@ -658,8 +684,9 @@ export interface paths {
          *     stays the request-side gate and diagnostic layer.
          *
          *     Returns:
-         *         SearchResponse: The echoed query and its hits, best first. 404 when the collection is
-         *         unknown, 409 when it has no embedder wired, 422 when a filter names a non-filterable field.
+         *         SearchResponse: The echoed query, its hits (best first) and any filter hints. 404 when the
+         *         collection is unknown, 409 when it has no embedder wired, 422 when a filter names a
+         *         non-filterable field, a value outside a field's enum, or an empty/oversized value list.
          */
         post: operations["search_collection_api_v1_collections__collection_id__search_post"];
         delete?: never;
@@ -2122,8 +2149,10 @@ export interface components {
          * @description One source block's location on the page — enough for a UI to draw a box over the hit.
          *
          *     Attributes:
-         *         page (int | None): The page the block sits on (as stored on the IR block). None for a
-         *             page-less document (no page render) — distinct from a genuine 0-based page index 0.
+         *         page (int | None): The 0-based page index the block sits on (as stored on the IR block). None
+         *             for a page-less document (no page render) — distinct from a genuine page index 0.
+         *         page_number (int | None): The 1-based page number (``page + 1``) — the page as a reader counts
+         *             it; prefer it for citation. None when ``page`` is None.
          *         bbox (list[float]): The block's bounding box as ``[x0, y0, x1, y1]``, NORMALISED to [0, 1] —
          *             the frontend multiplies each component by the page image's width/height to get pixels.
          */
@@ -2135,9 +2164,14 @@ export interface components {
             bbox: number[];
             /**
              * Page
-             * @description The page the block sits on; None for a page-less document (no page render).
+             * @description 0-based page index the block sits on (prefer page_number for citation); None for a page-less document (no page render).
              */
             page: number | null;
+            /**
+             * Page Number
+             * @description 1-based page number (page + 1) — the page as a reader counts it; use it to cite. None for a page-less document.
+             */
+            page_number?: number | null;
         };
         /** Body_import_collection_api_v1_collections_import_post */
         Body_import_collection_api_v1_collections_import_post: {
@@ -2811,9 +2845,14 @@ export interface components {
             metadata?: components["schemas"]["MetadataValue"][];
             /**
              * Page
-             * @description Page of the chunk's primary (leading) block; None when it has no located block.
+             * @description 0-based page index of the chunk's primary (leading) block; None when it has no located block.
              */
             page?: number | null;
+            /**
+             * Page Number
+             * @description 1-based page number as a reader counts it (= page + 1); None when 'page' is.
+             */
+            page_number?: number | null;
             /**
              * Parent Id
              * @description Parent chunk (hierarchical chunking).
@@ -2913,6 +2952,46 @@ export interface components {
              * @description Sum of input tokens over the collection's jobs.
              */
             total_prompt_tokens: number;
+        };
+        /**
+         * CollectionDescription
+         * @description The lean agent guide to one collection — what is in it and how to query it.
+         *
+         *     Attributes:
+         *         collection_id (uuid.UUID): The collection id.
+         *         name (str): The collection name.
+         *         document_count (int): Number of documents in the collection.
+         *         title_field (str | None): The document-scope field used as each hit's display title.
+         *         page_numbering (str): How hits locate pages (which field to cite).
+         *         fields (list[FieldGuide]): Every metadata field of the schema.
+         *         searchable_targets (list[SearchTargetGuide]): The valid ``search_in`` entries.
+         *         filter_grammar (list[str]): The filter value forms the search route accepts.
+         *         example_requests (list[dict]): Ready-to-send search request bodies for this collection.
+         */
+        CollectionDescription: {
+            /**
+             * Collection Id
+             * Format: uuid
+             */
+            collection_id: string;
+            /** Document Count */
+            document_count: number;
+            /** Example Requests */
+            example_requests: {
+                [key: string]: unknown;
+            }[];
+            /** Fields */
+            fields: components["schemas"]["FieldGuide"][];
+            /** Filter Grammar */
+            filter_grammar: string[];
+            /** Name */
+            name: string;
+            /** Page Numbering */
+            page_numbering: string;
+            /** Searchable Targets */
+            searchable_targets: components["schemas"]["SearchTargetGuide"][];
+            /** Title Field */
+            title_field?: string | null;
         };
         /**
          * CollectionEstimateRequest
@@ -3096,6 +3175,11 @@ export interface components {
              */
             tags?: string[];
             /**
+             * Title Field
+             * @description Name of a DOCUMENT-scope metadata field whose value is shown as each document's display title (search hits, document lists). null = use the parser-derived title. When the named field is unset or blank on a document, that document falls back to its parsed title.
+             */
+            title_field?: string | null;
+            /**
              * Trace Verbosity
              * @description Execution-trace capture level for this collection's ingest runs: 'shape' (default) keeps only the cheap inline shape summary of each node's input/output; 'full' also stores the raw payload in the object store (clamped by the operator ceiling WORKER_TRACE_MAX_VERBOSITY).
              * @default shape
@@ -3187,6 +3271,11 @@ export interface components {
              * @description Free-form labels for grouping/filtering collections in the UI ([] = untagged).
              */
             tags?: string[];
+            /**
+             * Title Field
+             * @description Name of a DOCUMENT-scope metadata field whose value is shown as each document's display title (search hits, document lists). null = use the parser-derived title. When the named field is unset or blank on a document, that document falls back to its parsed title.
+             */
+            title_field?: string | null;
             /**
              * Trace Verbosity
              * @description Execution-trace capture level for this collection's ingest runs: 'shape' (default) keeps only the cheap inline shape summary of each node's input/output; 'full' also stores the raw payload in the object store (clamped by the operator ceiling WORKER_TRACE_MAX_VERBOSITY).
@@ -3371,6 +3460,11 @@ export interface components {
              */
             tags?: string[] | null;
             /**
+             * Title Field
+             * @description Name of a DOCUMENT-scope metadata field whose value is shown as each document's display title (search hits, document lists). null = use the parser-derived title. When the named field is unset or blank on a document, that document falls back to its parsed title. Must name a document-scope field declared in ``fields`` (else 422).
+             */
+            title_field?: string | null;
+            /**
              * Trace Verbosity
              * @description Execution-trace capture level: 'shape' (default) keeps only the cheap inline shape summary of each node's input/output; 'full' also stores the raw payload in the object store (opt-in, clamped by the operator ceiling WORKER_TRACE_MAX_VERBOSITY).
              * @default shape
@@ -3502,6 +3596,12 @@ export interface components {
              */
             created_at?: string | null;
             /**
+             * Display Title
+             * @description The title to SHOW for this document: the value of the collection's title_field when configured and non-empty on this document, else the parsed 'title'.
+             * @default
+             */
+            display_title: string;
+            /**
              * Enabled
              * @description Document-level searchability toggle; False hides all its chunks from retrieval.
              */
@@ -3582,7 +3682,7 @@ export interface components {
             status: components["schemas"]["DocumentStatus"];
             /**
              * Title
-             * @description Learned title ('' before parse).
+             * @description Parser-learned title ('' before parse).
              */
             title: string;
             /**
@@ -3671,6 +3771,12 @@ export interface components {
              */
             created_at?: string | null;
             /**
+             * Display Title
+             * @description The title to SHOW for this document: the value of the collection's title_field when configured and non-empty on this document, else the parsed 'title'.
+             * @default
+             */
+            display_title: string;
+            /**
              * Enabled
              * @description Document-level searchability toggle; False hides all its chunks from retrieval.
              */
@@ -3716,7 +3822,7 @@ export interface components {
             status: components["schemas"]["DocumentStatus"];
             /**
              * Title
-             * @description Learned title ('' before parse).
+             * @description Parser-learned title ('' before parse).
              */
             title: string;
             /**
@@ -3767,6 +3873,12 @@ export interface components {
              */
             created_at?: string | null;
             /**
+             * Display Title
+             * @description The title to SHOW for this document: the value of the collection's title_field when configured and non-empty on this document, else the parsed 'title'.
+             * @default
+             */
+            display_title: string;
+            /**
              * Enabled
              * @description Document-level searchability toggle; False hides all its chunks from retrieval.
              */
@@ -3805,7 +3917,7 @@ export interface components {
             status: components["schemas"]["DocumentStatus"];
             /**
              * Title
-             * @description Learned title ('' before parse).
+             * @description Parser-learned title ('' before parse).
              */
             title: string;
             /**
@@ -4309,6 +4421,50 @@ export interface components {
          */
         FamilyMode: FamilyMode;
         /**
+         * FieldGuide
+         * @description One metadata field, described for a client that wants to filter or search on it.
+         *
+         *     Attributes:
+         *         name (str): The field name (the key used in ``filters`` / ``search_in``).
+         *         type (FieldType): The declared data type.
+         *         description (str | None): What the field means (None when the schema sets none).
+         *         scope (FieldScope): Where the value lives — one per document, or one per chunk.
+         *         origin (FieldOrigin): Who fills it — user, system or generated.
+         *         filterable (bool): Usable as a ``filters`` key.
+         *         semantic (bool): Searchable on its dense vector (``search_in`` semantic).
+         *         lexical (bool): Searchable on its sparse vector (``search_in`` lexical).
+         *         required (bool): Required at upload.
+         *         enum_values (list[str] | None): The allowed values of an enum field.
+         *         example_values (list[str]): Up to 10 stored values, most frequent first (truncated).
+         *         distinct_count (int): Number of distinct stored values (list items counted individually).
+         *         note (str | None): Why examples are omitted, when they are.
+         */
+        FieldGuide: {
+            /** Description */
+            description?: string | null;
+            /** Distinct Count */
+            distinct_count: number;
+            /** Enum Values */
+            enum_values?: string[] | null;
+            /** Example Values */
+            example_values?: string[];
+            /** Filterable */
+            filterable: boolean;
+            /** Lexical */
+            lexical: boolean;
+            /** Name */
+            name: string;
+            /** Note */
+            note?: string | null;
+            origin: components["schemas"]["FieldOrigin"];
+            /** Required */
+            required: boolean;
+            scope: components["schemas"]["FieldScope"];
+            /** Semantic */
+            semantic: boolean;
+            type: components["schemas"]["FieldType"];
+        };
+        /**
          * FieldOrigin
          * @description Where a metadata field's value comes from — drives who is allowed to fill it.
          * @enum {string}
@@ -4325,6 +4481,11 @@ export interface components {
          * @description One metadata field of the collection's contract (declared OR generated).
          */
         FieldSpecModel: {
+            /**
+             * Description
+             * @description What the field means, for humans and agents (e.g. 'Business process the document belongs to'). Documentation only: editing it never triggers a reindex. null = none.
+             */
+            description?: string | null;
             /**
              * Enum Values
              * @description Allowed values when field_type is enum.
@@ -4724,6 +4885,11 @@ export interface components {
              * @description 0-based page the block sits on (first page = 0).
              */
             page: number;
+            /**
+             * Page Number
+             * @description 1-based page number as a reader counts it (= page + 1).
+             */
+            page_number?: number | null;
             /**
              * Parent Id
              * @description Parent block in the heading tree.
@@ -5660,8 +5826,13 @@ export interface components {
              */
             language?: string | null;
             /**
+             * Page Label
+             * @description 1-based page number as a reader counts it (= page_number + 1). Named page_label here because 'page_number' predates it with a 0-based meaning.
+             */
+            page_label?: number | null;
+            /**
              * Page Number
-             * @description 0-based page index (first page = 0).
+             * @description 0-based page INDEX (first page = 0) — NOT the reader's page number; for that use 'page_label'.
              */
             page_number: number;
             /**
@@ -6555,6 +6726,42 @@ export interface components {
             zero_result_rate: number;
         };
         /**
+         * SearchHint
+         * @description An actionable explanation about one filter, attached to a (200) search response.
+         *
+         *     Emitted when a filter value matches no stored value of its field (even ignoring case) — with the
+         *     closest stored values to retry with — or when a filtered search returned no hits (naming the
+         *     likely culprit filter).
+         *
+         *     Attributes:
+         *         field (str): The filtered metadata field the hint is about.
+         *         value (Any): The filter value as sent (one list item, or the whole filter value).
+         *         message (str): English, human/agent-readable explanation.
+         *         suggestions (list[str]): Closest stored values to retry with (may be empty).
+         */
+        SearchHint: {
+            /**
+             * Field
+             * @description The filtered metadata field the hint is about.
+             */
+            field: string;
+            /**
+             * Message
+             * @description English, human/agent-readable explanation of the problem.
+             */
+            message: string;
+            /**
+             * Suggestions
+             * @description Closest stored values of the field to retry with, best first (may be empty).
+             */
+            suggestions?: string[];
+            /**
+             * Value
+             * @description The filter value as sent (one list item, or the whole value).
+             */
+            value: unknown;
+        };
+        /**
          * SearchHitModel
          * @description One ranked search result — the flat view of a hydrated chunk hit.
          *
@@ -6566,7 +6773,8 @@ export interface components {
          *         chunk_index (int): The chunk's ordinal within its document.
          *         token_count (int): The chunk's token count.
          *         block_ids (list[str]): The IR block ids the chunk was assembled from (assembly order).
-         *         page (int | None): The page of the chunk's primary (leading) block — draw the box here.
+         *         page (int | None): The 0-based page index of the chunk's primary (leading) block.
+         *         page_number (int | None): The 1-based page number (``page + 1``) — cite this one.
          *         bbox (list[float] | None): The primary block's NORMALISED [0, 1] bounding box.
          *         block_locations (list[BlockLocationModel]): Every source block's page + bbox (draw them all).
          */
@@ -6603,7 +6811,7 @@ export interface components {
             document_id: string;
             /**
              * Document Title
-             * @description The source document's title (empty parsed titles → null).
+             * @description The source document's DISPLAY title: the value of the collection's title_field when configured and set on the document, else the parsed title (empty → null).
              */
             document_title?: string | null;
             /**
@@ -6625,9 +6833,14 @@ export interface components {
             };
             /**
              * Page
-             * @description The page of the chunk's primary (leading) block — where to draw the box. None when the chunk carries no block location.
+             * @description 0-based page index of the chunk's primary (leading) block — where to draw the box (prefer page_number for citation). None when the chunk carries no block location.
              */
             page?: number | null;
+            /**
+             * Page Number
+             * @description 1-based page number (page + 1) of the chunk's primary block — the page as a reader counts it; use it to cite. None when the chunk carries no block location.
+             */
+            page_number?: number | null;
             /**
              * Score
              * @description The hit's ranking score, higher is better. Its meaning is given by the response-level ``score_kind``: for the default hybrid retrieval it is Qdrant's SERVER-SIDE FUSION score (Reciprocal Rank Fusion by default, or DBSF) — a RANK-based aggregate, NOT a cosine similarity or a 0-1 probability; when reranking is enabled it is the cross-encoder relevance score instead. The absolute magnitude is NOT comparable across queries or collections — only the relative ordering WITHIN one response is meaningful. On a tiny corpus (e.g. a single document) the top hit's score can legitimately pin to a round value like 1.0000 — that is expected, not a bug.
@@ -6672,6 +6885,8 @@ export interface components {
          *             bounds (``gte``/``gt``/``lte``/``lt``) becomes a numeric or datetime range (e.g.
          *             ``{"published": {"gte": "2024-01-01", "lte": "2024-12-31"}}`` or ``{"pages": {"gt": 10}}``).
          *             A range on a non-range-typed (keyword/bool) field, or a malformed range, is rejected 422.
+         *             String / enum / keyword_list values match case-insensitively (resolved to the stored
+         *             spelling); text / text_list values are full-text matched (all words present).
          *         search_in (list[SearchTargetModel] | None): What to search — the fields (content and/or
          *             metadata) and modalities (semantic/lexical). None searches content on both axes
          *             (unchanged default). A target naming a vector the collection never indexed → 422.
@@ -6679,7 +6894,7 @@ export interface components {
         SearchRequest: {
             /**
              * Filters
-             * @description Constraints on the FILTERABLE metadata fields — field → a scalar (equality), a list (any-of), or a range mapping of gte/gt/lte/lt bounds (numeric or ISO-8601 datetime, e.g. {"published": {"gte": "2024-01-01", "lte": "2024-12-31"}}).
+             * @description Constraints on the FILTERABLE metadata fields — field → a scalar (equality), a list (any-of), or a range mapping of gte/gt/lte/lt bounds (numeric or ISO-8601 datetime, e.g. {"published": {"gte": "2024-01-01", "lte": "2024-12-31"}}). String/enum/keyword_list values match case-insensitively; text/text_list values are full-text matched. A value no document stores yields a response hint with the closest stored values.
              */
             filters?: {
                 [key: string]: unknown;
@@ -6713,6 +6928,8 @@ export interface components {
          *             the run made no paid call (a stock lexical/dense search with no query-side LLM).
          *         debug_info (dict | None): Non-fatal diagnostics about how the search ran. None when there
          *             is nothing to report.
+         *         hints (list[SearchHint]): Filter hints — a value no document stores, or the likely culprit
+         *             of a filtered zero-hit search. Empty otherwise.
          */
         SearchResponse: {
             /** @description The run's priced search-time LLM spend (query rewrite / HyDE), or null when no paid call was made. */
@@ -6724,6 +6941,11 @@ export interface components {
             debug_info?: {
                 [key: string]: unknown;
             } | null;
+            /**
+             * Hints
+             * @description Filter hints: a filter value that matches no stored value (even ignoring case) with the closest stored values, or the likely culprit filter of a filtered search that returned no hits. Empty when there is nothing to report.
+             */
+            hints?: components["schemas"]["SearchHint"][];
             /**
              * Hits
              * @description Ranked hits, best first.
@@ -6740,6 +6962,23 @@ export interface components {
              * @default rrf_fusion
              */
             score_kind: string;
+        };
+        /**
+         * SearchTargetGuide
+         * @description One valid ``search_in`` entry of the collection (exactly what the search route accepts).
+         *
+         *     Attributes:
+         *         field (str): ``"content"`` (the chunk body) or a metadata field name.
+         *         semantic (bool): The field has a dense vector to query.
+         *         lexical (bool): The field has a sparse vector to query.
+         */
+        SearchTargetGuide: {
+            /** Field */
+            field: string;
+            /** Lexical */
+            lexical: boolean;
+            /** Semantic */
+            semantic: boolean;
         };
         /**
          * SearchTargetModel
@@ -7663,6 +7902,11 @@ export interface components {
              */
             tags?: string[] | null;
             /**
+             * Title Field
+             * @description Name of a DOCUMENT-scope metadata field whose value is shown as each document's display title (search hits, document lists). null = use the parser-derived title. When the named field is unset or blank on a document, that document falls back to its parsed title. Omitted = leave unchanged; explicit null = clear; a name must be a document-scope field of the (post-PATCH) schema, else 422. A schema PATCH that removes the current title field (or moves it to chunk scope) clears it automatically.
+             */
+            title_field?: string | null;
+            /**
              * Trace Verbosity
              * @description New execution-trace capture level ('shape' or 'full'). Omitted = leave the current value unchanged. 'full' is clamped by the operator ceiling WORKER_TRACE_MAX_VERBOSITY.
              */
@@ -8361,6 +8605,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CollectionModel"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    describe_collection_api_v1_collections__collection_id__describe_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                collection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CollectionDescription"];
                 };
             };
             /** @description Validation Error */

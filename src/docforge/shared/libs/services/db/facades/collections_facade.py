@@ -14,6 +14,7 @@ from loggerplusplus import LoggerClass
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared_libs.public_models import FieldScope
 from shared_libs.services.db.index_signature import CollectionIndexSignature
 from shared_libs.services.db.postgresql import PostgresClient
 from shared_libs.services.db.postgresql.apis import BlobApi, CollectionApi, JobApi
@@ -230,6 +231,7 @@ class CollectionsFacade(LoggerClass):
         #    baseline — never a sticky True (the standalone path: the snippet schema applier).
         async with self._postgres.session() as session:
             await self._apply_schema_diff(session, collection_id, desired)
+            await self._clear_orphaned_title_field(session, collection_id)
             reindex_needed = await self._sync_needs_reindex(session, collection_id)
         self.logger.info(
             f"Schema updated for {collection_id} "
@@ -273,9 +275,53 @@ class CollectionsFacade(LoggerClass):
             row.enum_values = wanted.enum_values
             row.origin = wanted.origin
             row.scope = wanted.scope
+            # Documentation only — excluded from the index signature, so it never flags a reindex.
+            row.description = wanted.description
         for name, row in current_by_name.items():
             if name not in desired_by_name:
                 await session.delete(row)
+
+    async def _clear_orphaned_title_field(
+        self, session: AsyncSession, collection_id: uuid.UUID
+    ) -> str | None:
+        """
+        Clear the display-title field when the staged schema no longer has it as a document field.
+
+        ``title_field`` is a SOFT reference (no FK) to a document-scope ``metadata_field``. A schema
+        edit that removes or renames that field, or moves it to chunk scope, must not be blocked — so
+        the dangling setting is cleared to NULL in the SAME transaction (the parsed title is shown
+        again) and the cleared name is returned so the caller can report it. Must run AFTER the schema
+        diff is staged on ``session`` (autoflush makes the staged rows visible to the read). The clear
+        is logged as a warning, and the PATCH response shows ``title_field: null``.
+
+        Args:
+            session (AsyncSession): The unit of work the schema diff was staged on.
+            collection_id (uuid.UUID): The collection whose setting is checked.
+
+        Returns:
+            str | None: The cleared field name, or None when the setting was unset or still valid.
+        """
+        # 1. Nothing configured → nothing can dangle.
+        collection = await CollectionApi.get(session, collection_id)
+        if collection is None or collection.title_field is None:
+            return None
+
+        # 2. Still a document-scope field of the post-diff schema → keep it.
+        schema = await CollectionApi.get_schema(session, collection_id)
+        if any(
+            row.field_name == collection.title_field and row.scope == FieldScope.DOCUMENT
+            for row in schema
+        ):
+            return None
+
+        # 3. Orphaned → clear it alongside the schema edit and say so.
+        cleared = collection.title_field
+        collection.title_field = None
+        self.logger.warning(
+            f"Collection {collection_id}: title_field '{cleared}' is no longer a document-scope "
+            f"field after the schema change — cleared (documents show their parsed title again)"
+        )
+        return cleared
 
     @staticmethod
     async def _sync_needs_reindex(session: AsyncSession, collection_id: uuid.UUID) -> bool:
@@ -485,6 +531,15 @@ class CollectionsFacade(LoggerClass):
                         session, collection_id, spec.estimate_overrides
                     )
 
+                # 5b. Display-title field (apply=True writes even a clearing None), then — when the
+                #     schema changed OR a title was written — re-check it against the schema IN this
+                #     transaction. The router validated the value before the write, outside it, so a
+                #     concurrent schema PATCH could have removed the field since; the clear catches it.
+                if spec.apply_title_field:
+                    await CollectionApi.set_title_field(session, collection_id, spec.title_field)
+                if spec.schema_fields is not None or spec.apply_title_field:
+                    await self._clear_orphaned_title_field(session, collection_id)
+
                 # 6. DERIVE needs_reindex ONCE over the fully-staged state (schema + config) vs the
                 #    indexed baseline — a single source of truth, never a sticky True. Skipped when the
                 #    PATCH touched neither surface (a contract/overrides-only edit can't affect it).
@@ -498,7 +553,8 @@ class CollectionsFacade(LoggerClass):
         self.logger.info(
             f"Collection {collection_id} patched atomically "
             f"(contract={spec.contract_touched}, schema={spec.schema_fields is not None}, "
-            f"config={spec.config_touched}, overrides={spec.apply_overrides})"
+            f"config={spec.config_touched}, overrides={spec.apply_overrides}, "
+            f"title_field={spec.apply_title_field})"
         )
         return CollectionUpdateResult(
             schema_applied=spec.schema_fields is not None,

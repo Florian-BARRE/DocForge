@@ -18,7 +18,18 @@ export function formatDateTime(value: string | null): string {
   return value ? new Date(value).toLocaleString() : "—";
 }
 
-/** The API's page/block page numbers are observed 0-based on the wire; shown as 1-based here. */
-export function displayPage(pageNumber: number): number {
-  return pageNumber + 1;
+/** The title a human should see for a document: the collection's title_field value, else the parsed
+ *  title, else the filename. */
+export function documentDisplayName(doc: { display_title?: string | null; title?: string | null; filename: string }): string {
+  return doc.display_title || doc.title || doc.filename;
+}
+
+/** The 1-based page a reader sees for a page row (falls back for a pre-0.23 server without page_label). */
+export function pageLabelOf(page: { page_number: number; page_label?: number | null }): number {
+  return page.page_label ?? page.page_number + 1;
+}
+
+/** The 1-based page a reader sees for an IR block (falls back for a pre-0.23 server). */
+export function blockPageNumberOf(block: { page: number; page_number?: number | null }): number {
+  return block.page_number ?? block.page + 1;
 }

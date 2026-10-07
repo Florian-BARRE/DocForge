@@ -69,6 +69,9 @@ class MetadataFieldSpec(BaseModel):
     origin: FieldOrigin = FieldOrigin.USER
     scope: FieldScope = FieldScope.DOCUMENT
     enum_values: list[str] | None = None
+    # Human/agent-facing meaning of the field. Documentation only: it never affects validation,
+    # indexing or the reindex signature.
+    description: str | None = None
 
 
 class CollectionContract(Artifact):

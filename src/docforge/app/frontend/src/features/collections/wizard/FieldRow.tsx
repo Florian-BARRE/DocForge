@@ -6,7 +6,7 @@
 // to a per-row id (name/type/enum) so assistive tech still announces "Required, row: field name"
 // rather than a bare, context-free control. Zero visual change.
 
-import { FIELD_ORIGINS, FIELD_SCOPES, FIELD_TYPES } from "../../../api/collections";
+import { FIELD_DESCRIPTION_MAX_LENGTH, FIELD_ORIGINS, FIELD_SCOPES, FIELD_TYPES } from "../../../api/collections";
 import { humanizeEnumOption } from "../../../components/schema-form/fieldLabels";
 import { Switch } from "../../../components/Switch";
 import { TagsInput } from "../../../components/TagsInput";
@@ -34,6 +34,9 @@ function supportsEnum(field: DraftField): boolean {
   return ["string", "keyword_list", "enum"].includes(field.field_type);
 }
 
+// name, type, 4 flags, enum values, origin, scope, remove.
+const FIELD_ROW_COLUMNS = 10;
+
 const FLAG_LABELS: Record<"required" | "filterable" | "lexical" | "semantic", string> = {
   required: "Required", filterable: "Filterable", lexical: "Lexical", semantic: "Semantic",
 };
@@ -48,7 +51,8 @@ export function FieldRow({ field, onChange, onRemove }: FieldRowProps) {
   const rowContext = field.field_name.trim() || "new field";
 
   return (
-    <tr style={{ borderBottom: `1px solid ${theme.color.line}` }}>
+    <>
+    <tr>
       <td style={cellStyle}>
         <label htmlFor={`${rowId}-name`} style={srOnlyStyle}>Field name</label>
         <input
@@ -138,5 +142,21 @@ export function FieldRow({ field, onChange, onRemove }: FieldRowProps) {
         </span>
       </td>
     </tr>
+    <tr style={{ borderBottom: `1px solid ${theme.color.line}` }}>
+      <td colSpan={FIELD_ROW_COLUMNS} style={{ ...cellStyle, paddingTop: 0 }}>
+        <label htmlFor={`${rowId}-description`} style={srOnlyStyle}>Description for {rowContext}</label>
+        <textarea
+          id={`${rowId}-description`}
+          style={{ ...inputStyle, minHeight: 36, resize: "vertical", fontFamily: theme.font.family }}
+          rows={1}
+          maxLength={FIELD_DESCRIPTION_MAX_LENGTH}
+          value={field.description ?? ""}
+          // Cleared text is sent as null so the backend stores "no description", not "".
+          onChange={(e) => set("description", e.target.value === "" ? null : e.target.value)}
+          placeholder="What this field means — shown to search agents"
+        />
+      </td>
+    </tr>
+    </>
   );
 }

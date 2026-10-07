@@ -10,6 +10,8 @@ import pytest
 from shared_libs.services.db.qdrant import (
     Match,
     MatchAny,
+    MatchText,
+    QdrantSearchApi,
     Range,
     build_match_conditions,
     parse_range,
@@ -130,3 +132,52 @@ def test_boolean_bound_raises() -> None:
 def test_non_iso_string_bound_raises() -> None:
     with pytest.raises(ValueError, match="neither a number nor an ISO"):
         parse_range("published", {"gte": "not-a-date"})
+
+
+# --------------------------------------------------------------------------- #
+# full-text fields (text / text_list) — MatchText, never an exact match
+# --------------------------------------------------------------------------- #
+
+
+def test_text_field_scalar_becomes_full_text_match() -> None:
+    conditions = build_match_conditions({"summary": "audit rights"}, text_fields={"summary"})
+    assert conditions == [MatchText(field="summary", texts=["audit rights"])]
+
+
+def test_text_field_list_becomes_any_of_full_text_match() -> None:
+    conditions = build_match_conditions({"findings": ["audit", "breach"]}, text_fields={"findings"})
+    assert conditions == [MatchText(field="findings", texts=["audit", "breach"])]
+
+
+def test_non_text_fields_are_untouched_by_text_fields() -> None:
+    conditions = build_match_conditions(
+        {"author": "kafka", "summary": "audit"}, text_fields={"summary"}
+    )
+    assert conditions == [
+        Match(field="author", value="kafka"),
+        MatchText(field="summary", texts=["audit"]),
+    ]
+
+
+def test_search_api_emits_qdrant_match_text() -> None:
+    from qdrant_client import models
+
+    single = QdrantSearchApi._to_field_condition(MatchText(field="summary", texts=["audit"]))
+    assert single == models.FieldCondition(key="summary", match=models.MatchText(text="audit"))
+
+    several = QdrantSearchApi._to_field_condition(MatchText(field="s", texts=["a", "b"]))
+    assert isinstance(several, models.Filter)
+    assert [cond.match.text for cond in several.should] == ["a", "b"]
+
+
+@pytest.mark.parametrize("text_fields", [(), ("summary",)])
+def test_empty_list_value_raises_never_an_empty_any_of(text_fields) -> None:
+    """An empty list must never translate to an empty any-of — Qdrant reads an empty `should` as
+    "no constraint", which would silently drop the filter and widen the search."""
+    with pytest.raises(ValueError, match="empty value list"):
+        build_match_conditions({"summary": []}, text_fields)
+
+
+def test_search_api_refuses_a_text_condition_without_texts() -> None:
+    with pytest.raises(ValueError, match="no texts"):
+        QdrantSearchApi._to_field_condition(MatchText(field="summary", texts=[]))
