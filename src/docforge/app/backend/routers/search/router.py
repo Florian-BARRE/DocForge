@@ -25,17 +25,21 @@ from ...libs.search import (
     HitProjection,
     MinScoreHint,
     QueryEmbedderProbe,
+    ScoreKindClassifier,
+    SearchCollectionSpecs,
     SearchRunError,
     SearchRunTimeout,
+    SearchTargetValidator,
     SearchTuning,
     SearchTuningError,
     SearchUnavailableError,
     ZeroHitHintBuilder,
 )
 from ...utils.error_handling import auto_handle_errors
+from .encode_failure import EncodeFailureMapper
 from .filter_gate import SearchFilterGate
-from .helpers import SearchHelpers
 from .hit_mapper import SearchHitMapper
+from .model_mapper import SearchModelMapper
 from .models import (
     SearchCostModel,
     SearchHealthSummary,
@@ -116,7 +120,7 @@ async def search_collection(collection_id: uuid.UUID, request: SearchRequest) ->
         raise HTTPException(status_code=404, detail=f"Collection {collection_id} not found.")
 
     # 2. Locate the collection's embed node — without it there are no vectors to search.
-    embed_blob = SearchHelpers.embed_node_blob(collection.pipeline)
+    embed_blob = SearchCollectionSpecs.embed_node_blob(collection.pipeline)
     if embed_blob is None:
         raise HTTPException(
             status_code=409, detail="Collection has no embed node — search is unavailable."
@@ -131,7 +135,8 @@ async def search_collection(collection_id: uuid.UUID, request: SearchRequest) ->
 
     # 4. Gate the search targets the same way — a target naming a field/vector the collection never
     #    indexed (or a selection with no modality) is a caller error rejected 422 before any spend.
-    target_errors = SearchHelpers.validate_search_targets(request.search_in, schema)
+    search_targets = SearchModelMapper.to_search_targets(request.search_in)
+    target_errors = SearchTargetValidator.validate_search_targets(search_targets, schema)
     if target_errors:
         raise HTTPException(status_code=422, detail=f"Invalid search target(s): {target_errors}")
 
@@ -151,10 +156,10 @@ async def search_collection(collection_id: uuid.UUID, request: SearchRequest) ->
             request.query,
             top_k=request.limit,
             filters=resolution.filters if request.filters is not None else None,
-            search_targets=SearchHelpers.to_search_targets(request.search_in),
+            search_targets=search_targets,
             collection=collection,
             text_fields=resolution.text_fields,
-            title_field=SearchHelpers.title_field_spec(collection, schema),
+            title_field=SearchCollectionSpecs.title_field_spec(collection, schema),
             projection=projection,
             max_per_document=request.max_per_document if request.group_by else None,
             tuning=tuning,
@@ -170,7 +175,7 @@ async def search_collection(collection_id: uuid.UUID, request: SearchRequest) ->
         # The encode failed — probe the query embedder to classify permanent vs transient (bounded
         # by the sweep's own ~5s per-probe cap; it spends no real call, only preflight()).
         status = await QueryEmbedderProbe().classify(collection.pipeline)
-        raise SearchHelpers.encode_failure_http(status, str(exc))
+        raise EncodeFailureMapper.encode_failure_http(status, str(exc))
     except SearchRunError as exc:
         raise HTTPException(
             status_code=422,
@@ -208,10 +213,10 @@ async def search_collection(collection_id: uuid.UUID, request: SearchRequest) ->
     #    scores; score_kind names what the TUNED run delivered (a skipped rerank → its fusion kind).
     hits = SearchHitMapper.map(result.hits, projection, debug=tuning.debug)
     score_kind = tuning.score_kind(
-        SearchHelpers.score_kind(
-            collection.search, rerank_degraded=SearchHelpers.rerank_degraded(result.debug)
+        ScoreKindClassifier.score_kind(
+            collection.search, rerank_degraded=ScoreKindClassifier.rerank_degraded(result.debug)
         ),
-        SearchHelpers.score_kind(collection.search, rerank_degraded=True),
+        ScoreKindClassifier.score_kind(collection.search, rerank_degraded=True),
     )
     return SearchResponse(
         query=request.query,
@@ -219,7 +224,7 @@ async def search_collection(collection_id: uuid.UUID, request: SearchRequest) ->
         score_kind=score_kind,
         cost=cost,
         debug_info=result.debug,
-        hints=[SearchHelpers.to_hint_model(hint) for hint in hints],
+        hints=[SearchModelMapper.to_hint_model(hint) for hint in hints],
     )
 
 

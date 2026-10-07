@@ -25,6 +25,7 @@ from .routers import (
     blobs_router,
     capabilities_router,
     chunk_browse_router,
+    collection_pipeline_router,
     collections_router,
     corpus_router,
     documents_router,
@@ -128,6 +129,8 @@ def create_app(
 
     # API v1 — the collection contract CRUD (create A→Z, config patching).
     app.include_router(router=collections_router, prefix="/api/v1")
+    # API v1 — the collection-scoped stage edit (apply one action to the stored pipeline + persist).
+    app.include_router(router=collection_pipeline_router, prefix="/api/v1")
 
     # API v1 — admission (upload → enqueue) and live ingestion status.
     app.include_router(router=documents_router, prefix="/api/v1")

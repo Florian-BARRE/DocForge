@@ -84,6 +84,7 @@ ROUTES: set[tuple[str, str]] = {
     ("POST", "/api/v1/pipelines/{key}/edit"),
     ("POST", "/api/v1/pipelines/{key}/stages/view"),
     ("POST", "/api/v1/pipelines/{key}/stages/apply"),
+    ("POST", "/api/v1/collections/{collection_id}/pipeline/stages/apply"),
     # Jobs — resources/jobs.py
     ("GET", "/api/v1/jobs"),
     ("GET", "/api/v1/jobs/{job_id}"),

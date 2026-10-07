@@ -66,7 +66,9 @@ def _wire(monkeypatch, *, collection, schema=SCHEMA):
     )
     database = SimpleNamespace(
         collections=SimpleNamespace(
-            get=AsyncMock(return_value=collection), get_schema=AsyncMock(return_value=schema)
+            get=AsyncMock(return_value=collection),
+            get_schema=AsyncMock(return_value=schema),
+            change_stamp=AsyncMock(return_value=None if collection is None else ("t0", 42, "d0")),
         ),
         documents=SimpleNamespace(count_for_collection=AsyncMock(return_value=42)),
         metadata_values=resolver,
@@ -209,3 +211,67 @@ async def test_scope_authz(fastapi_app) -> None:
         with pytest.raises(HTTPException) as exc:
             await authorize(_request(denied))
         assert exc.value.status_code == 403
+
+
+# -------------------- the describe cache (stamp-validated, TTL-bounded, LRU) --------------------
+def _describe(client):
+    response = client.get(f"/api/v1/collections/{COLLECTION_ID}/describe")
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def test_second_call_is_a_cache_hit_with_no_value_scan(fastapi_app, monkeypatch, client) -> None:
+    from backend.context import CONTEXT  # noqa: PLC0415
+
+    resolver = _wire(monkeypatch, collection=_collection())
+    first = _describe(client)
+    scans = resolver.distinct_values.await_count
+    assert _describe(client) == first
+    assert resolver.distinct_values.await_count == scans  # no re-scan on the hit
+    assert CONTEXT.database.collections.get_schema.await_count == 1
+
+
+def test_a_moved_change_stamp_refreshes_the_guide(fastapi_app, monkeypatch, client) -> None:
+    """A metadata edit/ingestion/schema PATCH moves the stamp → the next call recomposes."""
+    from backend.context import CONTEXT  # noqa: PLC0415
+
+    _wire(monkeypatch, collection=_collection())
+    assert _describe(client)["document_count"] == 42
+    CONTEXT.database.collections.change_stamp.return_value = ("t1", 43, "d1")
+    CONTEXT.database.documents.count_for_collection.return_value = 43
+    assert _describe(client)["document_count"] == 43
+    assert CONTEXT.database.collections.get_schema.await_count == 2
+
+
+def test_ttl_zero_disables_the_cache(fastapi_app, monkeypatch, client) -> None:
+    from backend.context import CONTEXT  # noqa: PLC0415
+    from config import RUNTIME_CONFIG  # noqa: PLC0415
+
+    monkeypatch.setattr(RUNTIME_CONFIG, "DESCRIBE_CACHE_TTL_SECONDS", 0.0)
+    _wire(monkeypatch, collection=_collection())
+    _describe(client)
+    _describe(client)
+    assert CONTEXT.database.collections.get_schema.await_count == 2
+
+
+def test_expired_entry_is_never_served(fastapi_app, monkeypatch) -> None:
+    from backend.libs.describe import cache as cache_module  # noqa: PLC0415
+
+    cache = cache_module.DescribeCache()
+    clock = iter([100.0, 100.0 + 10_000.0])
+    monkeypatch.setattr(cache_module.time, "monotonic", lambda: next(clock))
+    cache.put(COLLECTION_ID, "s", SimpleNamespace())
+    assert cache.get(COLLECTION_ID, "s") is None
+
+
+def test_cache_is_bounded_lru(fastapi_app) -> None:
+    from backend.libs.describe import DescribeCache  # noqa: PLC0415
+
+    cache = DescribeCache(max_entries=2)
+    a, b, c = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+    cache.put(a, "s", SimpleNamespace(name="a"))
+    cache.put(b, "s", SimpleNamespace(name="b"))
+    assert cache.get(a, "s") is not None  # a is now most recently used
+    cache.put(c, "s", SimpleNamespace(name="c"))
+    assert cache.get(b, "s") is None  # b was the LRU → evicted
+    assert cache.get(a, "s") is not None and cache.get(c, "s") is not None

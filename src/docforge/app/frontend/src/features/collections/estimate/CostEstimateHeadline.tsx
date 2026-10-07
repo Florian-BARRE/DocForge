@@ -1,8 +1,8 @@
 // ====== Code Summary ======
-// The estimate result's headline — the projected total spend (or "Free"/"Cost unknown" when
-// unpriced, per the endpoint's null-vs-zero distinction), a "partial" flag when some stages
-// couldn't be priced, and a mini-grid of the projected output volume. Mirrors
-// storage/StorageGrandTotal's big-mono-headline shape.
+// The estimate result's headline — the projected total spend ("Free" when genuinely zero), or, when
+// some paid stage couldn't be priced (null total), the priced lower bound shown as "≥ $X" with the
+// "partial" flag — never an understated figure passed off as the total. Plus a mini-grid of the
+// projected output volume. Mirrors storage/StorageGrandTotal's big-mono-headline shape.
 
 import type { CostEstimate } from "../../../api/collections";
 import { Chip } from "../../../components/Chip";
@@ -14,14 +14,24 @@ interface CostEstimateHeadlineProps {
   estimate: CostEstimate;
 }
 
-function costHeadline(totalCostUsd: number | null): string {
-  if (totalCostUsd === null) return "Cost unknown";
+function costHeadline(totalCostUsd: number | null, lowerBoundUsd: number | undefined): string {
+  if (totalCostUsd === null) {
+    return lowerBoundUsd === undefined ? "Cost unknown" : `≥ ${formatUsd(lowerBoundUsd)}`;
+  }
   if (totalCostUsd === 0) return "Free";
   return formatUsd(totalCostUsd);
 }
 
 export function CostEstimateHeadline({ estimate }: CostEstimateHeadlineProps) {
-  const { document_count, volume, total_prompt_tokens, total_completion_tokens, total_cost_usd, cost_complete } = estimate;
+  const {
+    document_count,
+    volume,
+    total_prompt_tokens,
+    total_completion_tokens,
+    total_cost_usd,
+    total_cost_lower_bound_usd,
+    cost_complete,
+  } = estimate;
   const totalTokens = total_prompt_tokens + total_completion_tokens;
 
   return (
@@ -32,10 +42,10 @@ export function CostEstimateHeadline({ estimate }: CostEstimateHeadlineProps) {
         </div>
         <div style={{ display: "flex", alignItems: "baseline", gap: t.space.s, marginTop: 4 }}>
           <span style={{ fontFamily: t.font.mono, fontWeight: t.font.weight.bold, fontSize: t.font.size.display, color: t.color.text, lineHeight: 1.1 }}>
-            {costHeadline(total_cost_usd)}
+            {costHeadline(total_cost_usd, total_cost_lower_bound_usd)}
           </span>
           {!cost_complete && (
-            <Chip tone="warn" title="At least one priced stage's provider has no configured rate — the total understates the real spend.">
+            <Chip tone="warn" title="At least one paid stage's model has no known rate — the figure is a minimum (priced stages only); see the caveats to set the missing rate.">
               partial
             </Chip>
           )}

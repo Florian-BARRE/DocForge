@@ -18,6 +18,13 @@ from .runner import (
     SearchUnavailableError,
 )
 
+# ---------------------- Pure request gates + collection lookups ---------------------- #
+from .collection_specs import SearchCollectionSpecs
+from .enum_filter_canonicalizer import EnumFilterCanonicalizer
+from .filter_validator import SearchFilterValidator
+from .score_kind import ScoreKindClassifier
+from .target_validator import SearchTargetValidator
+
 # ---------------------- Filter value resolution + hints ---------------------- #
 from .filter_hint import FilterHint
 from .filter_resolution import FilterResolution
@@ -51,6 +58,11 @@ __all__ = [
     "SearchRunError",
     "SearchRunTimeout",
     "SearchUnavailableError",
+    "SearchCollectionSpecs",
+    "EnumFilterCanonicalizer",
+    "SearchFilterValidator",
+    "ScoreKindClassifier",
+    "SearchTargetValidator",
     "FilterHint",
     "FilterResolution",
     "SearchFilterResolver",

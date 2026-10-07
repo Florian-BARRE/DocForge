@@ -38,7 +38,10 @@ import type {
   MetadataValue,
   PageInfo,
 } from "./explorer";
-import type { AssumptionOverrides, Collection, EstimateOverrides, FieldSpec, ModelRateOverride, RateOverrides } from "./collections";
+import type {
+  AssumptionOverrides, Collection, EstimateOverrides, FieldSpec, ModelRateOverride, RateOverrides,
+  SchemaDiff, SchemaDiffModifiedField, SchemaDiffRename, UpdateCollectionResponse,
+} from "./collections";
 import type { CapabilitiesResponse, CapabilityMatrix, CapabilityService } from "./capabilities";
 import type { DocumentGridRow } from "./corpus";
 import type { MetadataUpdateResponse, MetadataValuesPatch } from "./documents";
@@ -165,6 +168,16 @@ export type _CollectionParity = Expect<
   Equal<
     Normalize<Omit<Collection, "fields" | "estimate_overrides">>,
     Normalize<Omit<Schemas["CollectionModel"], "fields" | "estimate_overrides">>
+  >
+>;
+
+export type _SchemaDiffParity = Expect<Equal<Normalize<SchemaDiff>, Normalize<Schemas["SchemaDiff"]>>>;
+export type _SchemaDiffModifiedParity = Expect<Equal<Normalize<SchemaDiffModifiedField>, Normalize<Schemas["SchemaDiffModifiedField"]>>>;
+export type _SchemaDiffRenameParity = Expect<Equal<Normalize<SchemaDiffRename>, Normalize<Schemas["SchemaDiffRename"]>>>;
+export type _UpdateCollectionResponseParity = Expect<
+  Equal<
+    Normalize<Pick<UpdateCollectionResponse, "dry_run" | "schema_diff">>,
+    Normalize<Pick<Schemas["UpdateCollectionResponse"], "dry_run" | "schema_diff">>
   >
 >;
 

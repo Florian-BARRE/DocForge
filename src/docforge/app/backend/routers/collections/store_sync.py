@@ -2,7 +2,8 @@
 # CollectionStoreSync — the store-side follow-through of a collection write, kept out of router.py
 # so the routes stay orchestration. It owns the two side-effecting steps a write triggers: granting
 # the creating key ownership of a freshly created collection, and reconciling the Qdrant store to a
-# just-edited schema then enqueuing the idempotent repair backfills.
+# just-edited schema (purging the residue of departed fields first) then enqueuing the idempotent
+# repair backfills.
 
 # ====== Standard Library Imports ======
 import uuid
@@ -45,7 +46,31 @@ class CollectionStoreSync:
         await CONTEXT.database.auth.grant_collection_to_key(key.id, collection_id)
 
     @classmethod
-    async def reconcile_and_backfill(cls, collection_id: uuid.UUID) -> None:
+    async def purge_departed_fields(cls, collection_id: uuid.UUID, departed: list[str]) -> None:
+        """
+        Best-effort: clear departed fields' payload keys + meta-vector data from every Qdrant point.
+
+        Runs after the schema commit and NEVER fails the write: a store error is logged, and the
+        convergent cleanup (it also clears residue the current schema no longer explains) repairs it
+        at the next schema-changing PATCH or snippet import.
+
+        Args:
+            collection_id (uuid.UUID): The collection whose points are cleaned.
+            departed (list[str]): Field names removed / renamed away by the change.
+        """
+        # 1. Delegate to the facade; a store failure is reported, never raised to the client.
+        try:
+            await CONTEXT.database.schema_changes.purge_departed_fields(collection_id, departed)
+        except Exception as exc:  # noqa: BLE001 — post-commit, best-effort by contract
+            cls.logger.error(
+                f"Collection {collection_id}: departed-field Qdrant cleanup failed for {departed} "
+                f"({exc}) — stale payload keys/vectors remain until the next schema change re-runs it"
+            )
+
+    @classmethod
+    async def reconcile_and_backfill(
+        cls, collection_id: uuid.UUID, departed: list[str] | None = None
+    ) -> None:
         """
         Reconcile the Qdrant store to the current schema and enqueue the repair backfills.
 
@@ -56,7 +81,12 @@ class CollectionStoreSync:
 
         Args:
             collection_id (uuid.UUID): The collection whose store is reconciled and backfilled.
+            departed (list[str] | None): Field names that left the schema — their residue is purged
+                first (the purge is convergent, so it also runs with none to heal earlier failures).
         """
+        # 0. Clear what departed fields left on the points BEFORE re-adding indexes / repainting.
+        await cls.purge_departed_fields(collection_id, departed or [])
+
         # 1. Additively align the store; surface the fields that truly need a reindex (missing vectors).
         reindex_fields = await CONTEXT.database.collections.reconcile_store(collection_id)
         if reindex_fields:

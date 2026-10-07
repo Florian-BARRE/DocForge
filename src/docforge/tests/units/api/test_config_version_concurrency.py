@@ -129,3 +129,21 @@ async def test_without_the_row_lock_the_race_would_collide(monkeypatch) -> None:
 
     assert store.integrity_errors == 1
     assert any(isinstance(r, IntegrityError) for r in results)
+
+
+async def test_stale_expected_version_conflicts_and_writes_nothing(monkeypatch) -> None:
+    """The stage-apply CAS: a write based on an old head version raises instead of overwriting."""
+    import pytest  # noqa: PLC0415
+
+    from shared_libs.services.db.facades import ConfigVersionConflictError  # noqa: PLC0415
+
+    store = _FakeConfigStore(initial_max=3)
+    _wire(monkeypatch, store, lock=True)
+    facade = CollectionsFacade(_postgres(store), MagicMock(), MagicMock())
+
+    with pytest.raises(ConfigVersionConflictError):
+        await facade.update_config(uuid.uuid4(), pipeline={"a": 1}, expected_version=2)
+    assert store.versions == [1, 2, 3]
+
+    await facade.update_config(uuid.uuid4(), pipeline={"a": 1}, expected_version=3)
+    assert store.versions == [1, 2, 3, 4]

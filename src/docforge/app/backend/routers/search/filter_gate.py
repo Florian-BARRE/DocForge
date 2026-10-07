@@ -17,8 +17,12 @@ from shared_libs.services.db.postgresql.tables import MetadataField
 
 # ====== Local Project Imports ======
 from ...context import CONTEXT
-from ...libs.search import FilterResolution, SearchFilterResolver
-from .helpers import SearchHelpers
+from ...libs.search import (
+    EnumFilterCanonicalizer,
+    FilterResolution,
+    SearchFilterResolver,
+    SearchFilterValidator,
+)
 
 
 class SearchFilterGate:
@@ -47,17 +51,17 @@ class SearchFilterGate:
         """
         # 1. Empty (Qdrant reads an empty any-of as "no constraint" → a WIDER read) and oversized
         #    list filters are rejected before anything else looks at them.
-        list_errors = SearchHelpers.list_violations(filters)
+        list_errors = SearchFilterValidator.list_violations(filters)
         if list_errors:
             raise HTTPException(status_code=422, detail=f"Invalid filter value(s): {list_errors}")
 
         # 2. Operator objects (ranges included) must be valid for their field's type.
-        operator_errors = SearchHelpers.operator_violations(filters, schema)
+        operator_errors = SearchFilterValidator.operator_violations(filters, schema)
         if operator_errors:
             raise HTTPException(status_code=422, detail=f"Invalid filter(s): {operator_errors}")
 
         # 3. Only filterable fields may be filtered on.
-        _, invalid = SearchHelpers.build_conditions(filters, schema)
+        _, invalid = SearchFilterValidator.build_conditions(filters, schema)
         if invalid:
             raise HTTPException(
                 status_code=422,
@@ -65,7 +69,7 @@ class SearchFilterGate:
             )
 
         # 4. An ENUM field only accepts its members (case-only differences mapped to the member).
-        canonical, enum_errors = SearchHelpers.canonical_enum_filters(filters, schema)
+        canonical, enum_errors = EnumFilterCanonicalizer.canonical_enum_filters(filters, schema)
         if enum_errors:
             raise HTTPException(status_code=422, detail=f"Invalid filter value(s): {enum_errors}")
 

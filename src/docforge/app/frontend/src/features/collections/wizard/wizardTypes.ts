@@ -35,6 +35,9 @@ export function resolveMaxFileSizeBytes(maxSizeMb: number, originalBytes: number
 /** One schema row being edited — `_key` is a stable React list key, stripped before submit. */
 export interface DraftField extends FieldSpec {
   _key: string;
+  /** Stored name of the field this row was loaded from (edit mode); absent on rows added in the editor.
+   *  Lets a renamed row be sent as a `rename` op (values kept) instead of remove + add. Client-only. */
+  _originalName?: string;
 }
 
 let nextKey = 0;
@@ -62,15 +65,16 @@ export function documentFieldNames(fields: DraftField[]): string[] {
 }
 
 /** Strip the client-only key before the payload goes to the API. */
-export function toFieldSpec({ _key, ...rest }: DraftField): FieldSpec {
+export function toFieldSpec({ _key, _originalName, ...rest }: DraftField): FieldSpec {
   void _key;
+  void _originalName;
   return rest;
 }
 
 /** Wrap an existing field spec (from a fetched Collection) as an editable draft row. */
 export function toDraftField(spec: FieldSpec): DraftField {
   nextKey += 1;
-  return { ...spec, _key: `draft-${nextKey}` };
+  return { ...spec, _key: `draft-${nextKey}`, _originalName: spec.field_name };
 }
 
 // Collection response keys that already have a named wizard state slot, or are structural
@@ -125,7 +129,8 @@ export function draftFromCollection(collection: Collection): {
  * deletes these fields (and every stored value) when the target schema is submitted.
  */
 export function removedFieldNames(original: FieldSpec[], current: DraftField[]): string[] {
-  const kept = new Set(current.map((f) => f.field_name));
+  // A renamed row keeps its values, so its ORIGINAL name still counts as kept.
+  const kept = new Set(current.flatMap((f) => (f._originalName ? [f.field_name, f._originalName] : [f.field_name])));
   return original.filter((f) => !kept.has(f.field_name)).map((f) => f.field_name);
 }
 

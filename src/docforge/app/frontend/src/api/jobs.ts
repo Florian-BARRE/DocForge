@@ -37,6 +37,9 @@ export interface JobStatus {
    *  filename when present. Null if none was generated, the document is gone, or (SSE status
    *  frames only) the snapshot didn't re-join it — see streamJobEvents. */
   document_title: string | null;
+  /** The document's display title (the collection's `title_field` value when set, else the parsed
+   *  title). Null when neither exists, the document is gone, or on SSE status frames. */
+  display_title?: string | null;
   collection_id: string;
   /** The collection's name, joined at read — null only if the collection row is gone. */
   collection_name: string | null;
@@ -79,11 +82,13 @@ export interface JobStatus {
 }
 
 /** The one human label to show for a job, everywhere it's shown (job rows, worker cards, the job
- *  detail header): the metagen title when one was generated, else the filename, else a generic
- *  fallback for the rare gone-document edge case. Keeping this in one place is what keeps the job
+ *  detail header): the display title (honours the collection's title field), else the metagen
+ *  title, else the filename, else a generic fallback for the rare gone-document edge case. Keeping this in one place is what keeps the job
  *  list and the job detail header in sync. */
-export function jobDisplayName(job: Pick<JobStatus, "document_title" | "document_filename">): string {
-  return job.document_title || job.document_filename || "untitled document";
+export function jobDisplayName(
+  job: Pick<JobStatus, "display_title" | "document_title" | "document_filename">,
+): string {
+  return job.display_title || job.document_title || job.document_filename || "untitled document";
 }
 
 export interface JobEvent {

@@ -99,6 +99,7 @@ async def test_all_parts_commit_in_one_transaction(monkeypatch) -> None:
     set_overrides = AsyncMock()
     monkeypatch.setattr(cf_module.CollectionApi, "update", update)
     monkeypatch.setattr(cf_module.CollectionApi, "get_schema", AsyncMock(return_value=[]))
+    monkeypatch.setattr(cf_module.CollectionApi, "touch", AsyncMock())
     # The trailing needs_reindex derive reads the post-write row (pipeline + indexed baseline).
     monkeypatch.setattr(
         cf_module.CollectionApi,

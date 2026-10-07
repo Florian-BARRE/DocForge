@@ -73,7 +73,12 @@ def _mock_db(monkeypatch, **methods) -> SimpleNamespace:
     from backend.context import CONTEXT  # noqa: PLC0415
 
     facade = SimpleNamespace(**methods)
-    monkeypatch.setattr(CONTEXT, "database", SimpleNamespace(collections=facade))
+    schema_changes = SimpleNamespace(
+        count_field_values=AsyncMock(return_value={}), purge_departed_fields=AsyncMock()
+    )
+    monkeypatch.setattr(
+        CONTEXT, "database", SimpleNamespace(collections=facade, schema_changes=schema_changes)
+    )
     return facade
 
 
@@ -263,6 +268,7 @@ async def test_schema_patch_runs_the_orphan_clear(monkeypatch) -> None:
 
     monkeypatch.setattr(cf_module.DatabaseHelpers, "validate_vector_slugs", lambda _f: None)
     monkeypatch.setattr(cf_module.CollectionApi, "get_schema", AsyncMock(return_value=[]))
+    monkeypatch.setattr(cf_module.CollectionApi, "touch", AsyncMock())
     collection = SimpleNamespace(title_field="author", pipeline={}, indexed_signature=None)
     monkeypatch.setattr(cf_module.CollectionApi, "get", AsyncMock(return_value=collection))
 

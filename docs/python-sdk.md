@@ -469,6 +469,7 @@ modelled. This resource backs the visual pipeline studio.
 | `pipelines.edit(key, blob, operations)` | `EditResponse` | Apply ordered graph operations server-side. |
 | `pipelines.view_stages(key, blob)` | `StageViewResponse` | Derive the ordered stage view of a blob. |
 | `pipelines.apply_stage(key, blob, action)` | `StageApplyResponse` | Compile a stage action into a blob. |
+| `pipelines.apply_collection_stage(collection_id, action, note=None)` | `CollectionStageApplyResponse` | Apply one stage action to a collection's STORED pipeline and persist it when valid (`persisted`); prefer `{"action": "set_config", "mode": "merge", ...}` for single-key edits. |
 
 ```python
 index = client.pipelines.list_surfaces()

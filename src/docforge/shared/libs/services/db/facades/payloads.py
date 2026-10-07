@@ -79,6 +79,9 @@ class CollectionUpdateSpec:
             untagged).
         schema_fields (list[MetadataField] | None): The desired metadata schema (None = don't touch
             the schema; a diff-update is applied otherwise).
+        schema_renames (dict[str, str]): Current field name → its new name, applied as an UPDATE of
+            the row's ``field_name`` (values survive; a ``title_field`` pointing at it follows). The
+            ``schema_fields`` entries are keyed by the NEW names. Empty = match purely by name.
         config_touched (bool): Apply the pipeline/search blobs below and append a version snapshot.
         pipeline / search (dict | None): The stamped config blobs (None = leave that blob unchanged).
         note (str | None): The snapshot note stored with the config version.
@@ -99,6 +102,7 @@ class CollectionUpdateSpec:
     trace_verbosity: str | None = None
     # metadata schema (None = don't touch the schema)
     schema_fields: list[MetadataField] | None = None
+    schema_renames: dict[str, str] = field(default_factory=dict)
     # config blobs (+ immutable snapshot)
     config_touched: bool = False
     pipeline: dict | None = None

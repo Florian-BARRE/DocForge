@@ -30,6 +30,7 @@ from docforge_sdk.models.collections import (
     ReingestJobHandle,
     SearchTargetGuide,
     UpdateCollectionRequest,
+    UpdateCollectionResponse,
 )
 from docforge_sdk.models.corpus import (
     BulkDeleteResponse,
@@ -118,6 +119,7 @@ from docforge_sdk.models.jobs import (
     CollectionCost as _CollectionCost,
 )
 from docforge_sdk.models.pipelines import (
+    CollectionStageApplyResponse,
     EditResponse,
     InspectResponse,
     PipelineDesignResponse,
@@ -135,6 +137,16 @@ from docforge_sdk.models.preview import (
     PreviewJobResult,
     PreviewResponse,
     PreviewTraceNode,
+)
+from docforge_sdk.models.schema_ops import (
+    AddFieldOp,
+    FieldPatch,
+    RemoveFieldOp,
+    RenameFieldOp,
+    SchemaDiff,
+    SchemaDiffModifiedField,
+    SchemaDiffRename,
+    UpdateFieldOp,
 )
 from docforge_sdk.models.search import (
     BlockLocation,
@@ -209,6 +221,15 @@ MODELS: dict[str, type[BaseModel]] = {
     "CollectionListItem": CollectionListItem,
     "CreateCollectionRequest": CreateCollectionRequest,
     "UpdateCollectionRequest": UpdateCollectionRequest,
+    "UpdateCollectionResponse": UpdateCollectionResponse,
+    "FieldPatch": FieldPatch,
+    "AddFieldOp": AddFieldOp,
+    "UpdateFieldOp": UpdateFieldOp,
+    "RemoveFieldOp": RemoveFieldOp,
+    "RenameFieldOp": RenameFieldOp,
+    "SchemaDiff": SchemaDiff,
+    "SchemaDiffModifiedField": SchemaDiffModifiedField,
+    "SchemaDiffRename": SchemaDiffRename,
     "BulkReingestRequest": BulkReingestRequest,
     "ReingestJobHandle": ReingestJobHandle,
     "BulkReingestAccepted": BulkReingestAccepted,
@@ -292,6 +313,7 @@ MODELS: dict[str, type[BaseModel]] = {
     "EditResponse": EditResponse,
     "StageViewResponse": StageViewResponse,
     "StageApplyResponse": StageApplyResponse,
+    "CollectionStageApplyResponse": CollectionStageApplyResponse,
     # Pipeline dry-run preview
     "PreviewIrSummary": PreviewIrSummary,
     "PreviewChunk": PreviewChunk,
@@ -397,6 +419,7 @@ _PIPELINE_BLOB_SCHEMAS: list[str] = [
     # Stage view / apply (the stackable-stage editing surface).
     "StageAction",
     "StageApplyRequest",
+    "CollectionStageApplyRequest",
     "StageKind",
     "StageView",
     "StageViewRequest",

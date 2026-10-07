@@ -15,7 +15,6 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared_libs.public_models import FieldScope
-from shared_libs.services.db.index_signature import CollectionIndexSignature
 from shared_libs.services.db.postgresql import PostgresClient
 from shared_libs.services.db.postgresql.apis import BlobApi, CollectionApi, JobApi
 from shared_libs.services.db.postgresql.tables import (
@@ -28,6 +27,7 @@ from shared_libs.services.db.qdrant import QdrantClient, QdrantCollectionApi
 from shared_libs.services.db.s3 import S3Client, S3ObjectApi
 
 # ====== Local Project Imports ======
+from .collection_config_writer import CollectionConfigWriter
 from .helpers import DatabaseHelpers
 from .payloads import CollectionUpdateResult, CollectionUpdateSpec
 from .trace_purge import TracePurgeHelper
@@ -133,6 +133,11 @@ class CollectionsFacade(LoggerClass):
         async with self._postgres.session() as session:
             return await CollectionApi.get_by_name(session, name)
 
+    async def change_stamp(self, collection_id: uuid.UUID) -> tuple[object, int, object] | None:
+        """Return the collection's cheap change stamp (see ``CollectionApi.change_stamp``), or None."""
+        async with self._postgres.session() as session:
+            return await CollectionApi.change_stamp(session, collection_id)
+
     async def get_schema(self, collection_id: uuid.UUID) -> list[MetadataField]:
         """Return the collection's metadata schema."""
         async with self._postgres.session() as session:
@@ -232,7 +237,7 @@ class CollectionsFacade(LoggerClass):
         async with self._postgres.session() as session:
             await self._apply_schema_diff(session, collection_id, desired)
             await self._clear_orphaned_title_field(session, collection_id)
-            reindex_needed = await self._sync_needs_reindex(session, collection_id)
+            reindex_needed = await CollectionConfigWriter.sync_needs_reindex(session, collection_id)
         self.logger.info(
             f"Schema updated for {collection_id} "
             f"({len(desired)} fields, reindex_needed={reindex_needed})"
@@ -241,7 +246,10 @@ class CollectionsFacade(LoggerClass):
 
     @staticmethod
     async def _apply_schema_diff(
-        session: AsyncSession, collection_id: uuid.UUID, desired: list[MetadataField]
+        session: AsyncSession,
+        collection_id: uuid.UUID,
+        desired: list[MetadataField],
+        renames: dict[str, str] | None = None,
     ) -> None:
         """
         Diff-update the metadata schema INSIDE a caller-supplied session (never a wholesale replace).
@@ -249,18 +257,44 @@ class CollectionsFacade(LoggerClass):
         The transactional core shared by ``update_schema`` (own session) and ``apply_update`` (one
         session threaded through the whole PATCH). The caller MUST have already validated vector slugs
         (fail-fast, before any write). Never opens or commits a session — it only stages the writes;
-        the caller then derives ``needs_reindex`` via ``_sync_needs_reindex`` over the final state.
+        the caller then derives ``needs_reindex`` via ``CollectionConfigWriter.sync_needs_reindex`` over the final state.
 
         Args:
             session (AsyncSession): The unit of work the whole PATCH shares.
             collection_id (uuid.UUID): The collection.
-            desired (list[MetadataField]): The target schema (collection_id filled here).
+            desired (list[MetadataField]): The target schema (collection_id filled here), keyed by the
+                post-rename names.
+            renames (dict[str, str] | None): Current name → new name. A renamed row is UPDATED in place
+                (same id → its stored values survive), never deleted + re-added.
         """
+        renames = renames or {}
         current = await CollectionApi.get_schema(session, collection_id)
         current_by_name = {row.field_name: row for row in current}
         desired_by_name = {row.field_name: row for row in desired}
 
-        # 1. Update in place / insert new / delete removed (values cascade — explicit).
+        # 1. Delete the removed rows FIRST (values cascade — explicit) and flush, so a rename/add may
+        #    reuse a freed name in this transaction without tripping the (collection, name) UNIQUE.
+        #    A current row survives by name only when that name is not itself a rename's target.
+        kept = set(desired_by_name) - set(renames.values())
+        removed = [name for name in current_by_name if name not in kept and name not in renames]
+        for name in removed:
+            await session.delete(current_by_name.pop(name))
+        if removed and renames:
+            await session.flush()
+
+        # 2. Renames in two phases (a temporary unique name, then the final one) so a chain or a swap
+        #    never collides mid-flush; the row keeps its id, hence its document/chunk values.
+        if renames:
+            renamed = [current_by_name.pop(old) for old in renames]
+            for row in renamed:
+                row.field_name = f"__renaming_{row.id}"
+            await session.flush()
+            for row, new_name in zip(renamed, renames.values(), strict=True):
+                row.field_name = new_name
+                current_by_name[new_name] = row
+            await session.flush()
+
+        # 3. Update in place / insert new.
         for name, wanted in desired_by_name.items():
             row = current_by_name.get(name)
             if row is None:
@@ -277,9 +311,23 @@ class CollectionsFacade(LoggerClass):
             row.scope = wanted.scope
             # Documentation only — excluded from the index signature, so it never flags a reindex.
             row.description = wanted.description
-        for name, row in current_by_name.items():
-            if name not in desired_by_name:
-                await session.delete(row)
+
+    @staticmethod
+    async def _follow_renamed_title_field(
+        session: AsyncSession, collection_id: uuid.UUID, renames: dict[str, str]
+    ) -> None:
+        """
+        Point ``title_field`` at its field's new name when that field was renamed (same values).
+
+        Args:
+            session (AsyncSession): The unit of work the schema diff was staged on.
+            collection_id (uuid.UUID): The collection whose setting may follow.
+            renames (dict[str, str]): Current name → new name.
+        """
+        # 1. Only a title naming a renamed field moves; anything else is left to the orphan check.
+        collection = await CollectionApi.get(session, collection_id)
+        if collection is not None and collection.title_field in renames:
+            collection.title_field = renames[collection.title_field]
 
     async def _clear_orphaned_title_field(
         self, session: AsyncSession, collection_id: uuid.UUID
@@ -322,40 +370,6 @@ class CollectionsFacade(LoggerClass):
             f"field after the schema change — cleared (documents show their parsed title again)"
         )
         return cleared
-
-    @staticmethod
-    async def _sync_needs_reindex(session: AsyncSession, collection_id: uuid.UUID) -> bool:
-        """
-        Derive ``needs_reindex`` from the CURRENT config vs the indexed baseline — the single source.
-
-        Replaces the old sticky one-way boolean. ``needs_reindex`` flips ON only when the collection
-        has an indexed baseline (``indexed_signature`` not NULL) AND its current reindex-relevant
-        config (semantic/lexical metadata surface + embed vector space; ``filterable`` EXCLUDED — it
-        reconciles live) differs from that baseline. So: a never-indexed collection (NULL baseline)
-        has nothing stale to reindex → False; reverting to the indexed config → equal signatures →
-        False; a filterable-only toggle → unchanged signature → stays False.
-
-        Must be called AFTER every schema/config write has been staged on the same session, so it
-        sees the final state (autoflush makes the staged rows visible to its reads).
-
-        Args:
-            session (AsyncSession): The unit of work the write was staged on.
-            collection_id (uuid.UUID): The collection to recompute.
-
-        Returns:
-            bool: The recomputed ``needs_reindex`` (also written onto the row).
-        """
-        # 1. Read the post-write config (same identity-mapped row → reflects staged mutations).
-        collection = await CollectionApi.get(session, collection_id)
-        if collection is None:
-            return False
-        schema = await CollectionApi.get_schema(session, collection_id)
-        # 2. A never-indexed collection has no baseline to be stale against → never needs a reindex.
-        current = CollectionIndexSignature.compute(collection.pipeline, schema)
-        needs = collection.indexed_signature is not None and current != collection.indexed_signature
-        # 3. Stage the derived flag on the row (never a sticky True).
-        collection.needs_reindex = needs
-        return needs
 
     async def reconcile_store(self, collection_id: uuid.UUID) -> set[str]:
         """
@@ -407,64 +421,40 @@ class CollectionsFacade(LoggerClass):
         pipeline: dict | None = None,
         search: dict | None = None,
         note: str | None = None,
+        expected_version: int | None = None,
     ) -> bool:
         """Patch the collection's config blobs, append the snapshot, and derive needs_reindex.
 
+        Args:
+            expected_version (int | None): Compare-and-swap token (see ``config_head``); None =
+                unconditional write.
+
         Returns:
             bool: The DERIVED needs_reindex after the write (baseline-relative, never sticky).
+
+        Raises:
+            ConfigVersionConflictError: When ``expected_version`` is no longer the head version.
         """
         async with self._postgres.session() as session:
-            await self._apply_config(
+            await CollectionConfigWriter.apply(
                 session,
                 collection_id,
                 pipeline=pipeline,
                 search=search,
                 note=note,
+                expected_version=expected_version,
             )
-            return await self._sync_needs_reindex(session, collection_id)
+            return await CollectionConfigWriter.sync_needs_reindex(session, collection_id)
 
-    @staticmethod
-    async def _apply_config(
-        session: AsyncSession,
-        collection_id: uuid.UUID,
-        *,
-        pipeline: dict | None = None,
-        search: dict | None = None,
-        note: str | None = None,
-    ) -> None:
-        """
-        Patch the config blobs + append the snapshot INSIDE a caller-supplied session.
+    async def config_head(self, collection_id: uuid.UUID) -> tuple[Collection | None, int]:
+        """Read the head config version THEN the row — the CAS base of a read-modify-write.
 
-        The transactional core shared by ``update_config`` (own session) and ``apply_update`` (the
-        whole PATCH in one session). Never opens or commits — it only stages the writes; the caller
-        derives ``needs_reindex`` via ``_sync_needs_reindex`` over the final state.
+        Version first: a write committing between the two reads leaves the version stale, so the
+        later ``update_config(expected_version=...)`` conflicts instead of losing that write.
         """
-        # 1. Lock the collection row FIRST: concurrent config PATCHes on the same collection serialize
-        #    here, so the version counter can't be read-then-bumped by two transactions at once (which
-        #    would mint a duplicate (collection_id, version)). The lock is held until the transaction
-        #    ends; uq_config_version_collection_id is the DB backstop behind it.
-        collection = await CollectionApi.get_for_update(session, collection_id)
-        if collection is None:
-            return
-        # 2. Apply the patch on the locked row.
-        await CollectionApi.update(
-            session,
-            collection_id,
-            pipeline=pipeline,
-            search=search,
-        )
-        # 3. Snapshot the NEW state (append-only history). Only the max version number is needed —
-        #    fetch it as a scalar, not the whole {pipeline, search} snapshot history.
-        next_version = await CollectionApi.max_config_version(session, collection_id) + 1
-        await CollectionApi.add_config_version(
-            session,
-            ConfigVersion(
-                collection_id=collection_id,
-                version=next_version,
-                config={"pipeline": collection.pipeline, "search": collection.search},
-                note=note,
-            ),
-        )
+        async with self._postgres.session() as session:
+            version = await CollectionApi.max_config_version(session, collection_id)
+            return await CollectionApi.get(session, collection_id), version
 
     async def apply_update(
         self, collection_id: uuid.UUID, spec: CollectionUpdateSpec
@@ -511,13 +501,21 @@ class CollectionsFacade(LoggerClass):
                         trace_verbosity=spec.trace_verbosity,
                     )
 
-                # 3. Metadata schema by DIFF (stages the schema rows only).
+                # 3. Metadata schema by DIFF (stages the schema rows only); a renamed field keeps its
+                #    row (and values) and drags the display-title setting along with it.
                 if spec.schema_fields is not None:
-                    await self._apply_schema_diff(session, collection_id, spec.schema_fields)
+                    await self._apply_schema_diff(
+                        session, collection_id, spec.schema_fields, spec.schema_renames
+                    )
+                    if spec.schema_renames:
+                        await self._follow_renamed_title_field(
+                            session, collection_id, spec.schema_renames
+                        )
+                    await CollectionApi.touch(session, collection_id)
 
                 # 4. Config blobs + immutable snapshot (stages the blobs only).
                 if spec.config_touched:
-                    await self._apply_config(
+                    await CollectionConfigWriter.apply(
                         session,
                         collection_id,
                         pipeline=spec.pipeline,
@@ -544,7 +542,9 @@ class CollectionsFacade(LoggerClass):
                 #    indexed baseline — a single source of truth, never a sticky True. Skipped when the
                 #    PATCH touched neither surface (a contract/overrides-only edit can't affect it).
                 if spec.schema_fields is not None or spec.config_touched:
-                    reindex_needed = await self._sync_needs_reindex(session, collection_id)
+                    reindex_needed = await CollectionConfigWriter.sync_needs_reindex(
+                        session, collection_id
+                    )
         except IntegrityError as error:
             if spec.contract_touched and spec.name is not None and self._is_duplicate_name(error):
                 raise DuplicateCollectionNameError(spec.name) from error

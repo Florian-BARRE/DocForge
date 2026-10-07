@@ -24,6 +24,7 @@ from .storage_footprint_payloads import (
 )
 
 # ---------------------- Domain façades ---------------------- #
+from .collection_config_writer import CollectionConfigWriter, ConfigVersionConflictError
 from .collections_facade import CollectionsFacade, DuplicateCollectionNameError
 from .documents_facade import DocumentsFacade
 from .enablement_facade import EnablementFacade
@@ -37,6 +38,7 @@ from .metadata_edit_facade import (
     MetadataEditResult,
     MetadataValidationError,
 )
+from .schema_change_facade import FieldPurgeOutcome, SchemaChangeFacade
 from .search_facade import SearchFacade
 from .jobs_facade import JobsFacade
 from .trace_payload_facade import TracePayloadFacade
@@ -50,6 +52,8 @@ from .metadata_value_resolver import MetadataValueResolver
 
 # ------------------- Public API ------------------- #
 __all__ = [
+    "FieldPurgeOutcome",
+    "SchemaChangeFacade",
     "DatabaseHelpers",
     "AdmissionResult",
     "ChunkToggle",
@@ -71,7 +75,9 @@ __all__ = [
     "S3Footprint",
     "PostgresFootprint",
     "QdrantFootprint",
+    "CollectionConfigWriter",
     "CollectionsFacade",
+    "ConfigVersionConflictError",
     "DuplicateCollectionNameError",
     "DocumentsFacade",
     "EnablementFacade",

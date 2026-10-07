@@ -195,7 +195,48 @@ class StageApplyResponse(BaseModel):
     )
 
 
+class CollectionStageApplyResponse(BaseModel):
+    """
+    The outcome of a collection-scoped stage action (applied to the STORED pipeline, persisted if valid).
+
+    Attributes:
+        collection_id (str): The edited collection.
+        persisted (bool): True when the new pipeline was stored (a config version written).
+        needs_reindex (bool): The collection's derived reindex flag after the write.
+        stages (list[dict[str, Any]]): The redacted stage view of the result (opaque engine JSON).
+        valid (bool): True when the result built and has zero validation issues.
+        issues (list[dict[str, Any]]): Validation problems of the result.
+        notices (list[str]): Compiler notices plus the reason nothing was stored, if so.
+        build_error (str | None): Builder failure when the result cannot build (not persisted).
+    """
+
+    collection_id: str = Field(description="The edited collection.")
+    persisted: bool = Field(
+        description="True when the new pipeline was stored (a config version was written); false "
+        "when the result is invalid or the action changed nothing."
+    )
+    needs_reindex: bool = Field(
+        default=False,
+        description="The collection's derived reindex flag after the write (embed-space change).",
+    )
+    stages: list[dict[str, Any]] = Field(
+        description="The redacted stage view of the resulting pipeline, in run order."
+    )
+    valid: bool = Field(description="True when the result built and has zero validation issues.")
+    issues: list[dict[str, Any]] = Field(
+        default_factory=list, description="Validation problems of the result (empty when healthy)."
+    )
+    notices: list[str] = Field(
+        default_factory=list,
+        description="Compiler notices (cascades, ignored no-ops) and the reason nothing was stored.",
+    )
+    build_error: str | None = Field(
+        default=None, description="Builder failure when the result cannot build (not persisted)."
+    )
+
+
 __all__ = [
+    "CollectionStageApplyResponse",
     "PipelineSurface",
     "PipelineIndexResponse",
     "PipelineDesignResponse",

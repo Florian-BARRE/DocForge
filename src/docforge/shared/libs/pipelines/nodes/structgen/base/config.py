@@ -26,7 +26,12 @@ class StructGenConfig(TimeoutRetryConfig):
         default="",
         description="Endpoint override; empty = use the request's endpoint (the chain-head default).",
     )
-    api_key: str = Field(default="", description="API key override; empty = the request's key.")
+    api_key: str = Field(
+        default="",
+        description="API key for this step's OWN base_url. Ignored while base_url is empty (the step "
+        "then calls the request's endpoint with the request's key); empty with a base_url = the "
+        "request's key only when it is the request's own endpoint, else no key.",
+    )
     model: str = Field(default="", description="Model override; empty = the request's model.")
     timeout_seconds: float = Field(
         default=0.0,

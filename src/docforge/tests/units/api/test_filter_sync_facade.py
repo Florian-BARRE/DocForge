@@ -179,6 +179,7 @@ async def test_backfill_aggregates_only_patched_documents(monkeypatch) -> None:
         AsyncMock(return_value=[uuid.uuid4(), uuid.uuid4(), uuid.uuid4()]),
     )
     monkeypatch.setattr(fsf_module.QdrantIndexApi, "set_payload", AsyncMock())
+    monkeypatch.setattr(fsf_module.CollectionApi, "get_schema", AsyncMock(return_value=[]))
 
     facade = FilterSyncFacade(_postgres_yielding(MagicMock()), MagicMock())
     documents_synced, points_patched = await facade.backfill_collection_filter_payloads(
@@ -197,6 +198,7 @@ async def test_backfill_pages_through_documents(monkeypatch) -> None:
     doc1, doc2, doc3 = (MagicMock(id=uuid.uuid4()) for _ in range(3))
     list_for_collection = AsyncMock(side_effect=[[doc1, doc2], [doc3]])
     monkeypatch.setattr(fsf_module.DocumentApi, "list_for_collection", list_for_collection)
+    monkeypatch.setattr(fsf_module.CollectionApi, "get_schema", AsyncMock(return_value=[]))
 
     facade = FilterSyncFacade(_postgres_yielding(MagicMock()), MagicMock())
     facade._FilterSyncFacade__BACKFILL_PAGE_SIZE = 2  # shrink the page for a two-page walk
@@ -214,3 +216,52 @@ async def test_backfill_pages_through_documents(monkeypatch) -> None:
     first, second = list_for_collection.await_args_list
     assert first.kwargs == {"limit": 2, "offset": 0}
     assert second.kwargs == {"limit": 2, "offset": 2}
+
+
+async def test_clear_absent_drops_keys_the_document_has_no_value_for(monkeypatch) -> None:
+    """The backfill's convergent repaint: a schema-filterable name the document has no doc-scope
+    value for is deleted from its points BEFORE the set — so a name reused by a swap / rename-into
+    never keeps the previous owner's value on a document the new owner leaves empty."""
+    document_id = uuid.uuid4()
+    chunk_ids = [uuid.uuid4()]
+    document = MagicMock(id=document_id, collection_id=uuid.uuid4())
+    monkeypatch.setattr(fsf_module.DocumentApi, "get", AsyncMock(return_value=document))
+    monkeypatch.setattr(
+        fsf_module.DocumentApi, "get_filterable_metadata", AsyncMock(return_value={"b": "x"})
+    )
+    monkeypatch.setattr(
+        fsf_module.DocumentApi, "get_chunk_filterable_metadata", AsyncMock(return_value={})
+    )
+    monkeypatch.setattr(
+        fsf_module.ChunkApi, "get_indexed_ids_for_document", AsyncMock(return_value=chunk_ids)
+    )
+    calls: list[str] = []
+    delete_payload = AsyncMock(side_effect=lambda *a, **k: calls.append("delete"))
+    set_payload = AsyncMock(side_effect=lambda *a, **k: calls.append("set"))
+    monkeypatch.setattr(fsf_module.QdrantIndexApi, "delete_payload", delete_payload)
+    monkeypatch.setattr(fsf_module.QdrantIndexApi, "set_payload", set_payload)
+
+    facade = FilterSyncFacade(_postgres_yielding(MagicMock()), MagicMock())
+    await facade.sync_document_filter_payloads(document_id, clear_absent=["a", "b"])
+
+    assert delete_payload.await_args.args[2:] == (["a"], document_id)
+    assert calls == ["delete", "set"]
+
+
+async def test_backfill_passes_the_schema_filterable_names(monkeypatch) -> None:
+    collection_id = uuid.uuid4()
+    doc = MagicMock(id=uuid.uuid4())
+    monkeypatch.setattr(
+        fsf_module.DocumentApi, "list_for_collection", AsyncMock(return_value=[doc])
+    )
+    schema = [
+        MagicMock(field_name="a", filterable=True),
+        MagicMock(field_name="n", filterable=False),
+    ]
+    monkeypatch.setattr(fsf_module.CollectionApi, "get_schema", AsyncMock(return_value=schema))
+
+    facade = FilterSyncFacade(_postgres_yielding(MagicMock()), MagicMock())
+    facade.sync_document_filter_payloads = AsyncMock(return_value=0)
+    await facade.backfill_collection_filter_payloads(collection_id)
+
+    facade.sync_document_filter_payloads.assert_awaited_once_with(doc.id, clear_absent=["a"])

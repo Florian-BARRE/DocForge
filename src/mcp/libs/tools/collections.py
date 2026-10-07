@@ -11,6 +11,9 @@ from docforge_sdk import AsyncClient, CreateCollectionRequest, FieldSpec, Update
 from docforge_sdk.models import BulkReingestRequest, CollectionSnippet, DocumentFilter
 from mcp.server.fastmcp import FastMCP
 
+# ====== Local Project Imports ======
+from .schema_diff_rendering import CONFIRM_HINT, SchemaDiffRenderer
+
 # Heavy server-shaped graph blobs dropped from the default (lean) collection view.
 _PIPELINE_BLOB_KEYS = ("pipeline", "search")
 
@@ -147,21 +150,28 @@ def register(mcp: FastMCP, sdk: AsyncClient) -> None:
         supported_formats: list[str] | None = None,
         tags: list[str] | None = None,
         max_file_size_bytes: int | None = None,
-        fields: list[dict[str, Any]] | None = None,
+        field_ops: list[dict[str, Any]] | None = None,
         pipeline: dict[str, Any] | None = None,
         search: dict[str, Any] | None = None,
         note: str | None = None,
         title_field: str | None = None,
         clear_title_field: bool = False,
+        confirm: bool = False,
+        preview: bool = False,
     ) -> Any:
         """
-        Patch identity/limits, the metadata schema (applied by diff against field_name — an
-        omitted field is removed), and/or the config blobs (pipeline / search graphs, each
-        validated before storage). A change to the searchable schema flips needs_reindex.
-        `tags` replaces the collection's labels wholesale (omit to leave them unchanged).
-        `title_field` sets the document-scope field used as each document's display title (must
-        exist in the post-patch schema); `clear_title_field=true` reverts to the parsed title.
-        Each field item may carry a `description` (what the field means).
+        Patch identity/limits, the metadata schema, and/or the config blobs (pipeline / search
+        graphs, each validated before storage).
+        Schema edits are explicit `field_ops`, applied in order:
+        {"op":"add","field":{field_name, field_type, filterable?, semantic?, lexical?, scope?,
+        description?...}} · {"op":"update","field_name":..,"changes":{<attrs to change>}} ·
+        {"op":"remove","field_name":..} (DELETES the field's stored values) ·
+        {"op":"rename","field_name":..,"new_name":..} (keeps the values; title_field follows).
+        A remove or rename is only applied with `confirm=true` — without it this returns a
+        dry-run `schema_diff` preview (values lost per removed field) and changes nothing.
+        `preview=true` previews any patch without writing. `tags` replaces the labels wholesale.
+        `title_field` sets the document-scope display-title field; `clear_title_field=true`
+        reverts to the parsed title. The result carries the applied `schema_diff`.
         """
         # 1. Only carry the knobs the caller actually set — an omitted param means "no change",
         #    so it must stay unset on the request rather than serialise as an explicit null.
@@ -172,7 +182,7 @@ def register(mcp: FastMCP, sdk: AsyncClient) -> None:
                 "supported_formats": supported_formats,
                 "tags": tags,
                 "max_file_size_bytes": max_file_size_bytes,
-                "fields": fields,
+                "field_ops": field_ops,
                 "pipeline": pipeline,
                 "search": search,
                 "note": note,
@@ -184,12 +194,22 @@ def register(mcp: FastMCP, sdk: AsyncClient) -> None:
             provided["title_field"] = None
         elif title_field is not None:
             provided["title_field"] = title_field
+        # 2. A destructive schema op (remove/rename) without confirm=true is downgraded to a
+        #    dry run: the caller sees exactly what would be lost before anything is written.
+        gated = SchemaDiffRenderer.needs_confirm(field_ops) and not confirm
+        if preview or gated:
+            provided["dry_run"] = True
         request = UpdateCollectionRequest.model_validate(provided)
-        collection = await sdk.collections.update(collection_id, request)
-        # Echo the blobs back only when this call edited one (the caller wants to see what was
-        # stored); a schema/identity edit stays lean like get_collection.
+        result = await sdk.collections.update(collection_id, request)
+        diff = SchemaDiffRenderer.render(result.schema_diff)
+        if result.dry_run:
+            hint = CONFIRM_HINT if gated else "preview only — nothing was written"
+            return {"applied": False, "schema_diff": diff, "message": hint}
+        # 3. Echo the blobs back only when this call edited one (the caller wants to see what was
+        #    stored); a schema/identity edit stays lean like get_collection.
         edited_blob = pipeline is not None or search is not None
-        return _lean(collection.model_dump(mode="json"), include_pipelines=edited_blob)
+        dumped = result.model_dump(mode="json", exclude={"schema_diff", "dry_run"})
+        return {**_lean(dumped, include_pipelines=edited_blob), "schema_diff": diff}
 
     @mcp.tool()
     async def delete_collection(collection_id: str) -> Any:
@@ -221,8 +241,10 @@ def register(mcp: FastMCP, sdk: AsyncClient) -> None:
         SUBSET instead, pass `document_ids` (a specific selection) OR `filter` (the same shape as the
         documents-grid filter) — either one overrides `scope`; they are mutually exclusive. Returns
         the per-stage token/call/cost breakdown, projected material volume, totals, the assumptions
-        it rests on, and human-readable caveats. `total_cost_usd` is null when no stage could be
-        priced; `cost_complete` is false when any enabled paid stage had no known rate.
+        it rests on, and human-readable caveats. `total_cost_usd` is null whenever any enabled paid
+        stage has no known rate (`cost_complete` false) — then report `total_cost_lower_bound_usd`
+        as a minimum ("≥ $X") and relay the caveat naming the unpriced model, its stage and the
+        `estimate_overrides.rates` path to price it; never present the lower bound as the total.
         """
         estimate = await sdk.collections.estimate(
             collection_id,

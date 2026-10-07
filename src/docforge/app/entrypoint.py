@@ -31,6 +31,17 @@ from shared_libs.services.db.postgresql import PostgresClient
 from shared_libs.services.db.qdrant import QdrantClient
 from shared_libs.services.db.s3 import S3Client
 
+# Non-safelisted response headers a cross-origin browser client must be allowed to READ (CORS hides
+# every header outside the safelist otherwise): the chunk-list total, the correlation id, the
+# idempotent-replay marker, the 429 back-off and the download filename.
+CORS_EXPOSE_HEADERS: list[str] = [
+    "X-Total-Count",
+    "X-Request-ID",
+    "Idempotency-Replayed",
+    "Retry-After",
+    "Content-Disposition",
+]
+
 
 def _build_app() -> FastAPI:
     # 0. Fail a misconfigured boot LOUDLY before wiring anything (e.g. AUTH_ENABLED with no root
@@ -162,6 +173,7 @@ def _build_app() -> FastAPI:
         allow_credentials=False,
         allow_methods=["*"],
         allow_headers=["*"],
+        expose_headers=CORS_EXPOSE_HEADERS,
     )
 
     return fastapi_app

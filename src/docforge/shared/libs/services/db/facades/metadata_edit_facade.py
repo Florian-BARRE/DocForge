@@ -270,6 +270,8 @@ class MetadataEditFacade(LoggerClass):
             cleared = [spec for spec in clear_specs if spec.id in stored]
             await DocumentApi.update_metadata(session, document_id, changed)
             await DocumentApi.delete_metadata(session, document_id, [spec.id for spec in cleared])
+            if changed or cleared:
+                await DocumentApi.touch(session, document_id)
             # 3. Map the changed SET field ids back to names + flags WHILE the schema rows are live. A
             #    changed field feeding a named vector (semantic/lexical) needs its value re-embedded;
             #    a filterable-only change is fully handled by the repaint below.

@@ -73,7 +73,7 @@ vector space is fixed at creation), plus optional ingestion/search pipeline blob
 | `update_collection` | Patch identity/limits, the schema (diffed by `field_name` — omitted = removed), and/or the `pipeline`/`search` config blobs. Schema changes flip `needs_reindex`. `title_field` sets the display-title field; `clear_title_field=true` clears it. Returns the lean collection (blobs echoed back only when this call edited `pipeline`/`search`; `create_collection` is lean too — read blobs with `get_collection(include_pipelines=true)`). |
 | `delete_collection` | Delete a collection (irreversible). |
 | `collection_storage_footprint` | Measure a collection's material footprint per store — S3 bytes exact (deduped), Postgres/Qdrant estimated — plus a per-document breakdown, heaviest first. |
-| `estimate_collection_cost` | Dry-run cost/volume projection before spending anything (`collection_id`, `scope="pending"`, `document_ids=None`, `filter=None`). Defaults to pending (not-yet-ingested) documents; pass `document_ids` to estimate a specific selection, or `filter` (same shape as the documents-grid filter) for a corpus slice — either one overrides `scope`. Per-stage token/page + dollar breakdown; unpriced models come back with a null cost, never fabricated. |
+| `estimate_collection_cost` | Dry-run cost/volume projection before spending anything (`collection_id`, `scope="pending"`, `document_ids=None`, `filter=None`). Defaults to pending (not-yet-ingested) documents; pass `document_ids` to estimate a specific selection, or `filter` (same shape as the documents-grid filter) for a corpus slice — either one overrides `scope`. Per-stage token/page + dollar breakdown; unpriced models come back with a null cost, never fabricated; any unpriced paid stage makes `total_cost_usd` null — report `total_cost_lower_bound_usd` as a minimum and relay the caveat naming the model + stage + override path. |
 | `preview_pipeline` | Dry-run the ingestion pipeline on ONE already-ingested document and get a bounded preview WITHOUT persisting anything (`collection_id`, `document_id`, optional `blob` candidate, `max_chunks`). Returns an IR summary, the first N chunks, the run's actual metered cost and the full execution trace; a failed node is data (`ok=false` + `failed_node_id` + trace), never an error. Inline/synchronous — cannot parse pipelines whose deps (docling) live only in the worker image. |
 | `submit_preview_job` | Submit an ASYNCHRONOUS worker-side dry-run preview on one document WITHOUT persisting anything (`collection_id`, `document_id`, optional `blob` candidate, `max_chunks`). The worker runs the FULL ingest graph with every dependency present (docling included), so it covers ALL pipelines — use it when `preview_pipeline` cannot. Returns a pollable `preview_id`. |
 | `get_preview_job` | Poll an asynchronous dry-run preview by its id (`collection_id`, `preview_id`). The bounded report appears in `result` once `status` is `done` (a failed node is data there — `result.ok=false`); `status` `failed` means the worker job itself crashed/timed out; an unknown/expired id is a 404. |
@@ -153,7 +153,8 @@ plain dicts. See [`PIPELINE.md`](../src/docforge/PIPELINE.md) for what the graph
 | `inspect_pipeline` | Validate an edited blob without saving: validity, issues, and the described graph tree (or `build_error`). |
 | `edit_pipeline` | Apply ordered graph operations server-side, then build + validate + describe the result. |
 | `view_pipeline_stages` | Derive the ordered stage view of a blob + its validity verdict. |
-| `apply_pipeline_stage` | Compile a stage-level action into a blob (always buildable); returns recompiled blob + stage view + issues. |
+| `apply_pipeline_stage` | Compile a stage-level action into a blob you hold (stateless, nothing saved; always buildable); returns recompiled blob + stage view + issues. To edit a collection, prefer `apply_collection_stage`. |
+| `apply_collection_stage` | Apply ONE stage action to a collection's STORED pipeline and save it (`collection_id`, `action`, `note=None`) — no full-blob round-trip. A `set_config` defaults to `mode="merge"` (only the sent keys change; null resets a key; the api_key is kept). Returns the masked stage view + `valid`/`issues`/`notices` + `persisted` (false = nothing saved: invalid or no-op). |
 
 ### Transfers (collection export / import)
 
@@ -196,7 +197,7 @@ multi-GB) — `get_export_download_ref` instead points the caller at the REST do
 | `list_audit` | One keyset-paginated page of the audit trail, newest first — one row per mutating API action (who/what/target/outcome). Filter by actor (`actor_user_id`/`actor_key_id`), target (`target_type`+`target_id`), `correlation_id`, and an ISO-8601 time window (`created_from`/`created_to`); walk it with `cursor`. **ROOT / full-access keys only** (a collection-scoped key is rejected `403`). |
 
 
-**Total: 76 tools** across 13 sections.
+**Total: 77 tools** across 13 sections.
 
 ---
 

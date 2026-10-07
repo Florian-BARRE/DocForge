@@ -5,17 +5,20 @@
 # scored — so the same value must be written onto each chunk point. Pure set_payload (never a
 # re-embed): idempotent, non-destructive merge, and a clean no-op for a document with no indexed
 # chunks or no filterable metadata yet. The ingestion write-side hook and the collection-wide
-# backfill both go through the SAME per-document sync.
+# backfill both go through the SAME per-document sync; the backfill additionally CLEARS the schema's
+# filterable keys a document has no value for, so a name reused by a schema change (swap, rename-into)
+# never keeps its previous owner's value on documents the new owner leaves empty.
 
 # ====== Standard Library Imports ======
 import uuid
+from collections.abc import Collection
 
 # ====== Third-Party Library Imports ======
 from loggerplusplus import LoggerClass
 
 # ====== Internal Project Imports ======
 from shared_libs.services.db.postgresql import PostgresClient
-from shared_libs.services.db.postgresql.apis import ChunkApi, DocumentApi
+from shared_libs.services.db.postgresql.apis import ChunkApi, CollectionApi, DocumentApi
 from shared_libs.services.db.qdrant import QdrantClient, QdrantIndexApi
 
 # ====== Local Project Imports ======
@@ -39,7 +42,9 @@ class FilterSyncFacade(LoggerClass):
     # once: each page is processed then dropped, bounding memory to one page regardless of size.
     __BACKFILL_PAGE_SIZE = 500
 
-    async def sync_document_filter_payloads(self, document_id: uuid.UUID) -> int:
+    async def sync_document_filter_payloads(
+        self, document_id: uuid.UUID, *, clear_absent: Collection[str] = ()
+    ) -> int:
         """
         Write a document's filterable metadata (BOTH scopes) onto its chunk points.
 
@@ -52,6 +57,9 @@ class FilterSyncFacade(LoggerClass):
 
         Args:
             document_id (uuid.UUID): The document to synchronise.
+            clear_absent (Collection[str]): Filterable field names to DELETE from the document's
+                points when it has no document-scope value for them (chunk-scope values are re-set
+                right after). The backfill passes the schema's filterable names; ingest passes none.
 
         Returns:
             int: The number of chunk points patched (0 when there is nothing to carry or to filter).
@@ -65,8 +73,15 @@ class FilterSyncFacade(LoggerClass):
             chunk_values = await DocumentApi.get_chunk_filterable_metadata(session, document_id)
             chunk_ids = await ChunkApi.get_indexed_ids_for_document(session, document_id)
 
-        # 2. No point to carry anything, or nothing filterable at either scope → clean no-op.
-        if not chunk_ids or (not doc_values and not chunk_values):
+        # 2. No point → nothing to carry. Otherwise first drop the asked keys this document has no
+        #    document-scope value for (a reused name's previous-owner value), then nothing filterable
+        #    at either scope → done.
+        if not chunk_ids:
+            return 0
+        name = DatabaseHelpers.qdrant_collection_name(document.collection_id)
+        absent = sorted(set(clear_absent) - set(doc_values))
+        await QdrantIndexApi.delete_payload(self._qdrant.raw, name, absent, document_id)
+        if not doc_values and not chunk_values:
             return 0
 
         # 3. Per-point payload = the uniform doc-scope keys merged with the point's own chunk-scope
@@ -80,7 +95,6 @@ class FilterSyncFacade(LoggerClass):
             return 0
 
         # 4. Merge the keys onto each point (other payload keys untouched).
-        name = DatabaseHelpers.qdrant_collection_name(document.collection_id)
         await QdrantIndexApi.set_payload(self._qdrant.raw, name, payloads)
         self.logger.info(
             f"Synced filter payloads onto {len(payloads)} point(s) for document {document_id}"
@@ -93,8 +107,10 @@ class FilterSyncFacade(LoggerClass):
         """
         Run the per-document sync across every document of a collection (one-off backfill).
 
-        The maintenance path for data ingested before document-scope filters were denormalised: no
-        re-embed, just the same set_payload per document. Idempotent — safe to re-run.
+        The maintenance path after a schema change (and for data ingested before document-scope
+        filters were denormalised): no re-embed, just the same set_payload per document, plus the
+        removal of every filterable key the document has no value for — so the repaint CONVERGES to
+        Postgres even for a name a swap / rename-into handed to another field. Idempotent.
 
         Args:
             collection_id (uuid.UUID): The collection whose documents are backfilled.
@@ -109,6 +125,12 @@ class FilterSyncFacade(LoggerClass):
         documents_synced = 0
         points_patched = 0
         offset = 0
+        async with self._postgres.session() as session:
+            filterable = [
+                row.field_name
+                for row in await CollectionApi.get_schema(session, collection_id)
+                if row.filterable
+            ]
         while True:
             async with self._postgres.session() as session:
                 page = await DocumentApi.list_for_collection(
@@ -116,7 +138,9 @@ class FilterSyncFacade(LoggerClass):
                 )
             # 2. Accumulate what was actually patched (documents with metadata AND indexed chunks).
             for document in page:
-                patched = await self.sync_document_filter_payloads(document.id)
+                patched = await self.sync_document_filter_payloads(
+                    document.id, clear_absent=filterable
+                )
                 if patched:
                     documents_synced += 1
                     points_patched += patched

@@ -604,6 +604,27 @@ class DocumentApi:
         session.add_all(values)
 
     @staticmethod
+    async def touch(session: AsyncSession, document_id: uuid.UUID) -> None:
+        """
+        Bump a document's ``updated_at`` — a write that changed only its CHILD rows (metadata values).
+
+        The ORM ``onupdate`` fires only when a document column changes; a value edit touches
+        ``document_metadata`` alone, so without this the document would look unchanged to readers
+        keyed on ``updated_at`` (e.g. the describe cache's collection change stamp).
+
+        Args:
+            session (AsyncSession): The unit of work (the same one that wrote the values).
+            document_id (uuid.UUID): The document whose values changed.
+        """
+        # 1. Wall-clock time, not now() (the transaction START): a long write committing after a
+        #    shorter one must still move the max(updated_at) change stamp.
+        await session.execute(
+            update(Document)
+            .where(Document.id == document_id)
+            .values(updated_at=func.clock_timestamp())
+        )
+
+    @staticmethod
     async def update_metadata(
         session: AsyncSession, document_id: uuid.UUID, changes: Sequence[DocumentMetadata]
     ) -> None:

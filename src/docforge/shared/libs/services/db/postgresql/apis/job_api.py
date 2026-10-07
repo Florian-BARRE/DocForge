@@ -21,9 +21,18 @@ from sqlalchemy.orm import defer
 
 # ====== Internal Project Imports ======
 from shared_libs.pipelines.base import NodeExecutionRecord
-from shared_libs.public_models import TextSanitizer
+from shared_libs.public_models import DisplayTitleResolver, FieldScope, TextSanitizer
 
-from ..tables import Collection, Document, Job, JobStageEvent, JobStatus, WorkerHeartbeat
+from ..tables import (
+    Collection,
+    Document,
+    DocumentMetadata,
+    Job,
+    JobStageEvent,
+    JobStatus,
+    MetadataField,
+    WorkerHeartbeat,
+)
 
 # ====== Local Project Imports ======
 from .execution_tree import ExecutionTreeFlattener, TraceRefs
@@ -45,12 +54,16 @@ class JobWithNames:
             (None if the document is gone; empty string coalesced to None so the UI can fall back to
             the filename cleanly).
         collection_name (str | None): The job's collection name (None if the collection is gone).
+        document_display_title (str | None): The document's DISPLAY title — the collection's
+            ``title_field`` value when configured and set, else the parsed title (the
+            DisplayTitleResolver rule); None if neither exists or the document is gone.
     """
 
     job: Job
     document_filename: str | None
     document_title: str | None
     collection_name: str | None
+    document_display_title: str | None = None
 
 
 @dataclass(frozen=True)
@@ -1564,27 +1577,59 @@ class JobApi:
     # -------------------- joined reads (job + display names) --------------------
     @staticmethod
     def _with_names_select():  # type: ignore[no-untyped-def]
-        """The base ``job`` select LEFT-joined to its document filename and collection name.
+        """The base ``job`` select LEFT-joined to its document/collection display names.
 
         Outer joins so a job whose document or collection was deleted mid-flight still returns (with a
-        None name) rather than vanishing from the monitoring view.
+        None name) rather than vanishing from the monitoring view. The collection's ``title_field``
+        and that field's stored value for the job's document ride along as two more columns (a
+        correlated scalar subquery seeking the unique ``(collection_id, field_name)`` +
+        ``(document_id, field_id)`` indexes), so a page of jobs resolves every display title in the
+        SAME single statement — no per-row read. A NULL ``title_field`` matches nothing → NULL value.
         """
+        title_value = (
+            select(DocumentMetadata.value)
+            .join(MetadataField, MetadataField.id == DocumentMetadata.field_id)
+            .where(
+                DocumentMetadata.document_id == Job.document_id,
+                MetadataField.collection_id == Job.collection_id,
+                MetadataField.field_name == Collection.title_field,
+                MetadataField.scope == FieldScope.DOCUMENT,
+            )
+            .correlate(Job, Collection)
+            .scalar_subquery()
+        )
         return (
-            select(Job, Document.filename, Document.title, Collection.name)
+            select(
+                Job,
+                Document.filename,
+                Document.title,
+                Collection.name,
+                Collection.title_field,
+                title_value,
+            )
             .outerjoin(Document, Document.id == Job.document_id)
             .outerjoin(Collection, Collection.id == Job.collection_id)
         )
 
     @staticmethod
-    def _row_to_names(job: Job, filename: str | None, title: str | None, name: str | None):  # type: ignore[no-untyped-def]
-        """Build a JobWithNames from a joined row, coalescing an empty metagen title to None."""
-        # The title column defaults to "" pre-metagen; surface it as None so the UI can cleanly
-        # fall back to the filename instead of rendering a blank string.
+    def _row_to_names(row: Sequence) -> JobWithNames:  # type: ignore[type-arg]
+        """
+        Build a JobWithNames from one ``_with_names_select`` row.
+
+        The parsed title column defaults to "" pre-parse; it is surfaced as None so the UI can cleanly
+        fall back to the filename instead of rendering a blank string. The display title applies the
+        shared DisplayTitleResolver rule to the joined ``title_field`` value (same rule as the
+        document list/grid/detail), so a job row names its document exactly like the corpus does.
+        """
+        job, filename, title, collection_name, title_field, title_value = row
+        parsed = title or None
+        display = DisplayTitleResolver.resolve(parsed, {title_field: title_value}, title_field)
         return JobWithNames(
             job=job,
             document_filename=filename,
-            document_title=title or None,
-            collection_name=name,
+            document_title=parsed,
+            collection_name=collection_name,
+            document_display_title=display or None,
         )
 
     @classmethod
@@ -1594,8 +1639,7 @@ class JobApi:
         row = result.first()
         if row is None:
             return None
-        job, filename, title, collection_name = row
-        return cls._row_to_names(job, filename, title, collection_name)
+        return cls._row_to_names(row)
 
     @classmethod
     async def list_for_collection_with_names(
@@ -1619,10 +1663,7 @@ class JobApi:
         if limit is not None:
             query = query.limit(limit)
         result = await session.execute(query)
-        return [
-            cls._row_to_names(job, filename, title, collection_name)
-            for job, filename, title, collection_name in result.all()
-        ]
+        return [cls._row_to_names(row) for row in result.all()]
 
     @staticmethod
     async def count_for_collection(session: AsyncSession, collection_id: uuid.UUID) -> int:
@@ -1640,10 +1681,7 @@ class JobApi:
             .where(Job.status == JobStatus.RUNNING)
             .order_by(Job.started_at.asc())
         )
-        return [
-            cls._row_to_names(job, filename, title, collection_name)
-            for job, filename, title, collection_name in result.all()
-        ]
+        return [cls._row_to_names(row) for row in result.all()]
 
     @staticmethod
     def _order_clause(sort_by: str, descending: bool):  # type: ignore[no-untyped-def]
@@ -1737,10 +1775,7 @@ class JobApi:
         if limit is not None:
             query = query.limit(limit)
         result = await session.execute(query)
-        return [
-            cls._row_to_names(job, filename, title, collection_name)
-            for job, filename, title, collection_name in result.all()
-        ]
+        return [cls._row_to_names(row) for row in result.all()]
 
     @classmethod
     async def count_jobs(

@@ -18,10 +18,13 @@ from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 from shared_libs.public_models import FieldOrigin
 from shared_libs.public_models.contract import FieldType
+from shared_libs.public_models.display_title import DisplayTitleResolver
+from shared_libs.services.db.postgresql.apis.display_title_sql import DisplayTitleSql
 from shared_libs.services.db.postgresql.apis.document_query import DocumentQueryApi
 from shared_libs.services.db.postgresql.apis.document_query_spec import (
     DocumentQuerySpec,
@@ -431,3 +434,95 @@ async def test_pagination_limit_offset_matches_count(session, seeded) -> None:
     by_id = {doc_id: label for label, doc_id in seeded["doc_ids"].items()}
     # Full asc order is D1(alpha) D2(beta) D4(delta) D5(epsilon) D3(gamma) — offset 2, limit 2.
     assert [by_id[row.id] for row in rows] == ["D4", "D5"]
+
+
+# -------------------- display title (collection title_field) --------------------
+
+
+async def test_title_sort_follows_the_title_field_display_title(session, seeded) -> None:
+    """With a title_field, the ``title`` sort orders by that field's value (author), not the parsed
+    "Title Dn" — the three "Ada Lovelace" docs first (id-tiebroken), then Bob, then Chloe."""
+    spec = _spec(
+        sort=SortSpec(column="title", direction=SortDirection.ASC),
+        title_field_id=seeded["field_ids"]["author"],
+    )
+    labels = await _labels(session, seeded, spec)
+    assert set(labels[:3]) == {"D1", "D3", "D5"}
+    assert labels[3:] == ["D2", "D4"]
+
+    raw = _spec(sort=SortSpec(column="title", direction=SortDirection.DESC))
+    assert await _labels(session, seeded, raw) == ["D5", "D4", "D3", "D2", "D1"]
+
+
+async def test_title_contains_runs_on_the_display_title_with_fallback(session, seeded) -> None:
+    """A list title_field renders its elements joined (", "); an EMPTY list falls back to the
+    parsed title — so "vision" hits D3/D4 and "Title" only hits D5 (whose tags are empty)."""
+    tags = seeded["field_ids"]["tags"]
+    vision = _spec(title_contains="vision", title_field_id=tags)
+    assert sorted(await _labels(session, seeded, vision)) == ["D3", "D4"]
+    joined = _spec(title_contains="ml, vision", title_field_id=tags)
+    assert await _labels(session, seeded, joined) == ["D4"]
+    fallback = _spec(title_contains="Title", title_field_id=tags)
+    assert await _labels(session, seeded, fallback) == ["D5"]
+    count = await DocumentQueryApi.count(session, seeded["collection_id"], fallback)
+    assert count == 1
+
+
+async def test_display_title_sql_matches_the_python_resolver(session) -> None:
+    """The SQL display title must equal DisplayTitleResolver: a whitespace-only value falls back to
+    the parsed title (btrim alone strips only spaces), and a bool renders like Python's str()."""
+    collection = Collection(
+        name=f"display-title-parity-{uuid.uuid4().hex[:8]}",
+        supported_formats=["pdf"],
+        max_file_size_bytes=1,
+    )
+    session.add(collection)
+    await session.flush()
+    label = MetadataField(
+        collection_id=collection.id,
+        field_name="label",
+        field_type=FieldType.STRING,
+        filterable=True,
+        origin=FieldOrigin.USER,
+    )
+    flag = MetadataField(
+        collection_id=collection.id,
+        field_name="flag",
+        field_type=FieldType.BOOL,
+        filterable=True,
+        origin=FieldOrigin.USER,
+    )
+    session.add_all([label, flag])
+    await session.flush()
+    cases = {"blank": ("label", "\t\n "), "flag": ("flag", True)}
+    ids = {}
+    for key, (field_name, value) in cases.items():
+        document = Document(
+            collection_id=collection.id,
+            source_hash=f"parity-{key}-{uuid.uuid4().hex}",
+            filename=f"{key}.pdf",
+            format="pdf",
+            mime_type="application/pdf",
+            file_size=1,
+            source_kind=SourceKind.DIGITAL_BORN,
+            title=f"Parsed {key}",
+            status=DocumentStatus.DONE,
+            pipeline_version="v1",
+        )
+        session.add(document)
+        await session.flush()
+        field = label if field_name == "label" else flag
+        session.add(
+            DocumentMetadata(
+                document_id=document.id, field_id=field.id, value=value, origin=FieldOrigin.USER
+            )
+        )
+        ids[key] = (document.id, field.id, field_name, value)
+    await session.commit()
+
+    for key, (document_id, field_id, field_name, value) in ids.items():
+        expected = DisplayTitleResolver.resolve(f"Parsed {key}", {field_name: value}, field_name)
+        statement = DisplayTitleSql.join(
+            select(DisplayTitleSql.key(field_id)).select_from(Document), field_id
+        ).where(Document.id == document_id)
+        assert (await session.execute(statement)).scalar_one() == expected

@@ -378,3 +378,63 @@ def test_patch_round_trip_of_masked_pipeline_keeps_the_stored_key(client, monkey
 
     # And the response the client gets back is masked again (never the raw key).
     assert "sk-EMBEDSECRET-9999" not in response.text
+
+
+# ─────────────────────────── HTTP surface: PATCH never leaks / re-points a key ───────────────────────────
+
+
+def _patch_wired(monkeypatch) -> tuple[SimpleNamespace, dict, AsyncMock]:
+    """A stock stored pipeline whose embed node holds a live key, with the DB façade mocked."""
+    from shared_libs.pipelines.ingest import BlobNormalizer, IngestPipeline
+
+    stored_blob = IngestPipeline.default_blob().model_dump(mode="json")
+    for node in stored_blob["nodes"]:
+        if node.get("family") == "embed":
+            node["config"]["api_key"] = "sk-EMBEDSECRET-9999"
+    stored_blob = BlobNormalizer.normalize(stored_blob)
+    fake = _fake_collection(stored_blob, {})
+    apply_update = AsyncMock(
+        return_value=CollectionUpdateResult(schema_applied=False, schema_reindex_required=False)
+    )
+    _mock_db(
+        monkeypatch,
+        get=AsyncMock(return_value=fake),
+        get_by_name=AsyncMock(return_value=None),
+        get_schema=AsyncMock(return_value=[]),
+        apply_update=apply_update,
+    )
+    return fake, stored_blob, apply_update
+
+
+def test_patch_build_error_never_echoes_a_secret(client, monkeypatch, capfd) -> None:
+    """A config missing a required field: the 422 detail and the logs carry no input value."""
+    import copy
+
+    fake, stored_blob, apply_update = _patch_wired(monkeypatch)
+    broken = copy.deepcopy(stored_blob)
+    embed = next(n for n in broken["nodes"] if n.get("family") == "embed")
+    embed["config"].pop("base_url")
+    embed["config"]["api_key"] = "sk-FRESHSECRET-1234"
+    response = client.patch(f"/api/v1/collections/{fake.id}", json={"pipeline": broken})
+    assert response.status_code == 422, response.text
+    assert "base_url" in response.text
+    logs = capfd.readouterr()
+    for secret in ("sk-FRESHSECRET-1234", "sk-EMBEDSECRET-9999"):
+        assert secret not in response.text
+        assert secret not in logs.out + logs.err
+    apply_update.assert_not_awaited()
+
+
+def test_patch_masked_key_onto_a_new_endpoint_is_refused(client, monkeypatch) -> None:
+    """Re-pointing a keyed provider while echoing its mask is a 422 — never a carried key."""
+    from shared_libs.pipelines.blob_secrets import redact_blob_secrets
+
+    fake, stored_blob, apply_update = _patch_wired(monkeypatch)
+    moved = redact_blob_secrets(stored_blob)
+    embed = next(n for n in moved["nodes"] if n.get("family") == "embed")
+    embed["config"]["base_url"] = "http://evil.example:9"
+    response = client.patch(f"/api/v1/collections/{fake.id}", json={"pipeline": moved})
+    assert response.status_code == 422, response.text
+    assert "must be re-entered" in response.text
+    assert "sk-EMBEDSECRET-9999" not in response.text
+    apply_update.assert_not_awaited()

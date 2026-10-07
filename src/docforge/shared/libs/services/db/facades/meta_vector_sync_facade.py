@@ -8,12 +8,15 @@
 # the content. The values are embedded in ONE batched pass per axis (dense / sparse) and written in a
 # SINGLE batched update_vectors call, so the sync is a bounded handful of round-trips regardless of
 # field or chunk count. Idempotent, non-destructive (content vectors untouched), a clean no-op when
-# the document has no indexed chunk or no semantic/lexical value. The write-side hook and the
+# the document has no indexed chunk or no semantic/lexical value. The backfill also DROPS the meta
+# vectors of schema fields a document holds no value for, so a reused (swapped/renamed-into) field name
+# never keeps its previous owner's vector. The write-side hook and the
 # collection-wide backfill both go through the SAME per-document sync; the backfill pages through the
 # collection's documents so a large collection never loads whole into memory.
 
 # ====== Standard Library Imports ======
 import uuid
+from collections.abc import Collection
 from typing import Any
 
 # ====== Third-Party Library Imports ======
@@ -21,6 +24,7 @@ from loggerplusplus import LoggerClass
 
 # ====== Internal Project Imports ======
 from shared_libs.pipelines.nodes.embed.base import BaseEmbedderNode
+from shared_libs.public_models import FieldScope
 from shared_libs.services.db.postgresql import PostgresClient
 from shared_libs.services.db.postgresql.apis import ChunkApi, CollectionApi, DocumentApi
 from shared_libs.services.db.qdrant import (
@@ -29,6 +33,7 @@ from shared_libs.services.db.qdrant import (
     QdrantIndexApi,
     QdrantPoint,
     SparseVec,
+    VectorNames,
 )
 
 # ====== Local Project Imports ======
@@ -108,7 +113,9 @@ class MetaVectorSyncFacade(LoggerClass):
             for name, vector in zip(names, vectors, strict=True)
         }
 
-    async def sync_document_meta_vectors(self, document_id: uuid.UUID) -> int:
+    async def sync_document_meta_vectors(
+        self, document_id: uuid.UUID, *, clear_absent: Collection[str] = ()
+    ) -> int:
         """
         Populate a document's semantic/lexical document-scope metadata vectors on all its points.
 
@@ -120,6 +127,9 @@ class MetaVectorSyncFacade(LoggerClass):
 
         Args:
             document_id (uuid.UUID): The document to synchronise.
+            clear_absent (Collection[str]): Semantic/lexical field names whose meta vectors are DROPPED
+                from the document's points when it holds no value for them — the backfill passes the
+                schema's names so a reused field name never keeps its previous owner's vector.
 
         Returns:
             int: The number of chunk points patched (0 when there is nothing to embed or to carry).
@@ -135,8 +145,26 @@ class MetaVectorSyncFacade(LoggerClass):
             rows = await DocumentApi.get_searchable_metadata(session, document_id)
             chunk_ids = await ChunkApi.get_indexed_ids_for_document(session, document_id)
 
-        # 2. No value to embed, or no point to carry it → clean no-op.
-        if not rows or not chunk_ids:
+        # 2. No point → nothing to carry. Otherwise drop the asked fields' vectors this document has
+        #    no value for, then no value to embed → done.
+        if not chunk_ids:
+            return 0
+        name = DatabaseHelpers.qdrant_collection_name(document.collection_id)
+        absent = set(clear_absent) - {row[0] for row in rows}
+        stale = sorted(
+            vector
+            for field in absent
+            for vector in (VectorNames.field_dense(field), VectorNames.field_sparse(field))
+        )
+        if stale:
+            declared_dense, declared_sparse = await QdrantCollectionApi.declared_vectors(
+                self._qdrant.raw, name
+            )
+            declared = set(declared_dense) | set(declared_sparse)
+            await QdrantIndexApi.delete_vectors(
+                self._qdrant.raw, name, [v for v in stale if v in declared], document_id
+            )
+        if not rows:
             return 0
 
         # 3. Rebuild the embedder from the collection's ingestion blob (drifted blob fails loudly).
@@ -149,7 +177,6 @@ class MetaVectorSyncFacade(LoggerClass):
         embedder, _config = MetaVectorSyncHelpers.rebuild_embedder(embed_node)
 
         # 4. Embed each value into its DECLARED named meta vector (guarded against undeclared names).
-        name = DatabaseHelpers.qdrant_collection_name(document.collection_id)
         declared_dense, declared_sparse = await QdrantCollectionApi.declared_vectors(
             self._qdrant.raw, name
         )
@@ -197,6 +224,13 @@ class MetaVectorSyncFacade(LoggerClass):
         documents_synced = 0
         points_patched = 0
         offset = 0
+        async with self._postgres.session() as session:
+            schema = await CollectionApi.get_schema(session, collection_id)
+        searchable = [
+            field.field_name
+            for field in schema
+            if field.scope == FieldScope.DOCUMENT and (field.semantic or field.lexical)
+        ]
         while True:
             async with self._postgres.session() as session:
                 page = await DocumentApi.list_for_collection(
@@ -204,7 +238,9 @@ class MetaVectorSyncFacade(LoggerClass):
                 )
             # 2. Accumulate what was actually patched (documents with values AND indexed chunks).
             for document in page:
-                patched = await self.sync_document_meta_vectors(document.id)
+                patched = await self.sync_document_meta_vectors(
+                    document.id, clear_absent=searchable
+                )
                 if patched:
                     documents_synced += 1
                     points_patched += patched

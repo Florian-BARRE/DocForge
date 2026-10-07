@@ -79,6 +79,7 @@ def _facade_with_schema(monkeypatch, schema: list[SimpleNamespace], filter_sync:
     monkeypatch.setattr(mef.CollectionApi, "get_schema", AsyncMock(return_value=schema))
     monkeypatch.setattr(mef.DocumentApi, "update_metadata", AsyncMock())
     monkeypatch.setattr(mef.DocumentApi, "delete_metadata", AsyncMock())
+    monkeypatch.setattr(mef.DocumentApi, "touch", AsyncMock())
     # Default: nothing stored yet → every requested SET field reads as changed (a CLEAR of an absent
     # field is a no-op). Tests exercising change-detection / clears re-stub get_metadata with the
     # stored rows they want to compare to.

@@ -23,6 +23,10 @@ MODEL_PRICING: dict[str, tuple[float, float]] = {
     # GPT-5 generation.
     "gpt-5": (1.25, 10.00),
     "gpt-5-mini": (0.25, 2.00),
+    # gpt-5.4 = OpenAI's published standard (non-cached, <272K-context) tier at release; recorded
+    # 2026-10-07 from the public price list WITHOUT a fresh check against the live page — re-verify on
+    # the next pricing sweep (a collection can override it via estimate_overrides.rates.models).
+    "gpt-5.4": (2.50, 15.00),
     "gpt-5.5": (5.00, 30.00),
     "gpt-5.6-sol": (4.00, 20.00),
     "gpt-5.6-terra": (2.00, 12.00),

@@ -15,12 +15,18 @@ from fastapi import APIRouter, Depends, HTTPException
 # ====== Local Project Imports ======
 from ...context import CONTEXT
 from ...libs.auth import Capability, require
-from ...libs.search import BrowseCursor, BrowseCursorError, HitProjection, ZeroHitHintBuilder
+from ...libs.search import (
+    BrowseCursor,
+    BrowseCursorError,
+    HitProjection,
+    SearchCollectionSpecs,
+    ZeroHitHintBuilder,
+)
 from ...libs.search.hit_projection import GEOMETRY_FIELDS
 from ...utils.error_handling import auto_handle_errors
 from ..search.filter_gate import SearchFilterGate
-from ..search.helpers import SearchHelpers
 from ..search.hit_mapper import SearchHitMapper
+from ..search.model_mapper import SearchModelMapper
 from .models import ChunkBrowseRequest, ChunkBrowseResponse
 
 router = APIRouter(tags=["search"])
@@ -87,7 +93,7 @@ async def browse_chunks(
         limit=request.limit,
         cursor=cursor,
         text_fields=resolution.text_fields,
-        title_field=SearchHelpers.title_field_spec(collection, schema),
+        title_field=SearchCollectionSpecs.title_field_spec(collection, schema),
         projection=projection,
     )
 
@@ -99,7 +105,7 @@ async def browse_chunks(
     return ChunkBrowseResponse(
         chunks=SearchHitMapper.map(page.hits, projection),
         next_cursor=page.next_cursor.encode() if page.next_cursor is not None else None,
-        hints=[SearchHelpers.to_hint_model(hint) for hint in hints],
+        hints=[SearchModelMapper.to_hint_model(hint) for hint in hints],
     )
 
 

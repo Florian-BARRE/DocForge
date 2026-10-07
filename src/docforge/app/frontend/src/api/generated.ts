@@ -313,11 +313,12 @@ export interface paths {
         head?: never;
         /**
          * Update Collection
-         * @description Patch identity/limits, the metadata schema (by DIFF), and/or the config blobs.
+         * @description Patch identity/limits, the metadata schema (legacy ``fields`` list or explicit ``field_ops``),
+         *     and/or the config blobs. ``dry_run`` validates everything and returns the schema diff only.
          *
          *     Returns:
-         *         CollectionModel: The updated contract; 404 unknown, 409 name clash, 422 broken
-         *         pipeline or colliding vector slugs.
+         *         UpdateCollectionResponse: The updated contract (unchanged under dry_run) + its schema_diff;
+         *         404 unknown, 409 name clash, 422 broken pipeline, bad field op or colliding vector slugs.
          */
         patch: operations["update_collection_api_v1_collections__collection_id__patch"];
         trace?: never;
@@ -682,6 +683,39 @@ export interface paths {
         get: operations["get_preview_job_api_v1_collections__collection_id__pipeline_preview_jobs__preview_id__get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/collections/{collection_id}/pipeline/stages/apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Apply Collection Stage
+         * @description Apply one stage action to a collection's stored ingestion pipeline and persist a valid result.
+         *
+         *     The stored pipeline is the base (its real secrets included), so ``set_config`` with
+         *     ``mode="merge"`` changes only the keys sent; secrets resolve exactly like a PATCH (a masked or
+         *     omitted secret keeps the same provider's stored key at the same endpoint, an explicit ``""`` —
+         *     or ``null`` in merge mode — clears it; a masked/omitted secret whose provider endpoint changed is
+         *     refused with a 422 so the key is re-entered, never carried to the new host). A valid,
+         *     changed result is stored through the PATCH's write path (a new config version); an invalid
+         *     result or a no-op is returned as data with ``persisted=false`` and nothing is written.
+         *
+         *     Returns:
+         *         CollectionStageApplyResponse: The redacted stage view + validity + notices + persist verdict;
+         *         404 unknown collection, 403 outside the caller's scope, 422 unmigratable stored pipeline or
+         *         a secret that must be re-entered after an endpoint change, 409 when concurrent config writes kept changing the pipeline under the action.
+         */
+        post: operations["apply_collection_stage_api_v1_collections__collection_id__pipeline_stages_apply_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1933,6 +1967,19 @@ export interface components {
             kind: string;
             /** @default action */
             node_type: components["schemas"]["NodeType"];
+        };
+        /**
+         * AddFieldOp
+         * @description Add a new field (its name must not already exist).
+         */
+        AddFieldOp: {
+            /** @description The full definition of the new field. */
+            field: components["schemas"]["FieldSpecModel"];
+            /**
+             * @description Operation tag. (enum property replaced by openapi-typescript)
+             * @enum {string}
+             */
+            op: AddFieldOpOp;
         };
         /**
          * AddLoop
@@ -3487,6 +3534,78 @@ export interface components {
             kind: CollectionSnippetKind;
         };
         /**
+         * CollectionStageApplyRequest
+         * @description One stage action to apply to a collection's stored ingestion pipeline (persisted on success).
+         */
+        CollectionStageApplyRequest: {
+            /** @description The stage action (enable_stage / disable_stage / set_provider / set_config / set_chain / set_stack). Prefer set_config with mode='merge' to change single keys: every other key, secrets included, is kept. */
+            action: components["schemas"]["StageAction"];
+            /**
+             * Note
+             * @description Note stored on the config-version snapshot (defaults to the action summary).
+             */
+            note?: string | null;
+        };
+        /**
+         * CollectionStageApplyResponse
+         * @description The outcome of a collection-scoped stage action.
+         *
+         *     Attributes:
+         *         collection_id (str): The edited collection.
+         *         persisted (bool): True when the new pipeline was stored (a new config version written).
+         *         needs_reindex (bool): The collection's derived reindex flag after the write.
+         *         stages (list[StageView]): The redacted stage view of the result (stored, or the rejected
+         *             candidate when ``persisted`` is false).
+         *         valid (bool): True when the resulting pipeline built and has zero validation issues.
+         *         issues (list[ValidationIssue]): Validation problems (a required config still empty…).
+         *         notices (list[str]): What the compiler did beyond the literal action, plus why nothing was
+         *             persisted when that is the case.
+         *         build_error (str | None): Precise builder failure when the result cannot build.
+         */
+        CollectionStageApplyResponse: {
+            /**
+             * Build Error
+             * @description Builder failure when the result cannot build (not persisted).
+             */
+            build_error?: string | null;
+            /**
+             * Collection Id
+             * @description The edited collection.
+             */
+            collection_id: string;
+            /**
+             * Issues
+             * @description Validation problems of the result (empty when healthy).
+             */
+            issues?: components["schemas"]["ValidationIssue"][];
+            /**
+             * Needs Reindex
+             * @description The collection's derived reindex flag after the write (embed-space change).
+             * @default false
+             */
+            needs_reindex: boolean;
+            /**
+             * Notices
+             * @description Compiler notices (cascades, ignored no-ops) and the reason nothing was stored.
+             */
+            notices?: string[];
+            /**
+             * Persisted
+             * @description True when the new pipeline was stored (a config version was written); false when the result is invalid or the action changed nothing.
+             */
+            persisted: boolean;
+            /**
+             * Stages
+             * @description The redacted stage view of the resulting pipeline, in run order.
+             */
+            stages: components["schemas"]["StageView"][];
+            /**
+             * Valid
+             * @description True when the result built and has zero validation issues.
+             */
+            valid: boolean;
+        };
+        /**
          * CollectionStorageResponse
          * @description A collection's material footprint per store, plus the per-document breakdown (heaviest first).
          *
@@ -3568,8 +3687,9 @@ export interface components {
          * CostEstimate
          * @description The full pre-hoc breakdown — an ESTIMATE, with its assumptions and caveats surfaced.
          *
-         *     ``total_cost_usd`` sums only the stages with a known rate; ``cost_complete`` is False when any
-         *     enabled cost-incurring stage priced to null, so the total is understood as a lower bound.
+         *     ``total_cost_usd`` is the full total only when it is honest: it is None as soon as any enabled
+         *     cost-incurring stage priced to null (``cost_complete`` False) — ``total_cost_lower_bound_usd``
+         *     then carries the sum of the priced stages, and a caveat names each unpriced model + stage.
          */
         CostEstimate: {
             /** @description The assumptions this estimate rests on. */
@@ -3600,8 +3720,14 @@ export interface components {
              */
             total_completion_tokens: number;
             /**
+             * Total Cost Lower Bound Usd
+             * @description Sum of the PRICED stages only — equals total_cost_usd when the cost is complete, else a lower bound of the true cost.
+             * @default 0
+             */
+            total_cost_lower_bound_usd: number;
+            /**
              * Total Cost Usd
-             * @description Summed USD over priced stages (None only when NO stage could be priced).
+             * @description Total projected USD — None when any enabled cost-incurring stage has no known rate (see total_cost_lower_bound_usd and the caveats).
              */
             total_cost_usd: number | null;
             /**
@@ -4702,6 +4828,48 @@ export interface components {
          */
         FieldOrigin: FieldOrigin;
         /**
+         * FieldPatch
+         * @description The attributes an ``update`` op changes — only the keys sent are applied (null clears).
+         */
+        FieldPatch: {
+            /**
+             * Description
+             * @description New description (explicit null clears it).
+             */
+            description?: string | null;
+            /**
+             * Enum Values
+             * @description New allowed values (enum fields).
+             */
+            enum_values?: string[] | null;
+            /** @description New value type. */
+            field_type?: components["schemas"]["FieldType"] | null;
+            /**
+             * Filterable
+             * @description New filterable flag.
+             */
+            filterable?: boolean | null;
+            /**
+             * Lexical
+             * @description New lexical (BM25 vector) flag.
+             */
+            lexical?: boolean | null;
+            /** @description New origin (user/generated). */
+            origin?: components["schemas"]["FieldOrigin"] | null;
+            /**
+             * Required
+             * @description New upload-required flag.
+             */
+            required?: boolean | null;
+            /** @description New scope (document/chunk). */
+            scope?: components["schemas"]["FieldScope"] | null;
+            /**
+             * Semantic
+             * @description New semantic (dense vector) flag.
+             */
+            semantic?: boolean | null;
+        };
+        /**
          * FieldScope
          * @description At which granularity a field's VALUE lives — one per document, or one per chunk.
          * @enum {string}
@@ -5475,6 +5643,11 @@ export interface components {
              * @description Node currently/last executed.
              */
             current_stage?: string | null;
+            /**
+             * Display Title
+             * @description The document's DISPLAY title, resolved at read exactly like the document list/grid/detail `display_title`: the value of the collection's `title_field` when one is configured and set on this document, else the parsed title. None when neither exists, the document is gone, or on the SSE stream (which re-reads only the job row). Prefer it over document_title for labelling; fall back to document_filename.
+             */
+            display_title?: string | null;
             /**
              * Document Filename
              * @description The document's filename, joined at read (None if the document is gone).
@@ -6770,6 +6943,22 @@ export interface components {
             job_id: string;
         };
         /**
+         * RemoveFieldOp
+         * @description Remove a field — DESTRUCTIVE: its stored document/chunk values are deleted with it.
+         */
+        RemoveFieldOp: {
+            /**
+             * Field Name
+             * @description The existing field to remove.
+             */
+            field_name: string;
+            /**
+             * @description Operation tag. (enum property replaced by openapi-typescript)
+             * @enum {string}
+             */
+            op: RemoveFieldOpOp;
+        };
+        /**
          * RemoveNode
          * @description Drop a node with its wiring, bridge a single-in/single-out chain, purge dangling references.
          */
@@ -6789,6 +6978,27 @@ export interface components {
              * @enum {string}
              */
             op: RemoveNodeOp;
+        };
+        /**
+         * RenameFieldOp
+         * @description Rename a field in place — its stored values and a ``title_field`` pointing at it follow.
+         */
+        RenameFieldOp: {
+            /**
+             * Field Name
+             * @description The existing field to rename.
+             */
+            field_name: string;
+            /**
+             * New Name
+             * @description Its new name (must not already exist).
+             */
+            new_name: string;
+            /**
+             * @description Operation tag. (enum property replaced by openapi-typescript)
+             * @enum {string}
+             */
+            op: RenameFieldOpOp;
         };
         /**
          * RotateKeyRequest
@@ -6849,6 +7059,76 @@ export interface components {
              * @description Logical bytes (original + rendered).
              */
             total_bytes: number;
+        };
+        /**
+         * SchemaDiff
+         * @description The metadata-schema change of a collection PATCH (applied, or previewed under dry_run).
+         */
+        SchemaDiff: {
+            /**
+             * Added
+             * @description Fields created.
+             */
+            added?: string[];
+            /**
+             * Modified
+             * @description Fields updated in place (values kept).
+             */
+            modified?: components["schemas"]["SchemaDiffModifiedField"][];
+            /**
+             * Reindex Required Fields
+             * @description Fields whose change needs a reindex before they are searchable (a new or renamed semantic/lexical field, a newly semantic/lexical one, or a searchable field whose type changed). Empty for a never-indexed collection.
+             */
+            reindex_required_fields?: string[];
+            /**
+             * Removed
+             * @description Fields deleted — their stored values are deleted with them (see values_lost).
+             */
+            removed?: string[];
+            /**
+             * Renamed
+             * @description Fields renamed in place (values kept).
+             */
+            renamed?: components["schemas"]["SchemaDiffRename"][];
+            /**
+             * Values Lost
+             * @description Removed field → number of stored document + chunk values deleted with it.
+             */
+            values_lost?: {
+                [key: string]: number;
+            };
+        };
+        /**
+         * SchemaDiffModifiedField
+         * @description One field updated in place, with the attributes that changed.
+         */
+        SchemaDiffModifiedField: {
+            /**
+             * Changed Attrs
+             * @description The attributes whose value changed (e.g. 'filterable', 'description').
+             */
+            changed_attrs: string[];
+            /**
+             * Field Name
+             * @description The field's (post-PATCH) name.
+             */
+            field_name: string;
+        };
+        /**
+         * SchemaDiffRename
+         * @description One field renamed in place (its values are kept).
+         */
+        SchemaDiffRename: {
+            /**
+             * From Name
+             * @description The field's previous name.
+             */
+            from_name: string;
+            /**
+             * To Name
+             * @description The field's new name.
+             */
+            to_name: string;
         };
         /**
          * ScoreBelow
@@ -7443,6 +7723,10 @@ export interface components {
         /**
          * SetChain
          * @description Rebuild a fallback chain — an enrich per-figure site, or a chain-capable stage itself.
+         *
+         *     A step that omits its secret (api_key / password) keeps the one of the same provider in the
+         *     current chain (same kind at that position, or same kind + endpoint after a reorder); an explicit
+         *     ``""`` clears it.
          */
         SetChain: {
             /**
@@ -7558,6 +7842,9 @@ export interface components {
         /**
          * SetProvider
          * @description Pick the provider of an exclusive stage — swap the kind, reset its config to defaults.
+         *
+         *     On a chain stage (parse / embed) re-picking the SAME kind keeps its stored secret (an omitted
+         *     secret is inherited from the same provider; a different kind never inherits one).
          */
         SetProvider: {
             /**
@@ -7599,7 +7886,7 @@ export interface components {
         };
         /**
          * SetStageConfig
-         * @description Replace a stage node's config (whole-dict replacement, like the graph editor's set_config).
+         * @description Edit a stage node's config — a whole-dict replacement (default) or a key-level merge.
          */
         SetStageConfig: {
             /**
@@ -7609,11 +7896,18 @@ export interface components {
             action: SetStageConfigAction;
             /**
              * Config
-             * @description The new config dict (full replacement).
+             * @description The config dict — the full new config (replace) or the keys to change (merge; a null value deletes that key so it falls back to its default).
              */
             config: {
                 [key: string]: unknown;
             };
+            /**
+             * Mode
+             * @description replace = the config IS the node's new config (omitted keys are dropped); merge = {**current, **config}, a null value deleting the key (safe single-key edits that keep every other key, secrets included).
+             * @default replace
+             * @enum {string}
+             */
+            mode: SetStageConfigMode;
             /**
              * Node
              * @description Id of the target node inside a multi-node stage; null = the stage's primary node (e.g. metagen's chunk/document node, intake's convert node).
@@ -7621,7 +7915,7 @@ export interface components {
             node?: string | null;
             /**
              * Stage
-             * @description Key of the stage whose config is replaced.
+             * @description Key of the stage whose config is edited.
              */
             stage: string;
         };
@@ -8179,11 +8473,22 @@ export interface components {
          *     to the SEARCHABLE surface flips needs_reindex. Config changes append immutable versions.
          */
         UpdateCollectionRequest: {
+            /**
+             * Dry Run
+             * @description Validate and compute schema_diff only — nothing is written (no Postgres, no Qdrant, no config version). The response body is the UNCHANGED stored collection.
+             * @default false
+             */
+            dry_run: boolean;
             /** @description Partial cost-estimate overrides. Omitted = leave unchanged; explicit null = clear back to the global defaults; a value replaces the stored overrides. */
             estimate_overrides?: components["schemas"]["EstimateOverrides"] | null;
             /**
+             * Field Ops
+             * @description Explicit schema operations applied in order: add (full field), update (partial changes), remove (deletes the field's values), rename (keeps the values; a title_field pointing at it follows). Mutually exclusive with fields.
+             */
+            field_ops?: (components["schemas"]["AddFieldOp"] | components["schemas"]["UpdateFieldOp"] | components["schemas"]["RemoveFieldOp"] | components["schemas"]["RenameFieldOp"])[] | null;
+            /**
              * Fields
-             * @description The TARGET schema (diffed by field name; omitted fields are removed).
+             * @description LEGACY full TARGET schema (diffed by field name; omitted fields are REMOVED with their values, a changed name is a remove + add). Prefer field_ops. Mutually exclusive with field_ops.
              */
             fields?: components["schemas"]["FieldSpecModel"][] | null;
             /**
@@ -8240,6 +8545,110 @@ export interface components {
              * @description New execution-trace capture level ('shape' or 'full'). Omitted = leave the current value unchanged. 'full' is clamped by the operator ceiling WORKER_TRACE_MAX_VERBOSITY.
              */
             trace_verbosity?: UpdateCollectionRequestTrace_verbosityAnyOf0 | null;
+        };
+        /**
+         * UpdateCollectionResponse
+         * @description The PATCH result: the collection (unchanged under dry_run) plus its schema diff.
+         */
+        UpdateCollectionResponse: {
+            /**
+             * Created At
+             * @description Creation timestamp.
+             */
+            created_at?: string | null;
+            /**
+             * Dry Run
+             * @description True when nothing was written (preview only).
+             */
+            dry_run: boolean;
+            /** @description Per-collection PARTIAL cost-estimate overrides (rates/assumptions); null = use the global defaults. */
+            estimate_overrides?: components["schemas"]["EstimateOverrides"] | null;
+            /**
+             * Fields
+             * @description The metadata schema.
+             */
+            fields?: components["schemas"]["FieldSpecModel"][];
+            /**
+             * Id
+             * @description The collection's UUID.
+             */
+            id: string;
+            /**
+             * Job Timeout Seconds
+             * @description Per-collection whole-ingest-job wall-clock job timeout, seconds. None = inherit the worker's global WORKER_JOB_TIMEOUT_SECONDS default.
+             */
+            job_timeout_seconds?: number | null;
+            /**
+             * Max File Size Bytes
+             * @description Upload size ceiling, bytes.
+             */
+            max_file_size_bytes: number;
+            /**
+             * Name
+             * @description Unique human name.
+             */
+            name: string;
+            /**
+             * Needs Reindex
+             * @description True when a config change requires reindexing.
+             */
+            needs_reindex: boolean;
+            /**
+             * Pipeline
+             * @description The ingestion pipeline blob (the graph).
+             */
+            pipeline: {
+                [key: string]: unknown;
+            };
+            /** @description The metadata-schema change applied (or previewed under dry_run); empty lists when the PATCH did not touch the schema. */
+            schema_diff: components["schemas"]["SchemaDiff"];
+            /**
+             * Search
+             * @description The search pipeline graph blob ({} = use the stock default).
+             */
+            search: {
+                [key: string]: unknown;
+            };
+            /**
+             * Supported Formats
+             * @description Accepted upload extensions (e.g. pdf).
+             */
+            supported_formats: string[];
+            /**
+             * Tags
+             * @description Free-form labels for grouping/filtering collections in the UI ([] = untagged).
+             */
+            tags?: string[];
+            /**
+             * Title Field
+             * @description Name of a DOCUMENT-scope metadata field whose value is shown as each document's display title (search hits, document lists). null = use the parser-derived title. When the named field is unset or blank on a document, that document falls back to its parsed title.
+             */
+            title_field?: string | null;
+            /**
+             * Trace Verbosity
+             * @description Execution-trace capture level for this collection's ingest runs: 'shape' (default) keeps only the cheap inline shape summary of each node's input/output; 'full' also stores the raw payload in the object store (clamped by the operator ceiling WORKER_TRACE_MAX_VERBOSITY).
+             * @default shape
+             * @enum {string}
+             */
+            trace_verbosity: UpdateCollectionResponseTrace_verbosity;
+        };
+        /**
+         * UpdateFieldOp
+         * @description Change some attributes of an existing field in place (its stored values are kept).
+         */
+        UpdateFieldOp: {
+            /** @description The attributes to change (only the keys sent apply). */
+            changes: components["schemas"]["FieldPatch"];
+            /**
+             * Field Name
+             * @description The existing field to update.
+             */
+            field_name: string;
+            /**
+             * @description Operation tag. (enum property replaced by openapi-typescript)
+             * @enum {string}
+             */
+            op: UpdateFieldOpOp;
         };
         /**
          * UploadAccepted
@@ -8969,7 +9378,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["CollectionModel"];
+                    "application/json": components["schemas"]["UpdateCollectionResponse"];
                 };
             };
             /** @description Validation Error */
@@ -9416,6 +9825,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PreviewJobResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    apply_collection_stage_api_v1_collections__collection_id__pipeline_stages_apply_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                collection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CollectionStageApplyRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CollectionStageApplyResponse"];
                 };
             };
             /** @description Validation Error */
@@ -10899,6 +11343,9 @@ export enum PathsApiV1JobsJob_idEventsEvent_idPayloadGetParametersQuerySlot {
     input = "input",
     output = "output"
 }
+export enum AddFieldOpOp {
+    add = "add"
+}
 export enum AddLoopOp {
     add_loop = "add_loop"
 }
@@ -11067,8 +11514,14 @@ export enum ProbeStatus {
     not_configured = "not_configured",
     skipped = "skipped"
 }
+export enum RemoveFieldOpOp {
+    remove = "remove"
+}
 export enum RemoveNodeOp {
     remove_node = "remove_node"
+}
+export enum RenameFieldOpOp {
+    rename = "rename"
 }
 export enum ScoreBelowKind {
     score_below = "score_below"
@@ -11104,6 +11557,10 @@ export enum SetStackAction {
 export enum SetStageConfigAction {
     set_config = "set_config"
 }
+export enum SetStageConfigMode {
+    replace = "replace",
+    merge = "merge"
+}
 export enum SnippetImportResultKind {
     pipeline = "pipeline",
     search = "search",
@@ -11123,6 +11580,13 @@ export enum StageKind {
 export enum UpdateCollectionRequestTrace_verbosityAnyOf0 {
     shape = "shape",
     full = "full"
+}
+export enum UpdateCollectionResponseTrace_verbosity {
+    shape = "shape",
+    full = "full"
+}
+export enum UpdateFieldOpOp {
+    update = "update"
 }
 export enum ValidationCode {
     no_single_entry = "no_single_entry",

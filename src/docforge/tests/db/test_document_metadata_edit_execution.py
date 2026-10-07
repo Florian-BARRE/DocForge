@@ -175,3 +175,29 @@ async def test_update_metadata_upserts_only_listed_fields_and_strips_nul(
     # The upsert did not duplicate the (document, field) row.
     rows = await DocumentApi.get_metadata(session, doc1)
     assert len(rows) == 3
+
+
+async def test_value_edit_and_schema_touch_move_the_collection_change_stamp(
+    session: AsyncSession,
+) -> None:
+    """The describe cache's stamp must MOVE on a metadata value edit (DocumentApi.touch) and on a
+    schema PATCH (CollectionApi.touch) — neither writes a parent column the ORM onupdate would see."""
+    from shared_libs.services.db.postgresql.apis import CollectionApi  # noqa: PLC0415
+
+    ids, _ = await _seed(session)
+    collection_id = (await DocumentApi.get(session, ids[0])).collection_id
+    before = await CollectionApi.change_stamp(session, collection_id)
+    await session.commit()
+    assert before is not None and before[1] == 2
+
+    await DocumentApi.touch(session, ids[0])
+    await session.commit()
+    after_edit = await CollectionApi.change_stamp(session, collection_id)
+    await session.commit()
+    assert after_edit != before and after_edit[0] == before[0]
+
+    await CollectionApi.touch(session, collection_id)
+    await session.commit()
+    after_schema = await CollectionApi.change_stamp(session, collection_id)
+    assert after_schema[0] != after_edit[0]
+    assert await CollectionApi.change_stamp(session, uuid.uuid4()) is None

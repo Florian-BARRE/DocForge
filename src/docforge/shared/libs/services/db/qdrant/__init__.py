@@ -35,6 +35,7 @@ from .apis import (
     BrowseKey,
     QdrantBrowseApi,
     QdrantCollectionApi,
+    QdrantFieldPurgeApi,
     QdrantIndexApi,
     QdrantSearchApi,
 )
@@ -64,6 +65,7 @@ __all__ = [
     "MAX_LIST_VALUES",
     "parse_range",
     "QdrantCollectionApi",
+    "QdrantFieldPurgeApi",
     "QdrantBrowseApi",
     "BrowseKey",
     "QdrantIndexApi",

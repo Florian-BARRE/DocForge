@@ -434,7 +434,7 @@ def test_read_port_hydrate_threads_block_location_onto_the_hit(fastapi_app) -> N
     import uuid as _uuid
 
     from backend.libs.search import CollectionReadPortImpl
-    from backend.routers.search.helpers import SearchHelpers
+    from backend.routers.search.model_mapper import SearchModelMapper
 
     chunk_uuid = _uuid.uuid4()
     doc_uuid = _uuid.uuid4()
@@ -475,7 +475,7 @@ def test_read_port_hydrate_threads_block_location_onto_the_hit(fastapi_app) -> N
     ]
 
     # 2. The flat client model surfaces it (the router flattens Hit → SearchHitModel).
-    model = SearchHelpers.to_hit_model(hit)
+    model = SearchModelMapper.to_hit_model(hit)
     assert model.block_ids == ["doc:#/texts/3", "doc:#/texts/4"]
     assert model.page == 2 and model.bbox == [0.1, 0.2, 0.5, 0.3]
     assert [(loc.page, loc.bbox) for loc in model.block_locations] == [
@@ -487,7 +487,7 @@ def test_read_port_hydrate_threads_block_location_onto_the_hit(fastapi_app) -> N
     database.documents.get_block_locations_for_chunks = AsyncMock(return_value={})
     bare = asyncio.run(port.hydrate([str(chunk_uuid)]))[str(chunk_uuid)]
     assert bare.metadata["block_ids"] == [] and bare.metadata["page"] is None
-    assert SearchHelpers.to_hit_model(bare).block_locations == []
+    assert SearchModelMapper.to_hit_model(bare).block_locations == []
 
 
 def test_search_surfaces_degraded_note_in_debug_info(client, fastapi_app, monkeypatch) -> None:
@@ -537,7 +537,7 @@ def test_healthy_search_leaves_debug_info_without_a_degraded_note(client, wired)
 def test_pageless_block_location_surfaces_null_page(fastapi_app) -> None:
     """A page-less document's block location carries page=None all the way into the flat hit model —
     None means 'no page', distinct from a genuine 0-based page index 0 (which is preserved)."""
-    from backend.routers.search.helpers import SearchHelpers
+    from backend.routers.search.model_mapper import SearchModelMapper
 
     pageless = Hit(
         chunk_id="c1",
@@ -551,7 +551,7 @@ def test_pageless_block_location_surfaces_null_page(fastapi_app) -> None:
             "block_locations": [{"page": None, "bbox": [0.1, 0.2, 0.5, 0.3]}],
         },
     )
-    model = SearchHelpers.to_hit_model(pageless)
+    model = SearchModelMapper.to_hit_model(pageless)
     assert model.page is None
     assert model.block_locations[0].page is None
 
@@ -568,7 +568,7 @@ def test_pageless_block_location_surfaces_null_page(fastapi_app) -> None:
             "block_locations": [{"page": 0, "bbox": [0, 0, 1, 1]}],
         },
     )
-    paged_model = SearchHelpers.to_hit_model(paged)
+    paged_model = SearchModelMapper.to_hit_model(paged)
     assert paged_model.page == 0
     assert paged_model.block_locations[0].page == 0
 
@@ -858,7 +858,7 @@ def test_search_threads_text_fields_and_title_field_to_the_service(
 
 
 def test_hit_page_number_is_one_based_and_null_when_pageless(fastapi_app) -> None:
-    from backend.routers.search.helpers import SearchHelpers
+    from backend.routers.search.model_mapper import SearchModelMapper
 
     paged = Hit(
         chunk_id="c",
@@ -867,11 +867,11 @@ def test_hit_page_number_is_one_based_and_null_when_pageless(fastapi_app) -> Non
         rank=1,
         metadata={"page": 4, "block_locations": [{"page": 0, "bbox": [0, 0, 1, 1]}]},
     )
-    model = SearchHelpers.to_hit_model(paged)
+    model = SearchModelMapper.to_hit_model(paged)
     assert (model.page, model.page_number) == (4, 5)
     assert model.block_locations[0].page_number == 1
     bare = Hit(chunk_id="c", document_id="d", score=0.1, rank=1, metadata={})
-    assert SearchHelpers.to_hit_model(bare).page_number is None
+    assert SearchModelMapper.to_hit_model(bare).page_number is None
 
 
 def _hydrate_with_title(title_field, value) -> str | None:

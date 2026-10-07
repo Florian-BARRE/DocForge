@@ -160,6 +160,7 @@ class WorkersLiveHelpers:
                     entry.document_filename,
                     entry.collection_name,
                     document_title=getattr(entry, "document_title", None),
+                    display_title=getattr(entry, "document_display_title", None),
                 )
             )
 

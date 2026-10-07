@@ -1,6 +1,6 @@
 # ====== Code Summary ======
 # SearchHitMapper — turns the graph's Hits into the client SearchHitModels for the two chunk-listing
-# routes (search and browse): the flat hit shape (SearchHelpers.to_hit_model), then the request's
+# routes (search and browse): the flat hit shape (SearchModelMapper.to_hit_model), then the request's
 # return_fields projection (unrequested keys left UNSET, so response_model_exclude_unset drops them),
 # then — only on a debug search — the fusion_score / rerank_score provenance. A field that was never
 # set never reaches the wire, so the default (no projection, no debug) output is unchanged.
@@ -13,7 +13,7 @@ from shared_libs.public_models.search import Hit
 
 # ====== Local Project Imports ======
 from ...libs.search import HitProjection
-from .helpers import SearchHelpers
+from .model_mapper import SearchModelMapper
 from .models import SearchHitModel
 
 # The debug-only hit fields — never projectable through return_fields, only set by debug=true.
@@ -69,7 +69,7 @@ class SearchHitMapper:
         # 1. The full hit (every field set explicitly), then the projection (only requested set).
         mapped: list[SearchHitModel] = []
         for hit in hits:
-            model = SearchHelpers.to_hit_model(hit)
+            model = SearchModelMapper.to_hit_model(hit)
             if projection is not None:
                 model = SearchHitModel.model_validate(projection.apply(model.model_dump()))
             # 2. Debug scores join the already-set keys (exclude_unset keeps the projection intact).

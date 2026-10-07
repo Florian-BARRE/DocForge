@@ -49,12 +49,19 @@ def _job(*, cancel_requested=False):
     )
 
 
-def _with_names(job, filename="contract.pdf", collection_name="legal", title="Master Agreement"):
+def _with_names(
+    job,
+    filename="contract.pdf",
+    collection_name="legal",
+    title="Master Agreement",
+    display_title="MSA 2026 — Acme",
+):
     return SimpleNamespace(
         job=job,
         document_filename=filename,
         document_title=title,
         collection_name=collection_name,
+        document_display_title=display_title,
     )
 
 
@@ -85,6 +92,7 @@ async def test_list_jobs_carries_filename_collection_name_and_stage(
     row = result.jobs[0]
     assert row.document_filename == "contract.pdf"
     assert row.document_title == "Master Agreement"
+    assert row.display_title == "MSA 2026 — Acme"
     assert row.collection_name == "legal"
     assert row.current_stage == "chunk"
     assert row.cancel_requested is True
@@ -102,5 +110,42 @@ async def test_get_job_carries_filename_and_collection_name(fastapi_app, monkeyp
 
     assert result.document_filename == "contract.pdf"
     assert result.document_title == "Master Agreement"
+    assert result.display_title == "MSA 2026 — Acme"
     assert result.collection_name == "legal"
     assert result.current_stage == "chunk"
+
+
+def test_row_to_names_resolves_the_display_title_from_the_title_field_value() -> None:
+    """The joined row's title_field value wins over the parsed title; blank/unset falls back to it;
+    an empty parsed title with no title_field surfaces None (never a blank label)."""
+    from shared_libs.services.db.postgresql.apis.job_api import JobApi  # noqa: PLC0415
+
+    job = SimpleNamespace(id=uuid.uuid4())
+    by_field = JobApi._row_to_names((job, "a.pdf", "1 GENERALITES", "c", "doc_title", "Real Title"))
+    assert by_field.document_display_title == "Real Title"
+    assert by_field.document_title == "1 GENERALITES"
+
+    listed = JobApi._row_to_names((job, "a.pdf", "Parsed", "c", "authors", ["Ada", " ", "Alan"]))
+    assert listed.document_display_title == "Ada, Alan"
+
+    blank = JobApi._row_to_names((job, "a.pdf", "Parsed", "c", "doc_title", "   "))
+    assert blank.document_display_title == "Parsed"
+
+    unset = JobApi._row_to_names((job, "a.pdf", "Parsed", "c", None, None))
+    assert unset.document_display_title == "Parsed"
+
+    untitled = JobApi._row_to_names((job, "a.pdf", "", "c", None, None))
+    assert untitled.document_title is None and untitled.document_display_title is None
+
+
+def test_with_names_select_is_one_statement_with_a_correlated_title_value() -> None:
+    """The display title rides in the SAME select as the job page (a correlated scalar subquery),
+    never a per-row read — the compiled SQL carries the title_field join + document_metadata seek."""
+    from sqlalchemy.dialects import postgresql  # noqa: PLC0415
+
+    from shared_libs.services.db.postgresql.apis.job_api import JobApi  # noqa: PLC0415
+
+    sql = str(JobApi._with_names_select().compile(dialect=postgresql.dialect()))
+    assert sql.count("SELECT") == 2  # the page select + the one correlated scalar subquery
+    assert "collection.title_field" in sql
+    assert "document_metadata.document_id = job.document_id" in sql

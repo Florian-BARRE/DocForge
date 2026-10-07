@@ -14,7 +14,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Uplo
 
 # ====== Internal Project Imports ======
 from config import RUNTIME_CONFIG
-from shared_libs.pipelines.blob_secrets import restore_blob_secrets
+from shared_libs.pipelines.blob_secrets import SecretReentryRequired, restore_blob_secrets
 from shared_libs.pipelines.ingest import BlobNormalizationError, BlobNormalizer
 from shared_libs.pipelines.ingest.estimate import CostEstimate
 from shared_libs.public_models import SourceDocument
@@ -51,7 +51,9 @@ from .models import (
     PreviewJobResult,
     TracePurgeResult,
     UpdateCollectionRequest,
+    UpdateCollectionResponse,
 )
+from .schema_patch import CollectionSchemaPatch
 from .store_sync import CollectionStoreSync
 
 router = APIRouter(prefix="/collections", tags=["collections"])
@@ -660,19 +662,20 @@ async def create_collection(
 
 @router.patch(
     "/{collection_id}",
-    response_model=CollectionModel,
+    response_model=UpdateCollectionResponse,
     dependencies=[Depends(require(Capability.WRITE))],
 )
 @auto_handle_errors
 async def update_collection(
     collection_id: uuid.UUID, request: UpdateCollectionRequest
-) -> CollectionModel:
+) -> UpdateCollectionResponse:
     """
-    Patch identity/limits, the metadata schema (by DIFF), and/or the config blobs.
+    Patch identity/limits, the metadata schema (legacy ``fields`` list or explicit ``field_ops``),
+    and/or the config blobs. ``dry_run`` validates everything and returns the schema diff only.
 
     Returns:
-        CollectionModel: The updated contract; 404 unknown, 409 name clash, 422 broken
-        pipeline or colliding vector slugs.
+        UpdateCollectionResponse: The updated contract (unchanged under dry_run) + its schema_diff;
+        404 unknown, 409 name clash, 422 broken pipeline, bad field op or colliding vector slugs.
     """
     # 1. Existence first — every later step assumes the row.
     current = await CONTEXT.database.collections.get(collection_id)
@@ -689,14 +692,21 @@ async def update_collection(
     # 3. Restore any masked provider secret BEFORE validating/storing: a caller that read a collection
     #    (secrets masked) and PATCHed a blob back sends the mask verbatim — that means "keep the stored
     #    key", never "set the key to the literal mask". Healed against the real stored blobs by node id.
-    healed_pipeline = (
-        restore_blob_secrets(request.pipeline, current.pipeline)
-        if request.pipeline is not None
-        else None
-    )
-    healed_search = (
-        restore_blob_secrets(request.search, current.search) if request.search is not None else None
-    )
+    #    A masked/omitted secret whose provider endpoint changed is refused (422): it must be
+    #    re-entered, never carried to the new host nor silently blanked.
+    try:
+        healed_pipeline = (
+            restore_blob_secrets(request.pipeline, current.pipeline)
+            if request.pipeline is not None
+            else None
+        )
+        healed_search = (
+            restore_blob_secrets(request.search, current.search)
+            if request.search is not None
+            else None
+        )
+    except SecretReentryRequired as exc:
+        raise HTTPException(status_code=422, detail=f"Collection {collection_id}: {exc}")
 
     # 3a. A new pipeline never reaches storage broken: heal it to the current engine, validate it,
     #     and keep its stamped canonical form for storage (step 6).
@@ -711,20 +721,26 @@ async def update_collection(
     if healed_search is not None and healed_search != {}:
         CollectionHelpers.validate_search_blob(healed_search)
 
-    # 3c. Validate the schema diff BEFORE any write — a bad field must 422 without touching the store.
-    if request.fields is not None:
-        CollectionHelpers.validate_fields(request.fields)
+    # 3c. Resolve + validate the schema change (fields OR field_ops) and its diff BEFORE any write —
+    #     a bad op/field 422s without touching the store; dry_run and apply share this exact path.
+    schema = await CollectionSchemaPatch.resolve(current, request)
 
     # 3d. An explicit title_field must name a document-scope field of the POST-PATCH schema (the new
     #     fields when this PATCH also edits them, else the stored schema); null clears it.
     apply_title_field = "title_field" in request.model_fields_set
     if apply_title_field:
         effective_schema = (
-            request.fields
-            if request.fields is not None
+            schema.plan.target
+            if schema is not None
             else await CONTEXT.database.collections.get_schema(collection_id)
         )
         CollectionHelpers.validate_title_field(request.title_field, effective_schema)
+
+    # 3e. dry_run stops here: everything validated, the diff computed, nothing written.
+    if request.dry_run:
+        return CollectionHelpers.to_update_response(
+            current, await CONTEXT.database.collections.get_schema(collection_id), schema, True
+        )
 
     # 4. Apply EVERY DB part in ONE transaction — a mid-sequence failure rolls the WHOLE patch back,
     #    so a collection is never left half-updated (e.g. contract changed but schema not). The
@@ -748,9 +764,8 @@ async def update_collection(
         max_file_size_bytes=request.max_file_size_bytes,
         job_timeout_seconds=request.job_timeout_seconds,
         trace_verbosity=request.trace_verbosity,
-        schema_fields=CollectionHelpers.to_field_rows(request.fields)
-        if request.fields is not None
-        else None,
+        schema_fields=schema.rows if schema is not None else None,
+        schema_renames=dict(schema.plan.renames) if schema is not None else {},
         config_touched=request.pipeline is not None or request.search is not None,
         pipeline=stored_pipeline,
         search=healed_search,
@@ -775,16 +790,16 @@ async def update_collection(
     #    points) then enqueue the repair backfills. Kept OUT of the DB transaction on purpose: it is
     #    non-transactional and best-effort. A newly semantic/lexical field needs a named vector Qdrant
     #    cannot add live, so a reindex is required to make it searchable.
-    if result.schema_applied:
-        await CollectionStoreSync.reconcile_and_backfill(collection_id)
+    if result.schema_applied and schema is not None:
+        await CollectionStoreSync.reconcile_and_backfill(collection_id, schema.departed)
     if result.schema_reindex_required:
         CONTEXT.logger.warning(
             f"Collection {collection_id}: reindex-relevant config changed — reindex required"
         )
 
     updated = await CONTEXT.database.collections.get(collection_id)
-    return CollectionHelpers.to_model(
-        updated, await CONTEXT.database.collections.get_schema(collection_id)
+    return CollectionHelpers.to_update_response(
+        updated, await CONTEXT.database.collections.get_schema(collection_id), schema, False
     )
 
 

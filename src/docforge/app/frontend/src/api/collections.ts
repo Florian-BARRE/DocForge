@@ -81,10 +81,51 @@ export interface CreateCollectionRequest {
   preset?: CollectionPreset | null;
 }
 
+/** Partial attribute change of an existing field (mirrors the backend `FieldPatch`); values are kept. */
+export type FieldPatch = Partial<Omit<FieldSpec, "field_name">>;
+
+/** Explicit schema operations (mirror of the backend field-op union) — applied in order by the PATCH. */
+export type FieldOp =
+  | { op: "add"; field: FieldSpec }
+  | { op: "update"; field_name: string; changes: FieldPatch }
+  | { op: "remove"; field_name: string }
+  | { op: "rename"; field_name: string; new_name: string };
+
+export interface SchemaDiffModifiedField {
+  field_name: string;
+  changed_attrs: string[];
+}
+
+export interface SchemaDiffRename {
+  from_name: string;
+  to_name: string;
+}
+
+/** The schema change a PATCH applied (or, under `dry_run`, would apply). */
+export interface SchemaDiff {
+  added?: string[];
+  modified?: SchemaDiffModifiedField[];
+  /** Deleted fields — their stored values go with them (see `values_lost`). */
+  removed?: string[];
+  renamed?: SchemaDiffRename[];
+  /** Removed field -> number of stored document + chunk values deleted with it. */
+  values_lost?: Record<string, number>;
+  /** Fields needing a reindex before they are searchable. */
+  reindex_required_fields?: string[];
+}
+
+/** PATCH result: the collection (unchanged under `dry_run`) plus its schema diff. */
+export interface UpdateCollectionResponse extends Collection {
+  dry_run: boolean;
+  schema_diff: SchemaDiff;
+}
+
 /**
- * Patch payload — every field optional, mirroring the backend's diff semantics: `fields` is the
- * FULL target schema (fields omitted from the list are removed, together with their stored
- * values); a searchable-surface change flips `needs_reindex` on the returned Collection.
+ * Patch payload — every field optional, mirroring the backend's diff semantics. The schema is sent
+ * as EITHER `fields` (the FULL target schema: omitted fields are removed together with their stored
+ * values, a changed name is remove + add) OR `field_ops` (explicit ops; `rename` keeps the values) —
+ * both at once is a 422. `dry_run` validates and returns the `schema_diff` without writing anything.
+ * A searchable-surface change flips `needs_reindex` on the returned Collection.
  */
 export interface UpdateCollectionRequest {
   name?: string | null;
@@ -95,6 +136,9 @@ export interface UpdateCollectionRequest {
   /** `null` reverts to inheriting the worker's global default job timeout. */
   job_timeout_seconds?: number | null;
   fields?: FieldSpec[] | null;
+  field_ops?: FieldOp[] | null;
+  /** Preview only: nothing is written, the response carries the would-be `schema_diff`. */
+  dry_run?: boolean;
   /** Display-title field; explicit `null` clears it. Backend answers 422 listing valid choices on a bad name. */
   title_field?: string | null;
   pipeline?: Record<string, unknown> | null;
@@ -117,7 +161,7 @@ export function createCollection(request: CreateCollectionRequest): Promise<Coll
   return apiFetch(BASE, jsonInit("POST", request));
 }
 
-export function updateCollection(id: string, request: UpdateCollectionRequest): Promise<Collection> {
+export function updateCollection(id: string, request: UpdateCollectionRequest): Promise<UpdateCollectionResponse> {
   return apiFetch(`${BASE}/${id}`, jsonInit("PATCH", request));
 }
 
@@ -410,10 +454,10 @@ export interface CostEstimateVolume {
 }
 
 /**
- * Full dry-run estimate for a collection. `total_cost_usd` is `null` only when NO stage is
- * priceable at all (never conflated with `0.0`, which means an actually-free/parse-only
- * pipeline); `cost_complete` is `false` whenever at least one priced stage's provider has no
- * known rate, so the total understates the real spend.
+ * Full dry-run estimate for a collection. `total_cost_usd` is `null` whenever at least one paid
+ * stage's model has no known rate (`cost_complete` false) — never conflated with `0.0`, which
+ * means an actually-free/parse-only pipeline. `total_cost_lower_bound_usd` is the sum of the priced
+ * stages (the total when complete, else a minimum); a caveat names each unpriced model.
  */
 export interface CostEstimate {
   document_count: number;
@@ -422,6 +466,7 @@ export interface CostEstimate {
   total_prompt_tokens: number;
   total_completion_tokens: number;
   total_cost_usd: number | null;
+  total_cost_lower_bound_usd?: number;
   cost_complete: boolean;
   assumptions: Record<string, unknown>;
   caveats: string[];

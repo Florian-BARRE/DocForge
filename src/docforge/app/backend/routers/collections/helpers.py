@@ -22,6 +22,7 @@ from shared_libs.services.db.qdrant import RESERVED_PAYLOAD_KEYS
 # ====== Local Project Imports ======
 from ...libs.estimate import EstimateOverrides
 from ...libs.health import CollectionHealthSummary
+from ...libs.schema_ops import SchemaDiff
 from ...utils.search_blob_validation import SearchBlobValidator
 from .models import (
     CollectionContractModel,
@@ -29,6 +30,7 @@ from .models import (
     CollectionListItem,
     CollectionModel,
     FieldSpecModel,
+    UpdateCollectionResponse,
 )
 
 # Payload keys the chunk point owns for its own machinery (id, ordinal, enable-filter). A
@@ -138,6 +140,33 @@ class CollectionHelpers:
         return CollectionListItem(
             **cls.__base_payload(collection, fields, mask=cls._mask_for_list),
             health=health,
+        )
+
+    @classmethod
+    def to_update_response(
+        cls,
+        collection: Collection,
+        fields: list[MetadataField],
+        schema: object | None,
+        dry_run: bool,
+    ) -> UpdateCollectionResponse:
+        """Map a PATCHed (or, under dry_run, untouched) collection + its schema diff to the response.
+
+        Args:
+            collection (Collection): The collection row to render.
+            fields (list[MetadataField]): Its stored schema rows.
+            schema (object | None): The resolved schema patch (carries ``diff``), None when the PATCH
+                did not touch the schema (→ an empty diff).
+            dry_run (bool): Whether nothing was written.
+
+        Returns:
+            UpdateCollectionResponse: The contract + ``schema_diff`` + ``dry_run``.
+        """
+        diff = getattr(schema, "diff", None) or SchemaDiff()
+        return UpdateCollectionResponse(
+            **cls.__base_payload(collection, fields, mask=redact_blob_secrets),
+            schema_diff=diff,
+            dry_run=dry_run,
         )
 
     @staticmethod

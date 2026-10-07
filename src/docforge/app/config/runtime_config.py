@@ -88,6 +88,10 @@ class RUNTIME_CONFIG(EnvConfigLoader):
     # request skips the Postgres round-trip for this long. A revoked/deactivated key therefore keeps
     # working for at most this window (per process); 0 disables the cache (every request reads the DB).
     AUTH_KEY_CACHE_TTL_SECONDS: float = env("AUTH_KEY_CACHE_TTL_SECONDS", cast=float, default=10.0)
+    # Max age of a cached GET /collections/{id}/describe guide (in-process, bounded LRU). The cache is
+    # ALSO invalidated by the collection's change stamp (ingestion, metadata edit, schema PATCH), so
+    # this TTL only bounds staleness from writes that bypass the stamp. 0 disables the cache.
+    DESCRIBE_CACHE_TTL_SECONDS: float = env("DESCRIBE_CACHE_TTL_SECONDS", cast=float, default=30.0)
 
     # ───── Search ─────
     # Wall-clock cap for one inline search run. Search is sub-second; this only guards a stuck or

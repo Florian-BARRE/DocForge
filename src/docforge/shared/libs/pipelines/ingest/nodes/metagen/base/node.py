@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict
 # ====== Internal Project Imports ======
 from shared_libs.pipelines.base import ActionNode
 from shared_libs.pipelines.nodes.openai_compat import OpenAICompatConfig
+from shared_libs.pipelines.secret_identity import SecretIdentity
 from shared_libs.public_models import CollectionContract, FieldOrigin, FieldScope, MetadataFieldSpec
 
 # ====== Local Project Imports ======
@@ -34,11 +35,18 @@ class BaseMetagenNode(ActionNode):
     def __endpoint(
         self, base_url: str = "", api_key: str = "", model: str = ""
     ) -> OpenAICompatConfig:
-        """The effective endpoint of a target — its overrides on top of the node's default."""
+        """The effective endpoint of a target — its overrides on top of the node's default.
+
+        The node's key is inherited ONLY by a target calling the node's endpoint (blank or the same
+        normalised ``base_url``); a target overriding the endpoint elsewhere sends its own key, or
+        none — never the node's (SecretIdentity.scoped_secret).
+        """
         config: BaseMetagenConfig = self.config
         return OpenAICompatConfig(
             base_url=base_url or config.base_url,
-            api_key=api_key or config.api_key,
+            api_key=SecretIdentity.scoped_secret(
+                base_url, api_key, config.base_url, config.api_key
+            ),
             model=model or config.model,
             timeout_seconds=config.timeout_seconds,
         )

@@ -13,47 +13,10 @@ from pydantic import BaseModel, Field
 # ====== Local Project Imports ======
 from ._shared import FieldOrigin, FieldScope, FieldType
 from .estimate import EstimateOverrides
+from .field_spec import FieldSpec
 from .health import CollectionHealthSummary
 from .reingest import ReingestJobHandle
-
-
-class FieldSpec(BaseModel):
-    """
-    One metadata field of the collection's contract (declared OR generated).
-
-    Attributes:
-        field_name (str): Unique field name within the collection.
-        field_type (FieldType): Value type — drives validation and storage.
-        required (bool): Upload refused without it (user fields).
-        filterable (bool): Present in the Qdrant payload (lean vector).
-        lexical (bool): Gets a sparse BM25 named vector.
-        semantic (bool): Gets a dense named vector.
-        enum_values (list[str] | None): Allowed values when ``field_type`` is enum.
-        origin (FieldOrigin): user (declared at upload) or generated (metagen).
-        scope (FieldScope): document or chunk level value.
-        description (str | None): What the field means (max 1000 chars).
-    """
-
-    field_name: str = Field(description="Unique field name within the collection.")
-    field_type: FieldType = Field(description="Value type — drives validation and storage.")
-    required: bool = Field(default=False, description="Upload refused without it (user fields).")
-    filterable: bool = Field(default=False, description="Present in the Qdrant payload (lean).")
-    lexical: bool = Field(default=False, description="Gets a sparse BM25 named vector.")
-    semantic: bool = Field(default=False, description="Gets a dense named vector.")
-    enum_values: list[str] | None = Field(
-        default=None, description="Allowed values when field_type is enum."
-    )
-    origin: FieldOrigin = Field(
-        default=FieldOrigin.USER, description="user (declared at upload) or generated (metagen)."
-    )
-    scope: FieldScope = Field(
-        default=FieldScope.DOCUMENT, description="document or chunk level value."
-    )
-    description: str | None = Field(
-        default=None,
-        max_length=1000,
-        description="What the field means, in plain words — surfaced to search clients (max 1000).",
-    )
+from .schema_ops import FieldOp, SchemaDiff
 
 
 class CollectionModel(BaseModel):
@@ -213,7 +176,10 @@ class UpdateCollectionRequest(BaseModel):
         job_timeout_seconds (float | None): New per-collection whole-ingest-job wall-clock
             job timeout, seconds. Omitted = leave the current value unchanged.
         title_field (str | None): Display-title field. Omitted = unchanged; explicit null = clear.
-        fields (list[FieldSpec] | None): The TARGET schema (diffed by field name).
+        fields (list[FieldSpec] | None): LEGACY full TARGET schema (omitted fields are removed).
+        field_ops (list[FieldOp] | None): Explicit add/update/remove/rename ops (exclusive with
+            ``fields``).
+        dry_run (bool): Preview only — the response's ``schema_diff`` is computed, nothing written.
         pipeline (dict[str, Any] | None): New pipeline blob (validated before storage).
         search (dict[str, Any] | None): New search graph blob ({} = stock default).
         estimate_overrides (EstimateOverrides | None): Partial cost-estimate overrides. Omitted =
@@ -256,7 +222,17 @@ class UpdateCollectionRequest(BaseModel):
     )
     fields: list[FieldSpec] | None = Field(
         default=None,
-        description="The TARGET schema (diffed by field name; omitted fields are removed).",
+        description="LEGACY full TARGET schema (omitted fields are REMOVED with their values). "
+        "Prefer field_ops. Mutually exclusive with field_ops.",
+    )
+    field_ops: list[FieldOp] | None = Field(
+        default=None,
+        description="Explicit schema operations applied in order (add / update / remove / rename). "
+        "Mutually exclusive with fields.",
+    )
+    dry_run: bool = Field(
+        default=False,
+        description="Validate and compute schema_diff only — nothing is written.",
     )
     pipeline: dict[str, Any] | None = Field(
         default=None, description="New pipeline blob (validated before being stored)."
@@ -271,6 +247,19 @@ class UpdateCollectionRequest(BaseModel):
         "clear back to the global defaults; a value replaces the stored overrides.",
     )
     note: str | None = Field(default=None, description="Version note shown in the history.")
+
+
+class UpdateCollectionResponse(CollectionModel):
+    """
+    The PATCH result: the collection (unchanged under dry_run) plus its schema diff.
+
+    Attributes:
+        schema_diff (SchemaDiff): The schema change applied (or previewed); empty when untouched.
+        dry_run (bool): True when nothing was written.
+    """
+
+    schema_diff: SchemaDiff = Field(description="The metadata-schema change applied or previewed.")
+    dry_run: bool = Field(description="True when nothing was written (preview only).")
 
 
 class BulkReingestRequest(BaseModel):
@@ -431,6 +420,7 @@ __all__ = [
     "CollectionListItem",
     "CreateCollectionRequest",
     "UpdateCollectionRequest",
+    "UpdateCollectionResponse",
     "BulkReingestRequest",
     "ReingestJobHandle",
     "BulkReingestAccepted",

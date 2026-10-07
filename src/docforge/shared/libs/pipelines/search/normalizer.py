@@ -21,6 +21,7 @@ from loggerplusplus import loggerplusplus
 from pydantic import ValidationError
 
 # ====== Internal Project Imports ======
+from shared_libs.pipelines.build.validation_message import ValidationMessage
 from shared_libs.pipelines.registry import NodeRegistry
 
 # The pydantic v2 error type raised for a key rejected by ``extra="forbid"`` — the SIGNATURE of
@@ -134,8 +135,9 @@ class SearchBlobNormalizer:
             if not stale:
                 raise SearchBlobNormalizationError(
                     f"search node '{node_id}' ({family}/{kind}) has an invalid config that cannot "
-                    f"be auto-healed — re-save the search blob to repair (cause: {exc})"
-                ) from exc
+                    f"be auto-healed — re-save the search blob to repair "
+                    f"(cause: {ValidationMessage.format(exc)})"
+                ) from None
 
         # 3. Registry drift — strip the stale top-level keys and re-validate; a residual fault means
         #    the config is broken beyond drift and must be surfaced, never silently mangled.
@@ -145,8 +147,8 @@ class SearchBlobNormalizer:
         except ValidationError as exc:
             raise SearchBlobNormalizationError(
                 f"search node '{node_id}' ({family}/{kind}) config is invalid beyond stale-field "
-                f"drift — re-save the search blob to repair (cause: {exc})"
-            ) from exc
+                f"drift — re-save the search blob to repair (cause: {ValidationMessage.format(exc)})"
+            ) from None
         cls.logger.warning(
             f"Healed stored search node '{node_id}' ({family}/{kind}): dropped stale config "
             f"field(s) {sorted(stale)} no longer known to the current engine"

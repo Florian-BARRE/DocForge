@@ -5,7 +5,8 @@
 #   - RecordTrace: turns a node payload into what a NodeExecutionRecord carries. ``summarize`` is the
 #     always-affordable SHAPE descriptor (a cheap SHALLOW look at the payload — top-level fields, list
 #     lengths, byte/char sizes, a stable fingerprint — never a deep model_dump); ``dump`` is the FULL
-#     stripped payload (heavy bytes/vectors replaced by size placeholders), used only at the full tier.
+#     stripped payload (heavy bytes/vectors replaced by size placeholders, provider secrets masked),
+#     used only at the full tier.
 
 # ====== Standard Library Imports ======
 import hashlib
@@ -15,6 +16,9 @@ from typing import Any
 
 # ====== Third-Party Library Imports ======
 from pydantic import BaseModel
+
+# ====== Internal Project Imports ======
+from shared_libs.pipelines.secret_identity import SECRET_FIELDS
 
 
 class TraceLevel(StrEnum):
@@ -62,17 +66,28 @@ class RecordTrace:
 
     # A numeric list longer than this (an embedding vector) is compacted in the full-tier dump.
     NUMERIC_LIST_LIMIT = 64
+    # What a provider secret becomes in a full-tier dump: payloads are stored in SeaweedFS and served
+    # by the trace-payload endpoint, so a request's endpoint api_key must never land there in clear.
+    SECRET_PLACEHOLDER = "__redacted__"
 
     def __new__(cls, *args: object, **kwargs: object) -> None:
         raise TypeError("RecordTrace is a static-only class and cannot be instantiated.")
 
     @classmethod
     def strip_payloads(cls, value: Any) -> Any:
-        """Replace heavy payloads (bytes, long numeric lists) with size placeholders, recursively."""
+        """Replace heavy payloads (bytes, long numeric lists) with size placeholders and mask every
+        non-empty provider secret (``api_key`` / ``password`` keys), recursively."""
         if isinstance(value, bytes):
             return f"<{len(value)} bytes>"
         if isinstance(value, dict):
-            return {key: cls.strip_payloads(item) for key, item in value.items()}
+            return {
+                key: (
+                    cls.SECRET_PLACEHOLDER
+                    if key in SECRET_FIELDS and isinstance(item, str) and item
+                    else cls.strip_payloads(item)
+                )
+                for key, item in value.items()
+            }
         if isinstance(value, list):
             # An embedding vector in a trace is dead weight — keep its size, drop its numbers.
             if len(value) > cls.NUMERIC_LIST_LIMIT and all(

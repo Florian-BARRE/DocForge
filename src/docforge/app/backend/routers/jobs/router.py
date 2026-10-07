@@ -165,6 +165,7 @@ async def list_jobs(
                 entry.document_filename,
                 entry.collection_name,
                 document_title=entry.document_title,
+                display_title=entry.document_display_title,
             )
             for entry in jobs
         ],
@@ -563,6 +564,7 @@ async def get_job(
         entry.document_filename,
         entry.collection_name,
         document_title=entry.document_title,
+        display_title=entry.document_display_title,
     )
 
 

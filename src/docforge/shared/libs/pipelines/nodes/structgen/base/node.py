@@ -5,9 +5,9 @@
 # The primary endpoint is DUAL-SOURCED PER FIELD: each override field (base_url/api_key/model/timeout)
 # wins when set, else the request's own value — so the chain head leaves the override empty (inheriting
 # the resolved per-field endpoint) and a fallback step pins some or all fields to a robust endpoint.
-# Children implement ONLY `_generate`, the
-# provider-specific model call (the schema in, the raw dict out), mirroring how a VLM child implements
-# `_describe`. Being abstract (via `_generate`), this base is not registered and skips the strict
+# The request's api_key is inherited only at the request's own endpoint: a step whose base_url points
+# elsewhere sends its own key, or none. Children implement ONLY `_generate`, the provider-specific
+# model call (the schema in, the raw dict out), mirroring how a VLM child implements `_describe`. Being abstract (via `_generate`), this base is not registered and skips the strict
 # interface check.
 
 # ====== Standard Library Imports ======
@@ -16,6 +16,7 @@ from typing import Any
 
 # ====== Internal Project Imports ======
 from shared_libs.pipelines.base import ActionNode, NodeUsage
+from shared_libs.pipelines.secret_identity import SecretIdentity
 from shared_libs.public_models import GeneratedValues, GenerationRequest, OpenAICompatConfig
 
 # ====== Local Project Imports ======
@@ -63,9 +64,13 @@ class BaseStructGenNode(ActionNode):
         config: StructGenConfig = self.config
         # Per-field dual-source: each override field wins when set, else the request's own value —
         # an all-empty override (the chain head) returns exactly the request's per-field endpoint.
+        # The request's key is the exception: it is inherited only by a step calling the request's
+        # endpoint, never shipped to a step's foreign base_url (SecretIdentity.scoped_secret).
         return OpenAICompatConfig(
             base_url=config.base_url or request.endpoint.base_url,
-            api_key=config.api_key or request.endpoint.api_key,
+            api_key=SecretIdentity.scoped_secret(
+                config.base_url, config.api_key, request.endpoint.base_url, request.endpoint.api_key
+            ),
             model=config.model or request.endpoint.model,
             timeout_seconds=config.timeout_seconds or request.endpoint.timeout_seconds,
         )

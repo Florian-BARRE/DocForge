@@ -86,6 +86,11 @@ class DocumentQuerySpec:
     metadata: tuple[MetadataCondition, ...] = ()
     # ── ordering ──
     sort: SortSpec = field(default_factory=SortSpec)
+    # ── display title ──
+    # The collection's resolved document-scope ``title_field`` id. When set, every TITLE predicate
+    # (``title_contains``) and the ``title`` sort read the DISPLAY title — that field's value, falling
+    # back to the parsed title when unset/blank — instead of the raw parsed ``document.title``.
+    title_field_id: int | None = None
 
 
 __all__ = [

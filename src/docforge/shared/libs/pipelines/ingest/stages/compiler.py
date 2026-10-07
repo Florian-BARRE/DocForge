@@ -24,6 +24,7 @@ from shared_libs.pipelines.registry import NodeRegistry
 # ====== Local Project Imports ======
 from .assembler import IngestAssembler
 from .chain_rules import ChainRules
+from .config_merge import ConfigMode, StageConfigMerge
 from .models import (
     ChainStep,
     DisableStage,
@@ -36,6 +37,7 @@ from .models import (
     StageAction,
 )
 from .reader import StateReader
+from .secret_carry import ChainSecretCarry
 from .spec import StageKey, StageSpecs
 from .state import ChainSpec, PipelineState, default_state
 
@@ -209,7 +211,9 @@ class StageCompiler(LoggerClass):
             case SetProvider():
                 self.__set_provider(state, action.stage, action.kind, notices)
             case SetStageConfig():
-                self.__set_config(state, action.stage, action.node, action.config, notices)
+                self.__set_config(
+                    state, action.stage, action.node, action.config, action.mode, notices
+                )
             case SetChain():
                 self.__set_chain(state, action.stage, action.slot, action.steps, notices)
             case SetStack():
@@ -309,20 +313,32 @@ class StageCompiler(LoggerClass):
         setattr(state, config_field, ChainRules.reset_config(meta.family or "", kind))
 
     def __set_config(
-        self, state: PipelineState, stage: str, node: str | None, config: dict, notices: list[str]
+        self,
+        state: PipelineState,
+        stage: str,
+        node: str | None,
+        config: dict,
+        mode: ConfigMode,
+        notices: list[str],
     ) -> None:
-        """Replace a stage's config (its primary node, or a named node of a composite stage)."""
+        """Edit a stage's config (its primary node, or a named node of a composite stage).
+
+        Every branch resolves the new config through ``StageConfigMerge`` against the node's CURRENT
+        config: ``replace`` stores the patch verbatim, ``merge`` overlays it (null deletes a key).
+        """
         # 1. Intake is composite — a named node targets one of its fixed sub-nodes.
         if stage == StageKey.INTAKE:
             if node is None:
                 notices.append("intake config needs a node (e.g. 'convert')")
                 return
-            state.intake_configs[node] = dict(config)
+            current = state.intake_configs.get(node)
+            state.intake_configs[node] = StageConfigMerge.resolve(current, config, mode)
             return
         # 1b. Convert is surfaced as its own stage card but its node lives in the intake segment, so
         #     its config is stored under the ``convert`` intake node id (node arg unused: primary).
         if stage == StageKey.CONVERT:
-            state.intake_configs["convert"] = dict(config)
+            current = state.intake_configs.get("convert")
+            state.intake_configs["convert"] = StageConfigMerge.resolve(current, config, mode)
             return
         # 2. A chain stage (parse, embed) — editing its config edits the head step (the selected
         #    provider); the fuller chain is edited with SetChain.
@@ -333,12 +349,13 @@ class StageCompiler(LoggerClass):
                 notices.append(f"stage '{stage}' has no provider to configure")
                 return
             head, *rest = chain.steps
+            resolved = StageConfigMerge.resolve(head.config, config, mode)
             setattr(
                 state,
                 field,
                 ChainSpec(
                     family=chain.family,
-                    steps=[head.model_copy(update={"config": dict(config)}), *rest],
+                    steps=[head.model_copy(update={"config": resolved}), *rest],
                 ),
             )
             return
@@ -351,11 +368,12 @@ class StageCompiler(LoggerClass):
         #     state so the assembler picks the classifier-free uniform body (and its ocr/vlm
         #     treatment) when asked. The values stay in classify_config too (valid FigureClassifyConfig
         #     fields) so classified mode round-trips them through the classify node's own config.
+        resolved = StageConfigMerge.resolve(getattr(state, field), config, mode)
         if stage == StageKey.ENRICH:
-            mode = config.get("figure_enrich_mode", "classified")
-            state.figure_enrich_mode = "uniform" if mode == "ocr_only" else mode
-            state.uniform_treatment = config.get("uniform_treatment", "ocr")
-        setattr(state, field, dict(config))
+            enrich_mode = resolved.get("figure_enrich_mode", "classified")
+            state.figure_enrich_mode = "uniform" if enrich_mode == "ocr_only" else enrich_mode
+            state.uniform_treatment = resolved.get("uniform_treatment", "ocr")
+        setattr(state, field, resolved)
 
     def __set_chain(
         self, state: PipelineState, stage: str, slot: str | None, steps: list, notices: list[str]
@@ -384,7 +402,11 @@ class StageCompiler(LoggerClass):
         if unknown:
             notices.extend(unknown)
             return
-        completed = ChainRules.complete_steps(branch.family, steps)
+        current = state.chains.get(slot)
+        carried = ChainSecretCarry.carry(
+            branch.family, current.steps if current else [], steps, notices
+        )
+        completed = ChainRules.complete_steps(branch.family, carried)
         state.chains[slot] = ChainSpec(family=branch.family, steps=completed)
         if not steps:
             notices.append(f"chain '{slot}' emptied — figures of this class will be skipped")
@@ -419,8 +441,11 @@ class StageCompiler(LoggerClass):
         if not steps:
             notices.append(f"stage '{stage}' needs at least one provider — kept the current chain")
             return
-        # 2. Apply the shared family chain rules; an unknown kind leaves the chain unchanged.
-        completed, chain_notices = ChainRules.resolve(family, steps)
+        # 2. Keep each re-stated provider's omitted secret (same provider only), then apply the shared
+        #    family chain rules; an unknown kind leaves the chain unchanged.
+        current: ChainSpec = getattr(state, field)
+        carried = ChainSecretCarry.carry(family, current.steps, steps, notices)
+        completed, chain_notices = ChainRules.resolve(family, carried)
         notices.extend(chain_notices)
         if completed is None:
             return
@@ -447,29 +472,36 @@ class StageCompiler(LoggerClass):
             notices.extend(f"'{kind}' is not a 'contextualize' method" for kind in unknown)
             return
         resolved: list = []
-        for step in steps:
+        for index, step in enumerate(steps):
             method = step.model_copy(
                 update={
                     "config": {**ChainRules.reset_config("contextualize", step.kind), **step.config}
                 }
             )
             if step.kind == "llm":
-                method = self.__resolve_llm_chain(method, notices)
+                previous = state.stack[index] if index < len(state.stack) else None
+                method = self.__resolve_llm_chain(method, previous, notices)
             resolved.append(method)
         state.stack = resolved
         if not steps:
             notices.append("contextualize stack emptied — chunks carry no added context")
 
     @staticmethod
-    def __resolve_llm_chain(method: StackMethod, notices: list[str]) -> StackMethod:
+    def __resolve_llm_chain(
+        method: StackMethod, previous: StackMethod | None, notices: list[str]
+    ) -> StackMethod:
         """Apply the generic-llm family chain rules to an llm method's chain (non-scored, failure-only).
 
         An unknown step kind is DATA — the chain is left as proposed with a notice (completing it
         would raise). Otherwise the steps are completed build-safe, any score threshold is stripped
-        (llm is non-scored) and single-use repeats are flagged before the build rejects them.
+        (llm is non-scored) and single-use repeats are flagged before the build rejects them. An
+        omitted step secret is inherited from the same provider of the llm method previously at this
+        stack position (``previous``), never from another kind.
         """
         chain = method.chain or ChainSpec(family="llm", steps=[ChainStep(kind="openai_compatible")])
         chain_steps = chain.steps or [ChainStep(kind="openai_compatible")]
+        if previous is not None and previous.kind == "llm" and previous.chain is not None:
+            chain_steps = ChainSecretCarry.carry("llm", previous.chain.steps, chain_steps, notices)
         completed, chain_notices = ChainRules.resolve("llm", chain_steps)
         notices.extend(chain_notices)
         # An unknown kind (completed is None) keeps the proposed steps as-is; else the completed ones.

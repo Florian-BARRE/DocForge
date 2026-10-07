@@ -184,6 +184,7 @@ async def test_backfill_pages_through_documents(monkeypatch) -> None:
     doc1, doc2, doc3 = (MagicMock(id=uuid.uuid4()) for _ in range(3))
     list_for_collection = AsyncMock(side_effect=[[doc1, doc2], [doc3]])
     monkeypatch.setattr(mvf_module.DocumentApi, "list_for_collection", list_for_collection)
+    monkeypatch.setattr(mvf_module.CollectionApi, "get_schema", AsyncMock(return_value=[]))
 
     facade = MetaVectorSyncFacade(_postgres_yielding(MagicMock()), MagicMock())
     facade._MetaVectorSyncFacade__BACKFILL_PAGE_SIZE = 2  # shrink the page for a two-page walk
@@ -199,3 +200,50 @@ async def test_backfill_pages_through_documents(monkeypatch) -> None:
     first, second = list_for_collection.await_args_list
     assert first.kwargs == {"limit": 2, "offset": 0}
     assert second.kwargs == {"limit": 2, "offset": 2}
+
+
+async def test_sync_drops_vectors_of_asked_fields_the_document_has_no_value_for(
+    monkeypatch,
+) -> None:
+    """A reused field name (swap/rename-into) must not keep its previous owner's meta vector: the
+    backfill passes the schema's names and every declared vector of an ABSENT field is deleted."""
+    document_id = _stub_common(monkeypatch, rows=[], chunk_ids=[uuid.uuid4()], embedder=MagicMock())
+    declared = (
+        {VectorNames.field_dense("alpha"), VectorNames.field_dense("beta")},
+        {VectorNames.field_sparse("alpha")},
+    )
+    monkeypatch.setattr(
+        mvf_module.QdrantCollectionApi, "declared_vectors", AsyncMock(return_value=declared)
+    )
+    delete_vectors = AsyncMock()
+    monkeypatch.setattr(mvf_module.QdrantIndexApi, "delete_vectors", delete_vectors)
+
+    facade = MetaVectorSyncFacade(_postgres_yielding(MagicMock()), MagicMock())
+    patched = await facade.sync_document_meta_vectors(document_id, clear_absent=["alpha"])
+
+    assert patched == 0
+    names = delete_vectors.await_args.args[2]
+    assert sorted(names) == sorted(
+        [VectorNames.field_dense("alpha"), VectorNames.field_sparse("alpha")]
+    )
+
+
+async def test_backfill_passes_the_schema_searchable_document_fields(monkeypatch) -> None:
+    from shared_libs.public_models import FieldScope  # noqa: PLC0415
+
+    schema = [
+        SimpleNamespace(field_name="a", scope=FieldScope.DOCUMENT, semantic=True, lexical=False),
+        SimpleNamespace(field_name="b", scope=FieldScope.DOCUMENT, semantic=False, lexical=False),
+        SimpleNamespace(field_name="c", scope=FieldScope.CHUNK, semantic=True, lexical=True),
+    ]
+    monkeypatch.setattr(mvf_module.CollectionApi, "get_schema", AsyncMock(return_value=schema))
+    doc = MagicMock(id=uuid.uuid4())
+    monkeypatch.setattr(
+        mvf_module.DocumentApi, "list_for_collection", AsyncMock(return_value=[doc])
+    )
+    facade = MetaVectorSyncFacade(_postgres_yielding(MagicMock()), MagicMock())
+    facade.sync_document_meta_vectors = AsyncMock(return_value=0)
+
+    await facade.backfill_collection_meta_vectors(uuid.uuid4())
+
+    assert facade.sync_document_meta_vectors.await_args.kwargs == {"clear_absent": ["a"]}

@@ -201,7 +201,11 @@ class DisableStage(BaseModel):
 
 
 class SetProvider(BaseModel):
-    """Pick the provider of an exclusive stage — swap the kind, reset its config to defaults."""
+    """Pick the provider of an exclusive stage — swap the kind, reset its config to defaults.
+
+    On a chain stage (parse / embed) re-picking the SAME kind keeps its stored secret (an omitted
+    secret is inherited from the same provider; a different kind never inherits one).
+    """
 
     model_config = ConfigDict(extra="forbid")
 
@@ -211,22 +215,36 @@ class SetProvider(BaseModel):
 
 
 class SetStageConfig(BaseModel):
-    """Replace a stage node's config (whole-dict replacement, like the graph editor's set_config)."""
+    """Edit a stage node's config — a whole-dict replacement (default) or a key-level merge."""
 
     model_config = ConfigDict(extra="forbid")
 
     action: Literal["set_config"] = "set_config"
-    stage: str = Field(description="Key of the stage whose config is replaced.")
+    stage: str = Field(description="Key of the stage whose config is edited.")
     node: str | None = Field(
         default=None,
         description="Id of the target node inside a multi-node stage; null = the stage's primary "
         "node (e.g. metagen's chunk/document node, intake's convert node).",
     )
-    config: dict[str, Any] = Field(description="The new config dict (full replacement).")
+    config: dict[str, Any] = Field(
+        description="The config dict — the full new config (replace) or the keys to change (merge; "
+        "a null value deletes that key so it falls back to its default)."
+    )
+    mode: Literal["replace", "merge"] = Field(
+        default="replace",
+        description="replace = the config IS the node's new config (omitted keys are dropped); "
+        "merge = {**current, **config}, a null value deleting the key (safe single-key edits that "
+        "keep every other key, secrets included).",
+    )
 
 
 class SetChain(BaseModel):
-    """Rebuild a fallback chain — an enrich per-figure site, or a chain-capable stage itself."""
+    """Rebuild a fallback chain — an enrich per-figure site, or a chain-capable stage itself.
+
+    A step that omits its secret (api_key / password) keeps the one of the same provider in the
+    current chain (same kind at that position, or same kind + endpoint after a reorder); an explicit
+    ``""`` clears it.
+    """
 
     model_config = ConfigDict(extra="forbid")
 

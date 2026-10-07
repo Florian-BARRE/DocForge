@@ -45,7 +45,8 @@ class SnippetApplier:
 
         Raises:
             HTTPException: 422 on a broken pipeline / search graph / malformed schema snippet.
-            ValueError: On a vector-slug collision in the applied schema (router maps to 422).
+            ValueError: On a vector-slug collision in the applied schema, or a SecretReentryRequired
+                (a keyed provider's endpoint changed) — the router maps both to 422.
         """
         # 1. Route to the kind-specific applier — each mirrors the matching arm of the PATCH.
         if kind == "pipeline":
@@ -57,9 +58,11 @@ class SnippetApplier:
     @classmethod
     async def __apply_pipeline(cls, collection: Collection, body: dict) -> bool:
         """Apply a pipeline snippet: restore secrets → canonicalize+validate → store (+reindex flag)."""
-        # 1. Restore any masked provider secret from the CURRENT pipeline by node id (a masked key means
-        #    "keep the stored one"). Cross-collection ids won't match, so those masks survive and the
-        #    provider must be re-keyed — a snippet is config, not a secret carrier.
+        # 1. Restore any masked/omitted provider secret from the CURRENT pipeline's same provider (same
+        #    node id AND kind at the same endpoint — see restore_blob_secrets). A mask with no
+        #    same-provider source is blanked, and a snippet that re-points a keyed provider at another
+        #    base_url is refused (SecretReentryRequired → 422) — a snippet is config, never a way to
+        #    ship the stored key to a new host.
         healed = restore_blob_secrets(body, collection.pipeline) or {}
 
         # 2. Heal to the current engine + structurally validate (a broken graph is a clean 422 here).

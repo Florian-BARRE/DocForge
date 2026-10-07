@@ -171,7 +171,8 @@ async def test_step_override_wins_over_the_request_endpoint() -> None:
 
 
 async def test_partial_override_is_resolved_per_field() -> None:
-    """A step overriding ONLY base_url keeps the request's model/key/timeout — not dropped."""
+    """A step overriding ONLY base_url keeps the request's model/timeout — but NEVER its key: the
+    request's key belongs to the request's endpoint and is not shipped to a foreign base_url."""
     request = _request(
         OpenAICompatConfig(
             base_url="http://req", api_key="req-key", model="m-req", timeout_seconds=17.0
@@ -184,8 +185,56 @@ async def test_partial_override_is_resolved_per_field() -> None:
     _props, endpoint, _req = node.calls[0]
     assert endpoint.base_url == "http://fallback"  # the one override wins
     assert endpoint.model == "m-req"  # inherited per-field, not silently dropped
-    assert endpoint.api_key == "req-key"
+    assert endpoint.api_key == ""  # foreign endpoint: no key sent
     assert endpoint.timeout_seconds == 17.0
+
+
+async def test_same_endpoint_override_still_inherits_the_request_key() -> None:
+    """A step whose base_url normalises to the request's endpoint (case, default port, trailing
+    slash) still inherits the request's key — only a FOREIGN endpoint loses it."""
+    request = _request(
+        OpenAICompatConfig(base_url="https://llm.example/v1", api_key="req-key", model="m")
+    )
+    node = FakeStructGenNode(
+        id="s", config=StructGenConfig(base_url="HTTPS://llm.example:443/v1/", model="m2")
+    )
+
+    await node.run(StructGenConsumes(request=request))
+
+    _props, endpoint, _req = node.calls[0]
+    assert endpoint.api_key == "req-key"
+
+
+async def test_attacker_override_never_receives_the_request_key() -> None:
+    """HIGH-2 repro: a step override pointed at an attacker host sends no key (own key empty)."""
+    request = _request(
+        OpenAICompatConfig(base_url="https://llm.example/v1", api_key="sk-live", model="m")
+    )
+    node = FakeStructGenNode(
+        id="gen_0", config=StructGenConfig(base_url="https://attacker.example/v1")
+    )
+
+    await node.run(StructGenConsumes(request=request))
+
+    _props, endpoint, _req = node.calls[0]
+    assert endpoint.base_url == "https://attacker.example/v1"
+    assert endpoint.api_key == ""
+
+
+async def test_endpointless_step_key_never_follows_a_moved_request_endpoint() -> None:
+    """A step key with no base_url of its own is not bound to any endpoint: if a write moves the
+    prep (the request endpoint) to an attacker host, the step must NOT ship its own key there — it
+    calls the request endpoint with the request's key (here blanked by that same write)."""
+    request = _request(
+        OpenAICompatConfig(base_url="https://attacker.example/v1", api_key="", model="m")
+    )
+    node = FakeStructGenNode(id="gen_0", config=StructGenConfig(api_key="sk-STEP"))
+
+    await node.run(StructGenConsumes(request=request))
+
+    _props, endpoint, _req = node.calls[0]
+    assert endpoint.base_url == "https://attacker.example/v1"
+    assert endpoint.api_key == ""
 
 
 def test_out_of_enum_value_is_dropped() -> None:

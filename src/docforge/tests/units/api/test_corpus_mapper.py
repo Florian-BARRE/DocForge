@@ -260,3 +260,48 @@ def test_builder_statement_is_id_stabilised_and_carries_metadata_exists() -> Non
     # requested created_at DESC), not merely present somewhere unrelated in the statement.
     assert "ORDER BY document.created_at DESC" in sql
     assert sql.rstrip().endswith("document.id ASC")
+
+
+# -------------------- display title (collection title_field) --------------------
+def test_title_field_resolves_to_a_document_scope_field_id() -> None:
+    from shared_libs.public_models import FieldScope  # noqa: PLC0415
+
+    doc = SimpleNamespace(
+        id=7,
+        field_name="doc_title",
+        field_type=FieldType.STRING,
+        filterable=False,
+        scope=FieldScope.DOCUMENT,
+    )
+    chunk = SimpleNamespace(
+        id=8,
+        field_name="section",
+        field_type=FieldType.STRING,
+        filterable=False,
+        scope=FieldScope.CHUNK,
+    )
+    assert CorpusMapper.to_spec(None, None, [doc], title_field="doc_title").title_field_id == 7
+    assert CorpusMapper.to_spec(None, None, [chunk], title_field="section").title_field_id is None
+    assert CorpusMapper.to_spec(None, None, [doc], title_field="gone").title_field_id is None
+    assert CorpusMapper.to_spec(None, None, [doc]).title_field_id is None
+
+
+def test_title_filter_and_sort_compile_to_the_display_title_when_configured() -> None:
+    from sqlalchemy.dialects import postgresql  # noqa: PLC0415
+
+    from shared_libs.services.db.postgresql.apis import DocumentQuerySpec, SortSpec  # noqa: PLC0415
+
+    spec = DocumentQuerySpec(
+        title_contains="acme",
+        sort=SortSpec(column="title", direction=SortDirection.ASC),
+        title_field_id=7,
+    )
+    statement = DocumentQueryApi._apply_order(DocumentQueryApi._filtered(uuid.uuid4(), spec), spec)
+    sql = str(statement.compile(dialect=postgresql.dialect()))
+    assert sql.count("coalesce(nullif(btrim(") == 2  # the WHERE ilike + the ORDER BY key
+    assert "jsonb_array_elements_text" in sql
+
+    raw = DocumentQuerySpec(title_contains="acme", sort=SortSpec(column="title"))
+    plain = DocumentQueryApi._apply_order(DocumentQueryApi._filtered(uuid.uuid4(), raw), raw)
+    raw_sql = str(plain.compile(dialect=postgresql.dialect()))
+    assert "coalesce" not in raw_sql and "document.title ILIKE" in raw_sql

@@ -19,6 +19,7 @@ from docforge_sdk.models.collections import (
     UpdateCollectionRequest,
 )
 from docforge_sdk.models.health import CollectionHealthResponse
+from docforge_sdk.models.schema_ops import RemoveFieldOp
 
 BASE = "http://test"
 API = f"{BASE}/api/v1"
@@ -114,12 +115,32 @@ async def test_create_posts_and_returns_collection() -> None:
 @respx.mock
 async def test_update_patches_only_set_fields() -> None:
     route = respx.patch(f"{API}/collections/{CID}").mock(
-        return_value=httpx.Response(200, json=_COLLECTION_SAMPLE)
+        return_value=httpx.Response(
+            200, json={**_COLLECTION_SAMPLE, "schema_diff": {}, "dry_run": False}
+        )
     )
     async with AsyncClient(BASE) as client:
         await client.collections.update(CID, UpdateCollectionRequest(name="renamed"))
     body = json.loads(route.calls.last.request.content)
     assert body == {"name": "renamed"}
+
+
+@respx.mock
+async def test_update_sends_field_ops_and_parses_the_schema_diff() -> None:
+    diff = {"removed": ["old"], "values_lost": {"old": 4}, "renamed": []}
+    route = respx.patch(f"{API}/collections/{CID}").mock(
+        return_value=httpx.Response(
+            200, json={**_COLLECTION_SAMPLE, "schema_diff": diff, "dry_run": True}
+        )
+    )
+    request = UpdateCollectionRequest(
+        field_ops=[RemoveFieldOp(op="remove", field_name="old")], dry_run=True
+    )
+    async with AsyncClient(BASE) as client:
+        result = await client.collections.update(CID, request)
+    body = json.loads(route.calls.last.request.content)
+    assert body == {"field_ops": [{"op": "remove", "field_name": "old"}], "dry_run": True}
+    assert result.dry_run is True and result.schema_diff.values_lost == {"old": 4}
 
 
 @respx.mock

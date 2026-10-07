@@ -76,12 +76,37 @@ def register(mcp: FastMCP, sdk: AsyncClient) -> None:
     @mcp.tool()
     async def apply_pipeline_stage(key: str, blob: dict[str, Any], action: dict[str, Any]) -> Any:
         """
-        Compile a stage-level action into a pipeline blob. Returns the recompiled blob
-        (always buildable), its stage view, validity, issues and any compiler notices.
+        Compile a stage-level action into a pipeline blob you hold — STATELESS, nothing is saved.
+        Returns the recompiled blob (always buildable), its stage view, validity, issues and any
+        compiler notices. To change an EXISTING collection's pipeline, use apply_collection_stage
+        instead: it applies the action to the stored pipeline and persists it, so you never
+        round-trip the full blob (whose secrets come back masked) through update_collection.
 
         The action is ``{<discriminator>: <kind>, **params}``; get the discriminator key and every
         kind + params_schema from ``palette.mechanics.stage_actions`` (GET a pipeline with
         ``full=true``) — the ``discriminator`` field on each card names the tag key to send under.
         """
         result = await sdk.pipelines.apply_stage(key, blob, action)
+        return result.model_dump(mode="json")
+
+    @mcp.tool()
+    async def apply_collection_stage(
+        collection_id: str, action: dict[str, Any], note: str | None = None
+    ) -> Any:
+        """
+        Apply ONE stage action to a collection's stored ingestion pipeline and save it — the safe
+        way to edit a collection's pipeline (no full-blob round-trip). Returns the stage view
+        (secrets masked), validity, issues, notices and `persisted`: nothing is saved when the
+        result is invalid or the action changed nothing (read the notices).
+
+        `action` is ``{"action": <kind>, **params}`` (kinds + params_schema in
+        ``palette.mechanics.stage_actions``). A ``set_config`` defaults to ``mode="merge"`` here:
+        only the keys you send change, every other key — the api_key included — is kept; send a
+        key as null to reset it to its default. Pass ``mode="replace"`` explicitly to replace the
+        whole config. An omitted api_key is always kept; an explicit "" clears it.
+        """
+        payload = dict(action)
+        if payload.get("action") == "set_config":
+            payload.setdefault("mode", "merge")
+        result = await sdk.pipelines.apply_collection_stage(collection_id, payload, note=note)
         return result.model_dump(mode="json")

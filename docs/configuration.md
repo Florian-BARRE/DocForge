@@ -49,6 +49,7 @@ at their `localhost` values here (they're used when running the app straight fro
 | `AUTH_ENABLED` | `false` | **Off by default** — dev + the unit suite run unauthenticated. Set `true` to gate every `/api/v1/*` route (Scalar docs + `/openapi.json` stay public). |
 | `AUTH_ROOT_TOKEN` | `df_dev_root_token_change_me` | Provisioned at startup as the root user's full-access key. **Use a strong value** and rotate it. Required when `AUTH_ENABLED=true`. |
 | `AUTH_KEY_CACHE_TTL_SECONDS` | `10.0` | TTL of the in-process API-key lookup cache on the authN hot path — an authenticated request skips the Postgres round-trip for this long. A revoked/deactivated key keeps working for at most this window **per process** (rotation evicts the old key's entry immediately in the app process; other processes wait out the TTL). `0` disables the cache (every request reads the DB). |
+| `DESCRIBE_CACHE_TTL_SECONDS` | `30.0` | Max age of a cached `GET /collections/{id}/describe` guide (in-process, bounded LRU of 256 collections). A cached guide is also dropped as soon as the collection's change stamp moves (its `updated_at`, document count or latest document `updated_at` — i.e. an ingestion, delete, metadata value edit or collection/schema PATCH), so the TTL only bounds staleness from writes that bypass that stamp. `0` disables the cache. |
 
 ### Rate limiting (app-only)
 

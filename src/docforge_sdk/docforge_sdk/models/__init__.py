@@ -37,6 +37,7 @@ from .collections import (
     ReingestJobHandle,
     SearchTargetGuide,
     UpdateCollectionRequest,
+    UpdateCollectionResponse,
 )
 
 # ------------------- Corpus filter + grid models ------------------- #
@@ -145,6 +146,7 @@ from .jobs import (
 
 # ------------------- Pipelines models ------------------- #
 from .pipelines import (
+    CollectionStageApplyResponse,
     EditResponse,
     InspectResponse,
     PipelineDesignResponse,
@@ -164,6 +166,19 @@ from .preview import (
     PreviewJobResult,
     PreviewResponse,
     PreviewTraceNode,
+)
+
+# ------------------- Collection schema ops ------------------- #
+from .schema_ops import (
+    AddFieldOp,
+    FieldOp,
+    FieldPatch,
+    RemoveFieldOp,
+    RenameFieldOp,
+    SchemaDiff,
+    SchemaDiffModifiedField,
+    SchemaDiffRename,
+    UpdateFieldOp,
 )
 
 # ------------------- Search models ------------------- #
@@ -239,6 +254,16 @@ __all__ = [
     "CollectionListItem",
     "CreateCollectionRequest",
     "UpdateCollectionRequest",
+    "UpdateCollectionResponse",
+    "FieldPatch",
+    "AddFieldOp",
+    "UpdateFieldOp",
+    "RemoveFieldOp",
+    "RenameFieldOp",
+    "FieldOp",
+    "SchemaDiff",
+    "SchemaDiffModifiedField",
+    "SchemaDiffRename",
     "BulkReingestRequest",
     "ReingestJobHandle",
     "BulkReingestAccepted",
@@ -331,6 +356,7 @@ __all__ = [
     "EditResponse",
     "StageViewResponse",
     "StageApplyResponse",
+    "CollectionStageApplyResponse",
     # Preview
     "PreviewIrSummary",
     "PreviewChunk",

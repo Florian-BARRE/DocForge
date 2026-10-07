@@ -630,7 +630,7 @@
                     "collections"
                 ],
                 "summary": "Update Collection",
-                "description": "Patch identity/limits, the metadata schema (by DIFF), and/or the config blobs.\n\nReturns:\n    CollectionModel: The updated contract; 404 unknown, 409 name clash, 422 broken\n    pipeline or colliding vector slugs.",
+                "description": "Patch identity/limits, the metadata schema (legacy ``fields`` list or explicit ``field_ops``),\nand/or the config blobs. ``dry_run`` validates everything and returns the schema diff only.\n\nReturns:\n    UpdateCollectionResponse: The updated contract (unchanged under dry_run) + its schema_diff;\n    404 unknown, 409 name clash, 422 broken pipeline, bad field op or colliding vector slugs.",
                 "operationId": "update_collection_api_v1_collections__collection_id__patch",
                 "parameters": [
                     {
@@ -660,7 +660,7 @@
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "$ref": "#/components/schemas/CollectionModel"
+                                    "$ref": "#/components/schemas/UpdateCollectionResponse"
                                 }
                             }
                         }
@@ -1146,6 +1146,60 @@
                             "application/json": {
                                 "schema": {
                                     "$ref": "#/components/schemas/TracePurgeResult"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/collections/{collection_id}/pipeline/stages/apply": {
+            "post": {
+                "tags": [
+                    "collections"
+                ],
+                "summary": "Apply Collection Stage",
+                "description": "Apply one stage action to a collection's stored ingestion pipeline and persist a valid result.\n\nThe stored pipeline is the base (its real secrets included), so ``set_config`` with\n``mode=\"merge\"`` changes only the keys sent; secrets resolve exactly like a PATCH (a masked or\nomitted secret keeps the same provider's stored key at the same endpoint, an explicit ``\"\"`` \u2014\nor ``null`` in merge mode \u2014 clears it; a masked/omitted secret whose provider endpoint changed is\nrefused with a 422 so the key is re-entered, never carried to the new host). A valid,\nchanged result is stored through the PATCH's write path (a new config version); an invalid\nresult or a no-op is returned as data with ``persisted=false`` and nothing is written.\n\nReturns:\n    CollectionStageApplyResponse: The redacted stage view + validity + notices + persist verdict;\n    404 unknown collection, 403 outside the caller's scope, 422 unmigratable stored pipeline or\n    a secret that must be re-entered after an endpoint change, 409 when concurrent config writes kept changing the pipeline under the action.",
+                "operationId": "apply_collection_stage_api_v1_collections__collection_id__pipeline_stages_apply_post",
+                "parameters": [
+                    {
+                        "name": "collection_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid",
+                            "title": "Collection Id"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/CollectionStageApplyRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/CollectionStageApplyResponse"
                                 }
                             }
                         }
@@ -3945,6 +3999,28 @@
                 "title": "ActionNodeBlob",
                 "description": "Serialised action node: which registered class to build, and its raw config.\n\nAttributes:\n    node_type (NodeType): The node kind (ACTION).\n    id (str): Graph-unique identifier.\n    family (str): Registry family (e.g. ``\"llm\"``).\n    kind (str): Registry kind within the family (e.g. ``\"mistral\"``).\n    config (dict): Raw config, validated against the class's Config model at build time."
             },
+            "AddFieldOp": {
+                "properties": {
+                    "op": {
+                        "type": "string",
+                        "const": "add",
+                        "title": "Op",
+                        "description": "Operation tag."
+                    },
+                    "field": {
+                        "$ref": "#/components/schemas/FieldSpecModel",
+                        "description": "The full definition of the new field."
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "op",
+                    "field"
+                ],
+                "title": "AddFieldOp",
+                "description": "Add a new field (its name must not already exist)."
+            },
             "AddLoop": {
                 "properties": {
                     "op": {
@@ -6173,6 +6249,103 @@
                 "title": "CollectionSnippet",
                 "description": "A portable, secret-masked, versioned wrapper around one collection-config slice.\n\nThe ``body`` shape depends on ``kind``: for ``pipeline`` / ``search`` it is the graph blob (with\nevery provider ``api_key`` masked); for ``schema`` it is ``{\"fields\": [FieldSpecModel, ...]}``.\n\nAttributes:\n    kind (SnippetKind): Which config slice this snippet carries.\n    format_version (int): The snippet format version (gated on import).\n    docforge_version (str): The producing build's version (provenance, informational).\n    body (dict): The slice payload (see the kind-specific shape above)."
             },
+            "CollectionStageApplyRequest": {
+                "properties": {
+                    "action": {
+                        "$ref": "#/components/schemas/StageAction",
+                        "description": "The stage action (enable_stage / disable_stage / set_provider / set_config / set_chain / set_stack). Prefer set_config with mode='merge' to change single keys: every other key, secrets included, is kept."
+                    },
+                    "note": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Note",
+                        "description": "Note stored on the config-version snapshot (defaults to the action summary)."
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "action"
+                ],
+                "title": "CollectionStageApplyRequest",
+                "description": "One stage action to apply to a collection's stored ingestion pipeline (persisted on success)."
+            },
+            "CollectionStageApplyResponse": {
+                "properties": {
+                    "collection_id": {
+                        "type": "string",
+                        "title": "Collection Id",
+                        "description": "The edited collection."
+                    },
+                    "persisted": {
+                        "type": "boolean",
+                        "title": "Persisted",
+                        "description": "True when the new pipeline was stored (a config version was written); false when the result is invalid or the action changed nothing."
+                    },
+                    "needs_reindex": {
+                        "type": "boolean",
+                        "title": "Needs Reindex",
+                        "description": "The collection's derived reindex flag after the write (embed-space change).",
+                        "default": false
+                    },
+                    "stages": {
+                        "items": {
+                            "$ref": "#/components/schemas/StageView"
+                        },
+                        "type": "array",
+                        "title": "Stages",
+                        "description": "The redacted stage view of the resulting pipeline, in run order."
+                    },
+                    "valid": {
+                        "type": "boolean",
+                        "title": "Valid",
+                        "description": "True when the result built and has zero validation issues."
+                    },
+                    "issues": {
+                        "items": {
+                            "$ref": "#/components/schemas/ValidationIssue"
+                        },
+                        "type": "array",
+                        "title": "Issues",
+                        "description": "Validation problems of the result (empty when healthy)."
+                    },
+                    "notices": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array",
+                        "title": "Notices",
+                        "description": "Compiler notices (cascades, ignored no-ops) and the reason nothing was stored."
+                    },
+                    "build_error": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Build Error",
+                        "description": "Builder failure when the result cannot build (not persisted)."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "collection_id",
+                    "persisted",
+                    "stages",
+                    "valid"
+                ],
+                "title": "CollectionStageApplyResponse",
+                "description": "The outcome of a collection-scoped stage action.\n\nAttributes:\n    collection_id (str): The edited collection.\n    persisted (bool): True when the new pipeline was stored (a new config version written).\n    needs_reindex (bool): The collection's derived reindex flag after the write.\n    stages (list[StageView]): The redacted stage view of the result (stored, or the rejected\n        candidate when ``persisted`` is false).\n    valid (bool): True when the resulting pipeline built and has zero validation issues.\n    issues (list[ValidationIssue]): Validation problems (a required config still empty\u2026).\n    notices (list[str]): What the compiler did beyond the literal action, plus why nothing was\n        persisted when that is the case.\n    build_error (str | None): Precise builder failure when the result cannot build."
+            },
             "CollectionStorageResponse": {
                 "properties": {
                     "collection_id": {
@@ -6354,7 +6527,14 @@
                             }
                         ],
                         "title": "Total Cost Usd",
-                        "description": "Summed USD over priced stages (None only when NO stage could be priced)."
+                        "description": "Total projected USD \u2014 None when any enabled cost-incurring stage has no known rate (see total_cost_lower_bound_usd and the caveats)."
+                    },
+                    "total_cost_lower_bound_usd": {
+                        "type": "number",
+                        "minimum": 0.0,
+                        "title": "Total Cost Lower Bound Usd",
+                        "description": "Sum of the PRICED stages only \u2014 equals total_cost_usd when the cost is complete, else a lower bound of the true cost.",
+                        "default": 0.0
                     },
                     "cost_complete": {
                         "type": "boolean",
@@ -6386,7 +6566,7 @@
                     "assumptions"
                 ],
                 "title": "CostEstimate",
-                "description": "The full pre-hoc breakdown \u2014 an ESTIMATE, with its assumptions and caveats surfaced.\n\n``total_cost_usd`` sums only the stages with a known rate; ``cost_complete`` is False when any\nenabled cost-incurring stage priced to null, so the total is understood as a lower bound."
+                "description": "The full pre-hoc breakdown \u2014 an ESTIMATE, with its assumptions and caveats surfaced.\n\n``total_cost_usd`` is the full total only when it is honest: it is None as soon as any enabled\ncost-incurring stage priced to null (``cost_complete`` False) \u2014 ``total_cost_lower_bound_usd``\nthen carries the sum of the priced stages, and a caveat names each unpriced model + stage."
             },
             "CreateCollectionRequest": {
                 "properties": {
@@ -8207,6 +8387,123 @@
                 "title": "FieldOrigin",
                 "description": "Where a metadata field's value comes from \u2014 drives who is allowed to fill it."
             },
+            "FieldPatch": {
+                "properties": {
+                    "field_type": {
+                        "anyOf": [
+                            {
+                                "$ref": "#/components/schemas/FieldType"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "description": "New value type."
+                    },
+                    "required": {
+                        "anyOf": [
+                            {
+                                "type": "boolean"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Required",
+                        "description": "New upload-required flag."
+                    },
+                    "filterable": {
+                        "anyOf": [
+                            {
+                                "type": "boolean"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Filterable",
+                        "description": "New filterable flag."
+                    },
+                    "lexical": {
+                        "anyOf": [
+                            {
+                                "type": "boolean"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Lexical",
+                        "description": "New lexical (BM25 vector) flag."
+                    },
+                    "semantic": {
+                        "anyOf": [
+                            {
+                                "type": "boolean"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Semantic",
+                        "description": "New semantic (dense vector) flag."
+                    },
+                    "enum_values": {
+                        "anyOf": [
+                            {
+                                "items": {
+                                    "type": "string"
+                                },
+                                "type": "array"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Enum Values",
+                        "description": "New allowed values (enum fields)."
+                    },
+                    "origin": {
+                        "anyOf": [
+                            {
+                                "$ref": "#/components/schemas/FieldOrigin"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "description": "New origin (user/generated)."
+                    },
+                    "scope": {
+                        "anyOf": [
+                            {
+                                "$ref": "#/components/schemas/FieldScope"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "description": "New scope (document/chunk)."
+                    },
+                    "description": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "maxLength": 1000
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Description",
+                        "description": "New description (explicit null clears it)."
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "title": "FieldPatch",
+                "description": "The attributes an ``update`` op changes \u2014 only the keys sent are applied (null clears)."
+            },
             "FieldScope": {
                 "type": "string",
                 "enum": [
@@ -9361,6 +9658,18 @@
                         ],
                         "title": "Document Title",
                         "description": "The document's metagen-generated title, joined at read \u2014 a nicer display label than the filename when present (None if none was generated or the document is gone; the UI falls back to document_filename)."
+                    },
+                    "display_title": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Display Title",
+                        "description": "The document's DISPLAY title, resolved at read exactly like the document list/grid/detail `display_title`: the value of the collection's `title_field` when one is configured and set on this document, else the parsed title. None when neither exists, the document is gone, or on the SSE stream (which re-reads only the job row). Prefer it over document_title for labelling; fall back to document_filename."
                     },
                     "collection_id": {
                         "type": "string",
@@ -11365,6 +11674,29 @@
                 "title": "ReingestJobHandle",
                 "description": "One enqueued re-ingestion \u2014 the client polls the job for status/progress.\n\nAttributes:\n    document_id (str): The document being re-ingested.\n    job_id (str): The fresh ingestion job driving its lifecycle."
             },
+            "RemoveFieldOp": {
+                "properties": {
+                    "op": {
+                        "type": "string",
+                        "const": "remove",
+                        "title": "Op",
+                        "description": "Operation tag."
+                    },
+                    "field_name": {
+                        "type": "string",
+                        "title": "Field Name",
+                        "description": "The existing field to remove."
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "op",
+                    "field_name"
+                ],
+                "title": "RemoveFieldOp",
+                "description": "Remove a field \u2014 DESTRUCTIVE: its stored document/chunk values are deleted with it."
+            },
             "RemoveNode": {
                 "properties": {
                     "op": {
@@ -11394,6 +11726,36 @@
                 ],
                 "title": "RemoveNode",
                 "description": "Drop a node with its wiring, bridge a single-in/single-out chain, purge dangling references."
+            },
+            "RenameFieldOp": {
+                "properties": {
+                    "op": {
+                        "type": "string",
+                        "const": "rename",
+                        "title": "Op",
+                        "description": "Operation tag."
+                    },
+                    "field_name": {
+                        "type": "string",
+                        "title": "Field Name",
+                        "description": "The existing field to rename."
+                    },
+                    "new_name": {
+                        "type": "string",
+                        "minLength": 1,
+                        "title": "New Name",
+                        "description": "Its new name (must not already exist)."
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "op",
+                    "field_name",
+                    "new_name"
+                ],
+                "title": "RenameFieldOp",
+                "description": "Rename a field in place \u2014 its stored values and a ``title_field`` pointing at it follow."
             },
             "RotateKeyRequest": {
                 "properties": {
@@ -11478,6 +11840,106 @@
                 ],
                 "title": "S3FootprintModel",
                 "description": "EXACT S3 bytes from the content-addressed blob registry (``estimated`` is always false)."
+            },
+            "SchemaDiff": {
+                "properties": {
+                    "added": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array",
+                        "title": "Added",
+                        "description": "Fields created."
+                    },
+                    "modified": {
+                        "items": {
+                            "$ref": "#/components/schemas/SchemaDiffModifiedField"
+                        },
+                        "type": "array",
+                        "title": "Modified",
+                        "description": "Fields updated in place (values kept)."
+                    },
+                    "removed": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array",
+                        "title": "Removed",
+                        "description": "Fields deleted \u2014 their stored values are deleted with them (see values_lost)."
+                    },
+                    "renamed": {
+                        "items": {
+                            "$ref": "#/components/schemas/SchemaDiffRename"
+                        },
+                        "type": "array",
+                        "title": "Renamed",
+                        "description": "Fields renamed in place (values kept)."
+                    },
+                    "values_lost": {
+                        "additionalProperties": {
+                            "type": "integer"
+                        },
+                        "type": "object",
+                        "title": "Values Lost",
+                        "description": "Removed field \u2192 number of stored document + chunk values deleted with it."
+                    },
+                    "reindex_required_fields": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array",
+                        "title": "Reindex Required Fields",
+                        "description": "Fields whose change needs a reindex before they are searchable (a new or renamed semantic/lexical field, a newly semantic/lexical one, or a searchable field whose type changed). Empty for a never-indexed collection."
+                    }
+                },
+                "type": "object",
+                "title": "SchemaDiff",
+                "description": "The metadata-schema change of a collection PATCH (applied, or previewed under dry_run)."
+            },
+            "SchemaDiffModifiedField": {
+                "properties": {
+                    "field_name": {
+                        "type": "string",
+                        "title": "Field Name",
+                        "description": "The field's (post-PATCH) name."
+                    },
+                    "changed_attrs": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array",
+                        "title": "Changed Attrs",
+                        "description": "The attributes whose value changed (e.g. 'filterable', 'description')."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "field_name",
+                    "changed_attrs"
+                ],
+                "title": "SchemaDiffModifiedField",
+                "description": "One field updated in place, with the attributes that changed."
+            },
+            "SchemaDiffRename": {
+                "properties": {
+                    "from_name": {
+                        "type": "string",
+                        "title": "From Name",
+                        "description": "The field's previous name."
+                    },
+                    "to_name": {
+                        "type": "string",
+                        "title": "To Name",
+                        "description": "The field's new name."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "from_name",
+                    "to_name"
+                ],
+                "title": "SchemaDiffRename",
+                "description": "One field renamed in place (its values are kept)."
             },
             "ScoreBelow": {
                 "properties": {
@@ -12311,7 +12773,7 @@
                     "steps"
                 ],
                 "title": "SetChain",
-                "description": "Rebuild a fallback chain \u2014 an enrich per-figure site, or a chain-capable stage itself."
+                "description": "Rebuild a fallback chain \u2014 an enrich per-figure site, or a chain-capable stage itself.\n\nA step that omits its secret (api_key / password) keeps the one of the same provider in the\ncurrent chain (same kind at that position, or same kind + endpoint after a reorder); an explicit\n``\"\"`` clears it."
             },
             "SetCondition": {
                 "properties": {
@@ -12483,7 +12945,7 @@
                     "kind"
                 ],
                 "title": "SetProvider",
-                "description": "Pick the provider of an exclusive stage \u2014 swap the kind, reset its config to defaults."
+                "description": "Pick the provider of an exclusive stage \u2014 swap the kind, reset its config to defaults.\n\nOn a chain stage (parse / embed) re-picking the SAME kind keeps its stored secret (an omitted\nsecret is inherited from the same provider; a different kind never inherits one)."
             },
             "SetStack": {
                 "properties": {
@@ -12527,7 +12989,7 @@
                     "stage": {
                         "type": "string",
                         "title": "Stage",
-                        "description": "Key of the stage whose config is replaced."
+                        "description": "Key of the stage whose config is edited."
                     },
                     "node": {
                         "anyOf": [
@@ -12545,7 +13007,17 @@
                         "additionalProperties": true,
                         "type": "object",
                         "title": "Config",
-                        "description": "The new config dict (full replacement)."
+                        "description": "The config dict \u2014 the full new config (replace) or the keys to change (merge; a null value deletes that key so it falls back to its default)."
+                    },
+                    "mode": {
+                        "type": "string",
+                        "enum": [
+                            "replace",
+                            "merge"
+                        ],
+                        "title": "Mode",
+                        "description": "replace = the config IS the node's new config (omitted keys are dropped); merge = {**current, **config}, a null value deleting the key (safe single-key edits that keep every other key, secrets included).",
+                        "default": "replace"
                     }
                 },
                 "additionalProperties": false,
@@ -12555,7 +13027,7 @@
                     "config"
                 ],
                 "title": "SetStageConfig",
-                "description": "Replace a stage node's config (whole-dict replacement, like the graph editor's set_config)."
+                "description": "Edit a stage node's config \u2014 a whole-dict replacement (default) or a key-level merge."
             },
             "SnippetImportResult": {
                 "properties": {
@@ -13459,7 +13931,50 @@
                             }
                         ],
                         "title": "Fields",
-                        "description": "The TARGET schema (diffed by field name; omitted fields are removed)."
+                        "description": "LEGACY full TARGET schema (diffed by field name; omitted fields are REMOVED with their values, a changed name is a remove + add). Prefer field_ops. Mutually exclusive with field_ops."
+                    },
+                    "field_ops": {
+                        "anyOf": [
+                            {
+                                "items": {
+                                    "oneOf": [
+                                        {
+                                            "$ref": "#/components/schemas/AddFieldOp"
+                                        },
+                                        {
+                                            "$ref": "#/components/schemas/UpdateFieldOp"
+                                        },
+                                        {
+                                            "$ref": "#/components/schemas/RemoveFieldOp"
+                                        },
+                                        {
+                                            "$ref": "#/components/schemas/RenameFieldOp"
+                                        }
+                                    ],
+                                    "discriminator": {
+                                        "propertyName": "op",
+                                        "mapping": {
+                                            "add": "#/components/schemas/AddFieldOp",
+                                            "remove": "#/components/schemas/RemoveFieldOp",
+                                            "rename": "#/components/schemas/RenameFieldOp",
+                                            "update": "#/components/schemas/UpdateFieldOp"
+                                        }
+                                    }
+                                },
+                                "type": "array"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Field Ops",
+                        "description": "Explicit schema operations applied in order: add (full field), update (partial changes), remove (deletes the field's values), rename (keeps the values; a title_field pointing at it follows). Mutually exclusive with fields."
+                    },
+                    "dry_run": {
+                        "type": "boolean",
+                        "title": "Dry Run",
+                        "description": "Validate and compute schema_diff only \u2014 nothing is written (no Postgres, no Qdrant, no config version). The response body is the UNCHANGED stored collection.",
+                        "default": false
                     },
                     "pipeline": {
                         "anyOf": [
@@ -13527,6 +14042,176 @@
                 "type": "object",
                 "title": "UpdateCollectionRequest",
                 "description": "Patch any part of the collection \u2014 identity/limits, metadata schema, config blobs.\n\nSchema updates are applied by DIFF (existing values survive untouched fields); a change\nto the SEARCHABLE surface flips needs_reindex. Config changes append immutable versions."
+            },
+            "UpdateCollectionResponse": {
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "title": "Id",
+                        "description": "The collection's UUID."
+                    },
+                    "name": {
+                        "type": "string",
+                        "title": "Name",
+                        "description": "Unique human name."
+                    },
+                    "supported_formats": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array",
+                        "title": "Supported Formats",
+                        "description": "Accepted upload extensions (e.g. pdf)."
+                    },
+                    "tags": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array",
+                        "title": "Tags",
+                        "description": "Free-form labels for grouping/filtering collections in the UI ([] = untagged)."
+                    },
+                    "max_file_size_bytes": {
+                        "type": "integer",
+                        "title": "Max File Size Bytes",
+                        "description": "Upload size ceiling, bytes."
+                    },
+                    "job_timeout_seconds": {
+                        "anyOf": [
+                            {
+                                "type": "number",
+                                "exclusiveMinimum": 0.0
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Job Timeout Seconds",
+                        "description": "Per-collection whole-ingest-job wall-clock job timeout, seconds. None = inherit the worker's global WORKER_JOB_TIMEOUT_SECONDS default."
+                    },
+                    "trace_verbosity": {
+                        "type": "string",
+                        "enum": [
+                            "shape",
+                            "full"
+                        ],
+                        "title": "Trace Verbosity",
+                        "description": "Execution-trace capture level for this collection's ingest runs: 'shape' (default) keeps only the cheap inline shape summary of each node's input/output; 'full' also stores the raw payload in the object store (clamped by the operator ceiling WORKER_TRACE_MAX_VERBOSITY).",
+                        "default": "shape"
+                    },
+                    "needs_reindex": {
+                        "type": "boolean",
+                        "title": "Needs Reindex",
+                        "description": "True when a config change requires reindexing."
+                    },
+                    "created_at": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "format": "date-time"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Created At",
+                        "description": "Creation timestamp."
+                    },
+                    "pipeline": {
+                        "additionalProperties": true,
+                        "type": "object",
+                        "title": "Pipeline",
+                        "description": "The ingestion pipeline blob (the graph)."
+                    },
+                    "search": {
+                        "additionalProperties": true,
+                        "type": "object",
+                        "title": "Search",
+                        "description": "The search pipeline graph blob ({} = use the stock default)."
+                    },
+                    "fields": {
+                        "items": {
+                            "$ref": "#/components/schemas/FieldSpecModel"
+                        },
+                        "type": "array",
+                        "title": "Fields",
+                        "description": "The metadata schema."
+                    },
+                    "title_field": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Title Field",
+                        "description": "Name of a DOCUMENT-scope metadata field whose value is shown as each document's display title (search hits, document lists). null = use the parser-derived title. When the named field is unset or blank on a document, that document falls back to its parsed title."
+                    },
+                    "estimate_overrides": {
+                        "anyOf": [
+                            {
+                                "$ref": "#/components/schemas/EstimateOverrides"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "description": "Per-collection PARTIAL cost-estimate overrides (rates/assumptions); null = use the global defaults."
+                    },
+                    "schema_diff": {
+                        "$ref": "#/components/schemas/SchemaDiff",
+                        "description": "The metadata-schema change applied (or previewed under dry_run); empty lists when the PATCH did not touch the schema."
+                    },
+                    "dry_run": {
+                        "type": "boolean",
+                        "title": "Dry Run",
+                        "description": "True when nothing was written (preview only)."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "id",
+                    "name",
+                    "supported_formats",
+                    "max_file_size_bytes",
+                    "needs_reindex",
+                    "pipeline",
+                    "search",
+                    "schema_diff",
+                    "dry_run"
+                ],
+                "title": "UpdateCollectionResponse",
+                "description": "The PATCH result: the collection (unchanged under dry_run) plus its schema diff."
+            },
+            "UpdateFieldOp": {
+                "properties": {
+                    "op": {
+                        "type": "string",
+                        "const": "update",
+                        "title": "Op",
+                        "description": "Operation tag."
+                    },
+                    "field_name": {
+                        "type": "string",
+                        "title": "Field Name",
+                        "description": "The existing field to update."
+                    },
+                    "changes": {
+                        "$ref": "#/components/schemas/FieldPatch",
+                        "description": "The attributes to change (only the keys sent apply)."
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "op",
+                    "field_name",
+                    "changes"
+                ],
+                "title": "UpdateFieldOp",
+                "description": "Change some attributes of an existing field in place (its stored values are kept)."
             },
             "UploadAccepted": {
                 "properties": {

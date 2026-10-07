@@ -107,7 +107,7 @@ export function getSearchHealth(): Promise<SearchHealthSummary> {
 
 // ====== Honest search-failure classification ======
 // The search router now distinguishes a PERMANENT config/auth fault from a genuinely TRANSIENT
-// overload/timeout (see backend/routers/search/helpers.py::encode_failure_http) instead of a
+// overload/timeout (see backend/routers/search/encode_failure.py, EncodeFailureMapper) instead of a
 // blanket "the embedder is busy, retry shortly". Classify the caught error the same way here so the
 // UI never tells a caller to retry a dead endpoint.
 

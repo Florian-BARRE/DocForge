@@ -83,6 +83,7 @@ def _fake_job_with_names(collection_id: str):
         document_filename="f.pdf",
         document_title="Doc",
         collection_name="c",
+        document_display_title="Doc",
     )
 
 

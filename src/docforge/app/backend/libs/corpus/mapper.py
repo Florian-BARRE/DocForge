@@ -15,7 +15,7 @@ from datetime import datetime
 from loggerplusplus import loggerplusplus
 
 # ====== Internal Project Imports ======
-from shared_libs.public_models import DisplayTitleResolver, FieldType
+from shared_libs.public_models import DisplayTitleResolver, FieldScope, FieldType
 from shared_libs.services.db.postgresql.apis import (
     DocumentQuerySpec,
     MetadataCondition,
@@ -70,6 +70,7 @@ class CorpusMapper:
         filter_: DocumentFilter | None,
         sort: DocumentSort | None,
         schema: Sequence[MetadataField],
+        title_field: str | None = None,
     ) -> DocumentQuerySpec:
         """
         Validate the request against the schema and build the fully-resolved query spec.
@@ -78,6 +79,8 @@ class CorpusMapper:
             filter_ (DocumentFilter | None): The per-column filter (None = match everything).
             sort (DocumentSort | None): The sort key (None = default newest-first).
             schema (Sequence[MetadataField]): The collection's metadata schema.
+            title_field (str | None): The collection's display-title field; when it resolves to a
+                document-scope field, the title filter + title sort run on the DISPLAY title.
 
         Returns:
             DocumentQuerySpec: The framework-free spec the data layer executes.
@@ -92,7 +95,15 @@ class CorpusMapper:
         base = cls._base_kwargs(filter_)
         conditions = cls._metadata_conditions(filter_, by_name)
         sort_spec = cls._sort_spec(sort, by_name)
-        return DocumentQuerySpec(metadata=tuple(conditions), sort=sort_spec, **base)
+        title_spec = by_name.get(title_field) if title_field else None
+        title_field_id = (
+            title_spec.id
+            if title_spec is not None and title_spec.scope == FieldScope.DOCUMENT
+            else None
+        )
+        return DocumentQuerySpec(
+            metadata=tuple(conditions), sort=sort_spec, title_field_id=title_field_id, **base
+        )
 
     @staticmethod
     def _base_kwargs(filter_: DocumentFilter | None) -> dict:

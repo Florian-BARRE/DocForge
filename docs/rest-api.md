@@ -259,6 +259,31 @@ later), so declare the **full** schema up front.
 | `POST` | `/api/v1/collections/{id}/reingest` | `write` | Re-run the full pipeline over the whole collection (`202`) |
 | `POST` | `/api/v1/collections/{id}/trace-payloads/purge` | `write` | Reclaim the collection's stored full execution-trace payloads (`TracePurgeResult`) |
 
+### Schema changes on `PATCH /collections/{id}` (`fields` / `field_ops` / `dry_run`)
+
+The metadata schema is edited either with the legacy full target list `fields` (matched by name — an
+omitted field is **removed**, its values deleted) or with ordered `field_ops` (`add` / `update` /
+`remove` / `rename`; a rename keeps the field's stored values). Sending both is a `422`. The response
+carries a `schema_diff` (`added` / `modified` / `removed` / `renamed` / `values_lost` /
+`reindex_required_fields`); a name freed by a rename and reused by an `add` in the same request is
+reported as **added**.
+
+**Vector-store follow-through (both surfaces, including the legacy `fields` list).** After the commit
+the Qdrant footprint (payload key + index, `meta_<slug>_*` vector data) of every name that **truly
+left** the schema — removed or renamed away and not reused by the post-change schema — is purged from
+every point, then the filter + meta-vector backfills are enqueued. A name still present after the
+change (a swap A↔B, a remove A + rename B→A) is **never** purged. Remaining window, until the backfill
+repaints a document: a renamed-to name has no payload yet (its filter matches nothing on that
+document), and a reused name still carries its previous owner's value (the filter backfill then
+overwrites it, and deletes it where the new owner has no value). Meta vectors of a reused name are
+repainted only where the new owner has a value.
+
+**`dry_run: true`** runs the request validation (shape, `fields`/`field_ops` exclusivity, every op,
+per-field guards, vector-slug collisions, `title_field`, pipeline/search blob validation, secret
+re-entry) and computes the `schema_diff` + `values_lost`, then writes nothing. The only write-time
+error it cannot predict is a concurrent race: a collection rename losing the name-uniqueness race
+(`409`).
+
 ### Purging stored trace payloads
 
 `POST /api/v1/collections/{collection_id}/trace-payloads/purge` — capability `write`. Reclaims the
@@ -470,6 +495,12 @@ up to 10 real stored values, most frequent first — `distinct_count`, `note`),
 `searchable_targets[]` (the valid `search_in` entries `{field, semantic, lexical}`), `filter_grammar[]`
 (the accepted filter value forms) and `example_requests[]` (ready-to-send search bodies built from the
 collection's real fields). It never includes pipeline/search config or secrets.
+
+The guide is cached in-process per collection (bounded LRU). A cached guide is served only while the
+collection's change stamp (its `updated_at`, its document count and its documents' latest
+`updated_at`) is unchanged — an ingestion, a document delete, a metadata value edit
+(`PATCH /documents/{id}/metadata`) or a collection/schema PATCH refreshes it on the next call — and
+never beyond `DESCRIBE_CACHE_TTL_SECONDS` (default 30 s; `0` disables the cache).
 
 ### Collection health
 
@@ -728,7 +759,9 @@ defaults reproduce the historical full listing:
 | `include_geometry` | bool | `true` | `false` drops `block_ids` and the 0-based `page` from each item (keys absent, `page_number` kept) — the agent-sized shape |
 
 The response stays a JSON array; the document's total chunk count is in the **`X-Total-Count`**
-response header (always set). `422` on an out-of-bounds `limit`/`offset`.
+response header (always set — and listed in CORS `Access-Control-Expose-Headers`, so a cross-origin
+browser client can read it, like `X-Request-ID`, `Idempotency-Replayed`, `Retry-After` and
+`Content-Disposition`). `422` on an out-of-bounds `limit`/`offset`.
 
 ### Reading a document piecemeal (outline + chunk context)
 
@@ -818,6 +851,11 @@ the request is structurally valid (`422`) — **before** any mutation or spend.
   `contains`, `in`, `gte`, `lte`). An **empty** filter matches the whole collection.
 - `sort` — `{field, direction}`; `field` is a base column or a metadata field name. The server always
   appends `id` as a secondary key so offset paging never skips or duplicates a row.
+- **Title = display title.** When the collection has a `title_field`, the `title.contains` filter and
+  the `title` sort run on the row's `display_title` (that field's value — a list joined with `", "` —
+  falling back to the parsed title when unset/blank), not the raw parsed `title`. Without a
+  `title_field` they run on the parsed title, as before. A filter-mode `DocumentSelector` (bulk ops)
+  applies the same rule, so a bulk op selects exactly what the grid showed.
 - `pagination` — `{limit, offset}`; `limit` is clamped down to `CORPUS_MAX_PAGE_SIZE`.
 
 Every model is `extra="forbid"`: a typo in a filter key is a `422`, never a silently dropped
@@ -1116,7 +1154,9 @@ per-document metadata re-embed following an in-place value edit), `progress` (0�
 `error` (verbatim, only when failed),
 `attempt`, `started_at`, `finished_at`, and `updated_at` (last progress write — freezes on a wedge).
 It also joins display labels (`document_filename`, `document_title`, `collection_name`, each `null`
-if the row is gone), a `cancel_requested` flag and a `stalled` flag (a RUNNING job idle past the
+if the row is gone) plus `display_title` — the document's display title resolved exactly like the
+document list/grid (the collection's `title_field` value when set, else the parsed title; `null` when
+neither exists, the document is gone, or on the SSE stream) — a `cancel_requested` flag and a `stalled` flag (a RUNNING job idle past the
 stall threshold — an early wedge warning), the paid-generation roll-up (`total_prompt_tokens`,
 `total_completion_tokens`, `cost_usd`), `duration_seconds` (wall-clock run time — `finished_at −
 started_at` for a terminal job, elapsed time for a running one, `null` while queued), the live fan-out
@@ -1256,6 +1296,7 @@ on a collection's `pipeline`/`search`. All require `read`.
 | `POST` | `/api/v1/pipelines/{key}/edit` | Apply graph operations server-side, then inspect the result |
 | `POST` | `/api/v1/pipelines/{key}/stages/view` | Stage view of a blob + validity (ingest-only) |
 | `POST` | `/api/v1/pipelines/{key}/stages/apply` | Compile a stage action into the blob + view (ingest-only) |
+| `POST` | `/api/v1/collections/{collection_id}/pipeline/stages/apply` | Apply ONE stage action to a collection's STORED pipeline and persist it (`write`, collection-scoped) |
 
 `{key}` is `ingest` or `search`. An unknown key is `404`. The stage endpoints are **ingest-only**
 today — an unknown OR non-stage pipeline key `404`s, and the discovery index omits the stage URLs
@@ -1268,6 +1309,56 @@ request's `preset` (ingest) / `search_preset` (search). Ingest offers `standard`
 
 Design philosophy: a malformed/invalid blob is returned as **data** (`valid: false` + `issues`,
 or `build_error`/`edit_error`), never as an HTTP error — the editor renders the problems in place.
+
+**`set_config` `mode`** — `"replace"` (default, unchanged behaviour: the `config` dict IS the node's
+new config) or `"merge"` (`{**current, **config}`; a `null` value deletes that key so it falls back to
+its default — except on a secret field, where `null` **clears** it, i.e. stores `""`). Use `merge` for
+single-key edits — every other key is kept; a merge that changes `base_url` drops every secret it does
+not restate (re-send `api_key` with the new `base_url`).
+
+**Secrets on write** — on every blob write (collection `PATCH` pipeline/search, snippet apply, the
+collection-scoped stage apply below) a secret field (`api_key`/`password`) that is **masked or omitted**
+keeps the stored key of the **same provider at the same endpoint**: same node id, family AND kind (for a
+chain step, the same kind at that position, or a same-kind step at the same explicit `base_url` after a
+reorder) whose normalised **effective** endpoint is unchanged — effective = the explicit `base_url`, else
+the node Config's default, so an omitted and an explicit default URL are the same endpoint; scheme, host,
+port and path are normalised, trailing slash ignored. A kind mismatch never restores (a mask is then
+blanked). **An endpoint change never carries a stored key**: a masked/omitted secret whose provider's
+`base_url` changed is refused with **422** (`"… api_key must be re-entered because its endpoint
+(base_url) differs …"`) — re-send the secret, or `""` to clear it. **Nested secrets** follow the same
+rule: a secret-named key anywhere inside a node config (e.g. a metagen `targets[*].api_key`) is masked on
+every read/export surface and restored only from the stored item with the same `field` AND the same
+effective endpoint (its own `base_url`, else the node's) — a target whose endpoint changed must re-send
+its key. **A nested endpoint override never borrows its parent's key**: a metagen target with its own
+`base_url`, or a structgen step (`gen_*`) whose `base_url` matches none of the metagen node's keyed
+endpoints, that OMITS its `api_key` is refused with 422 (`"node 'meta_doc_prep' targets[summary].api_key
+must be re-entered …"`) — send its own key, or `""` to call it keyless. The runtime enforces the same rule
+on already-stored blobs: an override inherits the parent key only when its `base_url` is empty or
+normalises to the parent's endpoint, otherwise it sends its own key (possibly none). A key is bound to
+the `base_url` declared next to it: an override with an EMPTY `base_url` calls the parent's endpoint with
+the parent's key and its own `api_key` is ignored, so moving the parent never drags an override key along. A stateless `/stages/apply` chain
+rebuild marks such a step's secret with the redaction mask plus a `notices` entry, so the follow-up
+write is refused the same way. Only an explicit `""` (or `null` in merge mode) clears a key. Build /
+validation errors (`build_error`, 422 details) never echo config input values, so no secret is
+reflected in a response or a log line.
+
+**Collection-scoped stage apply** — `POST /api/v1/collections/{collection_id}/pipeline/stages/apply`
+(`write`), body `{"action": <StageAction>, "note": null}`. The server heals the collection's stored
+pipeline, applies the action, resolves secrets as above, validates, and — when the result is valid AND
+differs from the stored one — persists it through the same write as a `PATCH` (a new `config_version`
+row, `needs_reindex` re-derived). Response `CollectionStageApplyResponse`: `collection_id`, `persisted`,
+`needs_reindex`, `stages` (the stage view, secrets **masked**), `valid`, `issues`, `notices`,
+`build_error`. An invalid result or a no-op is `200` with `persisted: false` and a notice — nothing is
+written. `404` unknown collection, `403` outside the key's scope, `422` unmigratable stored pipeline.
+The read → compile → write is a compare-and-swap on the config version: if another write (a `PATCH`, a
+snippet import, another stage apply) lands in between, the action is recomputed once on the new stored
+pipeline; if it loses again the call is `409` and nothing is overwritten — re-read and retry.
+
+```bash
+curl -s -X POST http://localhost:10040/api/v1/collections/$CID/pipeline/stages/apply \
+  -H 'Content-Type: application/json' \
+  -d '{"action": {"action": "set_config", "stage": "embed", "mode": "merge", "config": {"timeout_seconds": 30}}}'
+```
 
 `?full=true` fills the advanced `palette.mechanics` block, which is self-describing: alongside
 `conditions`/`binding_sources`/`containers`/`error_policies` it now carries `edit_operations` (every
@@ -1397,6 +1488,11 @@ The response is a `CostEstimate`: a per-stage breakdown, the projected volume, t
 **assumptions** it rests on (chunk sizing taken from the collection's chunker config, overridable
 per collection — §3 "Estimate overrides") and any caveats. A stage whose model has no known rate is
 reported with a **null cost** (its token/page volume is still shown) — never a fabricated number.
+`total_cost_usd` is the full total only when every enabled paid stage is priced (`cost_complete:
+true`); otherwise it is **null** and `total_cost_lower_bound_usd` carries the sum of the priced stages
+(a minimum, always present — equal to the total when complete). Each unpriced stage adds a caveat
+naming the model (or OCR provider), the stage and the override path to price it
+(`estimate_overrides.rates.models.<model>` / `.embed.<model>` / `.ocr.<kind>`).
 
 ```bash
 curl -s -X POST http://localhost:10040/api/v1/collections/$CID/estimate \

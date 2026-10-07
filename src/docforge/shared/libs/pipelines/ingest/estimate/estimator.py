@@ -72,7 +72,7 @@ class CostEstimator:
 
         # 4. Roll up totals + volume, and surface the accuracy caveats.
         volume = cls.__volume(plan, int(round(pages)), chunks, assumptions)
-        total_cost, cost_complete = cls.__totals(stages)
+        total_cost, lower_bound, cost_complete = cls.__totals(stages)
         return CostEstimate(
             document_count=stats.document_count,
             stages=stages,
@@ -80,9 +80,10 @@ class CostEstimator:
             total_prompt_tokens=sum(s.prompt_tokens for s in stages),
             total_completion_tokens=sum(s.completion_tokens for s in stages),
             total_cost_usd=total_cost,
+            total_cost_lower_bound_usd=lower_bound,
             cost_complete=cost_complete,
             assumptions=assumptions,
-            caveats=cls.__caveats(plan, stats, assumptions),
+            caveats=cls.__caveats(plan, stats, assumptions) + cls.__unpriced_caveats(stages),
         )
 
     @staticmethod
@@ -248,15 +249,36 @@ class CostEstimator:
         )
 
     @staticmethod
-    def __totals(stages: list[StageEstimate]) -> tuple[float | None, bool]:
-        """Sum priced stages; total is None only when NO stage could be priced, else a lower bound."""
-        known = [s.cost_usd for s in stages if s.rate_known and s.cost_usd is not None]
-        has_unknown = any(not s.rate_known for s in stages)
-        if known:
-            return sum(known), not has_unknown
-        # No stage carried a known rate: None when that is because a paid stage was unpriceable,
-        # else a genuine 0.0 (no cost-incurring stage at all — e.g. a parse-only pipeline).
-        return (None if has_unknown else 0.0), not has_unknown
+    def __totals(stages: list[StageEstimate]) -> tuple[float | None, float, bool]:
+        """(total, lower bound, complete): the total is None as soon as ONE stage is unpriced.
+
+        Summing only the known stages used to present e.g. a free local embed's $0.00 as THE total
+        while a paid LLM stage was unpriced — a lie by omission. The priced sum is kept as the
+        explicit lower bound instead.
+        """
+        lower_bound = sum(s.cost_usd for s in stages if s.rate_known and s.cost_usd is not None)
+        complete = all(s.rate_known for s in stages)
+        return (lower_bound if complete else None), lower_bound, complete
+
+    @staticmethod
+    def __unpriced_caveats(stages: list[StageEstimate]) -> list[str]:
+        """One caveat per unpriced stage naming its model/provider, the stage and the override path."""
+        caveats: list[str] = []
+        for stage in stages:
+            if stage.rate_known:
+                continue
+            if stage.family == "ocr":
+                subject, path = f"OCR provider '{stage.provider}'", f"rates.ocr.{stage.provider}"
+            elif stage.family == "embed":
+                subject, path = f"embedding model '{stage.model}'", f"rates.embed.{stage.model}"
+            else:
+                subject, path = f"model '{stage.model}'", f"rates.models.{stage.model}"
+            caveats.append(
+                f"No known price for {subject} (stage '{stage.stage}') — the total is unknown and "
+                f"total_cost_lower_bound_usd excludes it. Set its rate in the collection's "
+                f"estimate_overrides ({path}) to price it."
+            )
+        return caveats
 
     @staticmethod
     def __caveats(plan: CostPlan, stats: SampleStats, a: EstimateAssumptions) -> list[str]:

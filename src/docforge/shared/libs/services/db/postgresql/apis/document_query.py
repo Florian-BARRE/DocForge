@@ -5,7 +5,10 @@
 # columns filter on ``document`` directly; dynamic metadata filters become correlated EXISTS
 # subqueries on ``document_metadata`` (keyed by the pre-resolved field_id), so the plan stays a set
 # of index seeks rather than a fan-out join. Every ordering is stabilised by ``document.id`` so
-# offset paging never skips or duplicates a row. Session-driven, Postgres-only, spends nothing.
+# offset paging never skips or duplicates a row. When the collection has a ``title_field``, the title
+# filter + title sort read the DISPLAY title (that field's value over the parsed title, the same rule as
+# DisplayTitleResolver) through one LEFT JOIN on the unique value row (DisplayTitleSql).
+# Session-driven, Postgres-only, spends nothing.
 
 # ====== Standard Library Imports ======
 import uuid
@@ -33,6 +36,7 @@ from shared_libs.public_models import FieldType
 
 # ====== Local Project Imports ======
 from ..tables import Document, DocumentMetadata
+from .display_title_sql import DisplayTitleSql
 from .document_query_spec import DocumentQuerySpec, MetadataCondition, MetadataOp, SortDirection
 
 # Base columns the grid may sort by — the map guards against an arbitrary attribute reaching getattr.
@@ -84,8 +88,8 @@ class DocumentQueryApi:
     ) -> int:
         """Return how many documents match the filter (the grid's total, for the pager)."""
         # 1. COUNT over the same predicates — no ordering, no window.
-        statement = (
-            select(func.count()).select_from(Document).where(*cls._conditions(collection_id, spec))
+        statement = cls._with_title(select(func.count()).select_from(Document), spec).where(
+            *cls._conditions(collection_id, spec)
         )
         return int((await session.execute(statement)).scalar_one())
 
@@ -116,7 +120,7 @@ class DocumentQueryApi:
         """
         # 1. Bare id projection over the same predicates, stably ordered for convergent re-runs.
         statement = (
-            select(Document.id)
+            cls._with_title(select(Document.id), spec)
             .where(*cls._conditions(collection_id, spec))
             .order_by(Document.created_at.desc(), Document.id.desc())
         )
@@ -128,7 +132,15 @@ class DocumentQueryApi:
     @classmethod
     def _filtered(cls, collection_id: uuid.UUID, spec: DocumentQuerySpec) -> Select:
         """The document SELECT with every filter predicate applied (no ordering/window yet)."""
-        return select(Document).where(*cls._conditions(collection_id, spec))
+        return cls._with_title(select(Document), spec).where(*cls._conditions(collection_id, spec))
+
+    @staticmethod
+    def _with_title(statement: Select, spec: DocumentQuerySpec) -> Select:
+        """Join the title_field value row when the title filter or the title sort will read it."""
+        reads_title = spec.title_contains is not None or (
+            spec.sort.metadata_field_id is None and spec.sort.column == "title"
+        )
+        return DisplayTitleSql.join(statement, spec.title_field_id) if reads_title else statement
 
     @classmethod
     def _conditions(
@@ -137,6 +149,10 @@ class DocumentQueryApi:
         """Build every WHERE predicate: the collection scope, base columns, then metadata EXISTS."""
         conditions: list[ColumnElement[bool]] = [Document.collection_id == collection_id]
         cls._append_base(conditions, spec)
+        if spec.title_contains is not None:
+            conditions.append(
+                _ilike_contains(DisplayTitleSql.key(spec.title_field_id), spec.title_contains)
+            )
         for condition in spec.metadata:
             conditions.append(cls._metadata_exists(condition))
         return conditions
@@ -149,8 +165,6 @@ class DocumentQueryApi:
             conditions.append(_ilike_contains(Document.filename, spec.filename_contains))
         if spec.filename_eq is not None:
             conditions.append(Document.filename == spec.filename_eq)
-        if spec.title_contains is not None:
-            conditions.append(_ilike_contains(Document.title, spec.title_contains))
         # 2. Enum / set columns — membership.
         if spec.statuses:
             conditions.append(Document.status.in_(spec.statuses))
@@ -278,6 +292,8 @@ class DocumentQueryApi:
         # 1. A metadata sort orders by a correlated scalar value subquery; a base sort by the column.
         if sort.metadata_field_id is not None:
             key: Any = cls._metadata_sort_key(sort.metadata_field_id, sort.metadata_field_type)
+        elif sort.column == "title":
+            key = DisplayTitleSql.key(spec.title_field_id)
         else:
             key = _SORTABLE_COLUMNS.get(sort.column, Document.created_at)
         ordered = key.desc() if descending else key.asc()

@@ -40,7 +40,12 @@ def _mock_ctx(monkeypatch, *, reconcile_return=None, **collections_methods):
         reconcile_store=AsyncMock(return_value=reconcile_return or set()),
         **collections_methods,
     )
-    monkeypatch.setattr(CONTEXT, "database", SimpleNamespace(collections=facade))
+    schema_changes = SimpleNamespace(
+        count_field_values=AsyncMock(return_value={}), purge_departed_fields=AsyncMock()
+    )
+    monkeypatch.setattr(
+        CONTEXT, "database", SimpleNamespace(collections=facade, schema_changes=schema_changes)
+    )
     queue = SimpleNamespace(enqueue_backfill=AsyncMock())
     monkeypatch.setattr(CONTEXT, "queue", queue)
     return facade, queue

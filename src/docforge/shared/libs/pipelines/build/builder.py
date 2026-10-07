@@ -18,6 +18,7 @@ from shared_libs.pipelines.registry import NodeRegistry
 
 # ====== Local Project Imports ======
 from .blob import ActionNodeBlob, ForEachNodeBlob, GroupNodeBlob, NodeBlob
+from .validation_message import ValidationMessage
 
 
 class BuildError(Exception):
@@ -52,16 +53,18 @@ class PipelineBuilder(LoggerClass):
                 f"node '{blob.id}': '{blob.family}/{blob.kind}' is not an action node."
             )
 
-        # 3. Validate the raw config against the class's Config model.
+        # 3. Validate the raw config against the class's Config model. The error is rendered
+        #    WITHOUT input values: the config carries the real provider secret on every write path.
         try:
             config = node_class.Config.model_validate(blob.config)
         except ValidationError as exc:
+            reason = ValidationMessage.format(exc)
             self.logger.error(
-                f"Invalid config for node '{blob.id}' ({blob.family}/{blob.kind}): {exc}"
+                f"Invalid config for node '{blob.id}' ({blob.family}/{blob.kind}): {reason}"
             )
             raise BuildError(
-                f"node '{blob.id}' ({blob.family}/{blob.kind}) has an invalid config: {exc}"
-            ) from exc
+                f"node '{blob.id}' ({blob.family}/{blob.kind}) has an invalid config: {reason}"
+            ) from None
 
         # 4. Instantiate the live node.
         return node_class(id=blob.id, config=config)
@@ -118,8 +121,9 @@ class PipelineBuilder(LoggerClass):
             try:
                 group_blob = GroupNodeBlob.model_validate(blob)
             except ValidationError as exc:
-                self.logger.error(f"Malformed pipeline blob: {exc}")
-                raise BuildError(f"malformed pipeline blob: {exc}") from exc
+                reason = ValidationMessage.format(exc)
+                self.logger.error(f"Malformed pipeline blob: {reason}")
+                raise BuildError(f"malformed pipeline blob: {reason}") from None
         else:
             group_blob = blob
 

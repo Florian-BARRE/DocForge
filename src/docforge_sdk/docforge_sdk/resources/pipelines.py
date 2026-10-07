@@ -10,6 +10,7 @@ from typing import Any
 # ====== Local Project Imports ======
 from .._requestspec import RequestSpec
 from ..models.pipelines import (
+    CollectionStageApplyResponse,
     EditResponse,
     InspectResponse,
     PipelineDesignResponse,
@@ -113,6 +114,25 @@ class _PipelinesSpecs(_ResourceMixin):
             json={"blob": blob, "action": action},
         )
 
+    def _apply_collection_stage_spec(
+        self, collection_id: str, action: dict[str, Any], note: str | None
+    ) -> RequestSpec:
+        """
+        Build the spec for applying a stage action to a collection's STORED pipeline (persisted).
+
+        Args:
+            collection_id (str): The collection whose pipeline is edited.
+            action (dict[str, Any]): The opaque stage action to apply.
+            note (str | None): Optional note stored on the config-version snapshot.
+
+        Returns:
+            RequestSpec: A POST to the collection's ``/pipeline/stages/apply`` route.
+        """
+        body: dict[str, Any] = {"action": action}
+        if note is not None:
+            body["note"] = note
+        return RequestSpec("POST", f"/collections/{collection_id}/pipeline/stages/apply", json=body)
+
 
 class AsyncPipelines(AsyncResource, _PipelinesSpecs):
     """Asynchronous pipeline discovery + design surface."""
@@ -202,6 +222,29 @@ class AsyncPipelines(AsyncResource, _PipelinesSpecs):
             self._apply_stage_spec(key, blob, action), StageApplyResponse
         )
 
+    async def apply_collection_stage(
+        self, collection_id: str, action: dict[str, Any], note: str | None = None
+    ) -> CollectionStageApplyResponse:
+        """
+        Apply one stage action to a collection's stored pipeline and persist a valid result.
+
+        Prefer ``{"action": "set_config", "mode": "merge", ...}`` for single-key edits: every other
+        key, secrets included, is kept. Nothing is written when the result is invalid or a no-op.
+
+        Args:
+            collection_id (str): The collection whose pipeline is edited.
+            action (dict[str, Any]): The opaque stage action to apply.
+            note (str | None): Optional note stored on the config-version snapshot.
+
+        Returns:
+            CollectionStageApplyResponse: The redacted stage view, validity, notices and whether
+            the change was persisted.
+        """
+        return await self._transport.request(
+            self._apply_collection_stage_spec(collection_id, action, note),
+            CollectionStageApplyResponse,
+        )
+
 
 class SyncPipelines(SyncResource, _PipelinesSpecs):
     """Synchronous pipeline discovery + design surface."""
@@ -287,6 +330,29 @@ class SyncPipelines(SyncResource, _PipelinesSpecs):
         """
         return self._transport.request(
             self._apply_stage_spec(key, blob, action), StageApplyResponse
+        )
+
+    def apply_collection_stage(
+        self, collection_id: str, action: dict[str, Any], note: str | None = None
+    ) -> CollectionStageApplyResponse:
+        """
+        Apply one stage action to a collection's stored pipeline and persist a valid result.
+
+        Prefer ``{"action": "set_config", "mode": "merge", ...}`` for single-key edits: every other
+        key, secrets included, is kept. Nothing is written when the result is invalid or a no-op.
+
+        Args:
+            collection_id (str): The collection whose pipeline is edited.
+            action (dict[str, Any]): The opaque stage action to apply.
+            note (str | None): Optional note stored on the config-version snapshot.
+
+        Returns:
+            CollectionStageApplyResponse: The redacted stage view, validity, notices and whether
+            the change was persisted.
+        """
+        return self._transport.request(
+            self._apply_collection_stage_spec(collection_id, action, note),
+            CollectionStageApplyResponse,
         )
 
 

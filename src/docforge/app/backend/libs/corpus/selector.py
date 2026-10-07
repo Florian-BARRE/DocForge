@@ -95,7 +95,10 @@ class DocumentSelectorResolver(LoggerClass):
         """Resolve a filter to the matching ids in the collection minus the deselected ids."""
         # 1. Build + validate the query spec (filter only). A ``limit`` bounds the DB projection so a
         #    huge match never loads every id; the order is id-stable for convergent re-runs.
-        spec = CorpusMapper.to_spec(selector.filter, None, schema)
+        #    The title filter follows the collection's display title, like the grid it was built in.
+        collection = await self._database.collections.get(collection_id)
+        title_field = getattr(collection, "title_field", None)
+        spec = CorpusMapper.to_spec(selector.filter, None, schema, title_field=title_field)
         matched = await self._database.documents.resolve_query_ids(collection_id, spec, limit)
         # 2. Drop the deselected ids (the UI's select-all-minus-N).
         excluded = set(selector.exclude_ids)

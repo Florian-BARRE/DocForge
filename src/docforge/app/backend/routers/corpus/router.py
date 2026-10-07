@@ -98,7 +98,9 @@ async def query_documents(
 
     # 2. Validate + map the request to the framework-free spec (a bad field/op is a clean 422).
     try:
-        spec = CorpusMapper.to_spec(request.filter, request.sort, schema)
+        spec = CorpusMapper.to_spec(
+            request.filter, request.sort, schema, title_field=collection.title_field
+        )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
 

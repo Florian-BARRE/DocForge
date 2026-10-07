@@ -58,6 +58,14 @@ class JobStatus(BaseModel):
         "than the filename when present (None if none was generated or the document is gone; the UI "
         "falls back to document_filename).",
     )
+    display_title: str | None = Field(
+        default=None,
+        description="The document's DISPLAY title, resolved at read exactly like the document "
+        "list/grid/detail `display_title`: the value of the collection's `title_field` when one is "
+        "configured and set on this document, else the parsed title. None when neither exists, the "
+        "document is gone, or on the SSE stream (which re-reads only the job row). Prefer it over "
+        "document_title for labelling; fall back to document_filename.",
+    )
     collection_id: str = Field(description="Its collection.")
     collection_name: str | None = Field(
         default=None,
@@ -132,6 +140,7 @@ class JobStatus(BaseModel):
         document_filename: str | None = None,
         collection_name: str | None = None,
         document_title: str | None = None,
+        display_title: str | None = None,
     ) -> "JobStatus":
         """
         Map one job row to its polling model (shared by the poll routes and the SSE stream).
@@ -142,6 +151,8 @@ class JobStatus(BaseModel):
                 e.g. the SSE stream which re-reads only the job row).
             collection_name (str | None): The joined collection name (same None-off-stream contract).
             document_title (str | None): The joined metagen title (same None-off-stream contract).
+            display_title (str | None): The resolved display title (title_field value, else the
+                parsed title — same None-off-stream contract).
         """
         # Only a RUNNING job can stall: its updated_at bumps on every progress write, so a value
         # older than the threshold means progress has frozen. done/failed/pending are never stalled.
@@ -161,6 +172,7 @@ class JobStatus(BaseModel):
             document_id=str(job.document_id),
             document_filename=document_filename,
             document_title=document_title,
+            display_title=display_title,
             collection_id=str(job.collection_id),
             collection_name=collection_name,
             status=job.status.value,

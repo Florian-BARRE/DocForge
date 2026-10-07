@@ -48,6 +48,7 @@ from .models.collections import (
     FieldSpec,
     ReingestJobHandle,
     UpdateCollectionRequest,
+    UpdateCollectionResponse,
 )
 
 # ------------------- Documents models ------------------- #
@@ -136,6 +137,19 @@ from .models.preview import (
     PreviewTraceNode,
 )
 
+# ------------------- Collection schema ops ------------------- #
+from .models.schema_ops import (
+    AddFieldOp,
+    FieldOp,
+    FieldPatch,
+    RemoveFieldOp,
+    RenameFieldOp,
+    SchemaDiff,
+    SchemaDiffModifiedField,
+    SchemaDiffRename,
+    UpdateFieldOp,
+)
+
 # ------------------- Search models ------------------- #
 from .models.search import (
     BlockLocation,
@@ -194,6 +208,16 @@ __all__ = [
     "CollectionModel",
     "CreateCollectionRequest",
     "UpdateCollectionRequest",
+    "UpdateCollectionResponse",
+    "FieldPatch",
+    "AddFieldOp",
+    "UpdateFieldOp",
+    "RemoveFieldOp",
+    "RenameFieldOp",
+    "FieldOp",
+    "SchemaDiff",
+    "SchemaDiffModifiedField",
+    "SchemaDiffRename",
     "BulkReingestRequest",
     "ReingestJobHandle",
     "BulkReingestAccepted",

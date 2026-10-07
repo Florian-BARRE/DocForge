@@ -140,8 +140,9 @@ class CostEstimate(BaseModel):
     """
     The full pre-hoc breakdown — an ESTIMATE, with its assumptions and caveats surfaced.
 
-    ``total_cost_usd`` sums only the stages with a known rate; ``cost_complete`` is False when any
-    enabled cost-incurring stage priced to null, so the total is understood as a lower bound.
+    ``total_cost_usd`` is the full total only when it is honest: it is None as soon as any enabled
+    cost-incurring stage priced to null (``cost_complete`` False) — ``total_cost_lower_bound_usd``
+    then carries the sum of the priced stages, and a caveat names each unpriced model + stage.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -155,7 +156,14 @@ class CostEstimate(BaseModel):
     total_prompt_tokens: int = Field(ge=0, description="Summed projected prompt/input tokens.")
     total_completion_tokens: int = Field(ge=0, description="Summed projected completion tokens.")
     total_cost_usd: float | None = Field(
-        description="Summed USD over priced stages (None only when NO stage could be priced)."
+        description="Total projected USD — None when any enabled cost-incurring stage has no known "
+        "rate (see total_cost_lower_bound_usd and the caveats)."
+    )
+    total_cost_lower_bound_usd: float = Field(
+        default=0.0,
+        ge=0,
+        description="Sum of the PRICED stages only — equals total_cost_usd when the cost is "
+        "complete, else a lower bound of the true cost.",
     )
     cost_complete: bool = Field(
         description="True when every enabled cost-incurring stage had a known rate."

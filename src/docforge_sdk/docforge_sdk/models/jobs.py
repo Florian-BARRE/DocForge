@@ -23,6 +23,9 @@ class JobStatus(BaseModel):
         document_title (str | None): The document's metagen-generated title, joined at read — a
             nicer display label than the filename when present (None if none was generated or the
             document is gone; the UI falls back to document_filename).
+        display_title (str | None): The document's display title — the collection's
+            ``title_field`` value when configured and set, else the parsed title (None when
+            neither exists, the document is gone, or on the SSE stream).
         collection_id (str): Its collection.
         collection_name (str | None): The collection's name, joined at read (None if the
             collection is gone).
@@ -57,6 +60,14 @@ class JobStatus(BaseModel):
         description="The document's metagen-generated title, joined at read — a nicer display label "
         "than the filename when present (None if none was generated or the document is gone; the UI "
         "falls back to document_filename).",
+    )
+    display_title: str | None = Field(
+        default=None,
+        description="The document's DISPLAY title, resolved at read exactly like the document "
+        "list/grid/detail `display_title`: the value of the collection's `title_field` when one is "
+        "configured and set on this document, else the parsed title. None when neither exists, the "
+        "document is gone, or on the SSE stream (which re-reads only the job row). Prefer it over "
+        "document_title for labelling; fall back to document_filename.",
     )
     collection_id: str = Field(description="Its collection.")
     collection_name: str | None = Field(

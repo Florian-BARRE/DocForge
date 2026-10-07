@@ -1,5 +1,6 @@
 # ====== Code Summary ======
-# MetadataValueApi — read-only access to the DISTINCT stored values of one metadata field. A field's
+# MetadataValueApi — read-only access to the DISTINCT stored values of one metadata field (plus the
+# per-field value-row counts a schema removal would destroy). A field's
 # values live as JSONB in `document_metadata` (document scope) or `chunk_metadata` (chunk scope), each
 # value either a scalar or a list (keyword_list); every query here explodes both shapes into one text
 # element stream (`jsonb_array_elements_text` over the value, a scalar wrapped into a 1-item array),
@@ -13,7 +14,7 @@ from collections.abc import Sequence
 from typing import Any
 
 # ====== Third-Party Library Imports ======
-from sqlalchemy import Text, bindparam, select, text
+from sqlalchemy import Text, bindparam, func, select, text
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -21,7 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from shared_libs.public_models import FieldScope
 
 # ====== Local Project Imports ======
-from ..tables import DocumentMetadata
+from ..tables import ChunkMetadata, DocumentMetadata
 
 # The value table each scope stores its values in — a closed whitelist, so the table name formatted
 # into the SQL below is never caller-controlled.
@@ -236,6 +237,38 @@ class MetadataValueApi:
         )
         result = await session.execute(stmt)
         return {row.document_id: row.value for row in result}
+
+    @staticmethod
+    async def count_rows_by_field(
+        session: AsyncSession, field_ids: Sequence[int]
+    ) -> dict[int, int]:
+        """
+        Count the stored value ROWS (document + chunk scope) of each given field.
+
+        The "what a schema removal destroys" measure: a field's values cascade-delete with its
+        ``metadata_field`` row, so the row count across both value tables is exactly what is lost.
+
+        Args:
+            session (AsyncSession): The open session.
+            field_ids (Sequence[int]): The metadata fields to count.
+
+        Returns:
+            dict[int, int]: field id → stored value rows (every requested id present, 0 when none).
+        """
+        # 1. Nothing asked → no round trip.
+        counts = {field_id: 0 for field_id in field_ids}
+        if not counts:
+            return counts
+        # 2. One grouped aggregate per value table (each keyed by its field_id index).
+        for table in (DocumentMetadata, ChunkMetadata):
+            stmt = (
+                select(table.field_id, func.count())
+                .where(table.field_id.in_(list(counts)))
+                .group_by(table.field_id)
+            )
+            for field_id, total in await session.execute(stmt):
+                counts[field_id] += int(total)
+        return counts
 
 
 __all__ = ["MetadataValueApi"]

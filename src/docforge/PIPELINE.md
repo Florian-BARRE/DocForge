@@ -662,6 +662,43 @@ automatiquement** dans le formulaire sans code front dédié.
 | `GET /api/v1/pipelines/ingest` | payload **maigre** : `palette.families` (les familles avec titre/description/`mode`, chaque node card : kind · labels · `config_schema` décrit · slots I/O typés ET décrits · `error_policy` · `unique_in_graph` · `scored` · `switch_fields`) + `blob` (la topologie par défaut, validée 0 issue) + `issues`. Les blocs avancés (`run_inputs`/`mechanics`/`artefacts`) restent `null` — jamais calculés ici | `register_family()` + `describe()` ; `default_blob()` |
 | `POST …/ingest/stages/view` | blob → la vue stages canonique ordonnée (toggles, providers, chaînes, stack — désactivé = grisé, jamais caché), `stages` étant DIRECTEMENT la liste (plus de double enveloppe) **+ le verdict de validité replié** (`valid`, `issues`, `build_error`) : plus d'appel `/inspect` de priming à l'ouverture | `StateReader` + `StageViewer` + build/validate |
 | `POST …/ingest/stages/apply` | blob + UNE action stage (`enable/disable_stage` · `set_provider` · `set_config` · `set_chain` · `set_stack`) → blob recompilé (cascades et re-câblage côté serveur) + vue stages + `valid`/`issues` + `notices` | `StageCompiler` (le même assembleur que `default_blob()`) |
+| `POST /api/v1/collections/{id}/pipeline/stages/apply` | UNE action stage appliquée au pipeline **STOCKÉ** de la collection → validée → **persistée** par le chemin d'écriture du PATCH (canonicalize + `config_version`) si valide ET changée (`persisted=false` + notice sinon, rien d'écrit) ; réponse = vue stages **redactée** + `valid`/`issues`/`notices`/`needs_reindex` — un LLM n'aller-retourne jamais le blob complet | `CollectionStageApplier` (app) → `StageCompiler` + `restore_blob_secrets` |
+
+**`set_config` — `mode`** (`StageConfigMerge`, appliqué à CHAQUE branche : intake nommé, `convert`, tête de
+chaîne parse/embed, stage à config unique) : `replace` (défaut, rétro-compatible) = le dict EST la nouvelle
+config ; `merge` = `{**courant, **patch}`, une valeur `null` supprime la clé (retour au défaut du schéma) —
+l'édition d'une seule clé garde toutes les autres, secrets compris (le MCP `apply_collection_stage` passe
+`merge` par défaut).
+
+**Secrets et identité de provider** (`SecretIdentity`, partagé compilateur ↔ écriture) : un secret
+(`api_key`/`password`) OMIS ou MASQUÉ garde la clé du MÊME provider AU MÊME ENDPOINT — même id, family ET
+kind, à endpoint **effectif** normalisé inchangé (`base_url` explicite, sinon le défaut du `Config` : omis
+≡ défaut explicite ; scheme/host/port/path normalisés, slash final ignoré) ; pour une étape de chaîne (ids
+positionnels `{prefix}_{i}`), (kind, position) vérifié contre le kind stocké, puis un frère de même kind au
+même `base_url` EXPLICITE (réordonnancement) ; un kind différent ne restaure JAMAIS. **Un changement
+d'endpoint ne transporte JAMAIS la clé** (anti-exfiltration) : `restore_blob_secrets` lève
+`SecretReentryRequired` (→ 422 au PATCH, à l'import de snippet et à la route collection ci-dessus) ;
+`ChainSecretCarry` pose le masque + une notice « must be re-entered » (la complétion build-safe ne peut
+donc pas en faire un `""` silencieux) ; un `set_config` `merge` qui change `base_url` retire les secrets
+non re-fournis — y compris les secrets IMBRIQUÉS d'items qui suivent l'endpoint du node (target sans
+`base_url` propre). Seul un `""` explicite efface — ou un `null` sur un champ secret en `merge` (→ `""`).
+**Secrets imbriqués** (`NestedSecrets`) : toute clé nommée secret À L'INTÉRIEUR d'une config (dicts/listes,
+ex. `targets[*].api_key` de `(metagen, document_prep)`/`(metagen, chunk_prep)`) est masquée en lecture /
+export / snapshot, et restaurée seulement depuis l'item stocké de même identité (chemin + `field` +
+endpoint effectif = son `base_url`, sinon celui du node). **Override d'endpoint imbriqué** : la clé du
+parent n'est héritée QUE si le `base_url` de l'override est vide ou normalisé identique à celui du parent
+(`SecretIdentity.scoped_secret`, appliqué AU RUN par `BaseMetagenNode` pour les targets et par
+`BaseStructGenNode` (`(structgen, openai_compatible)`) pour l'endpoint de la `GenerationRequest`) ; sinon
+l'override envoie SA clé, éventuellement `""`. Une clé est liée au `base_url` déclaré à côté d'elle : un
+override SANS `base_url` appelle l'endpoint du parent avec la clé du parent et sa propre `api_key` est
+ignorée — déplacer le parent n'entraîne donc jamais la clé d'un override. Côté écriture, un target à `base_url` étranger, ou une étape
+structgen dont le `base_url` ne correspond à aucun endpoint à clé du prep (`RequestSecretGuard`), qui OMET
+son `api_key` est refusé (`SecretReentryRequired`, 422) — un `""` explicite déclare un override sans clé.
+Le `password` de `(converter, gotenberg)` vit sous `base_url` : couvert par la même règle.
+`set_chain`/`set_provider`/`set_stack` (chaîne llm) héritent le secret omis de l'étape courante du même
+provider au même endpoint AVANT la complétion build-safe. Les erreurs de build/validation passent par
+`ValidationMessage` (pydantic `errors(include_input=False)`) : jamais de valeur d'entrée (donc de secret)
+dans un `build_error`, un 422 ou un log.
 
 ### La surface AVANCÉE (headless — aucun consommateur UI aujourd'hui)
 

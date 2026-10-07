@@ -26,6 +26,7 @@ from ..models.collections import (
     CollectionModel,
     CreateCollectionRequest,
     UpdateCollectionRequest,
+    UpdateCollectionResponse,
 )
 from ..models.corpus import DocumentFilter
 from ..models.estimate import CollectionEstimateRequest, CostEstimate
@@ -283,7 +284,9 @@ class AsyncCollections(AsyncResource, _CollectionsSpecs):
         """
         return await self._transport.request(self._create_spec(request), CollectionModel)
 
-    async def update(self, collection_id: str, request: UpdateCollectionRequest) -> CollectionModel:
+    async def update(
+        self, collection_id: str, request: UpdateCollectionRequest
+    ) -> UpdateCollectionResponse:
         """
         Patch identity/limits, the metadata schema and/or the config blobs.
 
@@ -292,10 +295,11 @@ class AsyncCollections(AsyncResource, _CollectionsSpecs):
             request (UpdateCollectionRequest): The partial patch body.
 
         Returns:
-            CollectionModel: The updated contract.
+            UpdateCollectionResponse: The updated contract (unchanged under ``dry_run``) plus its
+                ``schema_diff``.
         """
         return await self._transport.request(
-            self._update_spec(collection_id, request), CollectionModel
+            self._update_spec(collection_id, request), UpdateCollectionResponse
         )
 
     async def delete(self, collection_id: str) -> None:
@@ -556,7 +560,9 @@ class SyncCollections(SyncResource, _CollectionsSpecs):
         """
         return self._transport.request(self._create_spec(request), CollectionModel)
 
-    def update(self, collection_id: str, request: UpdateCollectionRequest) -> CollectionModel:
+    def update(
+        self, collection_id: str, request: UpdateCollectionRequest
+    ) -> UpdateCollectionResponse:
         """
         Patch identity/limits, the metadata schema and/or the config blobs.
 
@@ -565,9 +571,12 @@ class SyncCollections(SyncResource, _CollectionsSpecs):
             request (UpdateCollectionRequest): The partial patch body.
 
         Returns:
-            CollectionModel: The updated contract.
+            UpdateCollectionResponse: The updated contract (unchanged under ``dry_run``) plus its
+                ``schema_diff``.
         """
-        return self._transport.request(self._update_spec(collection_id, request), CollectionModel)
+        return self._transport.request(
+            self._update_spec(collection_id, request), UpdateCollectionResponse
+        )
 
     def delete(self, collection_id: str) -> None:
         """

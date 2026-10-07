@@ -18,7 +18,7 @@ export interface RangeValue {
   lt?: number | string;
 }
 
-// Mirrors DatabaseHelpers.PAYLOAD_TYPES → SearchHelpers._RANGE_TYPED: only these field types index
+// Mirrors DatabaseHelpers.PAYLOAD_TYPES (backend): only these field types index
 // to an INTEGER/FLOAT/DATETIME Qdrant payload type, the only ones a Range can constrain.
 const RANGE_TYPED: ReadonlySet<FieldType> = new Set([
   "integer", "float", "datetime", "integer_list", "float_list",

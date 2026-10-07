@@ -43,7 +43,9 @@ class MetagenTarget(BaseModel):
         field (str): The GENERATED contract field this target fills (must match the node scope).
         prompt (str): Field instruction; empty = auto-derived from the field's name and type.
         base_url (str): Endpoint override; empty = the node's default endpoint.
-        api_key (str): Key override; empty = the node's default.
+        api_key (str): Key for this target's OWN ``base_url``. Ignored while ``base_url`` is empty
+            (the target then calls the node's endpoint with the node's key); empty with a
+            ``base_url`` = the node's key only at the node's own endpoint, else no key.
         model (str): Model override; empty = the node's default.
     """
 

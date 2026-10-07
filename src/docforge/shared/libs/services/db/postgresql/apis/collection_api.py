@@ -8,11 +8,11 @@
 import uuid
 
 # ====== Third-Party Library Imports ======
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # ====== Internal Project Imports ======
-from ..tables import Collection, ConfigVersion, MetadataField
+from ..tables import Collection, ConfigVersion, Document, MetadataField
 
 
 class CollectionApi:
@@ -125,6 +125,49 @@ class CollectionApi:
         if collection is None:
             return
         collection.estimate_overrides = overrides
+
+    @staticmethod
+    async def touch(session: AsyncSession, collection_id: uuid.UUID) -> None:
+        """Bump a collection's ``updated_at`` after a write to its CHILD rows only (the schema diff).
+
+        The ORM ``onupdate`` fires only when a collection column changes; a schema PATCH edits
+        ``metadata_field`` rows alone, so this keeps ``updated_at`` (and the change stamp built on it)
+        honest about "the collection's contract changed".
+        """
+        await session.execute(
+            update(Collection)
+            .where(Collection.id == collection_id)
+            .values(updated_at=func.clock_timestamp())
+        )
+
+    @staticmethod
+    async def change_stamp(
+        session: AsyncSession, collection_id: uuid.UUID
+    ) -> tuple[object, int, object] | None:
+        """
+        Read a collection's cheap change stamp in ONE aggregate query, or None when it is gone.
+
+        The stamp is ``(collection.updated_at, document count, max(document.updated_at))``: it moves
+        on a collection/schema PATCH (both bump ``collection.updated_at``), on a document admission or
+        delete (the count), and on any document write — ingestion status transitions and metadata
+        value edits bump ``document.updated_at``. Compared for EQUALITY, never ordering.
+
+        Args:
+            session (AsyncSession): The active DB session.
+            collection_id (uuid.UUID): The collection to stamp.
+
+        Returns:
+            tuple | None: The stamp, or None when the collection does not exist.
+        """
+        # 1. LEFT JOIN so an empty collection still stamps (count 0, max NULL).
+        result = await session.execute(
+            select(Collection.updated_at, func.count(Document.id), func.max(Document.updated_at))
+            .outerjoin(Document, Document.collection_id == Collection.id)
+            .where(Collection.id == collection_id)
+            .group_by(Collection.id)
+        )
+        row = result.first()
+        return None if row is None else (row[0], int(row[1]), row[2])
 
     @staticmethod
     async def set_title_field(

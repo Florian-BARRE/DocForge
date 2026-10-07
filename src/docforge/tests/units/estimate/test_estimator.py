@@ -99,6 +99,7 @@ class TestEmbed:
         assert embed.cost_usd is None
         assert embed.prompt_tokens > 0  # usage still reported
         assert est.total_cost_usd is None  # the only stage, unpriceable
+        assert est.total_cost_lower_bound_usd == 0.0
         assert est.cost_complete is False
 
 
@@ -134,7 +135,30 @@ class TestFullMix:
         est = CostEstimator.estimate(plan, _stats(), RateTable.default(), _assumptions())
         assert est.cost_complete is False
         embed = next(s for s in est.stages if s.stage == "embed")
-        assert est.total_cost_usd == pytest.approx(embed.cost_usd)  # unknown excluded from total
+        # An unpriced paid stage makes the TOTAL unknown; the priced sum is the explicit lower bound.
+        assert est.total_cost_usd is None
+        assert est.total_cost_lower_bound_usd == pytest.approx(embed.cost_usd)
+        caveat = next(c for c in est.caveats if "unlisted-model" in c)
+        assert "'contextualize'" in caveat
+        assert "estimate_overrides (rates.models.unlisted-model)" in caveat
+
+    def test_free_local_embed_with_unpriced_llm_is_not_a_zero_total(self) -> None:
+        """The D9 repro: a free bge_server embed must not make an unpriced LLM read as $0.00."""
+        plan = _empty_plan(
+            embed=ProviderRef("embed", "bge_server", None),
+            contextualize_llm=ProviderRef("llm", "openai_compatible", "unlisted-model"),
+        )
+        est = CostEstimator.estimate(plan, _stats(), RateTable.default(), _assumptions())
+        assert est.total_cost_usd is None
+        assert est.total_cost_lower_bound_usd == 0.0
+        assert any("unlisted-model" in c for c in est.caveats)
+
+    def test_gpt_5_4_is_priced(self) -> None:
+        plan = _empty_plan(contextualize_llm=ProviderRef("llm", "openai_compatible", "gpt-5.4"))
+        est = CostEstimator.estimate(plan, _stats(), RateTable.default(), _assumptions())
+        assert est.cost_complete is True
+        assert est.total_cost_usd == pytest.approx(est.total_cost_lower_bound_usd)
+        assert est.total_cost_usd > 0.0
 
 
 class TestMetagenSkips:

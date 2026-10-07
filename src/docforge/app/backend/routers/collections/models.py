@@ -8,10 +8,9 @@ from datetime import datetime
 from typing import Any, Literal
 
 # ====== Third-Party Library Imports ======
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 # ====== Internal Project Imports ======
-from shared_libs.public_models import FieldOrigin, FieldScope, FieldType
 from shared_libs.services.db import (
     CollectionFootprint,
     DocumentFootprint,
@@ -24,42 +23,7 @@ from shared_libs.services.db import (
 from ...libs.estimate import EstimateOverrides
 from ...libs.health import CollectionHealthSummary
 from ...libs.preview import PreviewResponse
-
-# Upper bound of a metadata field's free-text description (a sentence or two, not a document).
-FIELD_DESCRIPTION_MAX_LENGTH = 1000
-
-
-class FieldSpecModel(BaseModel):
-    """One metadata field of the collection's contract (declared OR generated)."""
-
-    # A typo in a field flag (filterable/lexical/semantic) must FAIL, never be silently dropped —
-    # a swallowed flag would build the wrong vector space. Mirrors the pipeline's extra="forbid".
-    model_config = ConfigDict(extra="forbid")
-
-    field_name: str = Field(description="Unique field name within the collection.")
-    field_type: FieldType = Field(description="Value type — drives validation and storage.")
-    required: bool = Field(default=False, description="Upload refused without it (user fields).")
-    filterable: bool = Field(default=False, description="Present in the Qdrant payload (lean).")
-    lexical: bool = Field(default=False, description="Gets a sparse BM25 named vector.")
-    semantic: bool = Field(default=False, description="Gets a dense named vector.")
-    enum_values: list[str] | None = Field(
-        default=None, description="Allowed values when field_type is enum."
-    )
-    origin: FieldOrigin = Field(
-        default=FieldOrigin.USER, description="user (declared at upload) or generated (metagen)."
-    )
-    scope: FieldScope = Field(
-        default=FieldScope.DOCUMENT, description="document or chunk level value."
-    )
-    description: str | None = Field(
-        default=None,
-        max_length=FIELD_DESCRIPTION_MAX_LENGTH,
-        description=(
-            "What the field means, for humans and agents (e.g. 'Business process the document "
-            "belongs to'). Documentation only: editing it never triggers a reindex. null = none."
-        ),
-    )
-
+from ...libs.schema_ops import FieldOp, FieldSpecModel, SchemaDiff
 
 # Shared description of the display-title setting, reused by the read model and both write requests.
 _TITLE_FIELD_DESCRIPTION = (
@@ -242,7 +206,20 @@ class UpdateCollectionRequest(BaseModel):
     )
     fields: list[FieldSpecModel] | None = Field(
         default=None,
-        description="The TARGET schema (diffed by field name; omitted fields are removed).",
+        description="LEGACY full TARGET schema (diffed by field name; omitted fields are REMOVED with "
+        "their values, a changed name is a remove + add). Prefer field_ops. Mutually exclusive with "
+        "field_ops.",
+    )
+    field_ops: list[FieldOp] | None = Field(
+        default=None,
+        description="Explicit schema operations applied in order: add (full field), update (partial "
+        "changes), remove (deletes the field's values), rename (keeps the values; a title_field "
+        "pointing at it follows). Mutually exclusive with fields.",
+    )
+    dry_run: bool = Field(
+        default=False,
+        description="Validate and compute schema_diff only — nothing is written (no Postgres, no "
+        "Qdrant, no config version). The response body is the UNCHANGED stored collection.",
     )
     pipeline: dict[str, Any] | None = Field(
         default=None, description="New pipeline blob (validated before being stored)."
@@ -264,6 +241,23 @@ class UpdateCollectionRequest(BaseModel):
         "(or moves it to chunk scope) clears it automatically.",
     )
     note: str | None = Field(default=None, description="Version note shown in the history.")
+
+    @model_validator(mode="after")
+    def _one_schema_surface(self) -> "UpdateCollectionRequest":
+        """Reject a body carrying both schema surfaces (their removal semantics conflict)."""
+        if self.fields is not None and self.field_ops is not None:
+            raise ValueError("'fields' and 'field_ops' are mutually exclusive — send one of them.")
+        return self
+
+
+class UpdateCollectionResponse(CollectionModel):
+    """The PATCH result: the collection (unchanged under dry_run) plus its schema diff."""
+
+    schema_diff: SchemaDiff = Field(
+        description="The metadata-schema change applied (or previewed under dry_run); empty lists "
+        "when the PATCH did not touch the schema."
+    )
+    dry_run: bool = Field(description="True when nothing was written (preview only).")
 
 
 class CollectionContractSchemaResponse(BaseModel):
@@ -511,6 +505,7 @@ __all__ = [
     "CollectionContractSchemaResponse",
     "CreateCollectionRequest",
     "UpdateCollectionRequest",
+    "UpdateCollectionResponse",
     "S3FootprintModel",
     "PostgresFootprintModel",
     "QdrantFootprintModel",

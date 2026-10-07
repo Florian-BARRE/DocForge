@@ -30,6 +30,7 @@ from .facades import (
     MetadataEditFacade,
     MetadataValueResolver,
     MetaVectorSyncFacade,
+    SchemaChangeFacade,
     SearchFacade,
     StorageFootprintFacade,
     TracePayloadFacade,
@@ -52,6 +53,8 @@ class Database(LoggerClass):
         metadata_edit (MetadataEditFacade): Edit a single document's document-scope metadata VALUES
             without a re-ingest (validate + upsert + synchronous filter-payload repaint).
         search (SearchFacade): Hybrid filtered search + Postgres hydration.
+        schema_changes (SchemaChangeFacade): Values-lost counting + departed-field Qdrant cleanup
+            around a metadata-schema change.
         jobs (JobsFacade): Ingestion job lifecycle + stage timeline.
         trace_payloads (TracePayloadFacade): Full execution-trace payload read (fetch route), purge
             by job (deletion/reingest hooks) and retention GC.
@@ -91,6 +94,7 @@ class Database(LoggerClass):
         # the qdrant client to remove a cleared field's denormalised footprint synchronously (no job).
         self.metadata_edit = MetadataEditFacade(postgres, self.filters, qdrant)
         self.search = SearchFacade(postgres, qdrant)
+        self.schema_changes = SchemaChangeFacade(postgres, qdrant)
         self.jobs = JobsFacade(postgres)
         self.trace_payloads = TracePayloadFacade(postgres, s3)
         self.auth = AuthFacade(postgres)

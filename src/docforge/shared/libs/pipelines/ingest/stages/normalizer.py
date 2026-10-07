@@ -27,6 +27,7 @@ from shared_libs.pipelines.build.blob import (
     ForEachNodeBlob,
     GroupNodeBlob,
 )
+from shared_libs.pipelines.build.validation_message import ValidationMessage
 from shared_libs.pipelines.registry import NodeRegistry
 
 # ====== Local Project Imports ======
@@ -174,7 +175,9 @@ class BlobNormalizer:
         try:
             group_blob = GroupNodeBlob.model_validate(clean)
         except ValidationError as exc:
-            raise cls.__drift_error(exc) from exc
+            # Rendered input-free (the stored blob carries live secrets); the raw error is not
+            # chained so no traceback re-prints its input values.
+            raise cls.__drift_error(ValidationMessage.format(exc)) from None
         # 2. Removed-kind drift — a (family, kind) the current engine no longer registers. Checked
         #    BEFORE the reader runs (the reader tolerates unknown nodes and would SILENTLY drop them,
         #    healing to a different pipeline); it raises a NAMED BlobNormalizationError itself.
@@ -193,13 +196,13 @@ class BlobNormalizer:
         return healed.model_dump(mode="json")
 
     @classmethod
-    def __drift_error(cls, exc: Exception) -> "BlobNormalizationError":
-        """Build (and log) the operator-facing drift error for a malformed/stale stored blob."""
-        cls.logger.error(f"Stored pipeline blob cannot be migrated to the current engine: {exc}")
+    def __drift_error(cls, reason: str) -> "BlobNormalizationError":
+        """Build (and log) the drift error for a malformed/stale stored blob (``reason`` input-free)."""
+        cls.logger.error(f"Stored pipeline blob cannot be migrated to the current engine: {reason}")
         return BlobNormalizationError(
             "stored ingestion pipeline could not be migrated to the current engine "
             "(malformed, or it references something the current engine no longer knows) — "
-            f"re-save it from the pipeline default to repair (cause: {exc})"
+            f"re-save it from the pipeline default to repair (cause: {reason})"
         )
 
     @classmethod

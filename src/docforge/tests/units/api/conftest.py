@@ -72,3 +72,14 @@ def _clear_auth_key_cache(fastapi_app):
     _KEY_CACHE.clear()
     yield
     _KEY_CACHE.clear()
+
+
+@pytest.fixture(autouse=True)
+def _clear_describe_cache(fastapi_app):
+    """Reset the process-level describe-guide cache around every test (a module singleton keyed by
+    collection id — tests reuse the same ids with different mocked schemas)."""
+    from backend.libs.describe import DESCRIBE_CACHE  # noqa: PLC0415 — deferred import
+
+    DESCRIBE_CACHE.clear()
+    yield
+    DESCRIBE_CACHE.clear()
