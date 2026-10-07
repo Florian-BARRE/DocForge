@@ -111,6 +111,12 @@ jobs:
           enable-cache: true
       - name: Sync dependencies (locked)
         run: uv sync --frozen
+      - name: Provide placeholder app config (db suite imports app-side code)
+        # Same as the serviceless job: some db-backed tests exercise app-side code (e.g. the search
+        # filter resolver) whose package import loads RUNTIME_CONFIG via safe_load_envs. The real
+        # .env is gitignored and absent on CI, so materialize it from the committed template; only
+        # the TEST_POSTGRES_* DSN above is actually dialed.
+        run: cp ../../services/docforge/.env.example ../../services/docforge/.env
       - name: DB-backed suite (real Postgres)
         run: uv run pytest tests/db -m db -q
 
