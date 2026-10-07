@@ -6,6 +6,7 @@ create_key, list_keys, revoke_key}`. No live store — pattern mirrors test_enab
 (per-method monkeypatch on the real CONTEXT.database.auth object) plus the auth-on setup from
 test_auth.py."""
 
+import importlib
 import uuid
 from datetime import UTC, datetime
 from types import SimpleNamespace
@@ -275,12 +276,20 @@ def test_revoke_key_returns_204(client, monkeypatch) -> None:
     _root_principal_resolves(monkeypatch)
     revoke_key = AsyncMock()
     monkeypatch.setattr(CONTEXT.database.auth, "revoke_key", revoke_key)
+    target = SimpleNamespace(permissions=None, key_hash="revoked-hash")
+    monkeypatch.setattr(CONTEXT.database.auth, "get_key", AsyncMock(return_value=target))
+    evicted: list[str] = []
+    # The package re-exports the APIRouter as `router`, shadowing the module: import it by path.
+    auth_router = importlib.import_module("backend.routers.auth.router")
+    monkeypatch.setattr(auth_router, "evict_cached_key", evicted.append)
 
     response = client.delete(f"/api/v1/auth/keys/{uuid.uuid4()}", headers=_headers())
 
     assert response.status_code == 204, response.text
     assert response.content == b""
     revoke_key.assert_awaited_once()
+    # The revoked key stops authenticating in this process at once, not at the cache TTL.
+    assert evicted == ["revoked-hash"]
 
 
 def test_revoke_key_non_admin_scoped_key_is_403(client, monkeypatch) -> None:
