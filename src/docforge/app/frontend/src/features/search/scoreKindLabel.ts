@@ -7,6 +7,8 @@ const SCORE_KIND_LABEL: Record<string, string> = {
   rrf_fusion: "hybrid RRF",
   dbsf_fusion: "hybrid DBSF",
   cross_encoder_rerank: "cross-encoder rerank",
+  raw_dense: "dense similarity",
+  raw_sparse: "lexical score",
 };
 
 /**

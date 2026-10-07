@@ -46,6 +46,7 @@ export function JobDetailPage({ jobId, collectionId, onNavigate }: JobDetailPage
   if (detail.error) return <ErrorState message={detail.error} />;
   if (!detail.job) return <LoadingState label="loading job…" />;
   const { job, events, live, running, patchJob, etaSeconds, runningLong, elapsedInStageSeconds, avgStageSeconds, totalTokens } = detail;
+  const documentId = job.document_id;
 
   return (
     <div className="df-rise" style={{ padding: theme.space.xl, overflowY: "auto", height: "100%", maxWidth: 1200, margin: "0 auto", width: "100%" }}>
@@ -65,15 +66,17 @@ export function JobDetailPage({ jobId, collectionId, onNavigate }: JobDetailPage
         subtitle={
           <span style={{ display: "inline-flex", alignItems: "center", gap: theme.space.s, flexWrap: "wrap" }}>
             <span style={{ fontFamily: theme.font.mono, fontSize: theme.font.size.s, color: theme.color.mute }}>job {job.job_id}</span>
-            <button
-              type="button"
-              style={contextLinkStyle}
-              title="Open this document"
-              onClick={() => onNavigate({ name: "document", collectionId, documentId: job.document_id })}
-            >
-              {jobDisplayName(job)}{" "}
-              <span style={{ fontFamily: theme.font.mono, fontSize: theme.font.size.xs }}>({job.document_id.slice(0, 8)})</span>
-            </button>
+            {documentId !== null && (
+              <button
+                type="button"
+                style={contextLinkStyle}
+                title="Open this document"
+                onClick={() => onNavigate({ name: "document", collectionId, documentId })}
+              >
+                {jobDisplayName(job)}{" "}
+                <span style={{ fontFamily: theme.font.mono, fontSize: theme.font.size.xs }}>({documentId.slice(0, 8)})</span>
+              </button>
+            )}
             <button
               type="button"
               style={contextLinkStyle}

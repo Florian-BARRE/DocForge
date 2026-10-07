@@ -22,12 +22,19 @@ def _postgres_yielding(session: MagicMock) -> MagicMock:
     return postgres
 
 
+def _qdrant() -> MagicMock:
+    """A qdrant mock whose store exists (the self-heal existence check passes through)."""
+    qdrant = MagicMock()
+    qdrant.raw.collection_exists = AsyncMock(return_value=True)
+    return qdrant
+
+
 async def test_sync_document_missing_returns_zero_and_no_qdrant_call(monkeypatch) -> None:
     monkeypatch.setattr(fsf_module.DocumentApi, "get", AsyncMock(return_value=None))
     set_payload = AsyncMock()
     monkeypatch.setattr(fsf_module.QdrantIndexApi, "set_payload", set_payload)
 
-    facade = FilterSyncFacade(_postgres_yielding(MagicMock()), MagicMock())
+    facade = FilterSyncFacade(_postgres_yielding(MagicMock()), _qdrant())
     patched = await facade.sync_document_filter_payloads(uuid.uuid4())
 
     assert patched == 0
@@ -53,7 +60,7 @@ async def test_sync_document_no_filterable_values_returns_zero(monkeypatch) -> N
     set_payload = AsyncMock()
     monkeypatch.setattr(fsf_module.QdrantIndexApi, "set_payload", set_payload)
 
-    facade = FilterSyncFacade(_postgres_yielding(MagicMock()), MagicMock())
+    facade = FilterSyncFacade(_postgres_yielding(MagicMock()), _qdrant())
     patched = await facade.sync_document_filter_payloads(document_id)
 
     assert patched == 0
@@ -76,7 +83,7 @@ async def test_sync_document_no_indexed_chunks_returns_zero(monkeypatch) -> None
     set_payload = AsyncMock()
     monkeypatch.setattr(fsf_module.QdrantIndexApi, "set_payload", set_payload)
 
-    facade = FilterSyncFacade(_postgres_yielding(MagicMock()), MagicMock())
+    facade = FilterSyncFacade(_postgres_yielding(MagicMock()), _qdrant())
     patched = await facade.sync_document_filter_payloads(document_id)
 
     assert patched == 0
@@ -103,6 +110,7 @@ async def test_sync_document_happy_path_sets_payload_per_chunk(monkeypatch) -> N
     set_payload = AsyncMock()
     monkeypatch.setattr(fsf_module.QdrantIndexApi, "set_payload", set_payload)
     qdrant = MagicMock()
+    qdrant.raw.collection_exists = AsyncMock(return_value=True)
 
     facade = FilterSyncFacade(_postgres_yielding(MagicMock()), qdrant)
     patched = await facade.sync_document_filter_payloads(document_id)
@@ -141,6 +149,7 @@ async def test_sync_document_merges_doc_and_chunk_scope_values(monkeypatch) -> N
     set_payload = AsyncMock()
     monkeypatch.setattr(fsf_module.QdrantIndexApi, "set_payload", set_payload)
     qdrant = MagicMock()
+    qdrant.raw.collection_exists = AsyncMock(return_value=True)
 
     facade = FilterSyncFacade(_postgres_yielding(MagicMock()), qdrant)
     patched = await facade.sync_document_filter_payloads(document_id)
@@ -181,7 +190,7 @@ async def test_backfill_aggregates_only_patched_documents(monkeypatch) -> None:
     monkeypatch.setattr(fsf_module.QdrantIndexApi, "set_payload", AsyncMock())
     monkeypatch.setattr(fsf_module.CollectionApi, "get_schema", AsyncMock(return_value=[]))
 
-    facade = FilterSyncFacade(_postgres_yielding(MagicMock()), MagicMock())
+    facade = FilterSyncFacade(_postgres_yielding(MagicMock()), _qdrant())
     documents_synced, points_patched = await facade.backfill_collection_filter_payloads(
         collection_id
     )
@@ -200,7 +209,7 @@ async def test_backfill_pages_through_documents(monkeypatch) -> None:
     monkeypatch.setattr(fsf_module.DocumentApi, "list_for_collection", list_for_collection)
     monkeypatch.setattr(fsf_module.CollectionApi, "get_schema", AsyncMock(return_value=[]))
 
-    facade = FilterSyncFacade(_postgres_yielding(MagicMock()), MagicMock())
+    facade = FilterSyncFacade(_postgres_yielding(MagicMock()), _qdrant())
     facade._FilterSyncFacade__BACKFILL_PAGE_SIZE = 2  # shrink the page for a two-page walk
     facade.sync_document_filter_payloads = AsyncMock(return_value=4)
 
@@ -241,7 +250,7 @@ async def test_clear_absent_drops_keys_the_document_has_no_value_for(monkeypatch
     monkeypatch.setattr(fsf_module.QdrantIndexApi, "delete_payload", delete_payload)
     monkeypatch.setattr(fsf_module.QdrantIndexApi, "set_payload", set_payload)
 
-    facade = FilterSyncFacade(_postgres_yielding(MagicMock()), MagicMock())
+    facade = FilterSyncFacade(_postgres_yielding(MagicMock()), _qdrant())
     await facade.sync_document_filter_payloads(document_id, clear_absent=["a", "b"])
 
     assert delete_payload.await_args.args[2:] == (["a"], document_id)
@@ -260,7 +269,7 @@ async def test_backfill_passes_the_schema_filterable_names(monkeypatch) -> None:
     ]
     monkeypatch.setattr(fsf_module.CollectionApi, "get_schema", AsyncMock(return_value=schema))
 
-    facade = FilterSyncFacade(_postgres_yielding(MagicMock()), MagicMock())
+    facade = FilterSyncFacade(_postgres_yielding(MagicMock()), _qdrant())
     facade.sync_document_filter_payloads = AsyncMock(return_value=0)
     await facade.backfill_collection_filter_payloads(collection_id)
 

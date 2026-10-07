@@ -256,7 +256,13 @@ def _mock(monkeypatch, *, values: dict[str, int] | None = None):
     monkeypatch.setattr(
         CONTEXT,
         "database",
-        SimpleNamespace(collections=collections, schema_changes=schema_changes),
+        SimpleNamespace(
+            collections=collections,
+            schema_changes=schema_changes,
+            index_state=SimpleNamespace(
+                missing=AsyncMock(return_value=[]), missing_for=AsyncMock(return_value=[])
+            ),
+        ),
     )
     queue = SimpleNamespace(enqueue_backfill=AsyncMock())
     monkeypatch.setattr(CONTEXT, "queue", queue, raising=False)

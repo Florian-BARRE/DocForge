@@ -17,6 +17,7 @@ from qdrant_client import AsyncQdrantClient, models
 
 # ====== Local Project Imports ======
 from ..vectors import DOCUMENT_ID_KEY, QdrantPoint
+from .alias_api import QdrantAliasApi
 
 
 class QdrantIndexApi:
@@ -149,7 +150,7 @@ class QdrantIndexApi:
         # collection yet — Qdrant answers a filtered delete on a missing collection with a 404, not
         # an empty result. Treat "collection absent" as "nothing to delete" so deleting/reingesting
         # such a document is idempotent instead of surfacing a spurious 500.
-        if not await client.collection_exists(name):
+        if not await QdrantAliasApi.resolve_or_adopt(client, name):
             return
         await client.delete(
             collection_name=name,
@@ -181,7 +182,7 @@ class QdrantIndexApi:
             keys (list[str]): The payload keys to delete (the cleared fields' names).
             document_id (uuid.UUID): The document whose points are patched.
         """
-        if not keys or not await client.collection_exists(name):
+        if not keys or not await QdrantAliasApi.resolve_or_adopt(client, name):
             return
         await client.delete_payload(
             collection_name=name,
@@ -214,7 +215,7 @@ class QdrantIndexApi:
             vector_names (list[str]): The named vectors to delete (the cleared fields' meta vectors).
             document_id (uuid.UUID): The document whose points are patched.
         """
-        if not vector_names or not await client.collection_exists(name):
+        if not vector_names or not await QdrantAliasApi.resolve_or_adopt(client, name):
             return
         await client.delete_vectors(
             collection_name=name,
@@ -244,7 +245,7 @@ class QdrantIndexApi:
             name (str): The collection's Qdrant collection name.
             document_ids (Sequence[uuid.UUID]): The documents whose points are purged.
         """
-        if not document_ids or not await client.collection_exists(name):
+        if not document_ids or not await QdrantAliasApi.resolve_or_adopt(client, name):
             return
         await client.delete(
             collection_name=name,

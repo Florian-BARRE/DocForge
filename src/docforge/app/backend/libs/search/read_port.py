@@ -28,10 +28,16 @@ from loggerplusplus import LoggerClass
 from config import RUNTIME_CONFIG
 from shared_libs.pipelines.search import CollectionReadPort
 from shared_libs.public_models import DisplayTitleResolver
-from shared_libs.public_models.search import Candidate, EncodedQuery, Hit, SearchTarget
+from shared_libs.public_models.search import (
+    CONTENT_FIELD,
+    Candidate,
+    EncodedQuery,
+    Hit,
+    SearchTarget,
+)
 from shared_libs.services.db import Database
 from shared_libs.services.db.postgresql.tables import MetadataField
-from shared_libs.services.db.qdrant import build_match_conditions
+from shared_libs.services.db.qdrant import QdrantSearchApi, build_match_conditions
 
 # ====== Local Project Imports ======
 from .hit_projection import HitProjection
@@ -58,6 +64,7 @@ class CollectionReadPortImpl(CollectionReadPort, LoggerClass):
         text_fields: Collection[str] = frozenset(),
         title_field: MetadataField | None = None,
         projection: HitProjection | None = None,
+        probe: SearchRetrievalProbe | None = None,
     ) -> None:
         """
         Args:
@@ -69,6 +76,8 @@ class CollectionReadPortImpl(CollectionReadPort, LoggerClass):
                 (``collection.title_field`` resolved against its schema); None = parser titles.
             projection (HitProjection | None): The hit fields the client asked for; hydration
                 skips the reads feeding only unrequested fields. None = hydrate everything.
+            probe (SearchRetrievalProbe | None): A caller-held probe to fill (the router reads its
+                facts after the run, e.g. for ``score_kind``); None = a fresh one.
         """
         LoggerClass.__init__(self)
         self._database = database
@@ -81,7 +90,7 @@ class CollectionReadPortImpl(CollectionReadPort, LoggerClass):
         # along with per-request scope; it is NOT part of the shared CollectionReadPort protocol (an
         # observability attribute would leak an app concern into the engine-side contract), so the
         # runner reads it defensively via getattr.
-        self.probe = SearchRetrievalProbe()
+        self.probe = probe if probe is not None else SearchRetrievalProbe()
 
     async def hybrid_search(
         self,
@@ -122,11 +131,21 @@ class CollectionReadPortImpl(CollectionReadPort, LoggerClass):
         #    collection embedder was later swapped to dense-only, past the router's validation)
         #    degrades to empty results rather than a 500 — and is counted as a filter-only call, not
         #    silently lost (the "axes=none" reading of "filter-only vs vector").
+        #    A metadata lexical target needs its vector's stored encoding (BM25 vs legacy) — one
+        #    collection-info read, only when such a target is present.
+        bm25_vectors: set[str] = set()
+        if any(t.lexical and t.field != CONTENT_FIELD for t in targets):
+            bm25_vectors = await self._database.search.bm25_meta_vectors(self._collection_id)
         try:
-            dense, sparse = TargetVectorResolver.resolve(encoded, targets)
+            dense, sparse = TargetVectorResolver.resolve(encoded, targets, bm25_vectors)
         except ValueError as exc:
             self.logger.warning(f"Search targets resolved to no queryable vector: {exc}")
             self.probe.record_call(AXES_NONE, bool(filters), [])
+            # A stopword-only query against a BM25 metadata target is the one cause a caller can fix
+            # by rewording — record it so the response carries a hint instead of a bare [].
+            self.probe.record_termless_lexical(
+                TargetVectorResolver.termless_lexical_fields(encoded, targets, bm25_vectors)
+            )
             return []
 
         # 2. Delegate to the LEAN facade retrieval — exclusion invariant lives inside it (reused,
@@ -154,6 +173,7 @@ class CollectionReadPortImpl(CollectionReadPort, LoggerClass):
             self.__classify_axes(dense, sparse),
             bool(filters),
             [candidate.chunk_id for candidate in candidates],
+            fused=QdrantSearchApi.fuses(dense, sparse),
         )
 
         # 5. Opt-in branch breakdown — only when BOTH axes were queried (a single-axis retrieval has a

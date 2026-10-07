@@ -56,6 +56,13 @@ class Collection(Base, UUIDPrimaryKey, TimestampedMixin):
     indexed_signature: Mapped[str | None] = mapped_column(
         String(64), nullable=True, server_default=None
     )
+    # The EMBED-SPACE-only fingerprint of the indexed baseline (CollectionIndexSignature.embed_signature),
+    # stamped alongside indexed_signature. A rebuild_index copies the content vectors, so it may clear
+    # needs_reindex only when this still matches the current embed space. NULL = unknown (indexed
+    # before the column existed, or imported) → a rebuild never clears the flag on it.
+    indexed_embed_signature: Mapped[str | None] = mapped_column(
+        String(64), nullable=True, server_default=None
+    )
     # Name of the document-scope metadata field whose value is the document's display title. NULL =
     # not set. A SOFT reference to metadata_field.field_name (same String(255) width), deliberately
     # without a FK: it is validated in the API layer so a field rename/delete never cascade-breaks

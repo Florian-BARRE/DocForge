@@ -18,7 +18,11 @@ from shared_libs.pipelines.blob_secrets import SecretReentryRequired, restore_bl
 from shared_libs.pipelines.ingest import BlobNormalizationError, BlobNormalizer
 from shared_libs.pipelines.ingest.estimate import CostEstimate
 from shared_libs.public_models import SourceDocument
-from shared_libs.services.db.facades import CollectionUpdateSpec, DuplicateCollectionNameError
+from shared_libs.services.db.facades import (
+    CollectionUpdateSpec,
+    DuplicateCollectionNameError,
+    IndexRebuildActiveError,
+)
 from shared_libs.services.db.postgresql.tables import Collection
 
 # ====== Local Project Imports ======
@@ -28,6 +32,7 @@ from ...libs.corpus import DocumentFilter, DocumentSelector, DocumentSelectorRes
 from ...libs.describe import CollectionDescriber, CollectionDescription
 from ...libs.estimate import CollectionEstimateRequest, EstimateInputError
 from ...libs.health import CollectionHealthResponse
+from ...libs.index_rebuild import IndexRebuildGuards
 from ...libs.logsafe import LogSafeHelpers
 from ...libs.preview import (
     PreviewGraphError,
@@ -151,7 +156,9 @@ async def get_collection(collection_id: uuid.UUID) -> CollectionModel:
     if collection is None:
         raise HTTPException(status_code=404, detail=f"Collection {collection_id} not found.")
     return CollectionHelpers.to_model(
-        collection, await CONTEXT.database.collections.get_schema(collection_id)
+        collection,
+        await CONTEXT.database.collections.get_schema(collection_id),
+        [vector for _, vector in await CONTEXT.database.index_state.missing(collection_id)],
     )
 
 
@@ -739,7 +746,11 @@ async def update_collection(
     # 3e. dry_run stops here: everything validated, the diff computed, nothing written.
     if request.dry_run:
         return CollectionHelpers.to_update_response(
-            current, await CONTEXT.database.collections.get_schema(collection_id), schema, True
+            current,
+            await CONTEXT.database.collections.get_schema(collection_id),
+            schema,
+            True,
+            await CollectionStoreSync.index_gaps(collection_id, schema, dry_run=True),
         )
 
     # 4. Apply EVERY DB part in ONE transaction — a mid-sequence failure rolls the WHOLE patch back,
@@ -789,7 +800,7 @@ async def update_collection(
     #    (a newly-filterable field gets its payload index added live; the backfills repopulate existing
     #    points) then enqueue the repair backfills. Kept OUT of the DB transaction on purpose: it is
     #    non-transactional and best-effort. A newly semantic/lexical field needs a named vector Qdrant
-    #    cannot add live, so a reindex is required to make it searchable.
+    #    cannot add live: it is reported in missing_vectors / reindex_required_fields until rebuilt.
     if result.schema_applied and schema is not None:
         await CollectionStoreSync.reconcile_and_backfill(collection_id, schema.departed)
     if result.schema_reindex_required:
@@ -799,7 +810,11 @@ async def update_collection(
 
     updated = await CONTEXT.database.collections.get(collection_id)
     return CollectionHelpers.to_update_response(
-        updated, await CONTEXT.database.collections.get_schema(collection_id), schema, False
+        updated,
+        await CONTEXT.database.collections.get_schema(collection_id),
+        schema,
+        False,
+        await CollectionStoreSync.index_gaps(collection_id, schema, dry_run=False),
     )
 
 
@@ -940,9 +955,12 @@ async def purge_collection_trace_payloads(
 @auto_handle_errors
 async def delete_collection(collection_id: uuid.UUID) -> None:
     """
-    Delete a collection (404 when unknown).
+    Delete a collection (404 when unknown; 409 ``rebuild_index_active`` while an index rebuild runs).
     """
-    deleted = await CONTEXT.database.collections.delete(collection_id)
+    try:
+        deleted = await CONTEXT.database.collections.delete(collection_id)
+    except IndexRebuildActiveError as exc:
+        raise IndexRebuildGuards.active_conflict(exc)
     if not deleted:
         raise HTTPException(status_code=404, detail=f"Collection {collection_id} not found.")
     CONTEXT.logger.info(f"Collection {collection_id} deleted")

@@ -82,6 +82,7 @@ class CollectionApi:
         search: dict | None = None,
         needs_reindex: bool | None = None,
         indexed_signature: str | None = None,
+        indexed_embed_signature: str | None = None,
     ) -> None:
         """Patch the provided contract fields on a collection (None means 'leave unchanged').
 
@@ -111,6 +112,8 @@ class CollectionApi:
             collection.needs_reindex = needs_reindex
         if indexed_signature is not None:
             collection.indexed_signature = indexed_signature
+        if indexed_embed_signature is not None:
+            collection.indexed_embed_signature = indexed_embed_signature
 
     @staticmethod
     async def set_estimate_overrides(

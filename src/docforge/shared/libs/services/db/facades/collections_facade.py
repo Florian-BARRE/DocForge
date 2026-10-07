@@ -16,19 +16,20 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared_libs.public_models import FieldScope
 from shared_libs.services.db.postgresql import PostgresClient
-from shared_libs.services.db.postgresql.apis import BlobApi, CollectionApi, JobApi
+from shared_libs.services.db.postgresql.apis import BlobApi, CollectionApi, JobApi, RebuildJobApi
 from shared_libs.services.db.postgresql.tables import (
     Collection,
     ConfigVersion,
     JobStatus,
     MetadataField,
 )
-from shared_libs.services.db.qdrant import QdrantClient, QdrantCollectionApi
+from shared_libs.services.db.qdrant import QdrantAliasApi, QdrantClient, QdrantCollectionApi
 from shared_libs.services.db.s3 import S3Client, S3ObjectApi
 
 # ====== Local Project Imports ======
 from .collection_config_writer import CollectionConfigWriter
 from .helpers import DatabaseHelpers
+from .index_rebuild_payloads import IndexRebuildActiveError
 from .payloads import CollectionUpdateResult, CollectionUpdateSpec
 from .trace_purge import TracePurgeHelper
 
@@ -392,7 +393,7 @@ class CollectionsFacade(LoggerClass):
         # 1. No Qdrant space provisioned yet → the first ingest builds it from the schema; nothing
         #    to reconcile. Guard here so reconcile() can assume the collection exists.
         name = DatabaseHelpers.qdrant_collection_name(collection_id)
-        if not await self._qdrant.raw.collection_exists(name):
+        if not await QdrantAliasApi.resolve_or_adopt(self._qdrant.raw, name):
             return set()
         # 2. Derive the searchable surface from the current schema and additively align the store.
         async with self._postgres.session() as session:
@@ -606,9 +607,18 @@ class CollectionsFacade(LoggerClass):
         """
         Delete a collection everywhere — in-flight jobs cancelled, Qdrant, PG cascade, blob purge.
 
+        Raises:
+            IndexRebuildActiveError: A rebuild_index job is RUNNING on the collection.
+
         Returns:
             bool: Whether the collection existed.
         """
+        # -1. A RUNNING rebuild owns the store mid-copy/swap: refuse rather than force-cancel it under
+        #     its feet (a queued one is safely cancelled below — the worker skips it at dequeue).
+        async with self._postgres.session() as session:
+            rebuild = await RebuildJobApi.active_rebuild(session, collection_id)
+        if rebuild is not None and rebuild.status == JobStatus.RUNNING:
+            raise IndexRebuildActiveError(collection_id, rebuild.id)
         # 0. Stop in-flight work FIRST so a live worker aborts before the cascade deletes the rows its
         #    mid-run inserts reference (else an FK IntegrityError in the worker). Committed on its own
         #    so the worker observes the cancel flag; a vanished job at its next boundary is a stop too.

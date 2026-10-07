@@ -21,6 +21,7 @@ from shared_libs.pipelines.ingest import (
 )
 from shared_libs.public_models import FieldOrigin
 from shared_libs.services.db.facades import (
+    IndexRebuildActiveError,
     MetadataEditNotFoundError,
     MetadataValidationError,
     ReingestOutcome,
@@ -39,6 +40,7 @@ from shared_libs.services.db.s3 import S3Object
 # ====== Local Project Imports ======
 from ...context import CONTEXT
 from ...libs.auth import AuthPrincipal, AuthzGuard, Capability, require
+from ...libs.index_rebuild import IndexRebuildGuards
 from ...libs.logsafe import LogSafeHelpers
 from ...utils.error_handling import auto_handle_errors
 from ...utils.ingest_enqueuer import IngestEnqueuer
@@ -87,6 +89,14 @@ async def upload_document(
     # 2. Collection scope lives in the FORM BODY, so the path-param gate cannot see it — enforce it
     #    here: a key scoped to another collection is a 403 before anything is read or stored.
     AuthzGuard.assert_collection_scope(principal, str(collection_id))
+
+    # 2b. Refuse before reading the body while the collection's index is being rebuilt (409
+    #     rebuild_index_active); the admission's FOR SHARE guard (step 8) is the race-safe check.
+    await IndexRebuildGuards.assert_no_active_rebuild(CONTEXT.database, collection_id)
+
+    # 2c. Refuse (409 rebuild_index_required) when the store lacks a chunk-scope semantic/lexical
+    #     vector: every chunk point would carry it and the upsert would only fail AFTER the paid run.
+    await IndexRebuildGuards.assert_chunk_vectors_declared(CONTEXT.database, collection_id)
 
     # 3. Fail-fast on a STALE contract, BEFORE any spend. First auto-heal the stored blob to the
     #    current engine (a blob stored under an older engine is normalized, not rejected — this is
@@ -207,7 +217,10 @@ async def upload_document(
         DocumentMetadata(field_id=field_ids[name], value=value, origin=FieldOrigin.USER)
         for name, value in declared.items()
     ]
-    admission = await CONTEXT.database.ingestion.admit(document, Job(), rows)
+    try:
+        admission = await CONTEXT.database.ingestion.admit(document, Job(), rows)
+    except IndexRebuildActiveError as exc:
+        raise IndexRebuildGuards.active_conflict(exc)
     # A concurrent upload of the SAME content+config may have won the unique-constraint race between
     # the dedup pre-check (step 5) and this insert. The façade resolved that to the already-admitted
     # document, so return the SAME idempotent duplicate response the pre-check returns — never a 500.
@@ -309,10 +322,17 @@ async def reingest_document(
         raise HTTPException(status_code=404, detail=f"Document {document_id} not found.")
     AuthzGuard.assert_collection_scope(principal, str(document.collection_id))
 
+    # 1b. Refuse (409 rebuild_index_required) before minting a paid run whose chunk points the store
+    #     would reject — a reingest cannot add a missing chunk-scope semantic/lexical vector.
+    await IndexRebuildGuards.assert_chunk_vectors_declared(CONTEXT.database, document.collection_id)
+
     # 2. Admit a fresh run. NOT_FOUND = unknown document (404); ALREADY_ACTIVE = a run is already
     #    queued/executing (409) — minting a second concurrent job would interleave the two runs'
     #    Qdrant delete-by-document + upsert and strand orphan points, so refuse rather than duplicate.
-    result = await CONTEXT.database.ingestion.reingest(document_id)
+    try:
+        result = await CONTEXT.database.ingestion.reingest(document_id)
+    except IndexRebuildActiveError as exc:
+        raise IndexRebuildGuards.active_conflict(exc)
     if result.outcome is ReingestOutcome.NOT_FOUND:
         raise HTTPException(status_code=404, detail=f"Document {document_id} not found.")
     if result.outcome is ReingestOutcome.ALREADY_ACTIVE:

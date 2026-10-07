@@ -31,6 +31,8 @@ class CollectionModel(BaseModel):
         job_timeout_seconds (float | None): Per-collection whole-ingest-job wall-clock job timeout,
             seconds. None = inherit the worker's global WORKER_JOB_TIMEOUT_SECONDS default.
         needs_reindex (bool): True when a config change requires reindexing.
+        missing_vectors (list[str] | None): Named vectors the schema's semantic/lexical fields need
+            but the vector store does not declare (an index rebuild is required); None on list rows.
         created_at (datetime | None): Creation timestamp.
         title_field (str | None): Document-scope field used as the display title (None = parsed).
         pipeline (dict[str, Any]): The ingestion pipeline blob (the graph).
@@ -66,6 +68,14 @@ class CollectionModel(BaseModel):
         ),
     )
     needs_reindex: bool = Field(description="True when a config change requires reindexing.")
+    missing_vectors: list[str] | None = Field(
+        default=None,
+        description="Named Qdrant vectors (meta_<slug>_dense / meta_<slug>_bm25) the schema's "
+        "semantic/lexical fields need but the vector store does not declare — those fields are not "
+        "searchable until the collection's index is rebuilt (a reingest cannot add them). Computed "
+        "on the single-collection read and the PATCH response ([] = aligned or never ingested); "
+        "null on the fleet list, which never reads the vector store.",
+    )
     created_at: datetime | None = Field(default=None, description="Creation timestamp.")
     title_field: str | None = Field(
         default=None,

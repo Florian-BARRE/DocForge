@@ -295,6 +295,7 @@ async def test_facade_browse_on_an_uningested_collection_is_empty() -> None:
 
     qdrant = MagicMock()
     qdrant.raw.collection_exists = AsyncMock(return_value=False)
+    qdrant.raw.get_collections = AsyncMock(return_value=SimpleNamespace(collections=[]))
     postgres = MagicMock()
     assert await SearchFacade(postgres, qdrant).browse_keys(uuid.uuid4()) == []
     postgres.session.assert_not_called()

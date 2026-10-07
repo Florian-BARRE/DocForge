@@ -687,6 +687,7 @@ class JobsFacade(LoggerClass):
         default_job_timeout_seconds: float,
         grace_seconds: float,
         heartbeat_stale_seconds: float,
+        rebuild_job_timeout_seconds: float | None = None,
     ) -> list[uuid.UUID]:
         """
         Fail every RUNNING job on a LIVE worker whose age blew past its own job timeout — the watchdog.
@@ -713,6 +714,8 @@ class JobsFacade(LoggerClass):
                 engine's own cancel at the job timeout always gets first chance (WORKER_OVER_JOB_TIMEOUT_GRACE_SECONDS).
             heartbeat_stale_seconds (float): The SAME cutoff ``reap_stale`` uses — a heartbeat within
                 it is FRESH (the live worker this path targets), which keeps the two paths disjoint.
+            rebuild_job_timeout_seconds (float | None): The budget of a collection-wide
+                ``rebuild_index`` job (None = treated like any job).
 
         Returns:
             list[uuid.UUID]: The reaped job ids (empty when nothing is over its job timeout).
@@ -720,7 +723,11 @@ class JobsFacade(LoggerClass):
         reaped: list[uuid.UUID] = []
         async with self._postgres.session() as session:
             for job, job_timeout in await JobApi.list_over_job_timeout(
-                session, default_job_timeout_seconds, grace_seconds, heartbeat_stale_seconds
+                session,
+                default_job_timeout_seconds,
+                grace_seconds,
+                heartbeat_stale_seconds,
+                rebuild_job_timeout_seconds,
             ):
                 stage = job.current_stage or "current stage"
                 # FAILED terminal status → the reason must read like a failure, never a "cancelled:"

@@ -27,12 +27,14 @@ from ...libs.search import (
     QueryEmbedderProbe,
     ScoreKindClassifier,
     SearchCollectionSpecs,
+    SearchRetrievalProbe,
     SearchRunError,
     SearchRunTimeout,
     SearchTargetValidator,
     SearchTuning,
     SearchTuningError,
     SearchUnavailableError,
+    TermlessQueryHint,
     ZeroHitHintBuilder,
 )
 from ...utils.error_handling import auto_handle_errors
@@ -135,10 +137,19 @@ async def search_collection(collection_id: uuid.UUID, request: SearchRequest) ->
 
     # 4. Gate the search targets the same way — a target naming a field/vector the collection never
     #    indexed (or a selection with no modality) is a caller error rejected 422 before any spend.
+    #    A flag set in Postgres is not enough: the vector must also be declared by the Qdrant store.
+    #    The store's declared vectors are read (one Qdrant call) only when a metadata field is targeted.
     search_targets = SearchModelMapper.to_search_targets(request.search_in)
-    target_errors = SearchTargetValidator.validate_search_targets(search_targets, schema)
+    declared = (
+        await CONTEXT.database.index_state.declared_vectors(collection_id)
+        if SearchTargetValidator.needs_store_check(search_targets)
+        else None
+    )
+    target_errors = SearchTargetValidator.validate_search_targets(search_targets, schema, declared)
     if target_errors:
         raise HTTPException(status_code=422, detail=f"Invalid search target(s): {target_errors}")
+    # 4b. A metadata-only search skips the (body-scoring) rerank — before the score_kind is derived.
+    tuning = tuning.for_targets(search_targets)
 
     # 5. Delegate the retrieval to the graph-based search pipeline. The failure classes are mapped
     #    distinctly so the caller can tell "retry shortly" from "fix your config":
@@ -150,6 +161,7 @@ async def search_collection(collection_id: uuid.UUID, request: SearchRequest) ->
     #      - SearchRunError        → 422 (a genuinely invalid stored graph — re-save its blob)
     #    The subclasses are caught FIRST (Python matches except clauses in order), so only a real
     #    build/validate/output-contract failure keeps the alarming "invalid search graph" message.
+    probe = SearchRetrievalProbe()
     try:
         result, usage = await CONTEXT.search_service.search(
             collection_id,
@@ -163,6 +175,7 @@ async def search_collection(collection_id: uuid.UUID, request: SearchRequest) ->
             projection=projection,
             max_per_document=request.max_per_document if request.group_by else None,
             tuning=tuning,
+            probe=probe,
         )
     except SearchTuningError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
@@ -188,7 +201,8 @@ async def search_collection(collection_id: uuid.UUID, request: SearchRequest) ->
     #    pipeline threads through SearchResult.debug["degraded"]) is visible to the client instead of
     #    silently returning partial results. A healthy run carries only a minimal bag (hit count).
     #    The metered search-time LLM spend (rewrite/HyDE) rides ``cost`` — None when no paid call ran.
-    #    Filter hints = the early "no stored value" ones + the zero-hit "likely culprit" ones.
+    #    Filter hints = the early "no stored value" ones + the zero-hit "likely culprit" ones (+ a
+    #    min_score cut that emptied the answer, + a lexical target the query had no term for).
     prompt_tokens, completion_tokens, cost_usd, call_count = usage
     cost = (
         SearchCostModel(
@@ -208,15 +222,18 @@ async def search_collection(collection_id: uuid.UUID, request: SearchRequest) ->
         resolution.hints
         + ZeroHitHintBuilder.build(resolution, pre_cut_count)
         + MinScoreHint.build(min_score_cut, len(result.hits))
+        + TermlessQueryHint.build(probe, request.query)
     )
     #    Hits are projected to return_fields and, on a debug search, carry their fusion/rerank
-    #    scores; score_kind names what the TUNED run delivered (a skipped rerank → its fusion kind).
+    #    scores; score_kind names what the TUNED run delivered (a skipped rerank → its fusion kind,
+    #    or the raw vector score when the retrieval queried a single vector — no fusion ran).
     hits = SearchHitMapper.map(result.hits, projection, debug=tuning.debug)
     score_kind = tuning.score_kind(
         ScoreKindClassifier.score_kind(
             collection.search, rerank_degraded=ScoreKindClassifier.rerank_degraded(result.debug)
         ),
         ScoreKindClassifier.score_kind(collection.search, rerank_degraded=True),
+        ScoreKindClassifier.raw_kind(probe.raw_axis()),
     )
     return SearchResponse(
         query=request.query,

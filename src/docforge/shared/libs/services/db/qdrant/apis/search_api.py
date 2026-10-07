@@ -3,6 +3,8 @@
 # vectors. Each queried vector is a prefetch branch; the filter (on the filterable payload fields) is
 # applied to every branch so only matching points are ranked; Qdrant fuses the branches server-side
 # with Reciprocal Rank Fusion and returns the winning (chunk_id, score) to hydrate from Postgres.
+# A SINGLE branch is queried directly (no fusion): fusing one ranking would only replace its real
+# scores (cosine / BM25) by rank-derived ones and throw the score gaps away.
 
 # ====== Standard Library Imports ======
 from collections.abc import Sequence
@@ -89,6 +91,23 @@ class QdrantSearchApi:
         must_nots = [QdrantSearchApi._to_field_condition(cond) for cond in exclusions]
         return models.Filter(must=musts, must_not=must_nots)
 
+    @staticmethod
+    def fuses(dense: dict[str, list[float]] | None, sparse: dict[str, SparseVec] | None) -> bool:
+        """
+        Whether ``hybrid`` fuses these query vectors (more than one branch) or returns a raw score.
+
+        The single rule both ``hybrid`` and the response's ``score_kind`` derive from: with exactly
+        one named vector there is nothing to fuse, so the hit score is that vector's own score.
+
+        Args:
+            dense (dict | None): vector name → query dense vector.
+            sparse (dict | None): vector name → query sparse vector.
+
+        Returns:
+            bool: True when several branches are fused server-side.
+        """
+        return len(dense or {}) + len(sparse or {}) > 1
+
     # qdrant-client's `query` params (Prefetch + query_points) are 25+-member Unions that PyCharm
     # truncates and mis-flags — FusionQuery / SparseVector ARE valid but sit past the truncation.
     # Suppress that one false positive for the whole (qdrant-only) method.
@@ -111,7 +130,8 @@ class QdrantSearchApi:
 
         Single-stage: the dense/sparse branches over-sample per branch, then are fused server-side
         with the chosen strategy and the top ``limit`` returned. The payload filter lives on each
-        branch, so a disabled chunk never enters the pool.
+        branch, so a disabled chunk never enters the pool. With exactly ONE branch there is nothing
+        to fuse: that vector is queried directly and its raw score returned (``fusion`` unused).
 
         Args:
             client (AsyncQdrantClient): The connection from QdrantClient.raw.
@@ -133,28 +153,34 @@ class QdrantSearchApi:
         Returns:
             list[tuple[str, float]]: (chunk_id, score), best first — hydrate from Postgres.
         """
-        # 1. Build the payload filter (once) and apply it to every prefetch branch, each branch
-        #    over-sampling so the fusion picks from a deep enough candidate pool.
+        # 1. Build the payload filter (once) and one branch (vector name → query) per named vector.
         depth = prefetch_limit if prefetch_limit is not None else max(limit * 4, 100)
         query_filter = (
             QdrantSearchApi._to_filter(conditions, exclusions) if conditions or exclusions else None
         )
+        branches: list[tuple[str, list[float] | models.SparseVector]] = list((dense or {}).items())
+        branches.extend(
+            (vec_name, models.SparseVector(indices=sp.indices, values=sp.values))
+            for vec_name, sp in (sparse or {}).items()
+        )
+        # 2. One branch → query it directly: its raw score (cosine / sparse dot / BM25) survives.
+        if branches and not QdrantSearchApi.fuses(dense, sparse):
+            vec_name, vector = branches[0]
+            response = await client.query_points(
+                collection_name=name,
+                query=vector,
+                using=vec_name,
+                query_filter=query_filter,
+                limit=limit,
+                with_payload=False,
+            )
+            return [(str(point.id), point.score) for point in response.points]
+        # 3. Several branches → each over-samples, then Qdrant fuses them server-side.
         fusion_strategy = models.Fusion.DBSF if fusion == "dbsf" else models.Fusion.RRF
-        prefetch: list[models.Prefetch] = []
-        for vec_name, vector in (dense or {}).items():
-            prefetch.append(
-                models.Prefetch(query=vector, using=vec_name, limit=depth, filter=query_filter)
-            )
-        for vec_name, sp in (sparse or {}).items():
-            prefetch.append(
-                models.Prefetch(
-                    query=models.SparseVector(indices=sp.indices, values=sp.values),
-                    using=vec_name,
-                    limit=depth,
-                    filter=query_filter,
-                )
-            )
-        # 2. Fuse the branches server-side with the chosen strategy.
+        prefetch = [
+            models.Prefetch(query=vector, using=vec_name, limit=depth, filter=query_filter)
+            for vec_name, vector in branches
+        ]
         response = await client.query_points(
             collection_name=name,
             prefetch=prefetch,

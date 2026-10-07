@@ -77,7 +77,15 @@ def _mock_db(monkeypatch, **methods) -> SimpleNamespace:
         count_field_values=AsyncMock(return_value={}), purge_departed_fields=AsyncMock()
     )
     monkeypatch.setattr(
-        CONTEXT, "database", SimpleNamespace(collections=facade, schema_changes=schema_changes)
+        CONTEXT,
+        "database",
+        SimpleNamespace(
+            collections=facade,
+            schema_changes=schema_changes,
+            index_state=SimpleNamespace(
+                missing=AsyncMock(return_value=[]), missing_for=AsyncMock(return_value=[])
+            ),
+        ),
     )
     return facade
 

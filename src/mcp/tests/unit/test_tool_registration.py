@@ -25,7 +25,7 @@ from libs.server import build_mcp
 # 72 -> 73: describe_collection (collections) — GET /collections/{id}/describe, the agent guide.
 # 73 -> 74: browse_chunks (search) - POST /collections/{id}/chunks/browse.
 # 74 -> 76 (wave D, document reading): get_document_outline + get_chunk_context (explorer).
-EXPECTED_TOOL_COUNT = 77
+EXPECTED_TOOL_COUNT = 78
 
 EXPECTED_TOOL_NAMES = {
     # health
@@ -55,6 +55,7 @@ EXPECTED_TOOL_NAMES = {
     "collection_health",
     "reingest_collection",
     "purge_collection_trace_payloads",
+    "rebuild_collection_index",
     # documents
     "upload_document",
     "upload_document_bytes",

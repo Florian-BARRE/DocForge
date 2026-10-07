@@ -131,7 +131,8 @@ class SearchRequest(BaseModel):
         "ranking (and before group_by). The scale is the response's score_kind: "
         "'cross_encoder_rerank' is a [0, 1] relevance score (a meaningful absolute cut, e.g. 0.3); "
         "'rrf_fusion'/'dbsf_fusion' are rank-based / normalised fusion aggregates that can exceed "
-        "1.0 and are NOT comparable across queries — a threshold on them is a coarse filter only. "
+        "1.0 and are NOT comparable across queries — a threshold on them is a coarse filter only; "
+        "'raw_dense' is a cosine similarity and 'raw_sparse' an unbounded sparse/BM25 score. "
         "Fewer than `limit` hits come back when hits fall below it. None → no threshold.",
     )
     rerank: bool | None = Field(
@@ -335,20 +336,23 @@ class SearchCostModel(BaseModel):
 
 class SearchHint(BaseModel):
     """
-    An actionable explanation about one filter, attached to a (200) search response.
+    An actionable explanation attached to a (200) search response.
 
     Emitted when a filter value matches no stored value of its field (even ignoring case) — with the
-    closest stored values to retry with — or when a filtered search returned no hits (naming the
-    likely culprit filter).
+    closest stored values to retry with — when a filtered search returned no hits (naming the likely
+    culprit filter), when ``min_score`` dropped every hit (``field="min_score"``), or when a lexical
+    metadata target got no searchable term from the query (only stopwords).
 
     Attributes:
-        field (str): The filtered metadata field the hint is about.
+        field (str): What the hint is about: a filtered or targeted metadata field, or ``min_score``.
         value (Any): The filter value as sent (one list item, or the whole filter value).
         message (str): English, human/agent-readable explanation.
         suggestions (list[str]): Closest stored values to retry with (may be empty).
     """
 
-    field: str = Field(description="The filtered metadata field the hint is about.")
+    field: str = Field(
+        description="What the hint is about: a filtered or targeted metadata field, or 'min_score'."
+    )
     value: Any = Field(description="The filter value as sent (one list item, or the whole value).")
     message: str = Field(description="English, human/agent-readable explanation of the problem.")
     suggestions: list[str] = Field(
@@ -369,8 +373,9 @@ class SearchResponse(BaseModel):
             the run made no paid call (a stock lexical/dense search with no query-side LLM).
         debug_info (dict | None): Non-fatal diagnostics about how the search ran. None when there
             is nothing to report.
-        hints (list[SearchHint]): Filter hints — a value no document stores, or the likely culprit
-            of a filtered zero-hit search. Empty otherwise.
+        hints (list[SearchHint]): Actionable hints — unmatched filter values, the culprit of a
+            filtered zero-hit search, an over-strict min_score, a stopword-only lexical target.
+            Empty otherwise.
     """
 
     query: str = Field(description="The query that was searched.")
@@ -385,9 +390,11 @@ class SearchResponse(BaseModel):
         description="What every hit's ``score`` represents, so the UI labels it honestly: "
         "'rrf_fusion' (Reciprocal Rank Fusion of the dense+sparse branches — the default; "
         "rank-based, not a similarity), 'dbsf_fusion' (Distribution-Based Score Fusion), or "
-        "'cross_encoder_rerank' (a cross-encoder relevance score, when reranking is enabled). "
-        "Fusion scores are only comparable within one response; a round 1.0000 on a tiny/single-doc "
-        "corpus is normal.",
+        "'cross_encoder_rerank' (a cross-encoder relevance score, when reranking is enabled), "
+        "'raw_dense' (the search queried ONE dense vector — no fusion ran — so the score is its "
+        "cosine similarity) or 'raw_sparse' (ONE sparse vector — its raw sparse dot / BM25 score, "
+        "unbounded). Fusion scores are only comparable within one response; a round 1.0000 on a "
+        "tiny/single-doc corpus is normal.",
     )
     debug_info: dict[str, Any] | None = Field(
         default=None,
@@ -395,9 +402,10 @@ class SearchResponse(BaseModel):
     )
     hints: list[SearchHint] = Field(
         default_factory=list,
-        description="Filter hints: a filter value that matches no stored value (even ignoring case) "
-        "with the closest stored values, or the likely culprit filter of a filtered search that "
-        "returned no hits. Empty when there is nothing to report.",
+        description="Actionable hints: a filter value that matches no stored value (even ignoring "
+        "case) with the closest stored values, the likely culprit filter of a filtered search that "
+        "returned no hits, a min_score that dropped every hit, or a lexical metadata target the "
+        "query gave no searchable term to. Empty when there is nothing to report.",
     )
 
 

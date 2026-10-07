@@ -80,7 +80,8 @@ vector space is fixed at creation), plus optional ingestion/search pipeline blob
 | `export_collection_snippet` | Export one granular config facet (`collection_id`, `kind` ∈ `pipeline`\|`search`\|`schema`) as a portable `.dfsnippet` — secret-masked, config-only, synchronous (contrast with the async whole-collection `.dcexport`). |
 | `apply_collection_snippet` | Apply a `.dfsnippet` (`collection_id`, `kind`, `snippet`) onto this collection. Secrets from a different collection arrive masked and must be re-entered before the graph can run. |
 | `collection_health` | Zero-spend, on-demand provider-reachability sweep across the ingest AND search graphs, plus index/doc stats and a rolled-up verdict. No job enqueued, nothing billed. |
-| `reingest_collection` | Re-run the full pipeline over a collection's corpus (`collection_id`, optional `document_ids` subset, `force`) — the collection-scoped bulk reingest. Capped fan-out, one job handle per enqueued run. |
+| `reingest_collection` | Re-run the full pipeline over a collection's corpus (`collection_id`, optional `document_ids` subset, `force`) — the collection-scoped bulk reingest. Capped fan-out, one job handle per enqueued run. Answers `409 rebuild_index_required` while the index lacks a named vector: run `rebuild_collection_index` first. |
+| `rebuild_collection_index` | Rebuild a collection's vector index from its current schema, without re-embedding content (`collection_id`). Use it after a field was made semantic/lexical post-ingest (search `422` / reingest `409 rebuild_index_required`). Returns a `job_id` to follow with `wait_for_job`; the job's `document_id` is null. Uploads/reingests get `409 rebuild_index_active` while it runs. |
 
 ### Documents (upload / admission)
 
@@ -197,7 +198,7 @@ multi-GB) — `get_export_download_ref` instead points the caller at the REST do
 | `list_audit` | One keyset-paginated page of the audit trail, newest first — one row per mutating API action (who/what/target/outcome). Filter by actor (`actor_user_id`/`actor_key_id`), target (`target_type`+`target_id`), `correlation_id`, and an ISO-8601 time window (`created_from`/`created_to`); walk it with `cursor`. **ROOT / full-access keys only** (a collection-scoped key is rejected `403`). |
 
 
-**Total: 77 tools** across 13 sections.
+**Total: 78 tools** across 13 sections.
 
 ---
 

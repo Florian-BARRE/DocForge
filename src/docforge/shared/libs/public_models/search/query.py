@@ -63,6 +63,9 @@ class EncodedQuery(Artifact):
         dense (list[float]): The dense query vector (always present — a query must be searchable).
         sparse (SparseVector | None): The lexical query vector; None when the collection's
             embedder has no sparse axis.
+        meta_sparse (SparseVector | None): The local BM25 query vector (MetaLexicalEncoder) for
+            metadata lexical targets whose vector is BM25-encoded; None when no metadata lexical
+            target was requested.
         model (str): The embedding model that produced the vectors (provenance; must match the
             model the chunks were indexed with).
     """
@@ -73,6 +76,11 @@ class EncodedQuery(Artifact):
     sparse: SparseVector | None = Field(
         default=None,
         description="The lexical query vector; None when the embedder has no sparse axis.",
+    )
+    meta_sparse: SparseVector | None = Field(
+        default=None,
+        description="The local BM25 query vector for metadata lexical targets whose stored vector is "
+        "BM25-encoded (modifier=IDF); None when no metadata lexical target was requested.",
     )
     model: str = Field(
         default="", description="The embedding model that produced the vectors (provenance)."

@@ -77,7 +77,7 @@ class CollectionStoreSync:
         The store-side follow-through of a schema edit: newly-filterable fields get their payload index
         added live, then the two idempotent backfills repopulate existing points with the new
         denormalised values/vectors. Semantic/lexical fields whose named vector Qdrant cannot add live
-        are logged as reindex-required (a reingest is the only fix).
+        are logged as missing (an index rebuild recreating the collection is the only fix).
 
         Args:
             collection_id (uuid.UUID): The collection whose store is reconciled and backfilled.
@@ -87,16 +87,46 @@ class CollectionStoreSync:
         # 0. Clear what departed fields left on the points BEFORE re-adding indexes / repainting.
         await cls.purge_departed_fields(collection_id, departed or [])
 
-        # 1. Additively align the store; surface the fields that truly need a reindex (missing vectors).
+        # 1. Additively align the store; surface the fields that truly need a named vector. A reingest
+        #    does NOT add one (it upserts into the same collection) — only an index rebuild does.
         reindex_fields = await CONTEXT.database.collections.reconcile_store(collection_id)
         if reindex_fields:
             cls.logger.warning(
                 f"Collection {collection_id}: fields {sorted(reindex_fields)} need a named vector "
-                f"Qdrant cannot add to a live collection — reingest to make them searchable"
+                f"Qdrant cannot add to a live collection — the index must be rebuilt to make them "
+                f"searchable"
             )
 
         # 2. Repopulate existing points with the newly denormalised values/vectors (idempotent, async).
         await CONTEXT.queue.enqueue_backfill(str(collection_id))
+
+    @staticmethod
+    async def index_gaps(
+        collection_id: uuid.UUID, schema: object | None, *, dry_run: bool
+    ) -> list[tuple[str, str]]:
+        """
+        Return the ``(field, vector)`` pairs the post-PATCH schema needs but the vector store lacks.
+
+        Under dry_run nothing is stored yet, so the TARGET schema of the resolved patch is compared to
+        the store; after an apply the stored schema is.
+
+        Args:
+            collection_id (uuid.UUID): The PATCHed collection.
+            schema (object | None): The resolved schema patch (carries ``plan.target``), or None.
+            dry_run (bool): Whether the PATCH was a preview.
+
+        Returns:
+            list[tuple[str, str]]: The sorted missing pairs (empty when aligned or never ingested).
+        """
+        # 1. A preview that edits the schema is judged on its target; anything else on the stored one.
+        target = getattr(getattr(schema, "plan", None), "target", None)
+        if dry_run and target is not None:
+            return await CONTEXT.database.index_state.missing_for(
+                collection_id,
+                [spec.field_name for spec in target if spec.semantic],
+                [spec.field_name for spec in target if spec.lexical],
+            )
+        return await CONTEXT.database.index_state.missing(collection_id)
 
 
 __all__ = ["CollectionStoreSync"]

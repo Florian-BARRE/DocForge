@@ -45,13 +45,16 @@ from shared_libs.services.db.qdrant import (
     QdrantCollectionApi,
     QdrantIndexApi,
     QdrantPoint,
+    VectorNames,
 )
 from shared_libs.services.db.s3 import S3Client, S3Object, S3ObjectApi
 
 # ====== Local Project Imports ======
 from .helpers import DatabaseHelpers
 from .payloads import AdmissionResult, IngestionPayload, ReingestOutcome, ReingestResult
+from .rebuild_guard import RebuildGuard
 from .trace_purge import TracePurgeHelper
+from .undeclared_vector_error import UndeclaredVectorError
 
 # The document UNIQUE constraint a concurrent duplicate upload violates. Its name is stable via the
 # schema naming convention (uq_<table>_<first-column>) → ``UniqueConstraint(collection_id, source_hash,
@@ -167,6 +170,9 @@ class IngestionFacade(LoggerClass):
         for row in declared_metadata:
             row.value = TextSanitizer.strip_nul(row.value)
         async with self._postgres.session() as session:
+            # 1c. Refuse while the collection's index is being rebuilt (share-locks the collection row;
+            #     raises IndexRebuildActiveError — the router maps it to 409).
+            await RebuildGuard.assert_no_rebuild(session, collection_id)
             # 2. Insert the document; a UNIQUE violation is a concurrent duplicate admission.
             try:
                 created = await DocumentApi.create(session, document)
@@ -230,6 +236,8 @@ class IngestionFacade(LoggerClass):
             document = await DocumentApi.get_for_update(session, document_id)
             if document is None:
                 return ReingestResult(outcome=ReingestOutcome.NOT_FOUND)
+            # 1b. Refuse while the collection's index is being rebuilt (IndexRebuildActiveError → 409).
+            await RebuildGuard.assert_no_rebuild(session, document.collection_id)
             # 2. Refuse a duplicate run while one is already queued or executing.
             active = await JobApi.get_active_for_document(session, document_id)
             if active is not None:
@@ -506,7 +514,7 @@ class IngestionFacade(LoggerClass):
             schema = await CollectionApi.get_schema(session, collection_id)
         DatabaseHelpers.validate_vector_slugs(schema)
         name = DatabaseHelpers.qdrant_collection_name(collection_id)
-        await QdrantCollectionApi.ensure(
+        missing_fields = await QdrantCollectionApi.ensure(
             self._qdrant.raw,
             name,
             dense_dim=dense_dim,
@@ -518,16 +526,19 @@ class IngestionFacade(LoggerClass):
                 if f.filterable
             },
         )
-        # 2. Purge this document's previous points BEFORE upserting the fresh ones — the run remints
+        # 2. Refuse points carrying a named vector the store never declared (before any purge, so a
+        #    failed re-ingest keeps the document's previous points) — Qdrant would 400 on the upsert.
+        await self._guard_declared_vectors(collection_id, name, schema, points)
+        # 3. Purge this document's previous points BEFORE upserting the fresh ones — the run remints
         #    chunk ids, so without this a re-ingest would leave the old points orphaned (live
         #    document_id + enabled payload → polluting the candidate pool and growing Qdrant
         #    unbounded). Scoped to the single document; a first ingest deletes nothing.
         await QdrantIndexApi.delete_by_document(self._qdrant.raw, name, document_id)
-        # 3. Upsert, then flag the chunks as indexed.
+        # 4. Upsert, then flag the chunks as indexed.
         await QdrantIndexApi.upsert(self._qdrant.raw, name, points)
         async with self._postgres.session() as session:
             await ChunkApi.mark_indexed(session, [uuid.UUID(point.point_id) for point in points])
-        # 4. Advance the indexed baseline: the vectors just landed under the CURRENT config, so stamp
+        # 5. Advance the indexed baseline: the vectors just landed under the CURRENT config, so stamp
         #    its signature and clear needs_reindex (a real reindex is now the ONLY thing that clears
         #    the flag — the old sticky boolean never did). Best-effort: a failure here must not fail an
         #    ingestion already persisted+upserted (the doc IS indexed; the baseline heals on the next
@@ -536,8 +547,82 @@ class IngestionFacade(LoggerClass):
         #    (only some documents) optimistically clears the flag even if older docs remain on the
         #    previous signature. Acceptable V1 — the documented remediation for a config drift is a
         #    FULL bulk reingest (which DocForge's reindex performs), after which every doc matches.
-        await self._advance_indexed_baseline(collection_id, schema)
+        #    NEVER advance while the store lacks a semantic/lexical field's named vector: the baseline
+        #    would claim the CURRENT schema is indexed although that field is unsearchable (Qdrant
+        #    cannot add a vector to a live collection — a reingest never fixes it, an index rebuild does).
+        if missing_fields:
+            await self._hold_reindex_flag(collection_id, missing_fields)
+        else:
+            await self._advance_indexed_baseline(collection_id, schema)
         self.logger.info(f"Indexed {len(points)} points into '{name}'")
+
+    async def _guard_declared_vectors(
+        self,
+        collection_id: uuid.UUID,
+        name: str,
+        schema: Sequence,
+        points: Sequence[QdrantPoint],
+    ) -> None:
+        """Fail the ingest clearly when a point carries a metadata vector the store does not declare.
+
+        A chunk-scope semantic field made searchable after the collection's first ingest has no named
+        vector in the store (Qdrant cannot add one to a live collection), so every upsert would fail
+        with Qdrant's opaque "Not existing vector name". The content vectors are always declared by
+        ``ensure``; only ``meta_*`` names are checked, and the store is read only when one is carried.
+
+        Args:
+            collection_id (uuid.UUID): The target collection (named in the rebuild instruction).
+            name (str): Its Qdrant collection name.
+            schema (Sequence): Its metadata schema (maps a vector name back to its field).
+            points (Sequence[QdrantPoint]): The points about to be upserted.
+
+        Raises:
+            UndeclaredVectorError: When a carried metadata vector is not declared by the store.
+        """
+        # 1. Only metadata vectors can be missing — no store read for a content-only ingest.
+        carried = {
+            vector
+            for point in points
+            for vector in (*point.dense, *point.sparse)
+            if vector.startswith("meta_")
+        }
+        if not carried:
+            return
+        # 2. Compare against the store's declared names; name each offending field.
+        declared_dense, declared_sparse = await QdrantCollectionApi.declared_vectors(
+            self._qdrant.raw, name
+        )
+        undeclared = sorted(carried - set(declared_dense) - set(declared_sparse))
+        if undeclared:
+            field_of = {
+                vector: field.field_name
+                for field in schema
+                for vector in (
+                    VectorNames.field_dense(field.field_name),
+                    VectorNames.field_sparse(field.field_name),
+                )
+            }
+            raise UndeclaredVectorError.for_vectors(collection_id, undeclared, field_of)
+
+    async def _hold_reindex_flag(self, collection_id: uuid.UUID, missing_fields: set[str]) -> None:
+        """Keep ``needs_reindex`` raised (baseline untouched) while the store lacks named vectors.
+
+        Best-effort like the baseline advance: a failure here never fails an already-indexed ingest.
+
+        Args:
+            collection_id (uuid.UUID): The just-indexed collection.
+            missing_fields (set[str]): The semantic/lexical fields whose named vector is undeclared.
+        """
+        try:
+            # 1. Leave indexed_signature as-is and (re)assert the flag — the store is not aligned.
+            async with self._postgres.session() as session:
+                await CollectionApi.update(session, collection_id, needs_reindex=True)
+            self.logger.warning(
+                f"Collection {collection_id}: indexed baseline NOT advanced — fields "
+                f"{sorted(missing_fields)} have no named vector in the store (index rebuild required)"
+            )
+        except Exception as exc:  # best-effort: a trailing flag write must never fail an ingest.
+            self.logger.warning(f"Could not hold needs_reindex for {collection_id}: {exc}")
 
     async def _advance_indexed_baseline(self, collection_id: uuid.UUID, schema: Sequence) -> None:
         """Stamp the collection's indexed_signature to the current config and clear needs_reindex.
@@ -560,6 +645,9 @@ class IngestionFacade(LoggerClass):
                     session,
                     collection_id,
                     indexed_signature=signature,
+                    indexed_embed_signature=CollectionIndexSignature.embed_signature(
+                        collection.pipeline
+                    ),
                     needs_reindex=False,
                 )
         except (

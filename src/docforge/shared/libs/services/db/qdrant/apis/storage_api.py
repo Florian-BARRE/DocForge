@@ -15,6 +15,7 @@ from qdrant_client import AsyncQdrantClient
 
 # ====== Local Project Imports ======
 from ..vectors import DOCUMENT_ID_KEY
+from .alias_api import QdrantAliasApi
 
 
 @dataclass(slots=True)
@@ -95,7 +96,7 @@ class QdrantStorageApi:
             QdrantProfile | None: The profile, or None when the collection does not exist yet.
         """
         # 1. A collection provisions its space lazily at first embed — absent means footprint 0.
-        if not await client.collection_exists(name):
+        if not await QdrantAliasApi.resolve_or_adopt(client, name):
             return None
 
         # 2. Declared vector space: per-vector dense dimensions (each weighted by its OWN carrier

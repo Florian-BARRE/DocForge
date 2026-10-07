@@ -29,6 +29,7 @@ from .conftest import (
     DOC_ID,
     FakeExportFacade,
     FakeImportFacade,
+    make_point_record,
 )
 
 
@@ -558,3 +559,41 @@ async def test_import_double_import_yields_independent_collections(export_facade
     assert doc_a.id != doc_b.id and chunk_a.id != chunk_b.id
     assert doc_a.id != DOC_ID and doc_b.id != DOC_ID
     assert chunk_a.id != CHUNK_ID and chunk_b.id != CHUNK_ID
+
+
+class _MetaBm25ExportFacade(FakeExportFacade):
+    """A source collection whose point carries a legacy (BGE sparse) metadata lexical vector."""
+
+    async def scroll_points(self, _collection_id, _batch_size=256):
+        record = make_point_record()
+        record.vector["meta_x_bm25"] = SimpleNamespace(indices=[42], values=[0.9])
+        record.vector["meta_x_dense"] = [0.5, 0.5, 0.5, 0.5]
+        yield record
+
+
+async def test_import_drops_bundle_bm25_meta_vectors_and_reencodes_locally(tmp_path) -> None:
+    """Into a target whose meta_x_bm25 is declared BM25 (modifier=IDF), the bundle's copy of that
+    vector is NOT upserted (it may be BGE sparse from an old collection) and the local re-encode
+    runs once on the new collection; content + dense meta vectors travel as they are."""
+    reader = await _bundle(_MetaBm25ExportFacade(), tmp_path)
+    facade = FakeImportFacade(bm25_vectors={"meta_x_bm25"})
+
+    result = await CollectionImporterV1(facade, reader).run()
+
+    point = facade.points[0]
+    assert "meta_x_bm25" not in point.sparse
+    assert "content_bm25" in point.sparse
+    assert "meta_x_dense" in point.dense
+    assert facade.reencoded == [result.collection_id]
+
+
+async def test_import_into_legacy_target_keeps_bundle_vectors(tmp_path) -> None:
+    """No BM25-declared target vector (legacy space) → the bundle's sparse copy is kept verbatim
+    and no re-encode runs (old-bundle tolerance)."""
+    reader = await _bundle(_MetaBm25ExportFacade(), tmp_path)
+    facade = FakeImportFacade()
+
+    await CollectionImporterV1(facade, reader).run()
+
+    assert facade.points[0].sparse["meta_x_bm25"].indices == [42]
+    assert facade.reencoded == []

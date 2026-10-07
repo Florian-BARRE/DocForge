@@ -36,5 +36,10 @@ class VectorNames:
         """Named sparse (BM25) vector for a lexical metadata field."""
         return f"meta_{cls.slug(field_name)}_bm25"
 
+    @staticmethod
+    def is_field_sparse(name: str) -> bool:
+        """Whether a vector name is a metadata field's sparse vector (never the content one)."""
+        return name.startswith("meta_") and name.endswith("_bm25")
+
 
 __all__ = ["VectorNames"]

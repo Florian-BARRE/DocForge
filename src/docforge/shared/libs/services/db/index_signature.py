@@ -117,6 +117,19 @@ class CollectionIndexSignature:
         canonical = json.dumps(payload, sort_keys=True, default=str)
         return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
+    @classmethod
+    def embed_signature(cls, pipeline_blob: dict) -> str:
+        """Hash ONLY the embed vector space of a pipeline blob (the content-vector baseline).
+
+        Args:
+            pipeline_blob (dict): The collection's stored ingestion pipeline blob.
+
+        Returns:
+            str: A hex sha256 over ``embed_vector_space`` — unchanged by any metadata-schema edit.
+        """
+        canonical = json.dumps(cls.embed_vector_space(pipeline_blob or {}), default=str)
+        return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
 
 def collection_index_signature(pipeline_blob: dict, schema_rows: Sequence[MetadataField]) -> str:
     """Module-level wrapper over ``CollectionIndexSignature.compute`` (the DESIGN's exact name)."""

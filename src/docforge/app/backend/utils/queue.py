@@ -276,6 +276,24 @@ class QueueClient(LoggerClass):
         self.logger.info(f"Enqueued metadata re-embed for document {document_id} (job {job_id})")
         return job_id
 
+    async def enqueue_rebuild_index(self, collection_id: str, job_id: str) -> str:
+        """
+        Enqueue a collection's index rebuild, carrying its PRE-CREATED tracked job row's id.
+
+        Args:
+            collection_id (str): The collection to rebuild (UUID as string).
+            job_id (str): The tracked ``rebuild_index`` job row's id (the worker drives it).
+
+        Returns:
+            str: The DB job id (the pollable job).
+        """
+        pool = await self.__get_pool()
+        await pool.enqueue_job(
+            "rebuild_collection_index", collection_id, job_id, **self.__correlation_kwargs()
+        )
+        self.logger.info(f"Enqueued index rebuild for collection {collection_id} (job {job_id})")
+        return job_id
+
     async def queue_depth(self) -> int:
         """
         Return the arq queue backlog — jobs enqueued but not yet claimed by a worker.

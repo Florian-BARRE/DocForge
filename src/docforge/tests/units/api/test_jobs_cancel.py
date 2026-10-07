@@ -42,12 +42,14 @@ def _full():
 
 def _job(collection_id: str, status: str):
     """A minimal job row carrying the fields the cancel route reads (status + collection scope)."""
-    from shared_libs.services.db.postgresql.tables import JobStatus  # noqa: PLC0415
+    from shared_libs.services.db.postgresql.tables import JobKind, JobStatus  # noqa: PLC0415
 
     return SimpleNamespace(
         id=uuid.uuid4(),
         collection_id=uuid.UUID(collection_id),
         status=JobStatus(status),
+        kind=JobKind.INGEST,
+        worker_id="worker-1",
     )
 
 

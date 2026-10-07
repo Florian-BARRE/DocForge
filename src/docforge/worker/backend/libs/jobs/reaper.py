@@ -58,6 +58,9 @@ async def reap_stuck_jobs(ctx: dict[str, Any]) -> list[str]:
         config.WORKER_JOB_TIMEOUT_SECONDS,
         config.WORKER_OVER_JOB_TIMEOUT_GRACE_SECONDS,
         config.WORKER_PRUNE_STALE_SECONDS,
+        # A rebuild copies the whole collection: its budget is arq's hard per-job ceiling, not an
+        # ingest timeout (reaping it early would lift its upload/reingest guards mid-copy).
+        rebuild_job_timeout_seconds=config.WORKER_JOB_TIMEOUT_MAX_SECONDS,
     )
     if over_job_timeout:
         CONTEXT.logger.warning(

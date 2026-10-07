@@ -189,6 +189,12 @@ class RUNTIME_CONFIG(EnvConfigLoader):
     # ───── Run limits ─────
     WORKER_CONCURRENCY = env("WORKER_CONCURRENCY", cast=int, default=2)
     WORKER_JOB_TIMEOUT_SECONDS = env("WORKER_JOB_TIMEOUT_SECONDS", cast=float, default=1800.0)
+    # rebuild_index job: points per Qdrant scroll/upsert batch during the store copy, and how long it
+    # waits for the collection's OTHER live jobs (active when it started) before aborting untouched.
+    WORKER_REBUILD_INDEX_BATCH_SIZE = env("WORKER_REBUILD_INDEX_BATCH_SIZE", cast=int, default=128)
+    WORKER_REBUILD_INDEX_WAIT_SECONDS = env(
+        "WORKER_REBUILD_INDEX_WAIT_SECONDS", cast=float, default=300.0
+    )
     # The HARD ceiling any single run may request: a per-collection job_timeout_seconds is honoured
     # up to this bound and REJECTED (fail-fast, named) above it — never silently truncated. arq's
     # outer job_timeout is derived from THIS value (+ grace), so the engine's per-run job timeout always

@@ -31,6 +31,7 @@ from .routers import (
     documents_router,
     explorer_router,
     health_router,
+    index_rebuild_router,
     jobs_router,
     metrics_router,
     pipelines_router,
@@ -145,6 +146,7 @@ def create_app(
     # API v1 — the document explorer (read surface) and the blob byte stream.
     app.include_router(router=explorer_router, prefix="/api/v1")
     app.include_router(router=reading_router, prefix="/api/v1")
+    app.include_router(router=index_rebuild_router, prefix="/api/v1")
     app.include_router(router=blobs_router, prefix="/api/v1")
 
     # API v1 — the large-scale corpus grid (query + bulk delete/enable/reingest).

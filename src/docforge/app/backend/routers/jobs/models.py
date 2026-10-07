@@ -23,10 +23,10 @@ class JobStatus(BaseModel):
 
     Attributes:
         job_id (str): The job row's UUID.
-        document_id (str): The document being ingested.
+        document_id (str | None): The document being ingested (None for a rebuild_index job).
         collection_id (str): Its collection.
         status (str): queued / running / done / failed.
-        kind (str): ingest (full pipeline run) or metadata_sync (per-document metadata re-embed).
+        kind (str): ingest, metadata_sync (per-document metadata re-embed) or rebuild_index.
         progress (int): 0–100 (completed pipeline nodes over total).
         current_stage (str | None): The node currently (or last) executed.
         error (str | None): The failure, verbatim — only set when status is failed.
@@ -47,7 +47,9 @@ class JobStatus(BaseModel):
     """
 
     job_id: str = Field(description="The job row's UUID.")
-    document_id: str = Field(description="The document being ingested.")
+    document_id: str | None = Field(
+        description="The document being ingested; null for a collection-level job (rebuild_index)."
+    )
     document_filename: str | None = Field(
         default=None,
         description="The document's filename, joined at read (None if the document is gone).",
@@ -74,7 +76,8 @@ class JobStatus(BaseModel):
     status: str = Field(description="queued / running / done / failed / cancelled.")
     kind: str = Field(
         description="The kind of work this job tracks: 'ingest' (a full document pipeline run) or "
-        "'metadata_sync' (a lightweight per-document metadata re-embed after an in-place value edit). "
+        "'metadata_sync' (a lightweight per-document metadata re-embed after an in-place value edit) or "
+        "'rebuild_index' (a collection-level vector-store rebuild — document_id is null). "
         "Lets the UI/Activity render a side-job distinctly from a full ingestion."
     )
     cancel_requested: bool = Field(
@@ -169,7 +172,7 @@ class JobStatus(BaseModel):
             duration_seconds = (end - job.started_at).total_seconds()
         return cls(
             job_id=str(job.id),
-            document_id=str(job.document_id),
+            document_id=str(job.document_id) if job.document_id is not None else None,
             document_filename=document_filename,
             document_title=document_title,
             display_title=display_title,

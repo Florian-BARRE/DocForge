@@ -132,7 +132,14 @@ def _mock_db(monkeypatch, **collections_methods) -> SimpleNamespace:
     monkeypatch.setattr(
         CONTEXT,
         "database",
-        SimpleNamespace(collections=facade, documents=documents, jobs=jobs),
+        SimpleNamespace(
+            collections=facade,
+            documents=documents,
+            jobs=jobs,
+            index_state=SimpleNamespace(
+                missing=AsyncMock(return_value=[]), missing_for=AsyncMock(return_value=[])
+            ),
+        ),
     )
     return facade
 

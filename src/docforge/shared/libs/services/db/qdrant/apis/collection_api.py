@@ -5,7 +5,8 @@
 # missing payload indexes live — additive, safe), and drop it. A filterable field is indexed by its
 # type so that exact-match and range filters actually work (a number gets an INTEGER/FLOAT index,
 # not KEYWORD). Named vectors CANNOT be added to a live collection (a Qdrant limitation), so a field
-# that becomes semantic/lexical after first ingest is reported as reindex-required, not silently added.
+# that becomes semantic/lexical after first ingest is reported as missing (an index rebuild must
+# recreate the collection to declare it), never silently added.
 
 # ====== Standard Library Imports ======
 from collections.abc import Mapping, Sequence
@@ -16,6 +17,7 @@ from qdrant_client.http.exceptions import UnexpectedResponse
 
 # ====== Local Project Imports ======
 from ..vectors import DOCUMENT_ID_KEY, PayloadType, QdrantVectorSchema, VectorNames
+from .alias_api import QdrantAliasApi
 
 
 class QdrantCollectionApi:
@@ -65,7 +67,7 @@ class QdrantCollectionApi:
                 collection (reindex-required); always empty for a fresh collection.
         """
         # 1. Already provisioned → reconcile additively (never re-create, never a destructive op).
-        if await client.collection_exists(name):
+        if await QdrantAliasApi.resolve_or_adopt(client, name):
             return await cls.reconcile(
                 client,
                 name,
@@ -153,14 +155,45 @@ class QdrantCollectionApi:
             )
         # 3. Named vectors can't be added live — report the ones the schema wants but Qdrant lacks.
         declared_dense, declared_sparse = await cls.declared_vectors(client, name)
-        reindex_fields: set[str] = set()
-        for field_name in semantic_fields:
-            if VectorNames.field_dense(field_name) not in declared_dense:
-                reindex_fields.add(field_name)
-        for field_name in lexical_fields:
-            if VectorNames.field_sparse(field_name) not in declared_sparse:
-                reindex_fields.add(field_name)
-        return reindex_fields
+        missing = cls.missing_vectors(
+            semantic_fields, lexical_fields, declared_dense, declared_sparse
+        )
+        return {field_name for field_name, _ in missing}
+
+    @staticmethod
+    def missing_vectors(
+        semantic_fields: Sequence[str],
+        lexical_fields: Sequence[str],
+        declared_dense: set[str],
+        declared_sparse: set[str],
+    ) -> list[tuple[str, str]]:
+        """
+        Pair every semantic/lexical field with the named vector it needs but Qdrant does not declare.
+
+        Pure — the single rule shared by ``reconcile`` and the collection read surface (detail
+        ``missing_vectors`` + PATCH ``reindex_required_fields``), so both compute the gap one way.
+
+        Args:
+            semantic_fields (Sequence[str]): Fields expected to carry a named dense vector.
+            lexical_fields (Sequence[str]): Fields expected to carry a named sparse vector.
+            declared_dense (set[str]): The dense vector names the collection declares.
+            declared_sparse (set[str]): The sparse vector names the collection declares.
+
+        Returns:
+            list[tuple[str, str]]: ``(field_name, vector_name)`` per missing vector, sorted.
+        """
+        # 1. A field needs its dense vector when semantic and its sparse vector when lexical.
+        missing = [
+            (field_name, VectorNames.field_dense(field_name))
+            for field_name in semantic_fields
+            if VectorNames.field_dense(field_name) not in declared_dense
+        ]
+        missing += [
+            (field_name, VectorNames.field_sparse(field_name))
+            for field_name in lexical_fields
+            if VectorNames.field_sparse(field_name) not in declared_sparse
+        ]
+        return sorted(missing)
 
     @staticmethod
     async def declared_vectors(client: AsyncQdrantClient, name: str) -> tuple[set[str], set[str]]:
@@ -180,7 +213,7 @@ class QdrantCollectionApi:
                 Both empty when the collection does not exist.
         """
         # 1. A missing collection declares nothing — never raise, just report emptiness.
-        if not await client.collection_exists(name):
+        if not await QdrantAliasApi.resolve_or_adopt(client, name):
             return set(), set()
         # 2. DocForge always uses NAMED vectors, so params.vectors is a name → params mapping.
         params = (await client.get_collection(name)).config.params
@@ -205,16 +238,16 @@ class QdrantCollectionApi:
             int: The point count, or 0 when the collection has no Qdrant space yet.
         """
         # 1. No space provisioned yet — nothing indexed, report 0 rather than raising.
-        if not await client.collection_exists(name):
+        if not await QdrantAliasApi.resolve_or_adopt(client, name):
             return 0
         # 2. An exact count of every point (unfiltered — the raw index size).
         return (await client.count(collection_name=name, exact=True)).count
 
     @staticmethod
     async def drop(client: AsyncQdrantClient, name: str) -> None:
-        """Delete the whole Qdrant collection if it exists."""
-        if await client.collection_exists(name):
-            await client.delete_collection(name)
+        """Delete the whole Qdrant collection — alias-aware (deleting an alias name is a no-op in
+        Qdrant, so the physical collection behind it, and any rebuild leftover, is deleted instead)."""
+        await QdrantAliasApi.drop_all(client, name)
 
 
 __all__ = ["QdrantCollectionApi"]

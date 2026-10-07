@@ -16,7 +16,7 @@ from loggerplusplus import LoggerClass
 # ====== Internal Project Imports ======
 from shared_libs.services.db.postgresql import PostgresClient
 from shared_libs.services.db.postgresql.apis import CollectionApi, MetadataValueApi
-from shared_libs.services.db.qdrant import QdrantClient, QdrantFieldPurgeApi
+from shared_libs.services.db.qdrant import QdrantAliasApi, QdrantClient, QdrantFieldPurgeApi
 
 # ====== Local Project Imports ======
 from .helpers import DatabaseHelpers
@@ -93,7 +93,7 @@ class SchemaChangeFacade(LoggerClass):
         """
         # 1. No Qdrant space → nothing was ever denormalised.
         name = DatabaseHelpers.qdrant_collection_name(collection_id)
-        if not await self._qdrant.raw.collection_exists(name):
+        if not await QdrantAliasApi.resolve_or_adopt(self._qdrant.raw, name):
             return FieldPurgeOutcome()
 
         # 2. Residue = the departed names + whatever the current schema no longer explains.

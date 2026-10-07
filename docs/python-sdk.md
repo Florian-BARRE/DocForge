@@ -135,6 +135,7 @@ assert status.status == "ok"
 | `collections.health(collection_id)` | `CollectionHealthResponse` | Zero-spend provider preflight sweep + an overall verdict. |
 | `collections.storage(collection_id)` | `CollectionStorageResponse` | Material footprint across all three stores (exact S3, estimated PG/Qdrant). |
 | `collections.reingest(collection_id, force=False)` | `BulkReingestAccepted` | Re-run the full pipeline over the whole collection (async). |
+| `collections.rebuild_index(collection_id)` | `RebuildIndexAccepted` | Rebuild the vector index from the current schema, no content re-embed (async job; `ConflictError` on `409 rebuild_index_active` / `collection_busy`). Poll `jobs.get(job_id)` — its `document_id` is `None`. |
 | `collections.estimate(...)` | `CostEstimate` | Dry-run cost estimate for a (subset of a) collection — no spend. |
 | `collections.contract_schema()` | `CollectionContractSchemaResponse` | JSON Schema of the collection identity/limits contract (drives a discovery form). |
 

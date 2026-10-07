@@ -33,6 +33,8 @@ class JobKind(StrEnum):
 
     INGEST = "ingest"
     METADATA_SYNC = "metadata_sync"
+    # A collection-level Qdrant store rebuild (no document — ``document_id`` is NULL).
+    REBUILD_INDEX = "rebuild_index"
 
 
 class JobStatus(StrEnum):
@@ -104,10 +106,19 @@ class Job(Base, UUIDPrimaryKey, TimestampedMixin):
             unique=True,
             postgresql_where=text("status IN ('pending', 'running')"),
         ),
+        # At most ONE live rebuild_index job per collection (migration f7c2d9a4b1e5) — the race
+        # backstop behind the FOR UPDATE admission in IndexRebuildFacade.
+        Index(
+            "uq_job_active_rebuild_per_collection",
+            "collection_id",
+            unique=True,
+            postgresql_where=text("kind = 'rebuild_index' AND status IN ('pending', 'running')"),
+        ),
     )
 
-    document_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("document.id", ondelete="CASCADE"), nullable=False, index=True
+    # NULL only for a collection-level job (rebuild_index); every document job sets it.
+    document_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("document.id", ondelete="CASCADE"), nullable=True, index=True
     )
     collection_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("collection.id", ondelete="CASCADE"), nullable=False, index=True

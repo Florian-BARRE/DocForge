@@ -46,6 +46,12 @@ export interface Collection {
   /** Whole-ingest-job wall-clock job timeout override, in seconds; `null` inherits the worker's global default. */
   job_timeout_seconds: number | null;
   needs_reindex: boolean;
+  /**
+   * Named vectors (`meta_<slug>_dense` / `meta_<slug>_bm25`) the schema's semantic/lexical fields need
+   * but the vector store does not declare: those fields are unsearchable until the index is rebuilt.
+   * Set on the single-collection read and the PATCH response; `null` on fleet-list rows.
+   */
+  missing_vectors?: string[] | null;
   created_at: string | null;
   pipeline: Record<string, unknown>;
   search: Record<string, unknown>;

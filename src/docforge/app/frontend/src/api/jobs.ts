@@ -12,9 +12,13 @@ export type JobStatusValue = "pending" | "running" | "done" | "failed" | "cancel
 
 /** What a job tracks: a full pipeline run or a lightweight per-document metadata re-embed. Open
  *  `| string` like JobStatusValue so a future backend kind degrades to its raw label. */
-export type JobKindValue = "ingest" | "metadata_sync" | string;
+export type JobKindValue = "ingest" | "metadata_sync" | "rebuild_index" | string;
 
-const JOB_KIND_LABEL: Record<string, string> = { ingest: "ingestion", metadata_sync: "metadata sync" };
+const JOB_KIND_LABEL: Record<string, string> = {
+  ingest: "ingestion",
+  metadata_sync: "metadata sync",
+  rebuild_index: "index rebuild",
+};
 
 /** Human label for a job kind; unknown kinds fall back to the raw enum with underscores softened. */
 export function jobKindLabel(kind: JobKindValue): string {
@@ -28,9 +32,10 @@ export function isIngestJob(job: Pick<JobStatus, "kind">): boolean {
 
 export interface JobStatus {
   job_id: string;
-  /** What this job tracks (`ingest` | `metadata_sync`). */
+  /** What this job tracks (`ingest` | `metadata_sync` | `rebuild_index`). */
   kind: JobKindValue;
-  document_id: string;
+  /** The document the job works on — null for a collection-level job (`rebuild_index`). */
+  document_id: string | null;
   /** The document's filename, joined at read — null only if the document row is gone. */
   document_filename: string | null;
   /** The document's metagen-generated title, joined at read — a nicer display label than the
@@ -86,8 +91,9 @@ export interface JobStatus {
  *  title, else the filename, else a generic fallback for the rare gone-document edge case. Keeping this in one place is what keeps the job
  *  list and the job detail header in sync. */
 export function jobDisplayName(
-  job: Pick<JobStatus, "display_title" | "document_title" | "document_filename">,
+  job: Pick<JobStatus, "display_title" | "document_title" | "document_filename"> & { kind?: JobKindValue },
 ): string {
+  if (job.kind === "rebuild_index") return jobKindLabel(job.kind);
   return job.display_title || job.document_title || job.document_filename || "untitled document";
 }
 

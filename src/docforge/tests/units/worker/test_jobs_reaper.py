@@ -360,6 +360,7 @@ def _fake_context(
             WORKER_REAP_STALE_SECONDS=1200,
             WORKER_PRUNE_STALE_SECONDS=180,
             WORKER_JOB_TIMEOUT_SECONDS=1800.0,
+            WORKER_JOB_TIMEOUT_MAX_SECONDS=7200.0,
             WORKER_OVER_JOB_TIMEOUT_GRACE_SECONDS=300.0,
         ),
         database=SimpleNamespace(
@@ -401,7 +402,9 @@ async def test_reap_stuck_jobs_reaps_and_returns_ids_when_enabled(
     # Job-level watchdog path: the default job timeout, the over-job timeout grace, and the SAME heartbeat cutoff
     # reap_stale uses (WORKER_PRUNE_STALE_SECONDS) so the fresh/stale boundary is shared — the two paths
     # stay disjoint (a job is a dead-worker orphan OR a live-worker wedge, never both).
-    reap_over_job_timeout.assert_awaited_once_with(1800.0, 300.0, 180)
+    reap_over_job_timeout.assert_awaited_once_with(
+        1800.0, 300.0, 180, rebuild_job_timeout_seconds=7200.0
+    )
     # The reaper cron ALSO prunes crashed workers' stale heartbeats (moved off GET /workers/live).
     prune.assert_awaited_once_with(180)
     # The returned ids are the UNION of both reap paths (killed-worker first, over-job timeout appended).

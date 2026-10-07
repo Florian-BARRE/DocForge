@@ -113,6 +113,9 @@ from .health import (
     SearchIndex,
 )
 
+# ------------------- Index rebuild models ------------------- #
+from .index_rebuild import RebuildIndexAccepted
+
 # ------------------- IR models ------------------- #
 from .ir import (
     DocumentIRModel,
@@ -396,4 +399,5 @@ __all__ = [
     "TransferStatus",
     # Trace payloads
     "TracePurgeResult",
+    "RebuildIndexAccepted",
 ]

@@ -259,8 +259,10 @@ class FakeExportFacade:
 class FakeImportFacade:
     """In-memory CollectionTransferFacade stand-in for the importer (records restore calls)."""
 
-    def __init__(self, *, existing_names=(), fail_on=None) -> None:
+    def __init__(self, *, existing_names=(), fail_on=None, bm25_vectors=()) -> None:
         self._existing = set(existing_names)
+        self._bm25_vectors = set(bm25_vectors)  # target meta vectors declared modifier=IDF
+        self.reencoded: list = []
         self._fail_on = fail_on  # a table path whose restore_rows should raise
         self.created: Collection | None = None
         self.restored: dict[str, list] = {}
@@ -301,6 +303,13 @@ class FakeImportFacade:
 
     async def upsert_points(self, _collection_id, points):
         self.points.extend(points)
+
+    async def bm25_meta_vectors(self, _collection_id):
+        return set(self._bm25_vectors)
+
+    async def reencode_bm25_meta_vectors(self, collection_id):
+        self.reencoded.append(collection_id)
+        return 1, len(self.points)
 
     async def rollback_collection(self, collection_id):
         self.rolled_back.append(collection_id)

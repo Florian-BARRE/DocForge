@@ -1,6 +1,7 @@
 # ====== Code Summary ======
 # ScoreKindClassifier — the pure, store-free classification of what a collection's search score
-# represents (cross-encoder rerank vs RRF/DBSF fusion), honouring a run-time rerank degradation.
+# represents (cross-encoder rerank vs RRF/DBSF fusion vs one vector's raw score), honouring a run-time
+# rerank degradation.
 
 # ====== Standard Library Imports ======
 from collections.abc import Iterator
@@ -11,6 +12,12 @@ from loggerplusplus import loggerplusplus
 
 # ====== Internal Project Imports ======
 from shared_libs.pipelines.search.nodes.rerank.cross_encoder.core import _RERANK_DEGRADED
+
+# ====== Local Project Imports ======
+from .probe import AXES_DENSE_ONLY, AXES_SPARSE_ONLY
+
+# The score_kind of a single-vector retrieval (no fusion ran) — its raw score, per axis scale.
+_RAW_KIND = {AXES_DENSE_ONLY: "raw_dense", AXES_SPARSE_ONLY: "raw_sparse"}
 
 
 class ScoreKindClassifier:
@@ -70,6 +77,20 @@ class ScoreKindClassifier:
         retrieve = next((node for node in actions if node.get("family") == "retrieve"), None)
         fusion = (retrieve or {}).get("config", {}).get("fusion", "rrf")
         return "dbsf_fusion" if fusion == "dbsf" else "rrf_fusion"
+
+    @staticmethod
+    def raw_kind(raw_axis: str | None) -> str | None:
+        """
+        The score_kind of an UNFUSED retrieval — one vector queried directly, its raw score kept.
+
+        Args:
+            raw_axis (str | None): The probe's ``raw_axis()`` (None = some score was fused).
+
+        Returns:
+            str | None: 'raw_dense' (cosine similarity) / 'raw_sparse' (sparse dot product or BM25),
+                or None when the scores are a fusion.
+        """
+        return _RAW_KIND.get(raw_axis) if raw_axis else None
 
     @classmethod
     def rerank_degraded(cls, debug: dict[str, Any] | None) -> bool:

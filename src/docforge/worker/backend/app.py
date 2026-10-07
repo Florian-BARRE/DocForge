@@ -27,6 +27,7 @@ from .libs.jobs import (
     preview_pipeline,
     reap_stuck_jobs,
     reap_stuck_transfers,
+    rebuild_collection_index,
     sync_document_metadata,
     with_correlation,
 )
@@ -177,6 +178,7 @@ def create_worker_settings() -> type:
             with_correlation(backfill_collection_filters),
             with_correlation(backfill_collection_meta_vectors),
             with_correlation(sync_document_metadata),
+            with_correlation(rebuild_collection_index),
             with_correlation(export_collection),
             with_correlation(import_collection),
             # The preview job RETURNS its bounded report as the arq job result; unlike every other

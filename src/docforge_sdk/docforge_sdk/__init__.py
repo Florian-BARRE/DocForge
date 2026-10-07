@@ -90,6 +90,9 @@ from .models.explorer import (
 # ------------------- Health models ------------------- #
 from .models.health import HealthStatus
 
+# ------------------- Index rebuild models ------------------- #
+from .models.index_rebuild import RebuildIndexAccepted
+
 # ------------------- IR models ------------------- #
 from .models.ir import (
     DocumentIRModel,
@@ -308,6 +311,7 @@ __all__ = [
     "TransferStatus",
     # Trace payloads
     "TracePurgeResult",
+    "RebuildIndexAccepted",
     # Exceptions
     "DocForgeError",
     "APIConnectionError",

@@ -485,6 +485,43 @@ lexical}` → `meta_<slug>_bm25` via `TargetVectorResolver`). ⚠️ **OFF par d
 Doc-scope sémantique/lexical : écrit hors du node embed, par le hook best-effort `MetaVectorSyncFacade` après
 `index()` (les points Qdrant sont des chunks).
 
+**Lexical métadonnée = vrai BM25 local (encodage `bm25_v1`, A8).** Les vecteurs `meta_<slug>_bm25` doc-scope ne
+sont plus les poids sparse appris de BGE-M3 (sous-mots XLM-R, sans IDF — « Exécution des marchés » passait devant
+« Passation des marchés ») mais la sortie de `MetaLexicalEncoder` (`shared_libs/pipelines/nodes/embed/lexical/`,
+code pur, zéro provider, zéro modèle) : minuscules → pliage d'accents NFKD → tokens alphanumériques → stopwords
+FR+EN → union des stems Snowball FR+EN (`snowballstemmer`) → TF saturée BM25 (k1=1.2, b=0.75, longueur de
+référence 8) sur des ids `blake2b`→uint32. L'IDF est calculée par Qdrant : `QdrantVectorSchema.sparse_config`
+déclare chaque vecteur méta avec `modifier=IDF` (jamais `content_bm25`, qui reste BGE inchangé).
+**Versionnage = le modifier lui-même** (`QdrantVectorSchema.is_bm25_meta`, lu sur la collection VIVANTE par
+`QdrantLexicalEncodingApi`) : vecteur méta IDF ⇒ BM25 local à l'écriture (`MetaVectorSyncFacade`) ET à la requête
+(`(encode, collection)` produit `EncodedQuery.meta_sparse` dès qu'une cible lexicale méta est demandée ;
+`TargetVectorResolver` l'envoie aux vecteurs IDF, et la requête sparse de l'embedder aux autres). Une collection
+créée avant ne porte pas le modifier ⇒ elle garde le chemin BGE des deux côtés jusqu'à sa recréation
+(`rebuild_index`) — jamais d'encodeurs mélangés. Le chemin chunk-scope du node embed (`embed_lexical_fields`) reste
+BGE : le lexical chunk-scope est refusé au schéma, il ne sert que d'anciennes collections non-IDF.
+**Import `.dcexport`** : un point du bundle ne garde jamais sa copie d'un vecteur méta que la cible déclare IDF
+(il peut venir d'une ancienne collection BGE) — l'importeur la retire avant l'upsert puis ré-encode localement
+(`backfill_collection_meta_vectors(bm25_only=True)` : zéro provider, vecteurs denses intacts).
+**Vecteur méta non déclaré à l'indexation** : un point portant un `meta_*` que le store Qdrant ne déclare pas
+(champ chunk-scope rendu sémantique après la création) échoue AVANT purge/upsert avec `UndeclaredVectorError`
+(« field 'X' has no indexed vector in this collection — run rebuild_index ») au lieu du 400 Qdrant opaque.
+**Reconstruction de l'index (`rebuild_index`, job worker hors pipeline)** : Qdrant n'ajoute pas de vecteur
+nommé à une collection vivante, donc un champ rendu sémantique/lexical après la 1re ingestion laisse des
+`missing_vectors` qu'aucun reingest ne comble. `POST /collections/{id}/rebuild-index` admet un job
+**collection-level** (`job.document_id` NULL, kind `rebuild_index`, un seul actif par collection — index partiel
+`uq_job_active_rebuild_per_collection` derrière un `FOR UPDATE` sur la ligne collection ; upload/reingest refusés
+en 409 pendant qu'il tourne). Le worker (`jobs/rebuild_index.py`) : attend les autres jobs vivants (borné) →
+`StoreRebuildFacade` crée un `col_<hex>_r<ts>` depuis le schéma COURANT (vecteurs méta BM25 avec `modifier=IDF`),
+copie chaque point par scroll/upsert **sans ré-embedding du contenu** en retirant tout `meta_*_bm25` (jamais
+d'encodeurs mélangés), puis bascule le nom stable `col_<hex>` en **alias** (1re fois : suppression puis création
+d'alias — courte fenêtre sans index ; ensuite : `update_collection_aliases` atomique puis suppression de
+l'ancienne) ; un échec avant bascule supprime la temp → backfills filtres + vecteurs méta depuis Postgres (le dense
+méta repasse par le provider embed) → `IndexRebuildFacade.reconcile` (ré-applique `enabled_override`, purge les
+points des documents supprimés pendant la copie, recalcule `needs_reindex` — effacé seulement si l'espace
+d'embedding est inchangé, `collection.indexed_embed_signature`). Le drop d'une collection résout alias → physique.
+**Score d'une recherche mono-vecteur** : une seule branche ⇒ pas de fusion, score brut (`QdrantSearchApi.fuses`
+est l'unique règle) et `score_kind` = `raw_dense` / `raw_sparse` (le rerank, s'il a scoré, reste prioritaire).
+
 **Robustesse par batch (retry + split adaptatif)** : un batch transitoirement en échec ne perd jamais
 le document. Hérite `TimeoutRetryConfig` (`max_retries`=3, `retry_backoff_seconds`=1.5) — un transient
 (429/5xx/blip transport) est retenté en backoff exponentiel (`1 + max_retries` tentatives) puis, s'il

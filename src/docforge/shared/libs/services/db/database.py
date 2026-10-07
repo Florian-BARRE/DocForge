@@ -25,6 +25,8 @@ from .facades import (
     EnablementFacade,
     FilterSyncFacade,
     IdempotencyFacade,
+    IndexRebuildFacade,
+    IndexStateFacade,
     IngestionFacade,
     JobsFacade,
     MetadataEditFacade,
@@ -33,6 +35,7 @@ from .facades import (
     SchemaChangeFacade,
     SearchFacade,
     StorageFootprintFacade,
+    StoreRebuildFacade,
     TracePayloadFacade,
     TransferTrackerFacade,
 )
@@ -50,6 +53,9 @@ class Database(LoggerClass):
         enablement (EnablementFacade): Reversible enable/disable of documents/chunks (flag + payload).
         filters (FilterSyncFacade): Denormalise document-scope filterable metadata onto chunk points.
         meta_vectors (MetaVectorSyncFacade): Populate document-scope metadata named vectors on points.
+        index_state (IndexStateFacade): The named vectors Qdrant declares vs what the schema needs.
+        index_rebuild (IndexRebuildFacade): rebuild_index admission (409s), wait, post-swap reconcile.
+        store_rebuild (StoreRebuildFacade): rebuild_index Qdrant copy into a fresh store + alias swap.
         metadata_edit (MetadataEditFacade): Edit a single document's document-scope metadata VALUES
             without a re-ingest (validate + upsert + synchronous filter-payload repaint).
         search (SearchFacade): Hybrid filtered search + Postgres hydration.
@@ -90,6 +96,10 @@ class Database(LoggerClass):
         self.enablement = EnablementFacade(postgres, qdrant)
         self.filters = FilterSyncFacade(postgres, qdrant)
         self.meta_vectors = MetaVectorSyncFacade(postgres, qdrant)
+        self.index_state = IndexStateFacade(postgres, qdrant)
+        # The rebuild_index job: Postgres admission/reconciliation + the Qdrant copy-and-swap.
+        self.index_rebuild = IndexRebuildFacade(postgres, qdrant, self.index_state)
+        self.store_rebuild = StoreRebuildFacade(postgres, qdrant)
         # Reuses the already-wired filter-sync facade to repaint payloads synchronously on a SET, and
         # the qdrant client to remove a cleared field's denormalised footprint synchronously (no job).
         self.metadata_edit = MetadataEditFacade(postgres, self.filters, qdrant)

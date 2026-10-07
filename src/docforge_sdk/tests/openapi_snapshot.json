@@ -682,7 +682,7 @@
                     "collections"
                 ],
                 "summary": "Delete Collection",
-                "description": "Delete a collection (404 when unknown).",
+                "description": "Delete a collection (404 when unknown; 409 ``rebuild_index_active`` while an index rebuild runs).",
                 "operationId": "delete_collection_api_v1_collections__collection_id__delete",
                 "parameters": [
                     {
@@ -2290,7 +2290,7 @@
                     "jobs"
                 ],
                 "summary": "Cancel Job",
-                "description": "Stop an ingestion job \u2014 cooperatively for a running job, immediately for a queued or wedged one.\n\nBehaviour by the job's current state:\n  * queued (pending) \u2192 CANCELLED now; the worker skips it when it dequeues (its arq task id was\n    never captured, so it cannot be pulled from the queue) \u2014 the document is marked CANCELLED.\n  * running, ``force=false`` \u2192 a cooperative-cancel flag is raised; the worker's runner stops at\n    its next stage boundary and marks job + document CANCELLED. The job stays ``running`` (with\n    ``cancel_requested=true``) until it does.\n  * running, ``force=true`` \u2192 force-terminated NOW (job + document CANCELLED) regardless of the\n    worker \u2014 the manual reaper for a wedged/infinite job (shares the cron reaper's transition).\n  * already terminal (done / failed / cancelled) \u2192 409 (nothing to cancel).\n\nReturns:\n    CancelResult: The job's post-call status, whether a cooperative stop is pending, and the outcome.",
+                "description": "Stop an ingestion job \u2014 cooperatively for a running job, immediately for a queued or wedged one.\n\nBehaviour by the job's current state:\n  * queued (pending) \u2192 CANCELLED now; the worker skips it when it dequeues (its arq task id was\n    never captured, so it cannot be pulled from the queue) \u2014 the document is marked CANCELLED.\n  * running, ``force=false`` \u2192 a cooperative-cancel flag is raised; the worker's runner stops at\n    its next stage boundary and marks job + document CANCELLED. The job stays ``running`` (with\n    ``cancel_requested=true``) until it does.\n  * running, ``force=true`` \u2192 force-terminated NOW (job + document CANCELLED) regardless of the\n    worker \u2014 the manual reaper for a wedged/infinite job (shares the cron reaper's transition).\n    EXCEPT a running ``rebuild_index`` on a live worker \u2192 409 ``rebuild_force_cancel_refused``\n    (forcing would lift the ingest lock mid-copy); its cooperative cancel aborts it pre-swap.\n  * already terminal (done / failed / cancelled) \u2192 409 (nothing to cancel).\n\nReturns:\n    CancelResult: The job's post-call status, whether a cooperative stop is pending, and the outcome.",
                 "operationId": "cancel_job_api_v1_jobs__job_id__cancel_post",
                 "parameters": [
                     {
@@ -2309,11 +2309,11 @@
                         "required": false,
                         "schema": {
                             "type": "boolean",
-                            "description": "Immediately CANCEL a running/wedged job regardless of worker state (the manual force-fail) instead of asking it to stop cooperatively at its next stage boundary.",
+                            "description": "Immediately CANCEL a running/wedged job regardless of worker state (the manual force-fail) instead of asking it to stop cooperatively at its next stage boundary. Refused (409) for a running rebuild_index on a live worker.",
                             "default": false,
                             "title": "Force"
                         },
-                        "description": "Immediately CANCEL a running/wedged job regardless of worker state (the manual force-fail) instead of asking it to stop cooperatively at its next stage boundary."
+                        "description": "Immediately CANCEL a running/wedged job regardless of worker state (the manual force-fail) instead of asking it to stop cooperatively at its next stage boundary. Refused (409) for a running rebuild_index on a live worker."
                     }
                 ],
                 "responses": {
@@ -3347,6 +3347,50 @@
                             "application/json": {
                                 "schema": {
                                     "$ref": "#/components/schemas/ChunkContext"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/collections/{collection_id}/rebuild-index": {
+            "post": {
+                "tags": [
+                    "collections"
+                ],
+                "summary": "Rebuild Collection Index",
+                "description": "Rebuild the collection's vector index from its current schema \u2014 no content re-embed.\n\nDeclares the named vectors of fields made semantic/lexical after first ingest, then refills the\nmetadata vectors from Postgres (the dense metadata VALUES go through the embed provider). Ingests\nare refused (409) while it runs.\n\nReturns:\n    RebuildIndexAccepted: The job to poll (202); 404 unknown collection; 409\n        ``rebuild_index_active`` / ``collection_busy`` / ``rebuild_unsupported_chunk_lexical``; 503 when it could not be queued.",
+                "operationId": "rebuild_collection_index_api_v1_collections__collection_id__rebuild_index_post",
+                "parameters": [
+                    {
+                        "name": "collection_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid",
+                            "title": "Collection Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "202": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/RebuildIndexAccepted"
                                 }
                             }
                         }
@@ -5993,6 +6037,21 @@
                         "title": "Needs Reindex",
                         "description": "True when a config change requires reindexing."
                     },
+                    "missing_vectors": {
+                        "anyOf": [
+                            {
+                                "items": {
+                                    "type": "string"
+                                },
+                                "type": "array"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Missing Vectors",
+                        "description": "Named Qdrant vectors (meta_<slug>_dense / meta_<slug>_bm25) the schema's semantic/lexical fields need but the vector store does not declare \u2014 those fields are not searchable until the collection's index is rebuilt (a reingest cannot add them). Computed on the single-collection read and the PATCH response ([] = aligned or never ingested); null on the fleet list, which never reads the vector store."
+                    },
                     "created_at": {
                         "anyOf": [
                             {
@@ -6138,6 +6197,21 @@
                         "type": "boolean",
                         "title": "Needs Reindex",
                         "description": "True when a config change requires reindexing."
+                    },
+                    "missing_vectors": {
+                        "anyOf": [
+                            {
+                                "items": {
+                                    "type": "string"
+                                },
+                                "type": "array"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Missing Vectors",
+                        "description": "Named Qdrant vectors (meta_<slug>_dense / meta_<slug>_bm25) the schema's semantic/lexical fields need but the vector store does not declare \u2014 those fields are not searchable until the collection's index is rebuilt (a reingest cannot add them). Computed on the single-collection read and the PATCH response ([] = aligned or never ingested); null on the fleet list, which never reads the vector store."
                     },
                     "created_at": {
                         "anyOf": [
@@ -9631,9 +9705,16 @@
                         "description": "The job row's UUID."
                     },
                     "document_id": {
-                        "type": "string",
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
                         "title": "Document Id",
-                        "description": "The document being ingested."
+                        "description": "The document being ingested; null for a collection-level job (rebuild_index)."
                     },
                     "document_filename": {
                         "anyOf": [
@@ -9696,7 +9777,7 @@
                     "kind": {
                         "type": "string",
                         "title": "Kind",
-                        "description": "The kind of work this job tracks: 'ingest' (a full document pipeline run) or 'metadata_sync' (a lightweight per-document metadata re-embed after an in-place value edit). Lets the UI/Activity render a side-job distinctly from a full ingestion."
+                        "description": "The kind of work this job tracks: 'ingest' (a full document pipeline run) or 'metadata_sync' (a lightweight per-document metadata re-embed after an in-place value edit) or 'rebuild_index' (a collection-level vector-store rebuild \u2014 document_id is null). Lets the UI/Activity render a side-job distinctly from a full ingestion."
                     },
                     "cancel_requested": {
                         "type": "boolean",
@@ -9891,7 +9972,7 @@
                     "cost_usd"
                 ],
                 "title": "JobStatus",
-                "description": "One ingestion job's live state \u2014 written by the worker, only read here.\n\nAttributes:\n    job_id (str): The job row's UUID.\n    document_id (str): The document being ingested.\n    collection_id (str): Its collection.\n    status (str): queued / running / done / failed.\n    kind (str): ingest (full pipeline run) or metadata_sync (per-document metadata re-embed).\n    progress (int): 0\u2013100 (completed pipeline nodes over total).\n    current_stage (str | None): The node currently (or last) executed.\n    error (str | None): The failure, verbatim \u2014 only set when status is failed.\n    attempt (int): arq retry attempt (1 = first run).\n    started_at (datetime | None): When the worker picked it up.\n    finished_at (datetime | None): When it ended (done or failed).\n    updated_at (datetime): Last progress/lifecycle write \u2014 freezes when a job wedges.\n    stalled (bool): A RUNNING job idle past STALLED_AFTER_SECONDS (an early wedge warning).\n    total_prompt_tokens (int): The document's lifetime input tokens across paid text-gen calls.\n    total_completion_tokens (int): The document's lifetime output tokens.\n    cost_usd (float): The document's lifetime USD cost (0 while no priceable call has run).\n    items_done (int | None): Child items finished in the CURRENT fan-out stage (None off fan-out).\n    items_total (int | None): The current fan-out's width (None when not in a fan-out stage).\n    failed_node_id (str | None): The deepest node that raised (only set on a failed job).\n    failed_node_kind (str | None): That node's kind/family label (only set on a failed job).\n    failed_item_index (int | None): The fan-out item index the failure sits in (None outside one).\n    error_type (str | None): The exception class name (e.g. \"TimeoutError\") \u2014 set on failure."
+                "description": "One ingestion job's live state \u2014 written by the worker, only read here.\n\nAttributes:\n    job_id (str): The job row's UUID.\n    document_id (str | None): The document being ingested (None for a rebuild_index job).\n    collection_id (str): Its collection.\n    status (str): queued / running / done / failed.\n    kind (str): ingest, metadata_sync (per-document metadata re-embed) or rebuild_index.\n    progress (int): 0\u2013100 (completed pipeline nodes over total).\n    current_stage (str | None): The node currently (or last) executed.\n    error (str | None): The failure, verbatim \u2014 only set when status is failed.\n    attempt (int): arq retry attempt (1 = first run).\n    started_at (datetime | None): When the worker picked it up.\n    finished_at (datetime | None): When it ended (done or failed).\n    updated_at (datetime): Last progress/lifecycle write \u2014 freezes when a job wedges.\n    stalled (bool): A RUNNING job idle past STALLED_AFTER_SECONDS (an early wedge warning).\n    total_prompt_tokens (int): The document's lifetime input tokens across paid text-gen calls.\n    total_completion_tokens (int): The document's lifetime output tokens.\n    cost_usd (float): The document's lifetime USD cost (0 while no priceable call has run).\n    items_done (int | None): Child items finished in the CURRENT fan-out stage (None off fan-out).\n    items_total (int | None): The current fan-out's width (None when not in a fan-out stage).\n    failed_node_id (str | None): The deepest node that raised (only set on a failed job).\n    failed_node_kind (str | None): That node's kind/family label (only set on a failed job).\n    failed_item_index (int | None): The fan-out item index the failure sits in (None outside one).\n    error_type (str | None): The exception class name (e.g. \"TimeoutError\") \u2014 set on failure."
             },
             "JobTimeseries": {
                 "properties": {
@@ -11653,6 +11734,27 @@
                 "title": "RateOverrides",
                 "description": "Partial overrides of the three rate maps the estimator prices against (absent map = default)."
             },
+            "RebuildIndexAccepted": {
+                "properties": {
+                    "collection_id": {
+                        "type": "string",
+                        "title": "Collection Id",
+                        "description": "The collection whose index is being rebuilt."
+                    },
+                    "job_id": {
+                        "type": "string",
+                        "title": "Job Id",
+                        "description": "The tracked rebuild_index job \u2014 poll GET /jobs/{job_id}."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "collection_id",
+                    "job_id"
+                ],
+                "title": "RebuildIndexAccepted",
+                "description": "A queued index rebuild \u2014 poll the job.\n\nAttributes:\n    collection_id (str): The collection being rebuilt.\n    job_id (str): The tracked ``rebuild_index`` job (GET /jobs/{job_id})."
+            },
             "ReingestJobHandle": {
                 "properties": {
                     "document_id": {
@@ -12113,7 +12215,7 @@
                     "field": {
                         "type": "string",
                         "title": "Field",
-                        "description": "The filtered metadata field the hint is about."
+                        "description": "What the hint is about: a filtered or targeted metadata field, or 'min_score'."
                     },
                     "value": {
                         "title": "Value",
@@ -12140,7 +12242,7 @@
                     "message"
                 ],
                 "title": "SearchHint",
-                "description": "An actionable explanation about one filter, attached to a (200) search response.\n\nEmitted when a filter value matches no stored value of its field (even ignoring case) \u2014 with the\nclosest stored values to retry with \u2014 or when a filtered search returned no hits (naming the\nlikely culprit filter).\n\nAttributes:\n    field (str): The filtered metadata field the hint is about.\n    value (Any): The filter value as sent (one list item, or the whole filter value).\n    message (str): English, human/agent-readable explanation.\n    suggestions (list[str]): Closest stored values to retry with (may be empty)."
+                "description": "An actionable explanation attached to a (200) search response.\n\nEmitted when a filter value matches no stored value of its field (even ignoring case) \u2014 with the\nclosest stored values to retry with \u2014 when a filtered search returned no hits (naming the likely\nculprit filter), when ``min_score`` dropped every hit (``field=\"min_score\"``), or when a lexical\nmetadata target got no searchable term from the query (only stopwords).\n\nAttributes:\n    field (str): What the hint is about: a filtered or targeted metadata field, or ``min_score``.\n    value (Any): The filter value as sent (one list item, or the whole filter value).\n    message (str): English, human/agent-readable explanation.\n    suggestions (list[str]): Closest stored values to retry with (may be empty)."
             },
             "SearchHitModel": {
                 "properties": {
@@ -12424,7 +12526,7 @@
                             }
                         ],
                         "title": "Min Score",
-                        "description": "Drop hits whose final score is below this threshold, applied AFTER the final ranking (and before group_by). The scale is the response's score_kind: 'cross_encoder_rerank' is a [0, 1] relevance score (a meaningful absolute cut, e.g. 0.3); 'rrf_fusion'/'dbsf_fusion' are rank-based / normalised fusion aggregates that can exceed 1.0 and are NOT comparable across queries \u2014 a threshold on them is a coarse filter only. Fewer than `limit` hits come back when hits fall below it. None \u2192 no threshold."
+                        "description": "Drop hits whose final score is below this threshold, applied AFTER the final ranking (and before group_by). The scale is the response's score_kind: 'cross_encoder_rerank' is a [0, 1] relevance score (a meaningful absolute cut, e.g. 0.3); 'rrf_fusion'/'dbsf_fusion' are rank-based / normalised fusion aggregates that can exceed 1.0 and are NOT comparable across queries \u2014 a threshold on them is a coarse filter only; 'raw_dense' is a cosine similarity and 'raw_sparse' an unbounded sparse/BM25 score. Fewer than `limit` hits come back when hits fall below it. None \u2192 no threshold."
                     },
                     "rerank": {
                         "anyOf": [
@@ -12498,7 +12600,7 @@
                     "score_kind": {
                         "type": "string",
                         "title": "Score Kind",
-                        "description": "What every hit's ``score`` represents, so the UI labels it honestly: 'rrf_fusion' (Reciprocal Rank Fusion of the dense+sparse branches \u2014 the default; rank-based, not a similarity), 'dbsf_fusion' (Distribution-Based Score Fusion), or 'cross_encoder_rerank' (a cross-encoder relevance score, when reranking is enabled). Fusion scores are only comparable within one response; a round 1.0000 on a tiny/single-doc corpus is normal.",
+                        "description": "What every hit's ``score`` represents, so the UI labels it honestly: 'rrf_fusion' (Reciprocal Rank Fusion of the dense+sparse branches \u2014 the default; rank-based, not a similarity), 'dbsf_fusion' (Distribution-Based Score Fusion), or 'cross_encoder_rerank' (a cross-encoder relevance score, when reranking is enabled), 'raw_dense' (the search queried ONE dense vector \u2014 no fusion ran \u2014 so the score is its cosine similarity) or 'raw_sparse' (ONE sparse vector \u2014 its raw sparse dot / BM25 score, unbounded). Fusion scores are only comparable within one response; a round 1.0000 on a tiny/single-doc corpus is normal.",
                         "default": "rrf_fusion"
                     },
                     "debug_info": {
@@ -12520,7 +12622,7 @@
                         },
                         "type": "array",
                         "title": "Hints",
-                        "description": "Filter hints: a filter value that matches no stored value (even ignoring case) with the closest stored values, or the likely culprit filter of a filtered search that returned no hits. Empty when there is nothing to report."
+                        "description": "Actionable hints: a filter value that matches no stored value (even ignoring case) with the closest stored values, the likely culprit filter of a filtered search that returned no hits, a min_score that dropped every hit, or a lexical metadata target the query gave no searchable term to. Empty when there is nothing to report."
                     }
                 },
                 "type": "object",
@@ -12528,7 +12630,7 @@
                     "query"
                 ],
                 "title": "SearchResponse",
-                "description": "The result of a hybrid search \u2014 the echoed query and its ranked hits.\n\nAttributes:\n    query (str): The query that was searched (echoed for the client).\n    hits (list[SearchHitModel]): The hydrated hits, best first.\n    score_kind (str): What each hit's ``score`` represents \u2014 so the UI can label it correctly.\n    cost (SearchCostModel | None): The run's priced paid-LLM spend (rewrite/HyDE), or None when\n        the run made no paid call (a stock lexical/dense search with no query-side LLM).\n    debug_info (dict | None): Non-fatal diagnostics about how the search ran. None when there\n        is nothing to report.\n    hints (list[SearchHint]): Filter hints \u2014 a value no document stores, or the likely culprit\n        of a filtered zero-hit search. Empty otherwise."
+                "description": "The result of a hybrid search \u2014 the echoed query and its ranked hits.\n\nAttributes:\n    query (str): The query that was searched (echoed for the client).\n    hits (list[SearchHitModel]): The hydrated hits, best first.\n    score_kind (str): What each hit's ``score`` represents \u2014 so the UI can label it correctly.\n    cost (SearchCostModel | None): The run's priced paid-LLM spend (rewrite/HyDE), or None when\n        the run made no paid call (a stock lexical/dense search with no query-side LLM).\n    debug_info (dict | None): Non-fatal diagnostics about how the search ran. None when there\n        is nothing to report.\n    hints (list[SearchHint]): Actionable hints \u2014 unmatched filter values, the culprit of a\n        filtered zero-hit search, an over-strict min_score, a stopword-only lexical target.\n        Empty otherwise."
             },
             "SearchTargetGuide": {
                 "properties": {
@@ -14103,6 +14205,21 @@
                         "type": "boolean",
                         "title": "Needs Reindex",
                         "description": "True when a config change requires reindexing."
+                    },
+                    "missing_vectors": {
+                        "anyOf": [
+                            {
+                                "items": {
+                                    "type": "string"
+                                },
+                                "type": "array"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Missing Vectors",
+                        "description": "Named Qdrant vectors (meta_<slug>_dense / meta_<slug>_bm25) the schema's semantic/lexical fields need but the vector store does not declare \u2014 those fields are not searchable until the collection's index is rebuilt (a reingest cannot add them). Computed on the single-collection read and the PATCH response ([] = aligned or never ingested); null on the fleet list, which never reads the vector store."
                     },
                     "created_at": {
                         "anyOf": [

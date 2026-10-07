@@ -31,6 +31,7 @@ from ..models.collections import (
 from ..models.corpus import DocumentFilter
 from ..models.estimate import CollectionEstimateRequest, CostEstimate
 from ..models.health import CollectionHealthResponse
+from ..models.index_rebuild import RebuildIndexAccepted
 from ..models.preview import PreviewJobAccepted, PreviewJobResult, PreviewResponse
 from ..models.storage import CollectionStorageResponse
 from ..models.trace import TracePurgeResult
@@ -151,6 +152,18 @@ class _CollectionsSpecs(_ResourceMixin):
             RequestSpec: A POST on the collection's ``/trace-payloads/purge`` sub-resource.
         """
         return RequestSpec("POST", f"{self._COLLECTIONS_PATH}/{collection_id}/trace-payloads/purge")
+
+    def _rebuild_index_spec(self, collection_id: str) -> RequestSpec:
+        """
+        Build the spec for rebuilding a collection's vector index from its current schema.
+
+        Args:
+            collection_id (str): The collection whose index is rebuilt.
+
+        Returns:
+            RequestSpec: A POST on the collection's ``/rebuild-index`` route (no body).
+        """
+        return RequestSpec("POST", f"{self._COLLECTIONS_PATH}/{collection_id}/rebuild-index")
 
     def _reingest_spec(self, collection_id: str, request: BulkReingestRequest) -> RequestSpec:
         """
@@ -370,6 +383,26 @@ class AsyncCollections(AsyncResource, _CollectionsSpecs):
         """
         return await self._transport.request(
             self._purge_trace_payloads_spec(collection_id), TracePurgeResult
+        )
+
+    async def rebuild_index(self, collection_id: str) -> RebuildIndexAccepted:
+        """
+        Rebuild the collection's vector index from its current schema — no content re-embed.
+
+        Declares the named vectors of fields made semantic/lexical after first ingest, then refills
+        the metadata vectors from Postgres (the dense metadata values go through the embed provider).
+        Uploads and reingests are refused (409 ``rebuild_index_active``) while it runs. Poll
+        ``jobs.get(job_id)`` — the job's ``document_id`` is None.
+
+        Args:
+            collection_id (str): The collection whose index is rebuilt.
+
+        Returns:
+            RebuildIndexAccepted: The queued job (202). 409 ``rebuild_index_active`` /
+                ``collection_busy`` surface as a ConflictError.
+        """
+        return await self._transport.request(
+            self._rebuild_index_spec(collection_id), RebuildIndexAccepted
         )
 
     async def reingest(
@@ -636,6 +669,20 @@ class SyncCollections(SyncResource, _CollectionsSpecs):
         """
         return self._transport.request(
             self._purge_trace_payloads_spec(collection_id), TracePurgeResult
+        )
+
+    def rebuild_index(self, collection_id: str) -> RebuildIndexAccepted:
+        """
+        Rebuild the collection's vector index from its current schema — no content re-embed.
+
+        Args:
+            collection_id (str): The collection whose index is rebuilt.
+
+        Returns:
+            RebuildIndexAccepted: The queued job (202); poll ``jobs.get(job_id)`` (document_id None).
+        """
+        return self._transport.request(
+            self._rebuild_index_spec(collection_id), RebuildIndexAccepted
         )
 
     def reingest(

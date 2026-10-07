@@ -26,7 +26,7 @@ def _postgres_yielding(session: MagicMock) -> MagicMock:
     return postgres
 
 
-def _stub_common(monkeypatch, *, rows, chunk_ids, embedder) -> uuid.UUID:
+def _stub_common(monkeypatch, *, rows, chunk_ids, embedder, bm25=frozenset()) -> uuid.UUID:
     """Wire the shared read path (document, collection, rows, chunk ids, embedder, declared names)."""
     document_id = uuid.uuid4()
     collection_id = uuid.uuid4()
@@ -47,6 +47,12 @@ def _stub_common(monkeypatch, *, rows, chunk_ids, embedder) -> uuid.UUID:
         mvf_module.MetaVectorSyncHelpers,
         "rebuild_embedder",
         lambda embed_node: (embedder, MagicMock()),
+    )
+    # Default = a LEGACY collection (no IDF-declared meta vector) → the embedder's sparse axis.
+    monkeypatch.setattr(
+        mvf_module.QdrantLexicalEncodingApi,
+        "bm25_meta_vectors",
+        AsyncMock(return_value=set(bm25)),
     )
     return document_id
 
@@ -246,4 +252,73 @@ async def test_backfill_passes_the_schema_searchable_document_fields(monkeypatch
 
     await facade.backfill_collection_meta_vectors(uuid.uuid4())
 
-    assert facade.sync_document_meta_vectors.await_args.kwargs == {"clear_absent": ["a"]}
+    assert facade.sync_document_meta_vectors.await_args.kwargs == {
+        "clear_absent": ["a"],
+        "bm25_only": False,
+    }
+
+
+async def test_sync_document_bm25_vectors_use_local_encoder_not_embedder(monkeypatch) -> None:
+    """A BM25-declared (modifier=IDF) meta vector is encoded locally — the embedder's sparse axis
+    is never called for it, while a legacy vector on the same document still is (no mixing)."""
+    from shared_libs.pipelines.nodes.embed.lexical import MetaLexicalEncoder  # noqa: PLC0415
+    from shared_libs.public_models.embed import SparseVector  # noqa: PLC0415
+
+    bm25_name = VectorNames.field_sparse("nom")
+    legacy_name = VectorNames.field_sparse("old")
+    embedder = MagicMock()
+    embedder._embed_sparse = AsyncMock(return_value=[SparseVector(indices=[7], values=[0.5])])
+    document_id = _stub_common(
+        monkeypatch,
+        rows=[("nom", "Passation des marchés", False, True), ("old", "legacy", False, True)],
+        chunk_ids=[uuid.uuid4()],
+        embedder=embedder,
+        bm25={bm25_name},
+    )
+    monkeypatch.setattr(
+        mvf_module.QdrantCollectionApi,
+        "declared_vectors",
+        AsyncMock(return_value=(set(), {bm25_name, legacy_name})),
+    )
+    update_vectors = AsyncMock()
+    monkeypatch.setattr(mvf_module.QdrantIndexApi, "update_vectors", update_vectors)
+
+    facade = MetaVectorSyncFacade(_postgres_yielding(MagicMock()), MagicMock())
+    assert await facade.sync_document_meta_vectors(document_id) == 1
+
+    embedder._embed_sparse.assert_awaited_once_with(["legacy"])
+    point = update_vectors.await_args.args[2][0]
+    expected = MetaLexicalEncoder.encode_value("Passation des marchés")
+    assert point.sparse[bm25_name].indices == expected.indices
+    assert point.sparse[legacy_name].indices == [7]
+
+
+async def test_sync_document_bm25_only_skips_embedder_and_dense(monkeypatch) -> None:
+    """The import re-encode pass (bm25_only) never rebuilds the embedder: only the BM25-declared
+    lexical vectors are written (locally encoded); dense and legacy sparse vectors stay untouched."""
+    bm25_name = VectorNames.field_sparse("nom")
+    legacy_name = VectorNames.field_sparse("old")
+    dense_name = VectorNames.field_dense("nom")
+    document_id = _stub_common(
+        monkeypatch,
+        rows=[("nom", "Passation des marchés", True, True), ("old", "legacy", False, True)],
+        chunk_ids=[uuid.uuid4()],
+        embedder=MagicMock(),
+        bm25={bm25_name},
+    )
+    rebuild = MagicMock(side_effect=AssertionError("embedder must not be rebuilt"))
+    monkeypatch.setattr(mvf_module.MetaVectorSyncHelpers, "rebuild_embedder", rebuild)
+    monkeypatch.setattr(
+        mvf_module.QdrantCollectionApi,
+        "declared_vectors",
+        AsyncMock(return_value=({dense_name}, {bm25_name, legacy_name})),
+    )
+    update_vectors = AsyncMock()
+    monkeypatch.setattr(mvf_module.QdrantIndexApi, "update_vectors", update_vectors)
+
+    facade = MetaVectorSyncFacade(_postgres_yielding(MagicMock()), MagicMock())
+    assert await facade.sync_document_meta_vectors(document_id, bm25_only=True) == 1
+
+    point = update_vectors.await_args.args[2][0]
+    assert point.dense == {}
+    assert set(point.sparse) == {bm25_name}

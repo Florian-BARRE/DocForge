@@ -374,6 +374,19 @@ def register(mcp: FastMCP, sdk: AsyncClient) -> None:
         return accepted.model_dump(mode="json")
 
     @mcp.tool()
+    async def rebuild_collection_index(collection_id: str) -> Any:
+        """
+        Rebuild a collection's vector index from its CURRENT schema, without re-embedding content.
+        Use it when search returns a 422 naming a field with no indexed semantic/lexical vector, or
+        reingest_collection returns 409 `rebuild_index_required` (a field was made semantic/lexical
+        after first ingest — Qdrant cannot add a named vector to a live store). Returns `job_id`
+        (202): follow it with wait_for_job — the job's `document_id` is null. Uploads and reingests
+        get 409 `rebuild_index_active` while it runs; 409 `collection_busy` when other jobs are live.
+        """
+        accepted = await sdk.collections.rebuild_index(collection_id)
+        return accepted.model_dump(mode="json")
+
+    @mcp.tool()
     async def purge_collection_trace_payloads(collection_id: str) -> Any:
         """
         Reclaim every stored full execution-trace payload of a collection's jobs — the heavy

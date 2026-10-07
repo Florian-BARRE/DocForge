@@ -3,6 +3,11 @@
 # metadata schema. Always: one dense (content_dense) + one sparse (content_bm25) for the chunk body.
 # Then one dense vector per SEMANTIC field and one sparse vector per LEXICAL field. This is what
 # `ensure_collection` builds the Qdrant collection from, so the vector space mirrors the contract.
+# The per-field lexical vectors carry ``modifier=IDF``: they hold the local BM25 term frequencies
+# (MetaLexicalEncoder, encoding ``bm25_v1``) and Qdrant supplies the IDF. That modifier is ALSO the
+# encoding marker — a collection created before it holds BGE-M3 sparse weights in those vectors, and
+# every writer/reader tests ``is_bm25_meta`` on the LIVE declared params so index and query never mix
+# encoders. A collection switches only by being recreated from this schema (rebuild_index).
 
 # ====== Standard Library Imports ======
 from collections.abc import Sequence
@@ -51,13 +56,43 @@ class QdrantVectorSchema:
 
     @staticmethod
     def sparse_config(lexical_fields: Sequence[str]) -> dict[str, models.SparseVectorParams]:
-        """Named sparse (BM25) vectors: the chunk body and one per lexical metadata field."""
+        """
+        Named sparse vectors: the chunk body and one per lexical metadata field.
+
+        The body vector (``content_bm25``) holds the embedder's learned sparse weights as-is (no
+        modifier). Each metadata vector holds local BM25 term frequencies, so it is declared with
+        ``modifier=IDF`` — Qdrant computes the inverse document frequency over the collection.
+        """
         config = {
             VectorNames.CONTENT_SPARSE: models.SparseVectorParams(),
         }
         for field_name in lexical_fields:
-            config[VectorNames.field_sparse(field_name)] = models.SparseVectorParams()
+            config[VectorNames.field_sparse(field_name)] = models.SparseVectorParams(
+                modifier=models.Modifier.IDF
+            )
         return config
+
+    @staticmethod
+    def is_bm25_meta(name: str, params: models.SparseVectorParams | None) -> bool:
+        """
+        Whether a DECLARED sparse vector is a metadata vector in the local BM25 encoding.
+
+        The single encoding test: a ``meta_<slug>_bm25`` vector declared with ``modifier=IDF`` was
+        created by the current schema and holds MetaLexicalEncoder output; one without it predates
+        the switch and holds the embedder's (BGE-M3) sparse weights until the collection is rebuilt.
+
+        Args:
+            name (str): The declared sparse vector name.
+            params (SparseVectorParams | None): Its declared params, as Qdrant reports them.
+
+        Returns:
+            bool: True for a BM25-encoded metadata vector.
+        """
+        return (
+            VectorNames.is_field_sparse(name)
+            and params is not None
+            and params.modifier == models.Modifier.IDF
+        )
 
 
 __all__ = ["QdrantVectorSchema"]

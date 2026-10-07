@@ -22,6 +22,7 @@ from .runner import (
 from .collection_specs import SearchCollectionSpecs
 from .enum_filter_canonicalizer import EnumFilterCanonicalizer
 from .filter_validator import SearchFilterValidator
+from .probe import SearchRetrievalProbe
 from .score_kind import ScoreKindClassifier
 from .target_validator import SearchTargetValidator
 
@@ -30,6 +31,7 @@ from .filter_hint import FilterHint
 from .filter_resolution import FilterResolution
 from .filter_resolver import SearchFilterResolver
 from .min_score_hint import MinScoreHint
+from .termless_query_hint import TermlessQueryHint
 from .zero_hit_hints import ZeroHitHintBuilder
 
 # ---------------------- Response shaping (projection + grouping) ---------------------- #
@@ -62,11 +64,13 @@ __all__ = [
     "EnumFilterCanonicalizer",
     "SearchFilterValidator",
     "ScoreKindClassifier",
+    "SearchRetrievalProbe",
     "SearchTargetValidator",
     "FilterHint",
     "FilterResolution",
     "SearchFilterResolver",
     "MinScoreHint",
+    "TermlessQueryHint",
     "ZeroHitHintBuilder",
     "HitProjection",
     "DocumentHitGrouper",

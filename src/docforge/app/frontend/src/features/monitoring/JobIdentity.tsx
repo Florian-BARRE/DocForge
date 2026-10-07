@@ -28,7 +28,9 @@ export function JobIdentity({ job }: { job: JobStatus }) {
         {job.collection_name && <span style={{ color: theme.color.dim }}>{job.collection_name}</span>}
         {job.current_stage && <span>stage {job.current_stage}</span>}
         <span style={{ fontFamily: theme.font.mono }}>job {job.job_id.slice(0, 8)}</span>
-        <span style={{ fontFamily: theme.font.mono }}>doc {job.document_id.slice(0, 8)}</span>
+        {job.document_id !== null && (
+          <span style={{ fontFamily: theme.font.mono }}>doc {job.document_id.slice(0, 8)}</span>
+        )}
       </span>
     </div>
   );

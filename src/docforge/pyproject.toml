@@ -47,6 +47,8 @@ dependencies = [
     "msgpack>=1.1.0,<2",
     # Per-worker resource sampling (CPU/memory) written on each heartbeat tick
     "psutil>=7.2.2,<8",
+    # Snowball stemming for the local metadata BM25 encoder (pure Python, no model download)
+    "snowballstemmer>=3.0,<4",
 ]
 
 # Torch is a transitive dep of docling (worker group). Declared here as a DIRECT dep split across

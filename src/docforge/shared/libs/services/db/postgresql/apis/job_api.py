@@ -14,7 +14,7 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 
 # ====== Third-Party Library Imports ======
-from sqlalchemy import String, cast, delete, func, or_, select, update
+from sqlalchemy import String, case, cast, delete, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import defer
@@ -28,6 +28,7 @@ from ..tables import (
     Document,
     DocumentMetadata,
     Job,
+    JobKind,
     JobStageEvent,
     JobStatus,
     MetadataField,
@@ -1354,6 +1355,7 @@ class JobApi:
         default_job_timeout_seconds: float,
         grace_seconds: float,
         heartbeat_stale_seconds: float,
+        rebuild_job_timeout_seconds: float | None = None,
     ) -> list[tuple[Job, float]]:
         """
         Return RUNNING jobs on a LIVE worker whose total age blew past their own job timeout — the watchdog.
@@ -1388,6 +1390,10 @@ class JobApi:
                 reaped, so a run the engine is about to cancel at its job timeout is never falsely caught.
             heartbeat_stale_seconds (float): The SAME cutoff ``list_stale`` uses — a heartbeat within
                 it is FRESH (a live worker), which is exactly what this path targets.
+            rebuild_job_timeout_seconds (float | None): The budget of a collection-wide
+                ``rebuild_index`` job, which copies the WHOLE collection and has no per-document
+                timeout — reaping it at an ingest timeout would lift its guards mid-copy. None = no
+                special case.
 
         Returns:
             list[tuple[Job, float]]: Each over-job-timeout job paired with its effective job timeout in
@@ -1400,6 +1406,11 @@ class JobApi:
         effective_job_timeout = func.coalesce(
             Collection.job_timeout_seconds, default_job_timeout_seconds
         )
+        if rebuild_job_timeout_seconds is not None:
+            effective_job_timeout = case(
+                (Job.kind == JobKind.REBUILD_INDEX, rebuild_job_timeout_seconds),
+                else_=effective_job_timeout,
+            )
         result = await session.execute(
             select(Job, effective_job_timeout)
             .join(Collection, Collection.id == Job.collection_id)
@@ -1471,6 +1482,7 @@ class JobApi:
             select(func.max(Job.finished_at)).where(
                 Job.collection_id == collection_id,
                 Job.status == JobStatus.DONE,
+                Job.kind != JobKind.REBUILD_INDEX,
             )
         )
         return result.scalar_one_or_none()
@@ -1498,7 +1510,11 @@ class JobApi:
         # 2. One GROUP BY over the DONE jobs — the whole fleet's last-ingest in a single scan.
         result = await session.execute(
             select(Job.collection_id, func.max(Job.finished_at))
-            .where(Job.collection_id.in_(collection_ids), Job.status == JobStatus.DONE)
+            .where(
+                Job.collection_id.in_(collection_ids),
+                Job.status == JobStatus.DONE,
+                Job.kind != JobKind.REBUILD_INDEX,
+            )
             .group_by(Job.collection_id)
         )
         return {

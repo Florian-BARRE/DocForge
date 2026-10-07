@@ -89,6 +89,7 @@ from docforge_sdk.models.health import (
     SearchHealth,
     SearchIndex,
 )
+from docforge_sdk.models.index_rebuild import RebuildIndexAccepted
 from docforge_sdk.models.ir import (
     DocumentIRModel,
     DocumentProvenance,
@@ -333,6 +334,8 @@ MODELS: dict[str, type[BaseModel]] = {
     "TransferStatus": TransferStatus,
     # Trace payloads
     "TracePurgeResult": TracePurgeResult,
+    # Index rebuild (POST /collections/{id}/rebuild-index).
+    "RebuildIndexAccepted": RebuildIndexAccepted,
     # Collection config snippets (granular pipeline/search/schema export-import).
     "CollectionSnippet": CollectionSnippet,
     "SnippetImportResult": SnippetImportResult,

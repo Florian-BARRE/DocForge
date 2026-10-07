@@ -23,8 +23,10 @@ from shared_libs.services.db.qdrant import (
     Condition,
     Match,
     MatchAny,
+    QdrantAliasApi,
     QdrantBrowseApi,
     QdrantClient,
+    QdrantLexicalEncodingApi,
     QdrantSearchApi,
     SparseVec,
 )
@@ -83,7 +85,7 @@ class SearchFacade(LoggerClass):
         name = DatabaseHelpers.qdrant_collection_name(collection_id)
         # A collection provisions its Qdrant space lazily at first indexing — searching one that was
         # created but never ingested has no space to query yet. Empty results, not a 500.
-        if not await self._qdrant.raw.collection_exists(name):
+        if not await QdrantAliasApi.resolve_or_adopt(self._qdrant.raw, name):
             return []
         # 2. Enforce the searchability invariants, unbypassable from the router. The disabled-CHUNK
         #    guard is always a must_not on `enabled == False` (migration-free + self-healing: a legacy
@@ -104,6 +106,25 @@ class SearchFacade(LoggerClass):
             prefetch_limit=prefetch_limit,
             fusion=fusion,
         )
+
+    async def bm25_meta_vectors(self, collection_id: uuid.UUID) -> set[str]:
+        """
+        The collection's metadata sparse vectors stored in the local BM25 encoding.
+
+        The read side encodes a metadata lexical query with the encoder its vector was INDEXED with:
+        these names take the local BM25 query, any other ``meta_<slug>_bm25`` the embedder's sparse
+        query (a collection created before the switch, until rebuilt). Empty when no space exists.
+
+        Args:
+            collection_id (uuid.UUID): The collection being searched.
+
+        Returns:
+            set[str]: The BM25-encoded (``modifier=IDF``) metadata sparse vector names.
+        """
+        name = DatabaseHelpers.qdrant_collection_name(collection_id)
+        if not await QdrantAliasApi.resolve_or_adopt(self._qdrant.raw, name):
+            return set()
+        return await QdrantLexicalEncodingApi.bm25_meta_vectors(self._qdrant.raw, name)
 
     async def __guarded_filter(
         self,
@@ -210,7 +231,7 @@ class SearchFacade(LoggerClass):
         """
         # 1. A never-ingested collection has no space yet — an empty page, not a 500.
         name = DatabaseHelpers.qdrant_collection_name(collection_id)
-        if not await self._qdrant.raw.collection_exists(name):
+        if not await QdrantAliasApi.resolve_or_adopt(self._qdrant.raw, name):
             return []
         # 2. Same guarded filter as the search, then the ordered keyset page.
         musts, exclusions = await self.__guarded_filter(

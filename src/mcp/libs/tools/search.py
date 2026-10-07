@@ -125,7 +125,8 @@ def register(mcp: FastMCP, sdk: AsyncClient) -> None:
             Field(
                 ge=0,
                 description="Drop hits scoring below this (scale = score_kind; a "
-                "cross-encoder rerank score is 0..1, fusion scores are only a coarse cut).",
+                "cross-encoder rerank score is 0..1, raw_dense a cosine similarity, raw_sparse "
+                "an unbounded BM25/sparse score, fusion scores are only a coarse cut).",
             ),
         ] = None,
         rerank: Annotated[

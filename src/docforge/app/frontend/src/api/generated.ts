@@ -306,7 +306,7 @@ export interface paths {
         post?: never;
         /**
          * Delete Collection
-         * @description Delete a collection (404 when unknown).
+         * @description Delete a collection (404 when unknown; 409 ``rebuild_index_active`` while an index rebuild runs).
          */
         delete: operations["delete_collection_api_v1_collections__collection_id__delete"];
         options?: never;
@@ -716,6 +716,34 @@ export interface paths {
          *         a secret that must be re-entered after an endpoint change, 409 when concurrent config writes kept changing the pipeline under the action.
          */
         post: operations["apply_collection_stage_api_v1_collections__collection_id__pipeline_stages_apply_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/collections/{collection_id}/rebuild-index": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rebuild Collection Index
+         * @description Rebuild the collection's vector index from its current schema — no content re-embed.
+         *
+         *     Declares the named vectors of fields made semantic/lexical after first ingest, then refills the
+         *     metadata vectors from Postgres (the dense metadata VALUES go through the embed provider). Ingests
+         *     are refused (409) while it runs.
+         *
+         *     Returns:
+         *         RebuildIndexAccepted: The job to poll (202); 404 unknown collection; 409
+         *             ``rebuild_index_active`` / ``collection_busy`` / ``rebuild_unsupported_chunk_lexical``; 503 when it could not be queued.
+         */
+        post: operations["rebuild_collection_index_api_v1_collections__collection_id__rebuild_index_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1376,6 +1404,8 @@ export interface paths {
          *         ``cancel_requested=true``) until it does.
          *       * running, ``force=true`` → force-terminated NOW (job + document CANCELLED) regardless of the
          *         worker — the manual reaper for a wedged/infinite job (shares the cron reaper's transition).
+         *         EXCEPT a running ``rebuild_index`` on a live worker → 409 ``rebuild_force_cancel_refused``
+         *         (forcing would lift the ingest lock mid-copy); its cooperative cancel aborts it pre-swap.
          *       * already terminal (done / failed / cancelled) → 409 (nothing to cancel).
          *
          *     Returns:
@@ -3352,6 +3382,11 @@ export interface components {
              */
             max_file_size_bytes: number;
             /**
+             * Missing Vectors
+             * @description Named Qdrant vectors (meta_<slug>_dense / meta_<slug>_bm25) the schema's semantic/lexical fields need but the vector store does not declare — those fields are not searchable until the collection's index is rebuilt (a reingest cannot add them). Computed on the single-collection read and the PATCH response ([] = aligned or never ingested); null on the fleet list, which never reads the vector store.
+             */
+            missing_vectors?: string[] | null;
+            /**
              * Name
              * @description Unique human name.
              */
@@ -3448,6 +3483,11 @@ export interface components {
              * @description Upload size ceiling, bytes.
              */
             max_file_size_bytes: number;
+            /**
+             * Missing Vectors
+             * @description Named Qdrant vectors (meta_<slug>_dense / meta_<slug>_bm25) the schema's semantic/lexical fields need but the vector store does not declare — those fields are not searchable until the collection's index is rebuilt (a reingest cannot add them). Computed on the single-collection read and the PATCH response ([] = aligned or never ingested); null on the fleet list, which never reads the vector store.
+             */
+            missing_vectors?: string[] | null;
             /**
              * Name
              * @description Unique human name.
@@ -5589,10 +5629,10 @@ export interface components {
          *
          *     Attributes:
          *         job_id (str): The job row's UUID.
-         *         document_id (str): The document being ingested.
+         *         document_id (str | None): The document being ingested (None for a rebuild_index job).
          *         collection_id (str): Its collection.
          *         status (str): queued / running / done / failed.
-         *         kind (str): ingest (full pipeline run) or metadata_sync (per-document metadata re-embed).
+         *         kind (str): ingest, metadata_sync (per-document metadata re-embed) or rebuild_index.
          *         progress (int): 0–100 (completed pipeline nodes over total).
          *         current_stage (str | None): The node currently (or last) executed.
          *         error (str | None): The failure, verbatim — only set when status is failed.
@@ -5655,9 +5695,9 @@ export interface components {
             document_filename?: string | null;
             /**
              * Document Id
-             * @description The document being ingested.
+             * @description The document being ingested; null for a collection-level job (rebuild_index).
              */
-            document_id: string;
+            document_id: string | null;
             /**
              * Document Title
              * @description The document's metagen-generated title, joined at read — a nicer display label than the filename when present (None if none was generated or the document is gone; the UI falls back to document_filename).
@@ -5715,7 +5755,7 @@ export interface components {
             job_id: string;
             /**
              * Kind
-             * @description The kind of work this job tracks: 'ingest' (a full document pipeline run) or 'metadata_sync' (a lightweight per-document metadata re-embed after an in-place value edit). Lets the UI/Activity render a side-job distinctly from a full ingestion.
+             * @description The kind of work this job tracks: 'ingest' (a full document pipeline run) or 'metadata_sync' (a lightweight per-document metadata re-embed after an in-place value edit) or 'rebuild_index' (a collection-level vector-store rebuild — document_id is null). Lets the UI/Activity render a side-job distinctly from a full ingestion.
              */
             kind: string;
             /**
@@ -6923,6 +6963,26 @@ export interface components {
             } | null;
         };
         /**
+         * RebuildIndexAccepted
+         * @description A queued index rebuild — poll the job.
+         *
+         *     Attributes:
+         *         collection_id (str): The collection being rebuilt.
+         *         job_id (str): The tracked ``rebuild_index`` job (GET /jobs/{job_id}).
+         */
+        RebuildIndexAccepted: {
+            /**
+             * Collection Id
+             * @description The collection whose index is being rebuilt.
+             */
+            collection_id: string;
+            /**
+             * Job Id
+             * @description The tracked rebuild_index job — poll GET /jobs/{job_id}.
+             */
+            job_id: string;
+        };
+        /**
          * ReingestJobHandle
          * @description One enqueued re-ingestion — the client polls the job for status/progress.
          *
@@ -7264,14 +7324,15 @@ export interface components {
         };
         /**
          * SearchHint
-         * @description An actionable explanation about one filter, attached to a (200) search response.
+         * @description An actionable explanation attached to a (200) search response.
          *
          *     Emitted when a filter value matches no stored value of its field (even ignoring case) — with the
-         *     closest stored values to retry with — or when a filtered search returned no hits (naming the
-         *     likely culprit filter).
+         *     closest stored values to retry with — when a filtered search returned no hits (naming the likely
+         *     culprit filter), when ``min_score`` dropped every hit (``field="min_score"``), or when a lexical
+         *     metadata target got no searchable term from the query (only stopwords).
          *
          *     Attributes:
-         *         field (str): The filtered metadata field the hint is about.
+         *         field (str): What the hint is about: a filtered or targeted metadata field, or ``min_score``.
          *         value (Any): The filter value as sent (one list item, or the whole filter value).
          *         message (str): English, human/agent-readable explanation.
          *         suggestions (list[str]): Closest stored values to retry with (may be empty).
@@ -7279,7 +7340,7 @@ export interface components {
         SearchHint: {
             /**
              * Field
-             * @description The filtered metadata field the hint is about.
+             * @description What the hint is about: a filtered or targeted metadata field, or 'min_score'.
              */
             field: string;
             /**
@@ -7501,7 +7562,7 @@ export interface components {
             max_per_document: number;
             /**
              * Min Score
-             * @description Drop hits whose final score is below this threshold, applied AFTER the final ranking (and before group_by). The scale is the response's score_kind: 'cross_encoder_rerank' is a [0, 1] relevance score (a meaningful absolute cut, e.g. 0.3); 'rrf_fusion'/'dbsf_fusion' are rank-based / normalised fusion aggregates that can exceed 1.0 and are NOT comparable across queries — a threshold on them is a coarse filter only. Fewer than `limit` hits come back when hits fall below it. None → no threshold.
+             * @description Drop hits whose final score is below this threshold, applied AFTER the final ranking (and before group_by). The scale is the response's score_kind: 'cross_encoder_rerank' is a [0, 1] relevance score (a meaningful absolute cut, e.g. 0.3); 'rrf_fusion'/'dbsf_fusion' are rank-based / normalised fusion aggregates that can exceed 1.0 and are NOT comparable across queries — a threshold on them is a coarse filter only; 'raw_dense' is a cosine similarity and 'raw_sparse' an unbounded sparse/BM25 score. Fewer than `limit` hits come back when hits fall below it. None → no threshold.
              */
             min_score?: number | null;
             /**
@@ -7537,8 +7598,9 @@ export interface components {
          *             the run made no paid call (a stock lexical/dense search with no query-side LLM).
          *         debug_info (dict | None): Non-fatal diagnostics about how the search ran. None when there
          *             is nothing to report.
-         *         hints (list[SearchHint]): Filter hints — a value no document stores, or the likely culprit
-         *             of a filtered zero-hit search. Empty otherwise.
+         *         hints (list[SearchHint]): Actionable hints — unmatched filter values, the culprit of a
+         *             filtered zero-hit search, an over-strict min_score, a stopword-only lexical target.
+         *             Empty otherwise.
          */
         SearchResponse: {
             /** @description The run's priced search-time LLM spend (query rewrite / HyDE), or null when no paid call was made. */
@@ -7552,7 +7614,7 @@ export interface components {
             } | null;
             /**
              * Hints
-             * @description Filter hints: a filter value that matches no stored value (even ignoring case) with the closest stored values, or the likely culprit filter of a filtered search that returned no hits. Empty when there is nothing to report.
+             * @description Actionable hints: a filter value that matches no stored value (even ignoring case) with the closest stored values, the likely culprit filter of a filtered search that returned no hits, a min_score that dropped every hit, or a lexical metadata target the query gave no searchable term to. Empty when there is nothing to report.
              */
             hints?: components["schemas"]["SearchHint"][];
             /**
@@ -7567,7 +7629,7 @@ export interface components {
             query: string;
             /**
              * Score Kind
-             * @description What every hit's ``score`` represents, so the UI labels it honestly: 'rrf_fusion' (Reciprocal Rank Fusion of the dense+sparse branches — the default; rank-based, not a similarity), 'dbsf_fusion' (Distribution-Based Score Fusion), or 'cross_encoder_rerank' (a cross-encoder relevance score, when reranking is enabled). Fusion scores are only comparable within one response; a round 1.0000 on a tiny/single-doc corpus is normal.
+             * @description What every hit's ``score`` represents, so the UI labels it honestly: 'rrf_fusion' (Reciprocal Rank Fusion of the dense+sparse branches — the default; rank-based, not a similarity), 'dbsf_fusion' (Distribution-Based Score Fusion), or 'cross_encoder_rerank' (a cross-encoder relevance score, when reranking is enabled), 'raw_dense' (the search queried ONE dense vector — no fusion ran — so the score is its cosine similarity) or 'raw_sparse' (ONE sparse vector — its raw sparse dot / BM25 score, unbounded). Fusion scores are only comparable within one response; a round 1.0000 on a tiny/single-doc corpus is normal.
              * @default rrf_fusion
              */
             score_kind: string;
@@ -8583,6 +8645,11 @@ export interface components {
              * @description Upload size ceiling, bytes.
              */
             max_file_size_bytes: number;
+            /**
+             * Missing Vectors
+             * @description Named Qdrant vectors (meta_<slug>_dense / meta_<slug>_bm25) the schema's semantic/lexical fields need but the vector store does not declare — those fields are not searchable until the collection's index is rebuilt (a reingest cannot add them). Computed on the single-collection read and the PATCH response ([] = aligned or never ingested); null on the fleet list, which never reads the vector store.
+             */
+            missing_vectors?: string[] | null;
             /**
              * Name
              * @description Unique human name.
@@ -9873,6 +9940,37 @@ export interface operations {
             };
         };
     };
+    rebuild_collection_index_api_v1_collections__collection_id__rebuild_index_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                collection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RebuildIndexAccepted"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     reingest_collection_api_v1_collections__collection_id__reingest_post: {
         parameters: {
             query?: never;
@@ -10670,7 +10768,7 @@ export interface operations {
     cancel_job_api_v1_jobs__job_id__cancel_post: {
         parameters: {
             query?: {
-                /** @description Immediately CANCEL a running/wedged job regardless of worker state (the manual force-fail) instead of asking it to stop cooperatively at its next stage boundary. */
+                /** @description Immediately CANCEL a running/wedged job regardless of worker state (the manual force-fail) instead of asking it to stop cooperatively at its next stage boundary. Refused (409) for a running rebuild_index on a live worker. */
                 force?: boolean;
             };
             header?: never;

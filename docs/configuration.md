@@ -162,6 +162,8 @@ Backs the public `GET /capabilities` endpoint (outside `/api/v1`, unauthenticate
 |---|---|---|
 | `WORKER_CONCURRENCY` | `2` | Concurrent ingestion jobs. |
 | `WORKER_JOB_TIMEOUT_SECONDS` | `1800.0` | Global default per-run engine budget (seconds). Must be `<= WORKER_JOB_TIMEOUT_MAX_SECONDS` or the worker refuses to boot. |
+| `WORKER_REBUILD_INDEX_BATCH_SIZE` | `128` | Points per Qdrant scroll/upsert batch when a `rebuild_index` job copies a collection's store into the freshly created one. |
+| `WORKER_REBUILD_INDEX_WAIT_SECONDS` | `300.0` | How long a `rebuild_index` job waits for the collection's other live jobs (active when it started) to finish before it fails without touching the index. A running rebuild's own budget is `WORKER_JOB_TIMEOUT_MAX_SECONDS` (arq's hard per-job ceiling), not the ingest `WORKER_JOB_TIMEOUT_SECONDS`: the job-level watchdog reaps it only past that ceiling + `WORKER_OVER_JOB_TIMEOUT_GRACE_SECONDS`. |
 | `WORKER_JOB_TIMEOUT_MAX_SECONDS` | `7200.0` | Hard ceiling any single run may request: a per-collection `job_timeout_seconds` is honoured up to this and **rejected** (fail-fast) above it. arq's outer cap derives from this value. |
 | `WORKER_JOB_TIMEOUT_GRACE_SECONDS` | `60.0` | Grace added on top of the MAX job timeout to derive arq's outer per-job cap, so the engine's job timeout always fires first and arq only kills a genuinely wedged run. |
 | `WORKER_HEAVY_THREADS` | `4` | Bounded thread pool for the heavy CPU stages (docling/ocr/render/chunk) dispatched via `asyncio.to_thread`. |

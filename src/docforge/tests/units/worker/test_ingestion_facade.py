@@ -420,7 +420,7 @@ async def test_index_derives_vector_space_from_schema_and_marks_chunks_indexed(m
         _field("body", FieldType.TEXT, lexical=True),
     ]
     monkeypatch.setattr(facade_module.CollectionApi, "get_schema", AsyncMock(return_value=schema))
-    ensure = AsyncMock()
+    ensure = AsyncMock(return_value=set())
     delete_by_document = AsyncMock()
     upsert = AsyncMock()
     mark_indexed = AsyncMock()
@@ -466,7 +466,7 @@ async def test_index_deletes_document_points_before_upsert_so_reingest_never_orp
     collection_id = uuid.uuid4()
     document_id = uuid.uuid4()
     monkeypatch.setattr(facade_module.CollectionApi, "get_schema", AsyncMock(return_value=[]))
-    monkeypatch.setattr(facade_module.QdrantCollectionApi, "ensure", AsyncMock())
+    monkeypatch.setattr(facade_module.QdrantCollectionApi, "ensure", AsyncMock(return_value=set()))
     monkeypatch.setattr(facade_module.ChunkApi, "mark_indexed", AsyncMock())
 
     calls: list[str] = []
@@ -481,6 +481,65 @@ async def test_index_deletes_document_points_before_upsert_so_reingest_never_orp
 
     # The stale-point purge always precedes the upsert — a re-ingest REPLACES, never accumulates.
     assert calls == ["delete", "upsert"]
+
+
+async def test_index_fails_clearly_on_an_undeclared_chunk_scope_vector(monkeypatch) -> None:
+    """A chunk-scope semantic field whose named vector the store never declared would make Qdrant
+    400 "Not existing vector name" on every ingest. The facade refuses BEFORE purging/upserting with
+    a typed error (its class name is the job's error_type) naming the field and the rebuild route."""
+    from shared_libs.services.db.facades.undeclared_vector_error import (  # noqa: PLC0415
+        UndeclaredVectorError,
+    )
+
+    collection_id = uuid.uuid4()
+    schema = [_field("Résumé", FieldType.TEXT, semantic=True)]
+    monkeypatch.setattr(facade_module.CollectionApi, "get_schema", AsyncMock(return_value=schema))
+    monkeypatch.setattr(facade_module.QdrantCollectionApi, "ensure", AsyncMock(return_value=set()))
+    monkeypatch.setattr(
+        facade_module.QdrantCollectionApi,
+        "declared_vectors",
+        AsyncMock(return_value=({"content_dense"}, {"content_bm25"})),
+    )
+    delete_by_document = AsyncMock()
+    upsert = AsyncMock()
+    monkeypatch.setattr(facade_module.QdrantIndexApi, "delete_by_document", delete_by_document)
+    monkeypatch.setattr(facade_module.QdrantIndexApi, "upsert", upsert)
+
+    points = [
+        QdrantPoint(
+            point_id=str(uuid.uuid4()),
+            payload={},
+            dense={"content_dense": [0.1], "meta_resume_dense": [0.2]},
+        )
+    ]
+    facade = IngestionFacade(_postgres_yielding(MagicMock()), MagicMock(), MagicMock())
+    with pytest.raises(UndeclaredVectorError) as exc:
+        await facade.index(collection_id, uuid.uuid4(), dense_dim=1, points=points)
+
+    assert type(exc.value).__name__ == "UndeclaredVectorError"
+    assert str(exc.value) == (
+        f"field 'Résumé' has no indexed vector in this collection — run rebuild_index "
+        f"(POST /api/v1/collections/{collection_id}/rebuild-index)"
+    )
+    delete_by_document.assert_not_awaited()
+    upsert.assert_not_awaited()
+
+
+async def test_index_skips_the_store_read_for_content_only_points(monkeypatch) -> None:
+    """No meta_* vector carried → no declared-vectors round-trip (zero cost on the common path)."""
+    monkeypatch.setattr(facade_module.CollectionApi, "get_schema", AsyncMock(return_value=[]))
+    monkeypatch.setattr(facade_module.QdrantCollectionApi, "ensure", AsyncMock(return_value=set()))
+    declared = AsyncMock()
+    monkeypatch.setattr(facade_module.QdrantCollectionApi, "declared_vectors", declared)
+    monkeypatch.setattr(facade_module.QdrantIndexApi, "delete_by_document", AsyncMock())
+    monkeypatch.setattr(facade_module.QdrantIndexApi, "upsert", AsyncMock())
+    monkeypatch.setattr(facade_module.ChunkApi, "mark_indexed", AsyncMock())
+
+    points = [QdrantPoint(point_id=str(uuid.uuid4()), payload={}, dense={"content_dense": [0.1]})]
+    facade = IngestionFacade(_postgres_yielding(MagicMock()), MagicMock(), MagicMock())
+    await facade.index(uuid.uuid4(), uuid.uuid4(), dense_dim=1, points=points)
+
+    declared.assert_not_awaited()
 
 
 # --------------------------------------------------------------------------- #

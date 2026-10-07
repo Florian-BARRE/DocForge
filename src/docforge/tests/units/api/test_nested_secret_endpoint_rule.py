@@ -276,6 +276,7 @@ def test_snippet_export_masks_nested_keys(client, fastapi_app, monkeypatch) -> N
     row = SimpleNamespace(id=uuid.uuid4(), pipeline=_keyed_targets_blob(), search={})
     monkeypatch.setattr(CONTEXT.database.collections, "get", AsyncMock(return_value=row))
     monkeypatch.setattr(CONTEXT.database.collections, "get_schema", AsyncMock(return_value=[]))
+    monkeypatch.setattr(CONTEXT.database.index_state, "missing", AsyncMock(return_value=[]))
     response = client.get(f"/api/v1/collections/{row.id}/snippets/pipeline")
     assert response.status_code == 200, response.text
     assert TARGET_KEY not in response.text and NODE_KEY not in response.text

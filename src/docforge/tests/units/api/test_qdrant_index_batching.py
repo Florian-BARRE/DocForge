@@ -5,6 +5,7 @@ breaking the sync; set_payload chunks its per-point operations by count. A fake 
 batches — no Qdrant."""
 
 import uuid
+from types import SimpleNamespace
 from typing import Any
 
 from shared_libs.services.db.qdrant.apis import QdrantIndexApi
@@ -101,6 +102,9 @@ class _FakeDeleteClient:
 
     async def collection_exists(self, name: str) -> bool:
         return self._exists
+
+    async def get_collections(self) -> Any:
+        return SimpleNamespace(collections=[])
 
     async def delete_payload(self, *, collection_name: str, keys: list, points: Any) -> None:
         self.payload_deletes.append({"keys": keys, "points": points})

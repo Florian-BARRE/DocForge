@@ -115,14 +115,23 @@ class CollectionHelpers:
         return redact_blob_secrets(blob) if has_blob_secrets(blob) else blob
 
     @classmethod
-    def to_model(cls, collection: Collection, fields: list[MetadataField]) -> CollectionModel:
+    def to_model(
+        cls,
+        collection: Collection,
+        fields: list[MetadataField],
+        missing_vectors: list[str] | None = None,
+    ) -> CollectionModel:
         """Map the rows to the UI contract (shared by every single-collection read path).
 
         Provider secrets (api_key on every provider node of the pipeline AND search blobs) are masked
         here — the ONE serialisation boundary every read path funnels through — so a live key is never
         echoed to a client. The stored blobs keep the real keys; only this outbound copy is masked.
+        ``missing_vectors`` is the store-side gap the caller read (None = not computed).
         """
-        return CollectionModel(**cls.__base_payload(collection, fields, mask=redact_blob_secrets))
+        return CollectionModel(
+            **cls.__base_payload(collection, fields, mask=redact_blob_secrets),
+            missing_vectors=missing_vectors,
+        )
 
     @classmethod
     def to_list_item(
@@ -149,8 +158,14 @@ class CollectionHelpers:
         fields: list[MetadataField],
         schema: object | None,
         dry_run: bool,
+        missing: list[tuple[str, str]] | None = None,
     ) -> UpdateCollectionResponse:
         """Map a PATCHed (or, under dry_run, untouched) collection + its schema diff to the response.
+
+        The diff's ``reindex_required_fields`` is made accurate against the vector store: every field
+        whose named vector the store lacks (``missing``, computed over the post-PATCH schema — the
+        target schema under dry_run) is added, so a field the planner judged unchanged but whose vector
+        was never declared is still reported.
 
         Args:
             collection (Collection): The collection row to render.
@@ -158,13 +173,20 @@ class CollectionHelpers:
             schema (object | None): The resolved schema patch (carries ``diff``), None when the PATCH
                 did not touch the schema (→ an empty diff).
             dry_run (bool): Whether nothing was written.
+            missing (list[tuple[str, str]] | None): The ``(field, vector)`` pairs the store lacks.
 
         Returns:
-            UpdateCollectionResponse: The contract + ``schema_diff`` + ``dry_run``.
+            UpdateCollectionResponse: The contract + ``schema_diff`` + ``dry_run`` + ``missing_vectors``.
         """
-        diff = getattr(schema, "diff", None) or SchemaDiff()
+        # 1. Union the planner's reindex verdict with the store truth (never under-reports).
+        diff = (getattr(schema, "diff", None) or SchemaDiff()).model_copy(deep=True)
+        gaps = missing or []
+        diff.reindex_required_fields = sorted(
+            set(diff.reindex_required_fields) | {field for field, _ in gaps}
+        )
         return UpdateCollectionResponse(
             **cls.__base_payload(collection, fields, mask=redact_blob_secrets),
+            missing_vectors=sorted(vector for _, vector in gaps),
             schema_diff=diff,
             dry_run=dry_run,
         )
@@ -248,10 +270,12 @@ class CollectionHelpers:
                     detail=f"Field name '{spec.field_name}' is reserved — pick another name "
                     f"(reserved: {sorted(_RESERVED_FIELD_NAMES)}).",
                 )
-            # Chunk-scope lexical has no producer: the embed node writes chunk-scope SEMANTIC (dense)
-            # vectors and the meta-vector facade is document-scope only, so a chunk-scope lexical field
-            # would declare a meta_<slug>_bm25 vector nothing ever fills — a silent-empty search. Reject
-            # it up front rather than accept a config that can never return results.
+            # Chunk-scope lexical has no BM25 producer: its only producer is the embed node's
+            # ``embed_lexical_fields`` path, which writes the EMBEDDER's learned sparse weights (BGE),
+            # while a new meta_<slug>_bm25 vector is declared IDF and queried with the local BM25
+            # encoder (the meta-vector facade, which IS BM25, is document-scope only). Accepting it would
+            # mix encoders under one vector, so it is refused up front; the BGE path only still serves
+            # older, pre-IDF collections.
             if spec.scope == FieldScope.CHUNK and spec.lexical:
                 raise HTTPException(
                     status_code=422,

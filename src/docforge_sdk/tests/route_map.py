@@ -48,6 +48,7 @@ ROUTES: set[tuple[str, str]] = {
     ("GET", "/api/v1/collections/{collection_id}/storage"),
     ("POST", "/api/v1/collections/{collection_id}/reingest"),
     ("POST", "/api/v1/collections/{collection_id}/trace-payloads/purge"),
+    ("POST", "/api/v1/collections/{collection_id}/rebuild-index"),
     ("POST", "/api/v1/collections/{collection_id}/estimate"),
     ("POST", "/api/v1/collections/{collection_id}/pipeline/preview"),
     ("POST", "/api/v1/collections/{collection_id}/pipeline/preview/jobs"),

@@ -78,7 +78,7 @@ export interface SearchResponse {
   hits: SearchHitModel[];
   /** Filter hints; empty/absent when every filter value matched something. */
   hints?: SearchHint[];
-  /** What every hit's `score` represents — 'rrf_fusion' (default), 'dbsf_fusion', or 'cross_encoder_rerank'. */
+  /** What every hit's `score` represents — 'rrf_fusion' (default), 'dbsf_fusion', 'cross_encoder_rerank', 'raw_dense' or 'raw_sparse'. */
   score_kind?: string;
   /** The run's priced paid-LLM spend, or absent/null when the run made no paid call. */
   cost?: SearchCostModel | null;

@@ -68,7 +68,16 @@ def _install_recording_context(monkeypatch, fastapi_app, stored_search: dict) ->
             return_value=CollectionUpdateResult(schema_applied=False, schema_reindex_required=False)
         ),
     )
-    monkeypatch.setattr(CONTEXT, "database", SimpleNamespace(collections=collections))
+    monkeypatch.setattr(
+        CONTEXT,
+        "database",
+        SimpleNamespace(
+            collections=collections,
+            index_state=SimpleNamespace(
+                missing=AsyncMock(return_value=[]), missing_for=AsyncMock(return_value=[])
+            ),
+        ),
+    )
     return SimpleNamespace(collections=collections, collection=collection)
 
 

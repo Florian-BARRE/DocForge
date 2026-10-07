@@ -34,6 +34,8 @@ class SearchRetrievalProbe:
         candidates_total (int): Summed candidate count over all retrieval calls.
         axes (list[str]): One bounded axes value (AXES_*) per call, in call order.
         filtered (list[bool]): Whether each call carried a structured filter, in call order.
+        fused (list[bool]): Whether each call fused several branches (False = one vector queried
+            directly, so its hits carry that vector's raw score), in call order.
         retrieval_order (list[str]): Candidate chunk ids in retrieval order, capped so memory stays
             bounded; used only for the rerank-displacement measure.
         dense_ids (set[str] | None): Chunk ids the dense-only probe returned — None unless the opt-in
@@ -43,19 +45,25 @@ class SearchRetrievalProbe:
         branch_probe_ok (int): How many branch probes completed (visibility for the opt-in cost).
         branch_probe_error (int): How many branch probes failed (so an always-failing probe is never
             silent — it degrades the breakdown, never the search).
+        termless_lexical_fields (list[str]): Metadata lexical targets a call could not query because
+            the query had no BM25 term (stopwords only) — the cause of an ``axes=none`` empty answer.
     """
 
     calls: int = 0
     candidates_total: int = 0
     axes: list[str] = field(default_factory=list)
     filtered: list[bool] = field(default_factory=list)
+    fused: list[bool] = field(default_factory=list)
     retrieval_order: list[str] = field(default_factory=list)
     dense_ids: set[str] | None = None
     sparse_ids: set[str] | None = None
     branch_probe_ok: int = 0
     branch_probe_error: int = 0
+    termless_lexical_fields: list[str] = field(default_factory=list)
 
-    def record_call(self, axes: str, filtered: bool, candidate_ids: list[str]) -> None:
+    def record_call(
+        self, axes: str, filtered: bool, candidate_ids: list[str], *, fused: bool = True
+    ) -> None:
         """
         Record one hybrid_search call's shape facts.
 
@@ -63,12 +71,14 @@ class SearchRetrievalProbe:
             axes (str): The bounded axes value (one of the AXES_* constants) the call queried.
             filtered (bool): Whether the call carried a structured filter.
             candidate_ids (list[str]): The candidate chunk ids the call returned, in retrieval order.
+            fused (bool): Whether the call fused several branches (False = one raw-scored vector).
         """
         # 1. Accumulate the scalar counters and the per-call bounded-label lists.
         self.calls += 1
         self.candidates_total += len(candidate_ids)
         self.axes.append(axes)
         self.filtered.append(filtered)
+        self.fused.append(fused)
 
         # 2. Extend the retrieval order up to the cap (a sample is enough for displacement).
         room = _RETRIEVAL_ORDER_CAP - len(self.retrieval_order)
@@ -87,6 +97,34 @@ class SearchRetrievalProbe:
         self.dense_ids = dense_ids if self.dense_ids is None else (self.dense_ids | dense_ids)
         self.sparse_ids = sparse_ids if self.sparse_ids is None else (self.sparse_ids | sparse_ids)
         self.branch_probe_ok += 1
+
+    def raw_axis(self) -> str | None:
+        """
+        The single axis every retrieval call queried UNFUSED, or None when any score is a fusion.
+
+        Returns:
+            str | None: ``AXES_DENSE_ONLY`` / ``AXES_SPARSE_ONLY`` when every call queried one vector
+                of that axis directly (the hits carry its raw score); None otherwise (no call, a fused
+                call, a filter-only call, or calls on different axes).
+        """
+        # 1. Raw only when every call ran unfused on the SAME single axis.
+        axes = set(self.axes)
+        if not self.calls or any(self.fused) or len(axes) != 1:
+            return None
+        axis = axes.pop()
+        return axis if axis in (AXES_DENSE_ONLY, AXES_SPARSE_ONLY) else None
+
+    def record_termless_lexical(self, fields: list[str]) -> None:
+        """
+        Record the metadata lexical targets a vector-less call dropped for lack of a query term.
+
+        Args:
+            fields (list[str]): The dropped target fields (deduplicated across calls, order kept).
+        """
+        # 1. Union across calls (a ForEach over sub-queries) without repeating a field.
+        for name in fields:
+            if name not in self.termless_lexical_fields:
+                self.termless_lexical_fields.append(name)
 
     def record_branch_error(self) -> None:
         """Record a failed branch probe — the search is unaffected, the breakdown is skipped."""

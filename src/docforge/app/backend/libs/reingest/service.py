@@ -15,12 +15,13 @@ from loggerplusplus import LoggerClass
 
 # ====== Internal Project Imports ======
 from shared_libs.services.db import Database
-from shared_libs.services.db.facades import ReingestOutcome
+from shared_libs.services.db.facades import IndexRebuildActiveError, ReingestOutcome
 from shared_libs.services.db.postgresql.tables import Collection, Document
 
 # ====== Local Project Imports ======
 from ...utils.ingest_enqueuer import IngestEnqueuer
 from ...utils.queue import QueueClient
+from ..index_rebuild import IndexRebuildGuards
 from .models import ReingestJobHandle
 
 
@@ -95,7 +96,15 @@ class BulkReingestService(LoggerClass):
 
         Returns:
             CappedFanout: matched / enqueued / capped + the ceiling + one handle per enqueued run.
+
+        Raises:
+            HTTPException: 409 ``rebuild_index_active`` / ``rebuild_index_required``.
         """
+        # 0. Never while the index is rebuilding (409 rebuild_index_active), and never when the store
+        #    lacks a named vector (409 rebuild_index_required — a reingest cannot add one).
+        await IndexRebuildGuards.assert_no_active_rebuild(self._database, collection.id)
+        await IndexRebuildGuards.assert_index_aligned(self._database, collection.id)
+
         # 1. Cap the fan-out — never flood the queue with 100k jobs on one call.
         capped = len(matched_ids) > ceiling
         targets = list(matched_ids[:ceiling])
@@ -142,7 +151,12 @@ class BulkReingestService(LoggerClass):
         handles: list[ReingestJobHandle] = []
         skipped_in_flight = 0
         for document in documents:
-            result = await self._database.ingestion.reingest(document.id)
+            try:
+                result = await self._database.ingestion.reingest(document.id)
+            except IndexRebuildActiveError:
+                # A rebuild was admitted mid fan-out (the pre-check raced): count it as in flight.
+                skipped_in_flight += 1
+                continue
             if result.outcome is ReingestOutcome.NOT_FOUND:
                 # The document vanished between resolution and admission (a concurrent delete) —
                 # skip it rather than fail the whole batch; the caller sees it absent from handles.

@@ -240,16 +240,20 @@ class SearchCost(BaseModel):
 
 class SearchHint(BaseModel):
     """
-    An actionable explanation about one filter, attached to a (200) search response.
+    An actionable explanation attached to a (200) search response — a filter value no document
+    stores, the likely culprit of a filtered zero-hit search, a ``min_score`` that dropped every hit,
+    or a lexical metadata target the query gave no searchable term to.
 
     Attributes:
-        field (str): The filtered metadata field the hint is about.
+        field (str): What the hint is about: a filtered or targeted metadata field, or ``min_score``.
         value (Any): The filter value as sent.
         message (str): Human/agent-readable explanation.
         suggestions (list[str]): Closest stored values to retry with, best first (may be empty).
     """
 
-    field: str = Field(description="The filtered metadata field the hint is about.")
+    field: str = Field(
+        description="What the hint is about: a filtered or targeted metadata field, or 'min_score'."
+    )
     value: Any = Field(description="The filter value as sent (one list item, or the whole value).")
     message: str = Field(description="Human/agent-readable explanation of the problem.")
     suggestions: list[str] = Field(
@@ -278,7 +282,9 @@ class SearchResponse(BaseModel):
         description="What every hit's ``score`` represents, so the UI labels it honestly: "
         "'rrf_fusion' (Reciprocal Rank Fusion of the dense+sparse branches — the default; "
         "rank-based, not a similarity), 'dbsf_fusion' (Distribution-Based Score Fusion), or "
-        "'cross_encoder_rerank' (a cross-encoder relevance score, when reranking is enabled).",
+        "'cross_encoder_rerank' (a cross-encoder relevance score, when reranking is enabled), "
+        "'raw_dense' (ONE dense vector queried, no fusion — a cosine similarity) or 'raw_sparse' "
+        "(ONE sparse vector — its raw sparse dot / BM25 score, unbounded).",
     )
     cost: SearchCost | None = Field(
         default=None,

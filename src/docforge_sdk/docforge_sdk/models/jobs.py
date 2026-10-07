@@ -17,7 +17,7 @@ class JobStatus(BaseModel):
 
     Attributes:
         job_id (str): The job row's UUID.
-        document_id (str): The document being ingested.
+        document_id (str | None): The document being ingested (None for a rebuild_index job).
         document_filename (str | None): The document's filename, joined at read (None if the
             document is gone).
         document_title (str | None): The document's metagen-generated title, joined at read — a
@@ -50,7 +50,9 @@ class JobStatus(BaseModel):
     """
 
     job_id: str = Field(description="The job row's UUID.")
-    document_id: str = Field(description="The document being ingested.")
+    document_id: str | None = Field(
+        description="The document being ingested; null for a collection-level job (rebuild_index)."
+    )
     document_filename: str | None = Field(
         default=None,
         description="The document's filename, joined at read (None if the document is gone).",
@@ -77,7 +79,8 @@ class JobStatus(BaseModel):
     status: str = Field(description="queued / running / done / failed / cancelled.")
     kind: str = Field(
         description="The kind of work this job tracks: 'ingest' (a full document pipeline run) or "
-        "'metadata_sync' (a lightweight per-document metadata re-embed after an in-place value edit). "
+        "'metadata_sync' (a lightweight per-document metadata re-embed after an in-place value edit) or "
+        "'rebuild_index' (a collection-level vector-store rebuild — document_id is null). "
         "Lets a client render a side-job distinctly from a full ingestion."
     )
     cancel_requested: bool = Field(

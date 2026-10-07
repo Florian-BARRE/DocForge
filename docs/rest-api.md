@@ -257,6 +257,7 @@ later), so declare the **full** schema up front.
 | `GET` | `/api/v1/collections/{id}/health` | `read` | Zero-spend provider preflight sweep + an overall verdict |
 | `GET` | `/api/v1/collections/{id}/storage` | `read` | Material footprint across all three stores (exact S3, estimated PG/Qdrant) |
 | `POST` | `/api/v1/collections/{id}/reingest` | `write` | Re-run the full pipeline over the whole collection (`202`) |
+| `POST` | `/api/v1/collections/{collection_id}/rebuild-index` | `write` | Rebuild the vector index from the current schema, no content re-embed (`202`, `RebuildIndexAccepted`) |
 | `POST` | `/api/v1/collections/{id}/trace-payloads/purge` | `write` | Reclaim the collection's stored full execution-trace payloads (`TracePurgeResult`) |
 
 ### Schema changes on `PATCH /collections/{id}` (`fields` / `field_ops` / `dry_run`)
@@ -266,7 +267,10 @@ omitted field is **removed**, its values deleted) or with ordered `field_ops` (`
 `remove` / `rename`; a rename keeps the field's stored values). Sending both is a `422`. The response
 carries a `schema_diff` (`added` / `modified` / `removed` / `renamed` / `values_lost` /
 `reindex_required_fields`); a name freed by a rename and reused by an `add` in the same request is
-reported as **added**.
+reported as **added**. `reindex_required_fields` is checked against the vector store: on top of the
+planner's verdict it lists every semantic/lexical field of the post-PATCH schema (the target schema
+under `dry_run`) whose named vector Qdrant does not declare. The response also carries
+`missing_vectors` (see below).
 
 **Vector-store follow-through (both surfaces, including the legacy `fields` list).** After the commit
 the Qdrant footprint (payload key + index, `meta_<slug>_*` vector data) of every name that **truly
@@ -334,7 +338,15 @@ collection has already been indexed AND its current reindex-relevant config (the
 metadata surface + the embed vector space) differs from the config the indexed vectors were produced
 under. A `filterable`-only change never sets it (the payload index is added live, no reindex);
 reverting the config back to the indexed one clears it; and a successful (re)ingest advances the
-baseline, so a real reindex turns it back to `false`.
+baseline, so a real reindex turns it back to `false`. The exception is a store that still lacks a
+semantic/lexical field's named vector. Qdrant cannot add a named vector to a live collection, so a
+field made semantic/lexical after the first ingest has no vector yet. In that case the ingest leaves
+the baseline untouched and keeps `needs_reindex: true`. A reingest does NOT add the vector; only an
+index rebuild does (`POST /collections/{id}/rebuild-index`, below).
+
+`missing_vectors` (read-only) lists those undeclared named vectors (`meta_<slug>_dense` /
+`meta_<slug>_bm25`). It is computed by `GET /collections/{id}` and on the `PATCH` response (`[]` =
+aligned or never ingested), and is `null` on the fleet list, which never reads the vector store.
 
 ### Config blobs
 
@@ -502,6 +514,89 @@ collection's change stamp (its `updated_at`, its document count and its document
 (`PATCH /documents/{id}/metadata`) or a collection/schema PATCH refreshes it on the next call — and
 never beyond `DESCRIBE_CACHE_TTL_SECONDS` (default 30 s; `0` disables the cache).
 
+### Rebuild the index
+
+`POST /api/v1/collections/{collection_id}/rebuild-index` — capability `write`, no body. Answers `202`
+with a `RebuildIndexAccepted` `{collection_id, job_id}`. Poll `GET /api/v1/jobs/{job_id}`: the job's
+`kind` is `rebuild_index` and its `document_id` is `null` (a rebuild belongs to the collection, not
+to a document).
+
+Use it when `missing_vectors` is not empty, that is, when a field was made semantic or lexical after
+the first ingest. It is also the way to give an older collection's metadata BM25 vectors the IDF
+modifier. Content vectors are copied as they are and never re-embedded. The metadata vectors are
+refilled from Postgres: the lexical ones are encoded locally, but the dense metadata values go through
+the collection's embed provider (a small, but billed, provider call).
+
+How it works:
+
+1. The worker waits for the collection's other live jobs to finish, up to
+   `WORKER_REBUILD_INDEX_WAIT_SECONDS`. If they are still running after that, the job fails without
+   touching the index.
+2. It creates a new physical Qdrant collection `col_<hex>_r<ts>` from the CURRENT schema. It copies
+   every point into it, in batches of `WORKER_REBUILD_INDEX_BATCH_SIZE`, and drops every
+   `meta_*_bm25` vector on the way (they are re-encoded at step 4). Between batches, and once more
+   right before the swap, the job re-reads its own row: a cooperative cancel (or a reaper that turned
+   the row terminal) stops it there, the new collection is deleted and the job ends `cancelled` (a
+   reaped row stays `failed`). If
+   anything fails before the swap, the new collection is deleted and the old index stays live and
+   untouched. A finished copy is stamped **complete** (Qdrant collection metadata) before the swap.
+3. It swaps the stable name `col_<hex>` onto the new collection. After this, `col_<hex>` is a Qdrant
+   **alias**. Later rebuilds re-point the alias in one atomic call, then delete the old physical
+   collection. **Gap on the first rebuild:** the stable name is a real collection at that point, and
+   an alias cannot shadow it. So the first rebuild deletes the old collection, then creates the alias
+   (retried a few times). A search that lands between those two calls sees an empty index (a window
+   of milliseconds). If the worker crashes inside that window, every path that addresses the store
+   (ingest, search, browse, export, metadata sync) re-points the alias at the newest **complete**
+   generation on first access; a partial (unstamped) copy is never adopted.
+4. It refills the filter payloads and the metadata vectors from Postgres, re-applies each chunk's
+   `enabled_override`, and deletes the points of documents deleted during the copy.
+5. It recomputes `missing_vectors` and `needs_reindex`. If a vector is still missing (the schema
+   changed during the rebuild), the job ends `failed` with `error_type: rebuild_incomplete`: run it
+   again. `needs_reindex` is cleared only when the embed space is unchanged since the last ingest. A
+   rebuild never re-embeds content, so an embed-model change still needs a reingest. **Chunk-scope
+   semantic fields:** a rebuild declares their vector but cannot fill it (content is copied as is and
+   the backfill is document-scope). When no copied point carries such a field's vector, the job still
+   ends `done` but `needs_reindex` stays `true` and the worker logs "reingest required for chunk-scope
+   field(s) …" (the job result carries `reingest_required_fields`). Reingest the documents to fill it.
+   A chunk-scope field no chunk has a value for is reported too; the reingest then clears the flag.
+
+Generations and leftovers: before copying, the rebuild deletes every partial generation and every
+generation superseded by the alias. The store the stable name resolves to is always the truth: if a
+physical collection coexists with a stamped generation (a first swap whose delete failed), the stamped
+copy is a stale leftover and is dropped, never adopted. A stamped generation is adopted only when the
+stable name resolves to nothing at all (the first swap deleted the old store but could not create the
+alias) — and then by every read and write path, not just the rebuild.
+Leftover generations are not counted in the storage footprint until the next rebuild clears them.
+
+Conflicts (`409`, body `{code, detail, …}`):
+
+| `code` | When | Extra keys |
+|---|---|---|
+| `rebuild_index_active` | A rebuild is already pending or running on the collection | `job_id` |
+| `collection_busy` | Other jobs (ingest, metadata sync…) are live on the collection | `job_ids` |
+| `rebuild_unsupported_chunk_lexical` | The schema has a chunk-scope lexical field (legacy only: new ones are rejected with `422` at schema validation). The copy drops `meta_*_bm25` vectors and nothing refills chunk-scope ones, so the rebuild is refused | `fields` |
+
+While a rebuild is pending or running, `POST /documents` (upload),
+`POST /documents/{document_id}/reingest`, `POST /collections/{id}/reingest` and
+`POST /collections/{id}/documents/reingest` answer `409 rebuild_index_active`. A bulk reingest also
+answers `409 rebuild_index_required` (extra key `missing_vectors`) while the index lacks a named vector
+the schema needs: a reingest cannot add one, so run the rebuild first. `404` when the collection is
+unknown; `503` when the job could not be queued (the job row is then marked failed).
+
+Cancelling a rebuild: `POST /jobs/{job_id}/cancel` (cooperative) stops it before the swap — the job
+checks between copy batches and right before swapping; a cancel that arrives after that last check
+is too late, and the rebuild completes (`done`, with the cancel logged). With
+`force=true`, a **running** rebuild whose worker is alive (fresh heartbeat within
+`WORKER_ALIVE_THRESHOLD_SECONDS`) is refused with `409 rebuild_force_cancel_refused` (extra key
+`job_id`): forcing the row terminal would lift the ingest lock while the copy continues, and ingests
+admitted then would land in the store the swap deletes. On a dead worker the force is allowed.
+
+`DELETE /collections/{id}` answers `409 rebuild_index_active` while a rebuild is **running** (a queued
+one is cancelled with the collection's other pending jobs).
+
+Deleting a collection resolves the alias to its physical collection and deletes that collection,
+which removes the alias too, plus any generation left over by an interrupted rebuild.
+
 ### Collection health
 
 `GET /api/v1/collections/{collection_id}/health` — capability `read`. An on-demand operational probe
@@ -599,6 +694,12 @@ Response (`202`):
 - `404` when the collection is unknown; `422` for a stale-unmigratable pipeline blob, invalid
   `metadata` JSON, or an unknown metadata field name. Types/required-ness are validated inside
   the pipeline (surfaced via the job's error), not at admission.
+- `409 rebuild_index_active` while the collection's index is being rebuilt; `409
+  rebuild_index_required` (extra keys `missing_vectors`, `missing_fields`) when the schema has a
+  **chunk-scope** semantic/lexical field whose named vector the index does not declare — every chunk
+  point would carry it, so the run is refused BEFORE any job is minted (no parse/LLM/embed spend).
+  Run `POST /api/v1/collections/{id}/rebuild-index` first. A collection without chunk-scope
+  searchable fields is never checked against the vector store.
 
 ### Re-ingest a document
 
@@ -621,6 +722,9 @@ run is idempotent: the previous chunks/IR/pages are purged and the vectors overw
 user-declared metadata survives.
 
 - `404` when the document is unknown.
+- `409 rebuild_index_required` (same body as on upload) when a chunk-scope semantic/lexical field's
+  named vector is missing from the index — refused before any job is minted; `409
+  rebuild_index_active` while the index is being rebuilt.
 - `409` when the document already has a queued/running ingestion job (two concurrent runs would
   interleave their Qdrant delete-and-upsert and strand orphan points). Wait for it or cancel it.
 - `503` when the queue is unreachable — the freshly-minted job is marked `failed` rather than left
@@ -924,7 +1028,7 @@ Hybrid retrieval over one collection. Runs **inline** in the request (sub-second
 | `return_fields` | list/null | `null` | Lean hits: keep only these hit fields (any hit field name, or `metadata.<field>` for one metadata entry). `chunk_id` + `document_id` are **always** returned. Omitted fields are **absent** (not `null`) and their hydration reads are skipped. `null` → the full hit. Unknown name → `422` listing the allowed names. |
 | `group_by` | `"document"`/null | `null` | `"document"` → no document contributes more than `max_per_document` hits (see below). |
 | `max_per_document` | int (1–10) | `1` | Per-document cap under `group_by`; sending it without `group_by` → `422`. |
-| `min_score` | float/null | `null` | Drop hits whose **final** `score` is below this, after ranking (and before grouping). The scale depends on `score_kind` — a fusion score is rank-based, a cross-encoder rerank score is in [0, 1] — so set it against the scores you observe. |
+| `min_score` | float/null | `null` | Drop hits whose **final** `score` is below this, after ranking (and before grouping). The scale depends on `score_kind` — a fusion score is rank-based, a cross-encoder rerank score is in [0, 1] — so set it against the scores you observe. **Scale change (release note):** a single-branch retrieval (one dense-only target) now reports the raw cosine (`score_kind: raw_dense`, around 0.6) instead of an RRF score (around 0.016), so a stored `min_score` tuned on the RRF scale now keeps almost everything — re-tune it. |
 | `rerank` | bool/null | `null` | Per-request override of the collection's rerank stage: `false` skips reranking for this request (fusion order); `true` requires it (`422` when the collection's search pipeline has no rerank stage); `null` → the pipeline as configured. |
 | `fusion` | `"rrf"`/`"dbsf"`/null | `null` | Per-request override of the hybrid fusion strategy (reflected in `score_kind`). |
 | `debug` | bool | `false` | `true` → each hit also carries `fusion_score` (its retrieval fusion score) and, when a reranker re-scored it, `rerank_score`. |
@@ -952,6 +1056,13 @@ Hybrid retrieval over one collection. Runs **inline** in the request (sub-second
 
 Each `search_in` entry is a **SearchTarget**: `{ "field": "content"|<metadata field>,
 "semantic": bool, "lexical": bool }`. `field` defaults to `"content"` (the chunk body).
+A **lexical metadata** target is real BM25 on collections created since 0.28 (accent-folded, French +
+English stopwords and stemming, IDF over the collection); an older collection keeps its previous
+sparse encoding until it is rebuilt. When the targets resolve to **one single vector** (e.g. one
+metadata field, lexical only), no fusion runs: each hit's `score` is that vector's raw score (BM25 /
+sparse dot / cosine) rather than a rank-based fusion score, and `score_kind` says so (`raw_dense` /
+`raw_sparse`) — a `min_score` then cuts on that raw scale. When **every** target is a metadata field, the rerank stage is skipped
+(the cross-encoder scores the chunk body, irrelevant to a field match) unless `rerank: true` is sent.
 
 **Grouping** (`group_by: "document"`): the graph is asked for a deeper page
 (`limit × max(3, 2 × max_per_document)`, capped at 200), then the **final** ranking — after fusion and
@@ -965,7 +1076,10 @@ filter instead) or carries more than 100 values; a filter naming a non-filterabl
 value outside the field's declared values; an unknown operator, an operator not valid for the field's
 type, or two operators combined (other than range bounds); a `contains`/`prefix` matching more than
 500 stored values; a `search_in` target naming a vector
-the collection never indexed (or a selection with no modality). `404` when the collection is
+the collection never indexed (or a selection with no modality). A field flagged semantic/lexical
+whose named vector the vector store has not declared yet is also rejected:
+`field 'X' has no indexed <semantic|lexical> vector — … rebuild_index …`. Before this gate, Qdrant
+rejected the query and the route answered with the misleading "stored search graph is invalid". `404` when the collection is
 unknown; `409` when it has no embed node wired.
 
 Runtime failures are surfaced as typed errors (each carries a machine-readable `{code, detail}`):
@@ -1016,10 +1130,12 @@ filterable fields). `block_ids` are the IR blocks the chunk was assembled from; 
 locate the chunk's primary (leading) block and `block_locations` gives every source block's
 `{page, bbox}` — all bboxes are `[x0, y0, x1, y1]` **normalised to [0, 1]** (multiply by the page
 image size to draw), and `page`/`bbox` are `null` (and `block_locations` empty) for an unlocated
-chunk (e.g. a page-less document). `score` is the fused RRF score (higher is better). `score_kind`
-(always present) names what the score represents — `rrf_fusion` (the default), `dbsf_fusion`, or
-`cross_encoder_rerank` (when a reranker is enabled). It is rank-based, comparable only **within** one
-response — a round `1.0000` on a tiny/single-doc corpus is normal, not a bug. `debug_info` always
+chunk (e.g. a page-less document). `score` is the hit's score (higher is better; the fused RRF
+score by default). `score_kind` (always present) names what the score represents — `rrf_fusion`
+(the default), `dbsf_fusion`, `cross_encoder_rerank` (when a reranker scored the hits; it wins over
+the others), `raw_dense` (one dense vector queried, no fusion — a cosine similarity, e.g. a
+`dense_only` collection) or `raw_sparse` (one sparse vector — its raw sparse dot / BM25 score,
+unbounded). A fusion score is rank-based, comparable only **within** one response — a round `1.0000` on a tiny/single-doc corpus is normal, not a bug. `debug_info` always
 carries `hit_count`, plus non-fatal notes when they apply (e.g. `degraded`, `grouping`). With
 `debug: true` each hit also carries `fusion_score` and, when reranked, `rerank_score` (both absent
 otherwise).
@@ -1031,6 +1147,11 @@ same page **1-based**, as a reader counts it — cite that one (`null` when unlo
 (even ignoring case) — or a filtered search returned no hits — the (still `200`) response carries
 `[{field, value, message, suggestions[]}]`, where `suggestions` are the closest stored values to retry
 with, best first. An agent should read them before concluding nothing exists.
+A **stopword-only query** (no searchable term after stopword/punctuation removal) against a metadata
+**lexical** target whose vector is BM25-encoded queries nothing; the empty answer then carries one hint
+per such target — `field` = the target, `value` = the query, message `query has no searchable term for
+lexical target '<field>' (only stopwords or punctuation) … add a content word or use semantic`. It is
+emitted only for that cause.
 
 ### Example
 
@@ -1119,6 +1240,9 @@ request a cancellation).
 | `GET` | `/api/v1/jobs/timeseries` | `read` | Lightweight hourly job trends — done/failed/arrivals/backlog sparklines (`JobTimeseries`) |
 | `POST` | `/api/v1/jobs/{job_id}/cancel` | `write` | Request cancellation of a queued/running job (`CancelResult`) |
 
+> `document_id` is `null` on a collection-level job (`kind: rebuild_index`, see "Rebuild the index"
+> in §3); every other job kind carries its document.
+>
 > `collection_id` is **optional** on `GET /api/v1/jobs`. **Present** → scoped to that collection (and
 > it scopes the key). **Omitted** → a **fleet-wide** listing across every collection (the "All Jobs"
 > view), which is **full-access only**: a collection-scoped key must name a collection it owns, else

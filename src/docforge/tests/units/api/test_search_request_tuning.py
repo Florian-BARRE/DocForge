@@ -239,3 +239,41 @@ def test_min_score_emptying_the_answer_is_explained_not_blamed_on_filters(
     hints = response.json()["hints"]
     assert [hint["field"] for hint in hints] == ["min_score"]
     assert "2 hit(s)" in hints[0]["message"]
+
+
+def _wire_single_branch(monkeypatch, search_blob: dict, axes: str, fused: bool) -> None:
+    """Patch the service so the run's read port records ONE retrieval call on the router's probe."""
+    search = _wire(monkeypatch, search_blob, [])
+    result = search.return_value
+
+    async def _run(*_args, **kwargs):
+        kwargs["probe"].record_call(axes, False, [], fused=fused)
+        return result
+
+    search.side_effect = _run
+
+
+@pytest.mark.parametrize(
+    ("axes", "expected"), [("dense_only", "raw_dense"), ("sparse_only", "raw_sparse")]
+)
+def test_single_vector_search_reports_the_raw_score_kind(client, monkeypatch, axes, expected):
+    """One vector queried directly (no fusion ran) → score_kind names the raw scale, even under a
+    fusion override (there was nothing to fuse)."""
+    _wire_single_branch(monkeypatch, {}, axes, fused=False)
+    assert client.post(_URL, json={"query": "q"}).json()["score_kind"] == expected
+    assert client.post(_URL, json={"query": "q", "fusion": "dbsf"}).json()["score_kind"] == expected
+
+
+def test_fused_search_keeps_the_fusion_kind(client, monkeypatch) -> None:
+    """Several branches fused → the fusion label stays (dense_only axis with 2 dense vectors)."""
+    _wire_single_branch(monkeypatch, {}, "dense_only", fused=True)
+    assert client.post(_URL, json={"query": "q"}).json()["score_kind"] == "rrf_fusion"
+
+
+def test_rerank_wins_over_a_raw_retrieval(client, monkeypatch) -> None:
+    """A reranker that scored the hits labels them, whatever the retrieval's raw scale was."""
+    rerank_blob = SearchPipeline.rerank_blob().model_dump(mode="json")
+    _wire_single_branch(monkeypatch, rerank_blob, "dense_only", fused=False)
+    assert client.post(_URL, json={"query": "q"}).json()["score_kind"] == "cross_encoder_rerank"
+    body = client.post(_URL, json={"query": "q", "rerank": False}).json()
+    assert body["score_kind"] == "raw_dense"

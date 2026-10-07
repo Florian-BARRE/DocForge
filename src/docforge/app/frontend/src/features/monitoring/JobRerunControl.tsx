@@ -35,12 +35,14 @@ export function JobRerunControl({ job, collectionId, onNavigate }: JobRerunContr
   const [busy, setBusy] = useState(false);
   const [confirmingForce, setConfirmingForce] = useState(false);
 
-  if (!RERUNNABLE.has(job.status)) return null;
+  // A collection-level job (rebuild_index) has no document to re-run.
+  const documentId = job.document_id;
+  if (!RERUNNABLE.has(job.status) || documentId === null) return null;
 
   const fire = async (force: boolean) => {
     setBusy(true);
     try {
-      const { job_id } = await reingestDocument(job.document_id, { force });
+      const { job_id } = await reingestDocument(documentId, { force });
       toast.success(force ? "Force re-run started (no cache)" : "Re-run started");
       onNavigate({ name: "job", collectionId, jobId: job_id });
     } catch (e) {

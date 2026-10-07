@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, MagicMock
 from qdrant_client import models
 
 from shared_libs.services.db.facades import SearchFacade
-from shared_libs.services.db.qdrant import VectorNames
+from shared_libs.services.db.qdrant import SparseVec, VectorNames
 from shared_libs.services.db.qdrant.apis import QdrantSearchApi
 
 
@@ -18,6 +18,8 @@ async def test_hybrid_returns_empty_when_qdrant_collection_missing() -> None:
     # 1. A qdrant whose collection does not exist, and a postgres that must stay untouched.
     qdrant = MagicMock()
     qdrant.raw.collection_exists = AsyncMock(return_value=False)
+    # No stranded generation to re-adopt either (the self-heal lists the collections).
+    qdrant.raw.get_collections = AsyncMock(return_value=SimpleNamespace(collections=[]))
     postgres = MagicMock()
     facade = SearchFacade(postgres, qdrant)
 
@@ -41,7 +43,11 @@ async def test_hybrid_query_is_the_single_stage_rrf_call() -> None:
     """The call is the single-stage RRF fusion (a flat list of branches, no nesting)."""
     client = _fake_client()
     await QdrantSearchApi.hybrid(
-        client, "c", dense={VectorNames.CONTENT_DENSE: [0.1, 0.2]}, limit=7
+        client,
+        "c",
+        dense={VectorNames.CONTENT_DENSE: [0.1, 0.2]},
+        sparse={VectorNames.CONTENT_SPARSE: SparseVec(indices=[1], values=[1.0])},
+        limit=7,
     )
     kwargs = client.query_points.await_args.kwargs
     # 1. The top-level query is the RRF fusion itself — no nested pool.
@@ -51,3 +57,20 @@ async def test_hybrid_query_is_the_single_stage_rrf_call() -> None:
     # 2. The prefetch is the flat list of branches (a plain Prefetch, not a nested pool).
     assert kwargs["prefetch"][0].using == VectorNames.CONTENT_DENSE
     assert kwargs["prefetch"][0].prefetch is None
+
+
+async def test_single_branch_queries_the_vector_directly_with_its_raw_score() -> None:
+    """ONE branch → no FusionQuery: the vector itself is the query (raw cosine/BM25 score kept)."""
+    client = MagicMock()
+    client.query_points = AsyncMock(
+        return_value=SimpleNamespace(points=[SimpleNamespace(id="p1", score=3.25)])
+    )
+    name = VectorNames.field_sparse("nom")
+    pairs = await QdrantSearchApi.hybrid(
+        client, "c", sparse={name: SparseVec(indices=[5, 9], values=[1.0, 1.0])}, limit=3
+    )
+    kwargs = client.query_points.await_args.kwargs
+    assert kwargs["using"] == name
+    assert isinstance(kwargs["query"], models.SparseVector)
+    assert "prefetch" not in kwargs
+    assert pairs == [("p1", 3.25)]

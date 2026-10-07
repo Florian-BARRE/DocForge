@@ -83,3 +83,33 @@ def _clear_describe_cache(fastapi_app):
     DESCRIBE_CACHE.clear()
     yield
     DESCRIBE_CACHE.clear()
+
+
+_REBUILD_GUARD_NAMES = (
+    "assert_no_active_rebuild",
+    "assert_index_aligned",
+    "assert_chunk_vectors_declared",
+)
+
+
+@pytest.fixture(autouse=True)
+def _rebuild_guards_idle(fastapi_app, monkeypatch, request):
+    """Keep the rebuild_index pre-checks hermetic (they read Postgres/Qdrant through the real façade).
+
+    A test exercising them requests ``real_rebuild_guards`` (the originals are left in place).
+    """
+    if "real_rebuild_guards" in request.fixturenames:
+        return
+    from backend.libs.index_rebuild import IndexRebuildGuards  # noqa: PLC0415
+
+    async def _idle(*args, **kwargs) -> None:
+        return None
+
+    for name in _REBUILD_GUARD_NAMES:
+        monkeypatch.setattr(IndexRebuildGuards, name, staticmethod(_idle))
+
+
+@pytest.fixture
+def real_rebuild_guards() -> None:
+    """Opt-out marker fixture: the rebuild_index pre-checks run for real (with mocked façades)."""
+    return None

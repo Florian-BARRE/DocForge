@@ -13,7 +13,12 @@ from unittest.mock import AsyncMock
 
 # ====== Third-Party Library Imports ======
 from docforge_sdk import AsyncClient
-from docforge_sdk.models import BulkReingestAccepted, BulkReingestRequest, CollectionHealthResponse
+from docforge_sdk.models import (
+    BulkReingestAccepted,
+    BulkReingestRequest,
+    CollectionHealthResponse,
+    RebuildIndexAccepted,
+)
 from mcp.server.fastmcp import FastMCP
 
 # ====== Internal Project Imports ======
@@ -104,3 +109,16 @@ async def test_reingest_collection_forwards_subset_and_force() -> None:
     _, called_request = reingest_mock.await_args.args
     assert called_request.document_ids == ["doc-1", "doc-2"]
     assert called_request.force is True
+
+
+async def test_rebuild_collection_index_forwards_and_returns_the_job() -> None:
+    sdk = AsyncClient("http://localhost:8000")
+    rebuild_mock = AsyncMock(return_value=RebuildIndexAccepted(collection_id=CID, job_id="job-1"))
+    sdk.collections.rebuild_index = rebuild_mock  # type: ignore[method-assign]
+    mcp = FastMCP(name="test")
+    collections_tools.register(mcp, sdk)
+
+    result = await _tool_fn(mcp, "rebuild_collection_index")(collection_id=CID)
+
+    rebuild_mock.assert_awaited_once_with(CID)
+    assert result == {"collection_id": CID, "job_id": "job-1"}

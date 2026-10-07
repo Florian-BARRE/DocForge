@@ -19,7 +19,7 @@ from loggerplusplus import LoggerClass
 # ====== Internal Project Imports ======
 from shared_libs.services.db.postgresql import PostgresClient
 from shared_libs.services.db.postgresql.apis import ChunkApi, CollectionApi, DocumentApi
-from shared_libs.services.db.qdrant import QdrantClient, QdrantIndexApi
+from shared_libs.services.db.qdrant import QdrantAliasApi, QdrantClient, QdrantIndexApi
 
 # ====== Local Project Imports ======
 from .helpers import DatabaseHelpers
@@ -79,6 +79,8 @@ class FilterSyncFacade(LoggerClass):
         if not chunk_ids:
             return 0
         name = DatabaseHelpers.qdrant_collection_name(document.collection_id)
+        if not await QdrantAliasApi.resolve_or_adopt(self._qdrant.raw, name):
+            return 0
         absent = sorted(set(clear_absent) - set(doc_values))
         await QdrantIndexApi.delete_payload(self._qdrant.raw, name, absent, document_id)
         if not doc_values and not chunk_values:

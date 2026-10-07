@@ -18,6 +18,7 @@ from shared_libs.services.db.postgresql.tables import JobStatus as JobStatusEnum
 # ====== Local Project Imports ======
 from ...context import CONTEXT
 from ...libs.auth import AuthPrincipal, AuthzGuard, Capability, require
+from ...libs.index_rebuild import IndexRebuildGuards
 from ...utils.error_handling import auto_handle_errors
 from .helpers import (
     CancelAction,
@@ -575,7 +576,8 @@ async def cancel_job(
     force: bool = Query(
         default=False,
         description="Immediately CANCEL a running/wedged job regardless of worker state (the manual "
-        "force-fail) instead of asking it to stop cooperatively at its next stage boundary.",
+        "force-fail) instead of asking it to stop cooperatively at its next stage boundary. Refused "
+        "(409) for a running rebuild_index on a live worker.",
     ),
     principal: AuthPrincipal = Depends(require(Capability.WRITE)),
 ) -> CancelResult:
@@ -590,6 +592,8 @@ async def cancel_job(
         ``cancel_requested=true``) until it does.
       * running, ``force=true`` → force-terminated NOW (job + document CANCELLED) regardless of the
         worker — the manual reaper for a wedged/infinite job (shares the cron reaper's transition).
+        EXCEPT a running ``rebuild_index`` on a live worker → 409 ``rebuild_force_cancel_refused``
+        (forcing would lift the ingest lock mid-copy); its cooperative cancel aborts it pre-swap.
       * already terminal (done / failed / cancelled) → 409 (nothing to cancel).
 
     Returns:
@@ -609,6 +613,12 @@ async def cancel_job(
         raise HTTPException(
             status_code=409,
             detail=f"Job {job_id} is already {job.status.value} — nothing to cancel.",
+        )
+
+    # 2b. A forced stop of a rebuild that is still copying would lift its ingest lock — refuse.
+    if action == CancelAction.FORCE:
+        await IndexRebuildGuards.assert_force_cancel_safe(
+            CONTEXT.database, job, RUNTIME_CONFIG.WORKER_ALIVE_THRESHOLD_SECONDS
         )
 
     # 3. Cooperative stop of a running job: flag it; it winds down at its next stage boundary.

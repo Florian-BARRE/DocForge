@@ -29,6 +29,19 @@ from .collections_facade import CollectionsFacade, DuplicateCollectionNameError
 from .documents_facade import DocumentsFacade
 from .enablement_facade import EnablementFacade
 from .filter_sync_facade import FilterSyncFacade
+from .index_state_facade import IndexStateFacade
+from .index_rebuild_facade import IndexRebuildFacade
+from .index_rebuild_payloads import (
+    AbortProbe,
+    CollectionBusyError,
+    IndexRebuildActiveError,
+    RebuildCancelledError,
+    RebuildReconcileResult,
+    RebuildUnsupportedError,
+    StoreCopyResult,
+)
+from .rebuild_guard import RebuildGuard
+from .store_rebuild_facade import StoreRebuildFacade
 from .ingestion_facade import IngestionFacade
 from .artifact_cache_facade import ArtifactCacheFacade, ArtifactCacheGcSummary
 from .meta_vector_sync_facade import MetaVectorSyncFacade
@@ -52,6 +65,16 @@ from .metadata_value_resolver import MetadataValueResolver
 
 # ------------------- Public API ------------------- #
 __all__ = [
+    "IndexRebuildFacade",
+    "AbortProbe",
+    "CollectionBusyError",
+    "IndexRebuildActiveError",
+    "RebuildCancelledError",
+    "RebuildUnsupportedError",
+    "RebuildReconcileResult",
+    "StoreCopyResult",
+    "RebuildGuard",
+    "StoreRebuildFacade",
     "FieldPurgeOutcome",
     "SchemaChangeFacade",
     "DatabaseHelpers",
@@ -82,6 +105,7 @@ __all__ = [
     "DocumentsFacade",
     "EnablementFacade",
     "FilterSyncFacade",
+    "IndexStateFacade",
     "IngestionFacade",
     "ArtifactCacheFacade",
     "ArtifactCacheGcSummary",

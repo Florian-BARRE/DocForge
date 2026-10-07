@@ -24,6 +24,7 @@ def _import_worker_jobs_modules():
     import jobs.core as core_module  # noqa: PLC0415
     import jobs.metadata_sync as metadata_sync_module  # noqa: PLC0415
     import jobs.preview as preview_module  # noqa: PLC0415
+    import jobs.rebuild_index  # noqa: F401, PLC0415 — imported under the fake backend.context too
     import jobs.transfer as transfer_module  # noqa: PLC0415
 
     return core_module, backfill_module, transfer_module, preview_module, metadata_sync_module
@@ -58,6 +59,7 @@ def worker_jobs_modules():
             "jobs.transfer",
             "jobs.preview",
             "jobs.metadata_sync",
+            "jobs.rebuild_index",
         )
     ):
         return _import_worker_jobs_modules()
@@ -87,3 +89,16 @@ def jobs_preview(worker_jobs_modules):
 @pytest.fixture
 def jobs_metadata_sync(worker_jobs_modules):
     return worker_jobs_modules[4]
+
+
+@pytest.fixture(autouse=True)
+def _no_rebuild_guard(monkeypatch):
+    """Neutralise the ingest-admission rebuild guard (its SQL needs a real session; mocks are sync)."""
+    from shared_libs.services.db.facades import rebuild_guard  # noqa: PLC0415
+
+    monkeypatch.setattr(rebuild_guard.RebuildGuard, "assert_no_rebuild", staticmethod(_async_noop))
+
+
+async def _async_noop(*args, **kwargs) -> None:
+    """Awaitable no-op stand-in."""
+    return None

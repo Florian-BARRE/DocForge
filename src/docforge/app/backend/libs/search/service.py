@@ -42,6 +42,7 @@ from ..blob_hash import BlobHasher
 from .contract import SearchContractBuilder
 from .document_grouping import DocumentHitGrouper
 from .hit_projection import HitProjection
+from .probe import SearchRetrievalProbe
 from .read_port import CollectionReadPortImpl
 from .result_finalizer import SearchResultFinalizer
 from .runner import SearchRunError, SearchRunner
@@ -160,6 +161,7 @@ class SearchService(LoggerClass):
         projection: HitProjection | None = None,
         max_per_document: int | None = None,
         tuning: SearchTuning | None = None,
+        probe: SearchRetrievalProbe | None = None,
     ) -> tuple[SearchResult, tuple[int, int, float | None, int]]:
         """
         Run the search graph against a collection and return the ranked SearchResult plus its cost.
@@ -184,6 +186,8 @@ class SearchService(LoggerClass):
                 when the deeper page holds too few distinct documents. None = no grouping.
             tuning (SearchTuning | None): Per-request knobs (min_score, rerank skip/require, fusion
                 override). None = the stored graph, unchanged.
+            probe (SearchRetrievalProbe | None): A caller-held retrieval probe the read port fills
+                (e.g. whether the hit scores were fused); None = a private one.
 
         Returns:
             tuple[SearchResult, tuple[int, int, float | None, int]]: the ranked hits (best first) and
@@ -215,6 +219,7 @@ class SearchService(LoggerClass):
             text_fields=text_fields,
             title_field=title_field,
             projection=projection,
+            probe=probe,
         )
 
         # 4. Assemble the search run-input the graph binds by FromRunInput. When the caller named no

@@ -3,7 +3,9 @@
 # collection (fresh UUID; the name is renamed on collision, never an overwrite), builds a RemapContext
 # (fresh ids for every entity), then STAGES the restore in FK order — blobs first (documents/pages/
 # figures reference them), then the catalogue, metadata (field id remapped by name), pages, the IR,
-# the chunks, and finally the Qdrant vectors. Blob bytes are STREAMED in a bounded byte-budget batch
+# the chunks, and finally the Qdrant vectors (a target metadata vector declared in the local BM25
+# encoding never takes the bundle's copy — it is re-encoded locally after the upsert, so an old-bundle
+# BGE sparse vector never mixes into an IDF space). Blob bytes are STREAMED in a bounded byte-budget batch
 # (never the whole bundle resident at once), mirroring the exporter's one-blob-at-a-time shape. Every
 # id is REGENERATED and every foreign key rewritten
 # consistently, so a bundle restores anywhere — including back onto its origin server (id preservation
@@ -396,17 +398,25 @@ class CollectionImporterV1:
     async def _restore_points(
         self, collection_id: uuid.UUID, ctx: RemapContext, dense_dim: int
     ) -> int:
-        """Ensure the vector space and upsert every point under its REMAPPED id; return the count."""
+        """Ensure the vector space and upsert every point under its REMAPPED id; return the count.
+
+        The target's BM25-declared metadata vectors (``modifier=IDF``) are DROPPED from every bundle
+        point and re-encoded locally once all points are in: a bundle exported from an older
+        collection carries the embedder's (BGE-M3) sparse weights under the same names, and copying
+        them would mix two encoders in one IDF vector. Dense vectors travel as they are.
+        """
         batch: list[QdrantPoint] = []
-        ensured = False
+        bm25_vectors: set[str] | None = None
         restored = 0
         for record in self._reader.iter_rows(BundlePaths.POINTS):
             point = self._to_point(record, ctx)
             if point is None:
                 continue
-            if not ensured:
+            if bm25_vectors is None:
                 await self._facade.ensure_vector_space(collection_id, dense_dim)
-                ensured = True
+                bm25_vectors = await self._facade.bm25_meta_vectors(collection_id)
+            for vector in bm25_vectors:
+                point.sparse.pop(vector, None)
             batch.append(point)
             restored += 1
             if len(batch) >= self._point_batch:
@@ -414,6 +424,12 @@ class CollectionImporterV1:
                 batch = []
         if batch:
             await self._facade.upsert_points(collection_id, batch)
+        if bm25_vectors:
+            documents, points = await self._facade.reencode_bm25_meta_vectors(collection_id)
+            self.logger.info(
+                f"Re-encoded {len(bm25_vectors)} BM25 metadata vector(s) locally on {points} "
+                f"point(s) of {documents} document(s) (bundle copies dropped)"
+            )
         return restored
 
     @classmethod

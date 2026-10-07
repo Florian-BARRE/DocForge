@@ -32,16 +32,23 @@ from .vectors import (
 
 # ---------------------- Operations ---------------------- #
 from .apis import (
+    REBUILD_SUFFIX,
+    QdrantAliasApi,
+    QdrantStoreCopyApi,
     BrowseKey,
     QdrantBrowseApi,
     QdrantCollectionApi,
     QdrantFieldPurgeApi,
     QdrantIndexApi,
+    QdrantLexicalEncodingApi,
     QdrantSearchApi,
 )
 
 # ------------------- Public API ------------------- #
 __all__ = [
+    "REBUILD_SUFFIX",
+    "QdrantAliasApi",
+    "QdrantStoreCopyApi",
     "QdrantClient",
     "QdrantPoint",
     "SparseVec",
@@ -69,6 +76,7 @@ __all__ = [
     "QdrantBrowseApi",
     "BrowseKey",
     "QdrantIndexApi",
+    "QdrantLexicalEncodingApi",
     "QdrantSearchApi",
     "CHUNK_INDEX_KEY",
     "DOCUMENT_ID_KEY",

@@ -217,3 +217,16 @@ async def test_get_job_event_payload_forwards_args_and_defaults_slot_to_output()
 
     payload_mock.assert_awaited_once_with(JID, EID, slot="output")
     assert result["payload"] == {"ok": True}
+
+
+async def test_get_job_tolerates_a_document_less_rebuild_job() -> None:
+    mcp = FastMCP(name="test")
+    sdk = AsyncClient("http://localhost:8000")
+    rebuild = _job_status("done").model_copy(update={"document_id": None, "kind": "rebuild_index"})
+    sdk.jobs.get = AsyncMock(return_value=rebuild)  # type: ignore[method-assign]
+    jobs_tools.register(mcp, sdk)
+
+    result = await _tool_fn(mcp, "get_job")(job_id=JID)
+
+    assert result["document_id"] is None
+    assert result["kind"] == "rebuild_index"

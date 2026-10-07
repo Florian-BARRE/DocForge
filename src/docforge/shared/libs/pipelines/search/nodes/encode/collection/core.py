@@ -15,9 +15,15 @@ from pydantic import Field
 # ====== Internal Project Imports ======
 from shared_libs.pipelines.base import ActionNode, NodeConfig, NodeInput, NodeOutput
 from shared_libs.pipelines.nodes.embed.blob import EmbedBlobResolver
+from shared_libs.pipelines.nodes.embed.lexical import MetaLexicalEncoder
 from shared_libs.pipelines.registry import NodeRegistry
 from shared_libs.pipelines.search.nodes.query.base import QUERY_DEGRADED_FLAG
-from shared_libs.public_models.search import EncodedQuery, QuerySpec, SearchContract
+from shared_libs.public_models.search import (
+    CONTENT_FIELD,
+    EncodedQuery,
+    QuerySpec,
+    SearchContract,
+)
 
 # The notes stamped on a degraded EncodedQuery — one per unavailable axis. They ride into
 # SearchResult.debug so a caller sees WHY the result is partial (the embedder was saturated).
@@ -142,9 +148,16 @@ class EncodeCollectionNode(ActionNode):
                 self.logger.warning(f"Sparse query encode failed ({type(exc).__name__}: {exc})")
                 notes.append(_SPARSE_UNAVAILABLE)
 
+        # 2b. Metadata lexical targets also get the LOCAL BM25 query (pure, no provider call): the
+        #     read side sends it to the BM25-encoded metadata vectors and the embedder's sparse query
+        #     to the legacy ones, so each vector is queried in the encoding it was indexed with.
+        meta_sparse = None
+        if any(t.lexical and t.field != CONTENT_FIELD for t in data.spec.search_targets):
+            meta_sparse = MetaLexicalEncoder.encode_query(text)
+
         # 3. Neither axis survived — there is nothing to search. Fail loud so the runner can map it
         #    to a retryable 503 (the embedder is unavailable), not a misleading invalid-graph 422.
-        if not dense and sparse is None:
+        if not dense and sparse is None and meta_sparse is None:
             raise QueryEncodeError(
                 "query encode produced no vector on any axis — the embedder is unavailable"
             )
@@ -155,7 +168,13 @@ class EncodeCollectionNode(ActionNode):
             f"degraded={degraded is not None})"
         )
         return EncodeCollectionProduces(
-            encoded=EncodedQuery(dense=dense, sparse=sparse, model=config.model, degraded=degraded)
+            encoded=EncodedQuery(
+                dense=dense,
+                sparse=sparse,
+                meta_sparse=meta_sparse,
+                model=config.model,
+                degraded=degraded,
+            )
         )
 
 

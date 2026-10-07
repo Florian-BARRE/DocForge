@@ -5,8 +5,8 @@
 # batched Qdrant ``scroll`` and one-blob-at-a-time byte reads. IMPORT writes just persist whatever
 # rows the importer hands over (``restore_rows`` inserts a whole table in one transaction) — the id
 # REMAP that keeps a bundle collision-free on any target lives in the importer, not here. Blob
-# storage, vector indexing and the rollback delete reuse the ingestion/collections façades so the
-# cross-store coherence rules are not duplicated here.
+# storage, vector indexing, the rollback delete and the local BM25 meta-vector re-encode reuse the
+# ingestion/collections/meta-vector façades so the cross-store coherence rules are not duplicated here.
 
 # ====== Standard Library Imports ======
 import uuid
@@ -33,9 +33,11 @@ from shared_libs.services.db.postgresql.tables import (
     MetadataField,
 )
 from shared_libs.services.db.qdrant import (
+    QdrantAliasApi,
     QdrantClient,
     QdrantCollectionApi,
     QdrantIndexApi,
+    QdrantLexicalEncodingApi,
     QdrantPoint,
     VectorNames,
 )
@@ -45,6 +47,7 @@ from shared_libs.services.db.s3 import S3Client, S3Object, S3ObjectApi
 from .collections_facade import CollectionsFacade
 from .helpers import DatabaseHelpers
 from .ingestion_facade import IngestionFacade
+from .meta_vector_sync_facade import MetaVectorSyncFacade
 from .transfer_payloads import DocumentExportRows
 
 
@@ -59,6 +62,7 @@ class CollectionTransferFacade(LoggerClass):
         # Reuse the coherent cross-store paths (create/delete, blob store, vector index).
         self._collections = CollectionsFacade(postgres, qdrant, s3)
         self._ingestion = IngestionFacade(postgres, qdrant, s3)
+        self._meta_vectors = MetaVectorSyncFacade(postgres, qdrant)
 
     # ==================== EXPORT (reads) ====================
     async def get_collection(self, collection_id: uuid.UUID) -> Collection | None:
@@ -205,7 +209,7 @@ class CollectionTransferFacade(LoggerClass):
         ``ensure`` and cannot change without a reindex, so the bundle must carry it.
         """
         name = DatabaseHelpers.qdrant_collection_name(collection_id)
-        if not await self._qdrant.raw.collection_exists(name):
+        if not await QdrantAliasApi.resolve_or_adopt(self._qdrant.raw, name):
             return 0
         params = (await self._qdrant.raw.get_collection(name)).config.params
         vectors = params.vectors
@@ -223,7 +227,7 @@ class CollectionTransferFacade(LoggerClass):
         embedded (no Qdrant space) yields nothing rather than raising.
         """
         name = DatabaseHelpers.qdrant_collection_name(collection_id)
-        if not await self._qdrant.raw.collection_exists(name):
+        if not await QdrantAliasApi.resolve_or_adopt(self._qdrant.raw, name):
             return
         offset: Any = None
         while True:
@@ -298,6 +302,22 @@ class CollectionTransferFacade(LoggerClass):
         """Upsert points VERBATIM by id (= chunk id) into the (already ensured) vector space."""
         name = DatabaseHelpers.qdrant_collection_name(collection_id)
         await QdrantIndexApi.upsert(self._qdrant.raw, name, points)
+
+    async def bm25_meta_vectors(self, collection_id: uuid.UUID) -> set[str]:
+        """The (ensured) vector space's metadata sparse vectors declared in the local BM25 encoding."""
+        name = DatabaseHelpers.qdrant_collection_name(collection_id)
+        return await QdrantLexicalEncodingApi.bm25_meta_vectors(self._qdrant.raw, name)
+
+    async def reencode_bm25_meta_vectors(self, collection_id: uuid.UUID) -> tuple[int, int]:
+        """
+        Re-encode every document's BM25 metadata vectors locally (no provider, dense untouched).
+
+        Returns:
+            tuple[int, int]: (documents re-encoded, points patched).
+        """
+        return await self._meta_vectors.backfill_collection_meta_vectors(
+            collection_id, bm25_only=True
+        )
 
     async def rollback_collection(self, collection_id: uuid.UUID) -> None:
         """Delete a half-imported collection everywhere (Qdrant drop → PG cascade → orphan blobs)."""
