@@ -252,7 +252,7 @@ def test_merge_moving_the_node_endpoint_drops_inheriting_target_keys() -> None:
 def test_collection_get_and_list_mask_nested_keys(client, monkeypatch) -> None:
     from unittest.mock import AsyncMock
 
-    from tests.units.api.test_collections_secret_redaction import _fake_collection, _mock_db
+    from test_collections_secret_redaction import _fake_collection, _mock_db  # noqa: PLC0415
 
     fake = _fake_collection(_keyed_targets_blob(), {})
     _mock_db(
