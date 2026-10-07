@@ -44,13 +44,25 @@ class SearchRequest(BaseModel):
         return_fields (list[str] | None): Hit fields to return (lean response). None → the full hit.
         group_by (Literal["document"] | None): ``"document"`` caps hits per document.
         max_per_document (int): The per-document cap under ``group_by`` (1-10).
+        min_score (float | None): Drop hits scoring below this (scale = the response's score_kind).
+        rerank (bool | None): Per-request override of the rerank stage (None = the pipeline decides).
+        fusion (Literal["rrf", "dbsf"] | None): Per-request override of the dense/sparse fusion.
+        debug (bool): Add each hit's ``fusion_score`` / ``rerank_score``.
     """
 
     query: str = Field(min_length=1, description="The natural-language query to search for.")
     limit: int = Field(default=10, ge=1, le=100, description="Number of fused results.")
     filters: dict[str, Any] | None = Field(
         default=None,
-        description="Constraints on the FILTERABLE metadata fields (field → value or [values]).",
+        description="Metadata filters, ANDed across fields: {field: value}. A scalar = equality "
+        "(string/enum/keyword_list match case-insensitively); a list = any-of (max 100); an object "
+        '= ONE operator: {"eq": v}, {"in": [..]}, {"not": v}, {"not_in": [..]}, '
+        '{"contains": "sub"} / {"prefix": "pre"} (string-ish fields: case-insensitive '
+        'match against stored values; text fields: contains = full-text), {"exists": true|false}, '
+        'or range bounds {"gte","gt","lte","lt"} on integer/float/datetime fields '
+        "(datetime bounds = ISO-8601 strings). Only filterable fields; an operator not valid for the "
+        "field type -> 422 listing the valid ones. A value no document stores yields a response hint "
+        "with the closest stored values.",
     )
     search_in: list[SearchTarget] | None = Field(
         default=None,
@@ -78,6 +90,26 @@ class SearchRequest(BaseModel):
         le=10,
         description="Per-document hit cap when group_by='document' (default 1). Only valid "
         "together with group_by.",
+    )
+    min_score: float | None = Field(
+        default=None,
+        ge=0.0,
+        description="Drop hits whose final score is below this threshold (on the scale named by "
+        "the response's score_kind). None -> no threshold.",
+    )
+    rerank: bool | None = Field(
+        default=None,
+        description="Override the collection's rerank stage for this request: false skips it, "
+        "true requires it (422 when the search pipeline has none). None -> the pipeline decides.",
+    )
+    fusion: Literal["rrf", "dbsf"] | None = Field(
+        default=None,
+        description="Override how the dense and sparse branches are fused for this request: 'rrf' "
+        "(rank-based) or 'dbsf' (distribution-based). None -> the collection's configured fusion.",
+    )
+    debug: bool = Field(
+        default=False,
+        description="True -> each hit also carries fusion_score and, when reranked, rerank_score.",
     )
 
 
@@ -172,6 +204,16 @@ class SearchHit(BaseModel):
         default_factory=list,
         description="Every source block's page + NORMALISED bbox — draw one box per block.",
     )
+    fusion_score: float | None = Field(
+        default=None,
+        description="The retrieval fusion score before any rerank (only when the request set "
+        "debug=true).",
+    )
+    rerank_score: float | None = Field(
+        default=None,
+        description="The cross-encoder rerank score (only when debug=true and a rerank stage "
+        "re-scored the hit).",
+    )
 
 
 class SearchCost(BaseModel):
@@ -254,6 +296,56 @@ class SearchResponse(BaseModel):
     )
 
 
+class ChunkBrowseRequest(BaseModel):
+    """
+    List a collection's chunks by filter, without a query.
+
+    Attributes:
+        filters (dict[str, Any] | None): The same filter map as search; None -> every chunk.
+        limit (int): Page size (1-200).
+        cursor (str | None): The previous page's ``next_cursor``; None -> the first page.
+        return_fields (list[str] | None): Chunk fields to return (as search; ``score`` is not one).
+    """
+
+    filters: dict[str, Any] | None = Field(
+        default=None,
+        description="Constraints on the FILTERABLE metadata fields - exactly the grammar of search "
+        "`filters`. None -> every searchable chunk of the collection.",
+    )
+    limit: int = Field(default=20, ge=1, le=200, description="Chunks per page (1-200).")
+    cursor: str | None = Field(
+        default=None,
+        description="Opaque cursor: the previous page's `next_cursor`, sent back unchanged with the "
+        "SAME filters. None -> the first page.",
+    )
+    return_fields: list[str] | None = Field(
+        default=None,
+        max_length=64,
+        description="The chunk fields to return - any search hit field except score, or "
+        "'metadata.<field>'. chunk_id and document_id are ALWAYS returned. None -> every field "
+        "except geometry (page_number is kept). Omitted fields are absent (not null).",
+    )
+
+
+class ChunkBrowseResponse(BaseModel):
+    """
+    One page of browsed chunks.
+
+    Attributes:
+        chunks (list[SearchHit]): The page, ordered by document id then chunk_index (no score).
+        next_cursor (str | None): Pass back as ``cursor`` for the next page; None on the last page.
+        hints (list[SearchHint]): Filter hints (a value nothing stores; the culprit of an empty page).
+    """
+
+    chunks: list[SearchHit] = Field(
+        default_factory=list, description="The page's chunks in browse order."
+    )
+    next_cursor: str | None = Field(
+        default=None, description="Cursor of the next page; null on the last page."
+    )
+    hints: list[SearchHint] = Field(default_factory=list, description="Filter hints, as search.")
+
+
 class SearchHealthSummary(BaseModel):
     """
     A compact, tile-friendly roll-up of search-runtime health for the deployment cockpit.
@@ -297,5 +389,7 @@ __all__ = [
     "SearchCost",
     "SearchHint",
     "SearchResponse",
+    "ChunkBrowseRequest",
+    "ChunkBrowseResponse",
     "SearchHealthSummary",
 ]

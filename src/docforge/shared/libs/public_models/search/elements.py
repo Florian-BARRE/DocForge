@@ -19,6 +19,8 @@ class Candidate(BaseModel):
             provenance for debugging and for a later fusion step.
         payload (dict | None): Optional raw payload returned by the store (lean vector fields),
             kept for debugging; None when the retriever returned ids + scores only.
+        fusion_score (float | None): The pre-rerank fusion score, kept by a rerank stage before it
+            overwrites ``score``; None when the candidate was never reranked.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -31,6 +33,11 @@ class Candidate(BaseModel):
     payload: dict | None = Field(
         default=None,
         description="Optional raw store payload (lean vector fields), kept for debugging.",
+    )
+    fusion_score: float | None = Field(
+        default=None,
+        description="The retrieval (fusion) score this candidate carried BEFORE a rerank stage "
+        "overwrote ``score``; None when no rerank re-scored it (``score`` is then the fusion score).",
     )
 
 
@@ -45,6 +52,8 @@ class Hit(BaseModel):
         rank (int): 1-based position in the delivered ordering (1 = best).
         text (str | None): The chunk's hydrated text; None when hydration returned metadata only.
         metadata (dict | None): The chunk's hydrated rich metadata; None when not requested.
+        fusion_score (float | None): The hit's retrieval (fusion) score (debug provenance).
+        rerank_score (float | None): The hit's rerank score when it was reranked, else None.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -60,6 +69,16 @@ class Hit(BaseModel):
     )
     metadata: dict | None = Field(
         default=None, description="The chunk's hydrated rich metadata (None if not requested)."
+    )
+    fusion_score: float | None = Field(
+        default=None,
+        description="The retrieval (fusion) score of the hit — equal to ``score`` when no rerank "
+        "re-scored it. None when the producer did not record it.",
+    )
+    rerank_score: float | None = Field(
+        default=None,
+        description="The rerank (cross-encoder) score when a rerank stage re-scored the hit (then "
+        "equal to ``score``); None when it was not reranked.",
     )
 
 

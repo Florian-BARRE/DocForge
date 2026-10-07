@@ -17,9 +17,21 @@ CONTENT_FIELD = "content"
 FILTER_GRAMMAR: tuple[str, ...] = (
     "Only filterable fields may be filtered; several fields are ANDed.",
     '{"field": "v"} equality — string/enum/keyword_list values match case-insensitively.',
-    '{"field": ["a", "b"]} any-of (keyword_list: overlap).',
-    '{"field": {"gte": x, "lte": y}} range (gt/lt too) on integer/float/datetime fields only; '
-    "datetime bounds are ISO-8601 strings.",
+    '{"field": ["a", "b"]} any-of (keyword_list: overlap); max 100 values.',
+    'Operator form {"field": {"<op>": value}} — ONE operator per field (only range bounds combine):',
+    '  "eq": v | "in": [..] — same as the bare forms.',
+    '  "not": v | "not_in": [..] — exclude; string values exclude every stored case variant.',
+    '  "contains": "sub" | "prefix": "pre" — string/enum/keyword_list: case-insensitive match against '
+    "the stored values (>500 matching values → 422, narrow it; none → empty result + hint). "
+    'text/text_list: "contains" = full-text match; no "prefix".',
+    '  "exists": true|false — the field has a value / is absent, null or empty.',
+    '  "gte"/"gt"/"lte"/"lt" — range on integer/float/datetime fields only; datetime bounds are '
+    "ISO-8601 strings.",
+    "Allowed operators by type: string/enum/keyword_list eq,in,not,not_in,contains,prefix,exists · "
+    "text/text_list eq,in,not,not_in,contains,exists · integer eq,in,not,not_in,exists,ranges · "
+    "float/datetime exists,ranges · bool eq,not,exists. Anything else → 422 listing the valid ones.",
+    "Operator values must have the field's type (integer → numbers, bool → true/false, string → "
+    "text); a mistyped value → 422.",
     'text/text_list fields: {"field": "words"} full-text match (all words present); a list = any-of.',
     "A value no document stores returns a hint with the closest stored values.",
 )

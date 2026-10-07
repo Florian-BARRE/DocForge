@@ -837,11 +837,36 @@ Hybrid retrieval over one collection. Runs **inline** in the request (sub-second
 |---|---|---|---|
 | `query` | string | — | Natural-language query (non-blank). Embedded with the collection's own embedder. |
 | `limit` | int (1–100) | `10` | Number of fused results. |
-| `filters` | object/null | `null` | Constraints on **filterable** fields: a scalar → equality (string equality is case-insensitive), a list → any-of, or a range mapping of `gte`/`gt`/`lte`/`lt` bounds → numeric or ISO-8601 datetime range (e.g. `{"published": {"gte": "2024-01-01", "lte": "2024-12-31"}}`). |
+| `filters` | object/null | `null` | Constraints on **filterable** fields, ANDed across fields — see **Filter grammar** below. |
 | `search_in` | list/null | `null` | Fields × modalities to query. `null` → content on both semantic + lexical. |
 | `return_fields` | list/null | `null` | Lean hits: keep only these hit fields (any hit field name, or `metadata.<field>` for one metadata entry). `chunk_id` + `document_id` are **always** returned. Omitted fields are **absent** (not `null`) and their hydration reads are skipped. `null` → the full hit. Unknown name → `422` listing the allowed names. |
 | `group_by` | `"document"`/null | `null` | `"document"` → no document contributes more than `max_per_document` hits (see below). |
 | `max_per_document` | int (1–10) | `1` | Per-document cap under `group_by`; sending it without `group_by` → `422`. |
+| `min_score` | float/null | `null` | Drop hits whose **final** `score` is below this, after ranking (and before grouping). The scale depends on `score_kind` — a fusion score is rank-based, a cross-encoder rerank score is in [0, 1] — so set it against the scores you observe. |
+| `rerank` | bool/null | `null` | Per-request override of the collection's rerank stage: `false` skips reranking for this request (fusion order); `true` requires it (`422` when the collection's search pipeline has no rerank stage); `null` → the pipeline as configured. |
+| `fusion` | `"rrf"`/`"dbsf"`/null | `null` | Per-request override of the hybrid fusion strategy (reflected in `score_kind`). |
+| `debug` | bool | `false` | `true` → each hit also carries `fusion_score` (its retrieval fusion score) and, when a reranker re-scored it, `rerank_score`. |
+
+**Filter grammar** (`filters` on search and on chunk browse):
+
+- `{"field": "v"}` — equality; string/enum/keyword_list values match **case-insensitively**.
+- `{"field": ["a", "b"]}` — any-of (keyword_list: overlap); max 100 values, never empty.
+- Operator form `{"field": {"<op>": value}}` — **one** operator per field (only range bounds combine):
+  - `"eq": v` / `"in": [..]` — same as the bare forms.
+  - `"not": v` / `"not_in": [..]` — exclude; string values exclude every stored case variant.
+  - `"contains": "sub"` / `"prefix": "pre"` — string/enum/keyword_list: case-insensitive match against
+    the **stored** values (more than 500 matching values → `422`, narrow it; none → empty result + a
+    hint). On text/text_list fields `"contains"` is the full-text match; `"prefix"` is not allowed.
+  - `"exists": true|false` — the field has a value / is absent, null or empty.
+  - `"gte"`/`"gt"`/`"lte"`/`"lt"` — range on integer/float/datetime fields only (datetime bounds are
+    ISO-8601 strings, e.g. `{"published": {"gte": "2024-01-01", "lte": "2024-12-31"}}`).
+- Allowed operators by type: string/enum/keyword_list `eq,in,not,not_in,contains,prefix,exists` ·
+  text/text_list `eq,in,not,not_in,contains,exists` · integer `eq,in,not,not_in,exists` + ranges ·
+  float/datetime `exists` + ranges · bool `eq,not,exists`. Anything else → `422` listing the valid ones.
+- Operator operands must have the field's value type (integer field → integers, bool → `true`/`false`,
+  string/text → strings): a mistyped value → `422` (a mistyped `not` would otherwise exclude nothing).
+- text/text_list fields: `{"field": "words"}` is a full-text match (all words present); a list = any-of.
+- A value no document stores returns a `hint` with the closest stored values.
 
 Each `search_in` entry is a **SearchTarget**: `{ "field": "content"|<metadata field>,
 "semantic": bool, "lexical": bool }`. `field` defaults to `"content"` (the chunk body).
@@ -855,7 +880,9 @@ With a rerank stage the deeper page also enlarges the reranked pool.
 
 Gates (all `422`, before any spend): a list filter that is empty (`[]` matches nothing — omit the
 filter instead) or carries more than 100 values; a filter naming a non-filterable field; an enum
-value outside the field's declared values; a malformed or misapplied range filter (a range on a non-range-typed field); a `search_in` target naming a vector
+value outside the field's declared values; an unknown operator, an operator not valid for the field's
+type, or two operators combined (other than range bounds); a `contains`/`prefix` matching more than
+500 stored values; a `search_in` target naming a vector
 the collection never indexed (or a selection with no modality). `404` when the collection is
 unknown; `409` when it has no embed node wired.
 
@@ -910,8 +937,10 @@ image size to draw), and `page`/`bbox` are `null` (and `block_locations` empty) 
 chunk (e.g. a page-less document). `score` is the fused RRF score (higher is better). `score_kind`
 (always present) names what the score represents — `rrf_fusion` (the default), `dbsf_fusion`, or
 `cross_encoder_rerank` (when a reranker is enabled). It is rank-based, comparable only **within** one
-response — a round `1.0000` on a tiny/single-doc corpus is normal, not a bug. `debug_info` is `null`
-unless there is a non-fatal note.
+response — a round `1.0000` on a tiny/single-doc corpus is normal, not a bug. `debug_info` always
+carries `hit_count`, plus non-fatal notes when they apply (e.g. `degraded`, `grouping`). With
+`debug: true` each hit also carries `fusion_score` and, when reranked, `rerank_score` (both absent
+otherwise).
 
 `page` is the **0-based** index; `page_number` (on the hit and on each `block_locations` entry) is the
 same page **1-based**, as a reader counts it — cite that one (`null` when unlocated).
@@ -936,6 +965,23 @@ curl -sX POST http://localhost:10040/api/v1/collections/7f1c9d2e-.../search \
         ]
       }'
 ```
+
+### Browse chunks (no query)
+
+`POST /api/v1/collections/{collection_id}/chunks/browse` — capability `read`, collection-scoped. Lists
+a collection's **enabled** chunks matching filters, with no query text: read a whole document ("all
+passages of P0153") or a business process page by page. Ordered by document then `chunk_index`.
+
+| Field | Type | Default | Meaning |
+|---|---|---|---|
+| `filters` | object/null | `null` | Same grammar, gates and `hints` as search filters. `null` → every chunk. |
+| `limit` | int (1–200) | `20` | Page size. |
+| `cursor` | string/null | `null` | The `next_cursor` of the previous page (opaque; an unknown value → `422`). |
+| `return_fields` | list/null | `null` | Same projection as search (`chunk_id`/`document_id` always returned). |
+
+Response: `{chunks: [hit-shaped items without a score], next_cursor: string|null, hints: [...]}` —
+`next_cursor` is `null` on the last page. Searching with a blank `query` stays `422`, and its message
+points here.
 
 ### Search health
 

@@ -164,6 +164,8 @@ from .preview import (
 # ------------------- Search models ------------------- #
 from .search import (
     BlockLocation,
+    ChunkBrowseRequest,
+    ChunkBrowseResponse,
     SearchHealthSummary,
     SearchHint,
     SearchHit,
@@ -287,6 +289,8 @@ __all__ = [
     "SearchHint",
     "SearchHit",
     "SearchResponse",
+    "ChunkBrowseRequest",
+    "ChunkBrowseResponse",
     "SearchHealthSummary",
     # Jobs
     "JobStatus",

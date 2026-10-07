@@ -23,6 +23,8 @@ import re
 _READ_ROUTES: tuple[str, ...] = (
     # Hybrid search over a collection (pure retrieval).
     "/api/v1/collections/{collection_id}/search",
+    # Query-less filtered chunk listing (pure read).
+    "/api/v1/collections/{collection_id}/chunks/browse",
     # Server-side document-grid query (pure filtered read).
     "/api/v1/collections/{collection_id}/documents/query",
     # Pre-hoc cost estimate (pure projection — no job enqueued, nothing spent).

@@ -9,14 +9,25 @@ from .point import QdrantPoint, SparseVec
 from .filters import (
     RANGE_KEYS,
     Condition,
+    IsEmpty,
     Match,
     MatchAny,
+    MatchPattern,
     MatchText,
+    Not,
     PayloadType,
     Range,
-    build_match_conditions,
     parse_range,
 )
+from .filter_operators import (
+    EXCLUSION_OPS,
+    LIST_OPS,
+    MAX_LIST_VALUES,
+    PATTERN_OPS,
+    FilterOp,
+    FilterOperatorGrammar,
+)
+from .filter_builder import build_match_conditions
 
 # ---------------------- Reserved payload keys ---------------------- #
 from .payload_keys import (
@@ -37,10 +48,19 @@ __all__ = [
     "MatchAny",
     "MatchText",
     "Range",
+    "Not",
+    "IsEmpty",
+    "MatchPattern",
     "Condition",
     "RANGE_KEYS",
     "parse_range",
     "build_match_conditions",
+    "FilterOp",
+    "FilterOperatorGrammar",
+    "LIST_OPS",
+    "EXCLUSION_OPS",
+    "PATTERN_OPS",
+    "MAX_LIST_VALUES",
     "CHUNK_INDEX_KEY",
     "DOCUMENT_ID_KEY",
     "ENABLED_KEY",

@@ -24,6 +24,7 @@ from .routers import (
     auth_whoami_router,
     blobs_router,
     capabilities_router,
+    chunk_browse_router,
     collections_router,
     corpus_router,
     documents_router,
@@ -146,6 +147,8 @@ def create_app(
 
     # API v1 — hybrid retrieval search over a collection.
     app.include_router(router=search_router, prefix="/api/v1")
+    # API v1 — query-less, filter-only chunk listing (ordered keyset pages).
+    app.include_router(router=chunk_browse_router, prefix="/api/v1")
 
     # API v1 — the append-only audit trail read surface (ROOT/full-access only).
     app.include_router(router=audit_router, prefix="/api/v1")

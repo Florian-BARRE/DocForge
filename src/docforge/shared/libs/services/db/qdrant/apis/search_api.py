@@ -11,7 +11,16 @@ from collections.abc import Sequence
 from qdrant_client import AsyncQdrantClient, models
 
 # ====== Local Project Imports ======
-from ..vectors import Condition, Match, MatchAny, MatchText, SparseVec
+from ..vectors import (
+    Condition,
+    IsEmpty,
+    Match,
+    MatchAny,
+    MatchPattern,
+    MatchText,
+    Not,
+    SparseVec,
+)
 
 
 class QdrantSearchApi:
@@ -21,8 +30,28 @@ class QdrantSearchApi:
         raise TypeError("QdrantSearchApi is a static-only class and cannot be instantiated.")
 
     @staticmethod
-    def _to_field_condition(cond: Condition) -> models.FieldCondition | models.Filter:
-        """Translate one clean condition into a qdrant FieldCondition (or a nested any-of Filter)."""
+    def _to_field_condition(
+        cond: Condition,
+    ) -> models.FieldCondition | models.Filter | models.IsEmptyCondition:
+        """
+        Translate one clean condition into its qdrant struct.
+
+        A ``Not`` becomes a nested ``Filter(must_not=[inner])`` (so it ANDs like any condition); an
+        ``IsEmpty`` matches an absent key, a null and an empty list alike — exactly "no value".
+
+        Raises:
+            ValueError: On an unexpanded ``MatchPattern`` (a keyword contains/prefix the request
+                edge never resolved to stored values) or a full-text condition without texts.
+        """
+        if isinstance(cond, Not):
+            return models.Filter(must_not=[QdrantSearchApi._to_field_condition(cond.condition)])
+        if isinstance(cond, IsEmpty):
+            return models.IsEmptyCondition(is_empty=models.PayloadField(key=cond.field))
+        if isinstance(cond, MatchPattern):
+            raise ValueError(
+                f"'{cond.operator}' on field '{cond.field}' was not expanded to stored values — "
+                f"a keyword index cannot match a pattern"
+            )
         if isinstance(cond, Match):
             return models.FieldCondition(key=cond.field, match=models.MatchValue(value=cond.value))
         if isinstance(cond, MatchAny):

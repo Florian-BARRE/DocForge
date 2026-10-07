@@ -4,7 +4,8 @@
 # RRF, disabled points excluded) and returns the candidate pool. The node touches NO store directly:
 # the read port arrives through the engine's bind() seam, so the graph controls what it may reach and
 # the disabled-point exclusion can never be bypassed. Depth is the QuerySpec's over-sampled
-# candidate_k; the node is a pure function of (input, injected port).
+# candidate_k; the node is a pure function of (input, injected port). A single request may override the
+# configured fusion through QuerySpec.flags[FUSION_FLAG] (run-input data, never the stored blob).
 
 # ====== Standard Library Imports ======
 from typing import Literal
@@ -15,7 +16,13 @@ from pydantic import Field
 # ====== Internal Project Imports ======
 from shared_libs.pipelines.base import NodeConfig, NodeInput, NodeOutput
 from shared_libs.pipelines.registry import NodeRegistry
-from shared_libs.public_models.search import CandidateSet, EncodedQuery, QuerySpec
+from shared_libs.public_models.search import (
+    FUSION_FLAG,
+    FUSION_STRATEGIES,
+    CandidateSet,
+    EncodedQuery,
+    QuerySpec,
+)
 
 # ====== Local Project Imports ======
 from ...base import PortBackedNode
@@ -66,9 +73,9 @@ class RetrieveHybridNode(PortBackedNode):
     HOW_IT_WORKS = (
         "Passes the query's dense/sparse vectors + filters to the bound "
         "CollectionReadPort.hybrid_search, which fuses the modalities in the store with the "
-        "configured strategy (RRF or DBSF) and excludes disabled chunks/documents. Returns "
-        "candidate_k candidates in fusion order. No direct store import — the port is injected "
-        "via bind()."
+        "configured strategy (RRF or DBSF — a request's 'fusion' flag overrides it for that run) "
+        "and excludes disabled chunks/documents. Returns candidate_k candidates in fusion order. "
+        "No direct store import — the port is injected via bind()."
     )
     Config = RetrieveHybridConfig
     Consumes = RetrieveHybridConsumes
@@ -85,6 +92,10 @@ class RetrieveHybridNode(PortBackedNode):
             RetrieveHybridProduces: The candidate pool in fusion order.
         """
         config: RetrieveHybridConfig = self.config
+        # 0. A request-level fusion override (flags[FUSION_FLAG]) wins over the configured strategy
+        #    for this run only; an unknown value is ignored (the configured fusion stands).
+        requested = data.spec.flags.get(FUSION_FLAG)
+        fusion = requested if requested in FUSION_STRATEGIES else config.fusion
         # 1. One read through the injected port — the exclusion invariant lives inside it. The
         #    spec's search targets select which named vectors (content and/or metadata) it queries;
         #    the port owns the target → vector-name resolution, so the node stays store-agnostic.
@@ -93,7 +104,7 @@ class RetrieveHybridNode(PortBackedNode):
             filters=data.spec.filters,
             limit=data.spec.candidate_k,
             targets=data.spec.search_targets,
-            fusion=config.fusion,
+            fusion=fusion,
             measure_branch_contribution=config.measure_branch_contribution,
         )
         self.logger.debug(

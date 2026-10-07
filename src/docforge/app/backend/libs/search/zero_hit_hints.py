@@ -1,12 +1,14 @@
 # ====== Code Summary ======
 # ZeroHitHintBuilder — explains a FILTERED search that came back empty with no unmatched keyword value.
 # (A value that exists nowhere already carries its own "did you mean" hint from SearchFilterResolver —
-# then that filter IS the culprit and nothing more is said.) Existence is only claimed when the resolver
+# then that filter IS the culprit and nothing more is said; a hint about a not/not_in value explains an
+# exclusion that removes nothing, so it never counts as the culprit.) Existence is only claimed when the resolver
 # actually verified every value (keyword fields); text/number/bool/range filters are phrased neutrally.
 # Pure: it reasons only over the resolution and the hit count, no I/O.
 
 # ====== Standard Library Imports ======
 import json
+from collections.abc import Mapping
 from typing import Any
 
 # ====== Local Project Imports ======
@@ -34,8 +36,10 @@ class ZeroHitHintBuilder:
             name the culprit; else one hint per filter (the single filter is called out as THE
             likely culprit; with several, the combination is).
         """
-        # 1. Nothing to explain: hits came back, nothing was filtered, or a culprit is already named.
-        if hit_count > 0 or not resolution.original or resolution.hints:
+        # 1. Nothing to explain: hits came back, nothing was filtered, or a culprit is already named
+        #    (an exclusion hint is not one — an exclusion that removes nothing cannot empty a result).
+        culprits = [h for h in resolution.hints if h.field not in resolution.exclusion_fields]
+        if hit_count > 0 or not resolution.original or culprits:
             return []
 
         # 2. One filter → it is the likely culprit; several → their combination is. "Each value
@@ -56,9 +60,13 @@ class ZeroHitHintBuilder:
     @staticmethod
     def __message(name: str, value: Any, count: int, full_text: bool, all_verified: bool) -> str:
         """Phrase the zero-hit explanation for one filter."""
-        # 1. Render the filter as the caller wrote it (a full-text filter says so).
-        operator = "matches text" if full_text else "="
-        rendered = f"{name} {operator} {json.dumps(value, ensure_ascii=False, default=str)}"
+        # 1. Render the filter as the caller wrote it (a full-text filter says so; an operator
+        #    object renders as its JSON).
+        if isinstance(value, Mapping):
+            rendered = f"{name} {json.dumps(value, ensure_ascii=False, default=str)}"
+        else:
+            operator = "matches text" if full_text else "="
+            rendered = f"{name} {operator} {json.dumps(value, ensure_ascii=False, default=str)}"
 
         # 2. A lone filter is the likely culprit; among several, the combination is.
         if count == 1:

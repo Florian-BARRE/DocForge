@@ -7,8 +7,10 @@
 # search blob to run (the collection's own stored search graph when it carries one, else the stock
 # default), and runs it inline through the SearchRunner. Returns the terminal SearchResult. Two
 # request-edge response shapers ride along without touching the pure graph: a HitProjection (the
-# read port skips the hydration reads of unrequested fields) and a per-document cap (the graph is
-# asked for a deeper page, then DocumentHitGrouper caps the FINAL ranking — after any rerank).
+# read port skips the hydration reads of unrequested fields) and the finalize reshapes (a min_score
+# cut, then a per-document cap — the graph is asked for a deeper page, then DocumentHitGrouper caps
+# the FINAL ranking, after any rerank). Per-request tuning (rerank skip, fusion override) rides into
+# the graph as QuerySpec.flags run-input data; a rerank=True request is checked against the blob.
 
 # ====== Standard Library Imports ======
 import uuid
@@ -41,7 +43,9 @@ from .contract import SearchContractBuilder
 from .document_grouping import DocumentHitGrouper
 from .hit_projection import HitProjection
 from .read_port import CollectionReadPortImpl
+from .result_finalizer import SearchResultFinalizer
 from .runner import SearchRunError, SearchRunner
+from .tuning import SearchTuning
 
 # Default wall-clock cap for an inline search run when the caller does not configure one — search is
 # sub-second; this only guards a stuck provider. Deployments override it via SEARCH_RUN_TIMEOUT_SECONDS.
@@ -155,6 +159,7 @@ class SearchService(LoggerClass):
         title_field: MetadataField | None = None,
         projection: HitProjection | None = None,
         max_per_document: int | None = None,
+        tuning: SearchTuning | None = None,
     ) -> tuple[SearchResult, tuple[int, int, float | None, int]]:
         """
         Run the search graph against a collection and return the ranked SearchResult plus its cost.
@@ -177,6 +182,8 @@ class SearchService(LoggerClass):
                 this many hits. The graph is asked for a deeper page and the cap applies to its
                 FINAL ranking (after fusion and any rerank); fewer than ``top_k`` hits come back
                 when the deeper page holds too few distinct documents. None = no grouping.
+            tuning (SearchTuning | None): Per-request knobs (min_score, rerank skip/require, fusion
+                override). None = the stored graph, unchanged.
 
         Returns:
             tuple[SearchResult, tuple[int, int, float | None, int]]: the ranked hits (best first) and
@@ -186,8 +193,10 @@ class SearchService(LoggerClass):
         Raises:
             SearchServiceError: When the collection is unknown.
             SearchContractError: When the collection has no embedder wired (from the contract builder).
+            SearchTuningError: When rerank=True but the resolved search graph has no rerank stage.
             SearchRunError: When the graph is invalid or the run did not deliver (from the runner).
         """
+        tuning = tuning or SearchTuning()
         # 1. The collection is the contract source (its pipeline blob carries the embedder). Reuse the
         #    one the caller already loaded (the router loads it for its 404/409 gates) to avoid a
         #    second round-trip + re-decode of the large {pipeline, search} JSONB on the hot path.
@@ -223,7 +232,8 @@ class SearchService(LoggerClass):
                 text=query,
                 top_k=fetch_k,
                 search_targets=search_targets or [],
-                flags={},
+                # Per-request tuning rides as run-input data the nodes read (empty = the blob as is).
+                flags=tuning.flags(),
             ),
             "filters": QueryFilters(filters=filters or {}),
             "contract": contract,
@@ -236,6 +246,8 @@ class SearchService(LoggerClass):
         stored_search = collection.search or {}
         blob = self.__resolve_blob(stored_search)
         graph_key = self.__cache_key(stored_search, blob)
+        # 5b. A rerank=True request needs a rerank stage in the graph actually run — else 422.
+        tuning.check_blob(blob)
 
         # 6. Price any search-time LLM spend against the collection's EFFECTIVE rates (canonical
         #    defaults folded with its per-collection overrides) — the same numbers the estimator/ingest
@@ -248,13 +260,9 @@ class SearchService(LoggerClass):
             rates,
             graph_key=graph_key,
             timeout_seconds=self._timeout_seconds,
-            # 7. Group by document on the FINAL ranking (the graph never sees the cap), inside the
-            #    runner so the per-search metrics count the hits actually delivered.
-            finalize=(
-                (lambda answer: DocumentHitGrouper.apply(answer, top_k, max_per_document))
-                if max_per_document is not None
-                else None
-            ),
+            # 7. min_score then the per-document cap on the FINAL ranking (the graph never sees
+            #    either), inside the runner so the per-search metrics count the delivered hits.
+            finalize=SearchResultFinalizer.build(top_k, max_per_document, tuning.min_score),
         )
         return result, usage
 

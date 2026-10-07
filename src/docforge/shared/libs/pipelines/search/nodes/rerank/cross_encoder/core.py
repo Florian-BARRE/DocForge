@@ -10,7 +10,11 @@
 # emitted. The cross-encoder judges the top_n candidates by fusion score; candidates past top_n are
 # dropped — they ranked below the judged set and top_n is kept oversized vs the delivered top_k, so a
 # dropped candidate could never have reached the final page. This is the simplest correct rule and
-# avoids mixing incomparable score scales (cross-encoder [0, 1] vs raw fusion scores).
+# avoids mixing incomparable score scales (cross-encoder [0, 1] vs raw fusion scores). Every re-scored
+# candidate keeps its incoming fusion score (Candidate.fusion_score) so a debug response can show both.
+#
+# A single request may SKIP the stage (QuerySpec.flags[RERANK_FLAG] is False — run-input data, not
+# config): the fused pool then passes through untouched and the reranker is never called.
 
 # ====== Standard Library Imports ======
 import asyncio
@@ -18,7 +22,7 @@ import asyncio
 # ====== Internal Project Imports ======
 from shared_libs.pipelines.nodes.openai_compat import EndpointReachability
 from shared_libs.pipelines.registry import NodeRegistry
-from shared_libs.public_models.search import CandidateSet
+from shared_libs.public_models.search import RERANK_FLAG, CandidateSet
 
 # ====== Local Project Imports ======
 from ...base import PortBackedNode
@@ -45,14 +49,34 @@ class RerankCrossEncoderNode(PortBackedNode):
         "Takes the top_n candidates of the fused pool (by fusion score), hydrates ONLY their passage "
         "text through the bound read port, then POSTs one (query, passages) batch to the reranker's "
         "TEI-compatible /rerank route. Each returned [0, 1] score overwrites its candidate's score by "
-        "index; the re-scored candidates are emitted best-first as a plain CandidateSet the hydrate "
-        "node consumes unchanged. Candidates past top_n are dropped (they ranked below the judged "
-        "set). No store write — a pure port read + one provider call."
+        "index (the incoming fusion score is kept alongside as fusion_score); the re-scored "
+        "candidates are emitted best-first as a plain CandidateSet the hydrate node consumes "
+        "unchanged. Candidates past top_n are dropped (they ranked below the judged set). A request "
+        "that sets the 'rerank' flag to false skips the stage: the fused pool passes through "
+        "untouched. No store write — a pure port read + one provider call."
     )
     Config = RerankCrossEncoderConfig
     Consumes = RerankCrossEncoderConsumes
     Produces = RerankCrossEncoderProduces
     UNIQUE_IN_GRAPH = True
+
+    @staticmethod
+    def _passthrough(candidates: CandidateSet) -> RerankCrossEncoderProduces:
+        """
+        Hand the fused pool on untouched — the request asked to skip the rerank stage.
+
+        Args:
+            candidates (CandidateSet): The incoming fused pool.
+
+        Returns:
+            RerankCrossEncoderProduces: The same pool, with an aggregate score of 1.0 ("not judged").
+        """
+        # 1. No provider call, no read — the pool (order, scores, degrade note) is returned as is.
+        #    The node-level score is 1.0, NOT the top fusion score: a ScoreBelow edge on this node is
+        #    tuned for cross-encoder scores, and a fusion score (RRF ~0.03) would fire that quality
+        #    escalation on every skipped request. A skip the caller asked for is not a low-quality
+        #    rerank; the candidates keep their own fusion scores untouched.
+        return RerankCrossEncoderProduces(candidates=candidates, score=1.0)
 
     async def preflight(self) -> None:
         """Verify the reranker endpoint is reachable and its token accepted, before any spend.
@@ -81,6 +105,10 @@ class RerankCrossEncoderNode(PortBackedNode):
             RerankCrossEncoderProduces: The re-scored pool (a CandidateSet) + its top-1 score.
         """
         config: RerankCrossEncoderConfig = self.config
+        # 0. A request-level skip (flags[RERANK_FLAG] is False) bypasses the reranker entirely.
+        if data.spec.flags.get(RERANK_FLAG) is False:
+            self.logger.debug(f"Rerank skipped by request — fusion-order candidates passed through")
+            return self._passthrough(data.candidates)
         # Preserve any encode-degradation note across the rerank so delivery still surfaces it.
         degraded = data.candidates.degraded
 
@@ -137,7 +165,8 @@ class RerankCrossEncoderNode(PortBackedNode):
                 score=min(1.0, max(0.0, judged[0].score)),
             )
 
-        # 4. Map each score onto its candidate by index; overwrite the score + provenance.
+        # 4. Map each score onto its candidate by index; overwrite the score + provenance, keeping the
+        #    incoming fusion score alongside so a debug response can report both.
         score_by_index = dict(scores)
         if len(score_by_index) != len(texts):
             # The reranker returned fewer scores than passages sent — the unscored candidates are
@@ -148,7 +177,11 @@ class RerankCrossEncoderNode(PortBackedNode):
             )
         reranked = [
             candidate.model_copy(
-                update={"score": score_by_index[position], "source": _RERANK_SOURCE}
+                update={
+                    "score": score_by_index[position],
+                    "source": _RERANK_SOURCE,
+                    "fusion_score": candidate.score,
+                }
             )
             for position, candidate in enumerate(judged)
             if position in score_by_index

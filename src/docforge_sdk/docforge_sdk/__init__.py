@@ -134,6 +134,8 @@ from .models.preview import (
 # ------------------- Search models ------------------- #
 from .models.search import (
     BlockLocation,
+    ChunkBrowseRequest,
+    ChunkBrowseResponse,
     SearchHealthSummary,
     SearchHit,
     SearchRequest,
@@ -225,6 +227,8 @@ __all__ = [
     "BlockLocation",
     "SearchHit",
     "SearchResponse",
+    "ChunkBrowseRequest",
+    "ChunkBrowseResponse",
     "SearchHealthSummary",
     # Preview
     "PreviewIrSummary",

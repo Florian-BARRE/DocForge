@@ -111,7 +111,8 @@ vector space is fixed at creation), plus optional ingestion/search pipeline blob
 
 | Tool | Purpose |
 |---|---|
-| `search_collection` | Hybrid semantic + keyword search (dense + sparse fusion). **Typed parameters**: `filters` is `{field: value}` where value is a scalar (equality; strings case-insensitive), a list (any-of) or a `{gte,gt,lte,lt}` range; `search_in` is a list of `{field, semantic, lexical}` targets — both are documented in the tool's JSON schema, and the docstring tells the agent to call `describe_collection` first. Returns ranked hits (cite the 1-based `page_number` and `document_title`) plus `hints`: a filter value no document stores yields the closest stored values — read them before concluding nothing exists. **Lean by default** for agents: `return_fields` (omitted → `text, document_title, page_number, heading_path, score, metadata`; `chunk_id`/`document_id` always come back; explicit list overrides, `metadata.<field>` keeps one entry; **geometry** = pass `return_fields` including `block_locations`/`bbox`/`page` with `format="json"`), `group_by="document"` + `max_per_document` (1-10, default 1: diverse sources instead of one document repeated), and `format`: `"text"` (default) = a header `N hits for "<query>"` then per hit `[rank] <title> | p.<page_number> | <heading > path> | score <s> | doc <id> | chunk <id>`, an optional `meta: k=v; ...` line and the chunk text, then `Hint: ...` lines (never any geometry); `"json"` = the compact response holding only the requested keys. Text mode uses `" | "` separators (ASCII-only output for Windows consoles). |
+| `search_collection` | Hybrid semantic + keyword search (dense + sparse fusion). **Typed parameters**: `filters` is `{field: value}` where value is a scalar (equality; strings case-insensitive), a list (any-of) or ONE operator object `{eq,in,not,not_in,contains,prefix,exists,gte,gt,lte,lt}` (e.g. `{"topic":{"not":"legal"}}`, `{"title":{"contains":"audit"}}`, `{"keywords":{"prefix":"AL"}}`, `{"year":{"gte":2023}}`; an unknown operator key is refused by the tool schema, a per-type-invalid one by the server with the valid operators; `describe_collection` lists each field's type); `search_in` is a list of `{field, semantic, lexical}` targets — both are documented in the tool's JSON schema, and the docstring tells the agent to call `describe_collection` first. Returns ranked hits (cite the 1-based `page_number` and `document_title`) plus `hints`: a filter value no document stores yields the closest stored values — read them before concluding nothing exists. **Lean by default** for agents: `return_fields` (omitted → `text, document_title, page_number, heading_path, score, metadata`; `chunk_id`/`document_id` always come back; explicit list overrides, `metadata.<field>` keeps one entry; **geometry** = pass `return_fields` including `block_locations`/`bbox`/`page` with `format="json"`), `group_by="document"` + `max_per_document` (1-10, default 1: diverse sources instead of one document repeated), and `format`: `"text"` (default) = a header `N hits for "<query>"` then per hit `[rank] <title> | p.<page_number> | <heading > path> | score <s> | doc <id> | chunk <id>`, an optional `meta: k=v; ...` line and the chunk text, then `Hint: ...` lines (never any geometry); `"json"` = the compact response holding only the requested keys. Per-request tuning (forwarded only when set): `min_score`, `rerank` (false skips the reranker, true requires it), `fusion` (`rrf`|`dbsf`), `debug` (text mode adds `fusion F / rerank R` to the citation line; json hits carry `fusion_score`/`rerank_score`). A blank query is refused - use `browse_chunks`. Text mode uses `" | "` separators (ASCII-only output for Windows consoles). |
+| `browse_chunks` | List a document's / a filter's passages **in reading order, without a query** (`POST /collections/{id}/chunks/browse`): read "all passages of document X" (filter on its identifier field) or walk a process page by page. Same `filters` grammar as search; `limit` 1-200 (default 20); `return_fields` (default lean: text, document_title, page_number, heading_path, metadata). Text format = `[n] <title> \| p.<page_number> \| <heading > path> \| doc <id> \| chunk <id>` + text per chunk, then `next_cursor: <token>` (pass it back as `cursor` with the SAME filters) or `end of results`, then `Hint:` lines; `format="json"` = compact `{chunks,next_cursor,hints}`. |
 
 ### Jobs
 
@@ -189,7 +190,7 @@ multi-GB) — `get_export_download_ref` instead points the caller at the REST do
 | `list_audit` | One keyset-paginated page of the audit trail, newest first — one row per mutating API action (who/what/target/outcome). Filter by actor (`actor_user_id`/`actor_key_id`), target (`target_type`+`target_id`), `correlation_id`, and an ISO-8601 time window (`created_from`/`created_to`); walk it with `cursor`. **ROOT / full-access keys only** (a collection-scoped key is rejected `403`). |
 
 
-**Total: 73 tools** across 13 sections.
+**Total: 74 tools** across 13 sections.
 
 ---
 
@@ -316,7 +317,7 @@ Add an entry to your client's MCP config (`.mcp.json`-style):
 }
 ```
 
-The client launches the process and speaks MCP over stdio; the model can then call any of the 73
+The client launches the process and speaks MCP over stdio; the model can then call any of the 74
 tools. (Use an absolute path to `entrypoint.py` if your client does not run from the repo root, and
 run it through `uv`/the project venv so `docforge_sdk` and `mcp` are importable.)
 

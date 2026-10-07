@@ -9,7 +9,7 @@ from __future__ import annotations
 from typing import Any
 
 # ====== Third-Party Library Imports ======
-from docforge_sdk.models import SearchHit, SearchResponse
+from docforge_sdk.models import ChunkBrowseResponse, SearchHit, SearchResponse
 
 # ====== Local Project Imports ======
 from ..compact_json import compact_json
@@ -24,6 +24,9 @@ AGENT_RETURN_FIELDS = [
     "score",
     "metadata",
 ]
+
+# Browse has no ranking, so no score.
+BROWSE_RETURN_FIELDS = [f for f in AGENT_RETURN_FIELDS if f != "score"]
 
 _PART_SEPARATOR = " | "
 _HEADING_SEPARATOR = " > "
@@ -58,6 +61,22 @@ class SearchTextRenderer:
         lines.extend(f"Hint: {hint.message}" for hint in response.hints)
         return "\n".join(lines)
 
+    def render_browse(self, page: ChunkBrowseResponse) -> str:
+        """
+        Render one browse page.
+
+        Args:
+            page (ChunkBrowseResponse): The browse page from the SDK.
+
+        Returns:
+            str: One block per chunk, then the continuation line and any `Hint:` lines.
+        """
+        lines = [f"{len(page.chunks)} chunks"]
+        lines.extend(self._render_hit(rank, hit) for rank, hit in enumerate(page.chunks, 1))
+        lines.append(f"next_cursor: {page.next_cursor}" if page.next_cursor else "end of results")
+        lines.extend(f"Hint: {hint.message}" for hint in page.hints)
+        return "\n".join(lines)
+
     def _render_hit(self, rank: int, hit: SearchHit) -> str:
         """Render one hit: citation line, optional metadata line, then the text."""
         sent = hit.model_fields_set
@@ -71,6 +90,10 @@ class SearchTextRenderer:
             parts.append(_HEADING_SEPARATOR.join(hit.heading_path))
         if "score" in sent:
             parts.append(f"score {hit.score:.2f}")
+        if hit.fusion_score is not None or hit.rerank_score is not None:
+            fusion = "-" if hit.fusion_score is None else f"{hit.fusion_score:.3f}"
+            rerank = "-" if hit.rerank_score is None else f"{hit.rerank_score:.3f}"
+            parts.append(f"fusion {fusion} / rerank {rerank}")
         parts.append(f"doc {hit.document_id}")
         parts.append(f"chunk {hit.chunk_id}")
         block = [f"[{rank}] {_PART_SEPARATOR.join(parts)}"]
@@ -94,4 +117,4 @@ class SearchTextRenderer:
         return str(value)
 
 
-__all__ = ["AGENT_RETURN_FIELDS", "SearchTextRenderer"]
+__all__ = ["AGENT_RETURN_FIELDS", "BROWSE_RETURN_FIELDS", "SearchTextRenderer"]

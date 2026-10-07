@@ -2,9 +2,11 @@
 # SearchHelpers — the pure, store-free mapping the search route leans on: locate the embed node in a
 # collection's serialised pipeline blob (via the shared EmbedBlobResolver), translate a simple
 # {field: value} filter map into typed Qdrant Conditions over the FILTERABLE fields (reporting the
-# fields that are not filterable so the route can 422), map enum filter values onto their declared
-# members ignoring case, resolve the collection's display-title field, and flatten a graph Hit / a
-# filter hint into its client model. Kept out of router.py so the route stays pure orchestration.
+# fields that are not filterable so the route can 422), gate operator objects ({field: {"<op>": v}})
+# against each field's type via the shared FilterOperatorGrammar, map enum filter values (bare or
+# eq/in/not/not_in operands) onto their declared members ignoring case, resolve the collection's
+# display-title field, and flatten a graph Hit / a filter hint into its client model. Kept out of
+# router.py so the route stays pure orchestration.
 
 # ====== Standard Library Imports ======
 from collections.abc import Mapping, Sequence
@@ -24,10 +26,13 @@ from shared_libs.public_models.search import CONTENT_FIELD, Hit, SearchTarget
 from shared_libs.services.db.facades import DatabaseHelpers
 from shared_libs.services.db.postgresql.tables import MetadataField
 from shared_libs.services.db.qdrant import (
+    MAX_LIST_VALUES,
+    PATTERN_OPS,
     Condition,
+    FilterOp,
+    FilterOperatorGrammar,
     PayloadType,
     build_match_conditions,
-    parse_range,
 )
 
 # ====== Local Project Imports ======
@@ -55,6 +60,34 @@ class SearchHelpers:
         # 2. A leaf action carries a family — it is what we iterate over.
         elif blob.get("family"):
             yield blob
+
+    @staticmethod
+    def __enum_members(name: str, value: Any, allowed: list[Any], errors: list[str]) -> Any:
+        """
+        Map an enum filter operand (scalar or list) onto its declared members, ignoring case.
+
+        Args:
+            name (str): The enum field.
+            value (Any): The operand (a scalar, or a list for any-of / not_in).
+            allowed (list): The field's declared members.
+            errors (list[str]): Collects one message per value outside the enum (mutated).
+
+        Returns:
+            Any: The operand with each item replaced by its member (unknown items kept as sent).
+        """
+        # 1. Exact member first, then a case-insensitive match; an unknown item is reported.
+        by_lower = {str(member).lower(): member for member in allowed}
+        items = value if isinstance(value, list) else [value]
+        canonical: list[Any] = []
+        for item in items:
+            member = item if item in allowed else by_lower.get(str(item).lower())
+            if member is None:
+                errors.append(
+                    f"field '{name}' value {item!r} is not an allowed value — allowed values: "
+                    f"{', '.join(str(member) for member in allowed)}"
+                )
+            canonical.append(member if member is not None else item)
+        return canonical if isinstance(value, list) else canonical[0]
 
     @classmethod
     def score_kind(cls, search_blob: dict[str, Any] | None, rerank_degraded: bool = False) -> str:
@@ -159,7 +192,7 @@ class SearchHelpers:
         return build_match_conditions(accepted), invalid
 
     # Max values one list filter may carry (any-of): a larger list is a caller error, never a fan-out.
-    MAX_FILTER_LIST_VALUES = 100
+    MAX_FILTER_LIST_VALUES = MAX_LIST_VALUES
 
     @staticmethod
     def list_violations(filters: dict[str, Any] | None) -> list[str]:
@@ -224,25 +257,23 @@ class SearchHelpers:
         if filters is None:
             return None, []
 
-        # 2. Rewrite every enum value (a list filter is any-of) to its member, or report it.
+        # 2. Rewrite every enum value (a list filter is any-of) to its member, or report it. An
+        #    operator object maps its eq/in/not/not_in operand the same way; contains/prefix/exists
+        #    operands are patterns or flags, not members (resolved against stored values later).
         mapped: dict[str, Any] = dict(filters)
         errors: list[str] = []
         for name, value in filters.items():
             allowed = enums.get(name)
-            if allowed is None or isinstance(value, Mapping):
+            if allowed is None:
                 continue
-            by_lower = {str(member).lower(): member for member in allowed}
-            items = value if isinstance(value, list) else [value]
-            canonical: list[Any] = []
-            for item in items:
-                member = item if item in allowed else by_lower.get(str(item).lower())
-                if member is None:
-                    errors.append(
-                        f"field '{name}' value {item!r} is not an allowed value — allowed values: "
-                        f"{', '.join(str(member) for member in allowed)}"
-                    )
-                canonical.append(member if member is not None else item)
-            mapped[name] = canonical if isinstance(value, list) else canonical[0]
+            if not isinstance(value, Mapping):
+                mapped[name] = SearchHelpers.__enum_members(name, value, allowed, errors)
+                continue
+            op = FilterOperatorGrammar.operator_of(value)
+            if op is None or op in PATTERN_OPS or op is FilterOp.EXISTS:
+                continue
+            operand = value[op.value]
+            mapped[name] = {op.value: SearchHelpers.__enum_members(name, operand, allowed, errors)}
         return mapped, errors
 
     @staticmethod
@@ -295,18 +326,15 @@ class SearchHelpers:
             suggestions=list(hint.suggestions),
         )
 
-    # Payload index types a range filter can constrain (an exact-match keyword/bool cannot).
-    _RANGE_TYPED = frozenset({PayloadType.INTEGER, PayloadType.FLOAT, PayloadType.DATETIME})
-
     @staticmethod
-    def _range_payload_type(field: MetadataField | None) -> PayloadType | None:
+    def _payload_type(field: MetadataField | None) -> PayloadType | None:
         """
         Resolve a field's Qdrant payload index type, defensively — None when unresolvable.
 
-        Only a range filter needs a field's type, so this is looked up lazily (never for a plain
-        scalar/list filter). A field object that carries no ``field_type`` (a lightweight stand-in
-        shape) or an unmapped type yields None rather than raising — the caller treats None as
-        "not range-typed" and reports a clean 422 instead of a 500.
+        Only an operator object needs a field's type, so this is looked up lazily (never for a
+        plain scalar/list filter). A field object that carries no ``field_type`` (a lightweight
+        stand-in shape) or an unmapped type yields None rather than raising — the grammar then
+        reports a clean 422 instead of a 500.
         """
         # 1. A missing field (unknown/non-filterable) or a shape without a declared type → None.
         field_type = getattr(field, "field_type", None)
@@ -319,59 +347,39 @@ class SearchHelpers:
             return None
 
     @staticmethod
-    def range_violations(
+    def operator_violations(
         filters: dict[str, Any] | None, schema: Sequence[MetadataField]
     ) -> list[str]:
         """
-        Report range filters (``{gte/gt/lte/lt: bound}`` mappings) that a field cannot accept.
+        Report operator-object filters (``{field: {"<op>": value}}``) a field cannot accept.
 
-        A range is only valid on a range-typed FILTERABLE field (integer/float/datetime); on a
-        keyword/bool field it would otherwise be silently mistranslated. The range's shape is also
-        validated (allowed keys, coercible bounds, ordered bounds) and its bound kind must match
-        the field's declared type — a datetime field needs ISO-8601 bounds, a numeric field numeric
-        bounds. Non-filterable fields are the filterability gate's concern, not this check's.
+        Every operator object is validated against the field's payload index type by the shared
+        ``FilterOperatorGrammar``: an unknown operator, an operator the type does not support (e.g.
+        ``prefix`` on an integer), a forbidden combination (only range bounds combine), a malformed
+        operand, or a range whose bound kind does not match the field (a datetime field needs
+        ISO-8601 bounds, a numeric field numeric bounds). Non-filterable fields are the
+        filterability gate's concern, not this check's.
 
         This runs on EVERY search, so it must never raise: a plain scalar/list filter is skipped
-        untouched (its field type is never inspected), and only an actual range mapping triggers the
-        (defensive) field-type lookup — an unknown/non-range-typed field yields a 422 message, not a
-        crash.
+        untouched (its field type is never inspected).
 
         Args:
-            filters (dict | None): The requested constraints (field → scalar, list, or range map).
+            filters (dict | None): The requested constraints (field → scalar, list, or operator
+                object).
             schema (Sequence[MetadataField]): The collection's metadata schema.
 
         Returns:
-            list[str]: One human-readable message per offending range (empty when all valid).
+            list[str]: One human-readable message per problem (empty when all valid).
         """
-        # 1. Index the FILTERABLE fields by name — resolved lazily, only when a range needs a type.
+        # 1. Index the FILTERABLE fields by name — typed lazily, only when an operator needs it.
         by_name = {row.field_name: row for row in schema if getattr(row, "filterable", False)}
         errors: list[str] = []
         for name, value in (filters or {}).items():
-            # 2. Only a mapping is a range; scalars/lists are validated by the other gates untouched.
-            if not isinstance(value, Mapping):
+            # 2. Only an operator object is checked here; an unknown field is another gate's.
+            if not isinstance(value, Mapping) or name not in by_name:
                 continue
-            # 3. A range on an unknown/non-filterable field is the filterability gate's concern.
-            if name not in by_name:
-                continue
-            # 4. Resolve the field's payload type defensively; only range-typed accepts a range.
-            ptype = SearchHelpers._range_payload_type(by_name[name])
-            if ptype not in SearchHelpers._RANGE_TYPED:
-                label = ptype.value if ptype is not None else "non-range"
-                errors.append(
-                    f"field '{name}' is not range-typed ({label}) — a range filter needs an "
-                    f"integer, float or datetime field"
-                )
-                continue
-            # 5. Validate the range shape; a malformed range surfaces its reason as a 422 message.
-            try:
-                parsed = parse_range(name, value)
-            except ValueError as exc:
-                errors.append(str(exc))
-                continue
-            # 6. The bound kind must match the declared type (datetime ↔ DATETIME, numeric ↔ number).
-            if parsed.is_datetime != (ptype == PayloadType.DATETIME):
-                expected = "ISO-8601 datetime" if ptype == PayloadType.DATETIME else "numeric"
-                errors.append(f"field '{name}' expects {expected} range bounds")
+            ptype = SearchHelpers._payload_type(by_name[name])
+            errors.extend(FilterOperatorGrammar.validate(name, value, ptype))
         return errors
 
     @staticmethod

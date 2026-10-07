@@ -297,13 +297,15 @@ print(result.not_found)   # ids that did not resolve (skipped, not an error)
 | Method | Returns | Description |
 |---|---|---|
 | `search.search(collection_id, request)` | `SearchResponse` | Run a hybrid search over a collection; returns ranked, hydrated chunk hits. |
+| `search.browse(collection_id, request)` | `ChunkBrowseResponse` | List a collection's chunks by filter WITHOUT a query, in (document, chunk_index) order, paginated by `next_cursor`. |
 
 A `SearchRequest` carries the query and its knobs:
 
 - `query` (str, required)
 - `limit` (int, default `10`, 1–100) — number of fused results
 - `filters` (`dict | None`) — exact / any-of constraints on **filterable** metadata fields
-  (`{field: value}`, `{field: [values]}`, or a range mapping `{field: {gte, gt, lte, lt}}`)
+  (`{field: value}`, `{field: [values]}`, or ONE operator object `{field: {eq|in|not|not_in|contains|
+  prefix|exists|gte|gt|lte|lt: ...}}` — see `docs/rest-api.md` "Filter grammar")
 - `search_in` (`list[SearchTarget] | None`) — which fields × modalities to query;
   `None` → `content` on both semantic and lexical (the default)
 - `return_fields` (`list[str] | None`) — lean hits: keep only these hit fields (or `metadata.<field>`);
@@ -312,6 +314,14 @@ A `SearchRequest` carries the query and its knobs:
 - `group_by` (`"document" | None`) + `max_per_document` (int, 1–10, default `1`) — cap the hits one
   document may contribute; the SDK drops an untouched `max_per_document` from the body when `group_by`
   is unset (the API 422s an orphan one)
+- `min_score` (`float | None`), `rerank` (`bool | None`), `fusion` (`"rrf" | "dbsf" | None`),
+  `debug` (`bool`, default `False`) — per-request tuning; the SDK omits unset ones (and `debug=False`)
+  from the body so a pre-0.25 server still accepts a plain search. With `debug=True` each `SearchHit`
+  carries `fusion_score` (and `rerank_score` when a rerank stage re-scored it)
+
+`search.browse(collection_id, ChunkBrowseRequest(filters=..., limit=20, cursor=..., return_fields=...))`
+returns one `ChunkBrowseResponse` (`chunks`, `next_cursor`, `hints`); loop on `next_cursor` (pass it
+back with the same filters) until it is `None`.
 
 Each `SearchTarget` names one field and its modalities:
 

@@ -16,6 +16,7 @@ from .corpus.router import router as corpus_router
 
 # -------------------- Search (retrieval read surface) ------------------- #
 from .search.router import router as search_router
+from .chunk_browse.router import router as chunk_browse_router
 
 # -------------------- Blobs (byte streaming) ------------------- #
 from .blobs.router import router as blobs_router
@@ -56,6 +57,7 @@ __all__ = [
     "explorer_router",
     "corpus_router",
     "search_router",
+    "chunk_browse_router",
     "blobs_router",
     "jobs_router",
     "transfers_router",

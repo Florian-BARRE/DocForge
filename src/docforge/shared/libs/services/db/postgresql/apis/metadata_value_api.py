@@ -124,6 +124,52 @@ class MetadataValueApi:
         return [row[0] for row in result]
 
     @staticmethod
+    async def pattern_matches(
+        session: AsyncSession,
+        field_id: int,
+        scope: FieldScope,
+        needle: str,
+        *,
+        prefix: bool,
+        limit: int,
+    ) -> list[str]:
+        """
+        Return the distinct stored values containing (or starting with) ``needle``, ignoring case.
+
+        Both sides are lowercased IN SQL, and the match uses ``strpos`` / ``starts_with`` rather
+        than ``LIKE`` — a ``%`` or ``_`` in the user value is a literal character, with no
+        escaping to get wrong. Every case variant comes back as its own value (each is a distinct
+        stored spelling a Qdrant exact match must name).
+
+        Args:
+            session (AsyncSession): The open session.
+            field_id (int): The metadata field to read.
+            scope (FieldScope): Where the field's values live.
+            needle (str): The user substring / prefix (any case).
+            prefix (bool): True → values STARTING with the needle; False → values CONTAINING it.
+            limit (int): Cap on the number of returned values (callers ask cap + 1 to detect
+                overflow).
+
+        Returns:
+            list[str]: The matching stored values, most frequent first (ties by byte order).
+        """
+        # 1. One bounded, grouped query over the element stream.
+        predicate = (
+            "starts_with(lower(e.elem), lower(:needle))"
+            if prefix
+            else "strpos(lower(e.elem), lower(:needle)) > 0"
+        )
+        sql = text(
+            f"SELECT e.elem FROM ({MetadataValueApi._elements(scope)}) AS e "
+            f"WHERE {predicate} GROUP BY e.elem "
+            'ORDER BY count(*) DESC, e.elem COLLATE "C" LIMIT :limit'
+        )
+        result = await session.execute(
+            sql, {"field_id": field_id, "needle": needle, "limit": limit}
+        )
+        return [row[0] for row in result]
+
+    @staticmethod
     async def top_values(
         session: AsyncSession, field_id: int, scope: FieldScope, limit: int
     ) -> list[str]:

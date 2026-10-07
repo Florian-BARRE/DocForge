@@ -8,6 +8,9 @@ from .target import CONTENT_FIELD, SearchTarget, default_content_targets
 from .request import QueryFilters, RawQuery
 from .contract import SearchContract
 
+# ---------------------- Per-request tuning flags (reserved QuerySpec.flags keys) ---------------------- #
+from .flags import FUSION_FLAG, FUSION_STRATEGIES, RERANK_FLAG
+
 # ---------------------- Query-side flow artefacts ---------------------- #
 from .query import EncodedQuery, QuerySpec
 
@@ -27,6 +30,9 @@ __all__ = [
     "RawQuery",
     "QueryFilters",
     "SearchContract",
+    "RERANK_FLAG",
+    "FUSION_FLAG",
+    "FUSION_STRATEGIES",
     "QuerySpec",
     "EncodedQuery",
     "CandidateSet",

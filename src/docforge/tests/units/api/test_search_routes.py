@@ -297,7 +297,7 @@ def test_search_malformed_range_is_422(client, wired) -> None:
         json={"query": "q", "filters": {"year": {"between": 3}}},
     )
     assert response.status_code == 422, response.text
-    assert "range" in response.text.lower()
+    assert "unsupported key(s) ['between']" in response.text
     wired.assert_not_awaited()
 
 
@@ -958,3 +958,82 @@ def test_search_hint_quotes_the_enum_value_as_sent(client, wired, monkeypatch) -
     (hint,) = response.json()["hints"]
     assert hint["value"] == "POLICY"
     assert '"POLICY"' in hint["message"]
+
+
+# --------------------------------------------------------------------------- #
+# Filter operators — the route gate (422s) and the resolved map handed to the service
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize(
+    ("filters", "fragment"),
+    [
+        ({"topic": {"bogus": 1}}, "unsupported key(s) ['bogus']"),
+        ({"year": {"prefix": "20"}}, "operator 'prefix' is not valid on a integer field"),
+        ({"published": {"in": ["2024-01-01"]}}, "operator 'in' is not valid on a datetime field"),
+        ({"year": {"gte": 2020, "not": 2021}}, "cannot be combined"),
+        ({"topic": {"contains": ""}}, "'contains' takes a non-empty string"),
+        ({"topic": {"exists": "yes"}}, "'exists' takes true/false"),
+    ],
+)
+def test_search_invalid_filter_operator_is_422(client, wired, filters, fragment) -> None:
+    response = client.post(_SEARCH_URL, json={"query": "q", "filters": filters})
+    assert response.status_code == 422, response.text
+    assert fragment in response.text
+    wired.assert_not_awaited()
+
+
+def test_search_operator_on_a_non_filterable_field_is_422(client, wired) -> None:
+    response = client.post(_SEARCH_URL, json={"query": "q", "filters": {"note": {"not": "x"}}})
+    assert response.status_code == 422, response.text
+    assert "Not a filterable field" in response.text
+
+
+def test_search_exclusion_and_presence_reach_the_service(client, wired) -> None:
+    filters = {"topic": {"not": "ai"}, "year": {"exists": True}}
+    response = client.post(_SEARCH_URL, json={"query": "q", "filters": filters})
+    assert response.status_code == 200, response.text
+    assert wired.await_args.kwargs["filters"] == filters
+
+
+def test_search_enum_operator_operand_maps_to_the_member(client, wired) -> None:
+    response = client.post(
+        _SEARCH_URL, json={"query": "q", "filters": {"doc_type": {"not_in": ["POLICY"]}}}
+    )
+    assert response.status_code == 200, response.text
+    assert wired.await_args.kwargs["filters"] == {"doc_type": {"not_in": ["policy"]}}
+
+
+def test_search_enum_operator_outside_the_enum_is_422(client, wired) -> None:
+    response = client.post(
+        _SEARCH_URL, json={"query": "q", "filters": {"doc_type": {"not": "memo"}}}
+    )
+    assert response.status_code == 422, response.text
+    assert "allowed values: policy, contract" in response.text
+
+
+def test_search_prefix_is_expanded_before_the_service(client, wired, monkeypatch) -> None:
+    from backend.context import CONTEXT
+
+    monkeypatch.setattr(
+        CONTEXT.database.metadata_values, "prefix", AsyncMock(return_value=["AI", "ai-ethics"])
+    )
+    response = client.post(_SEARCH_URL, json={"query": "q", "filters": {"topic": {"prefix": "a"}}})
+    assert response.status_code == 200, response.text
+    assert wired.await_args.kwargs["filters"] == {"topic": {"in": ["AI", "ai-ethics"]}}
+
+
+def test_search_too_broad_pattern_is_422(client, wired, monkeypatch) -> None:
+    from backend.context import CONTEXT
+
+    monkeypatch.setattr(
+        CONTEXT.database.metadata_values,
+        "contains",
+        AsyncMock(return_value=[f"v{i}" for i in range(501)]),
+    )
+    response = client.post(
+        _SEARCH_URL, json={"query": "q", "filters": {"topic": {"contains": "v"}}}
+    )
+    assert response.status_code == 422, response.text
+    assert "narrow it" in response.text
+    wired.assert_not_awaited()

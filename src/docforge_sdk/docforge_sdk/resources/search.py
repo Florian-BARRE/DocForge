@@ -5,7 +5,13 @@
 
 # ====== Local Project Imports ======
 from .._requestspec import RequestSpec
-from ..models.search import SearchHealthSummary, SearchRequest, SearchResponse
+from ..models.search import (
+    ChunkBrowseRequest,
+    ChunkBrowseResponse,
+    SearchHealthSummary,
+    SearchRequest,
+    SearchResponse,
+)
 from ._base import AsyncResource, SyncResource, _ResourceMixin
 
 
@@ -32,12 +38,32 @@ class _SearchSpecs(_ResourceMixin):
         #    plain search), and the backend 422s a max_per_document sent without group_by — so the
         #    untouched default (1) is dropped unless grouping is on or the caller set it explicitly.
         body = request.model_dump(mode="json")
-        for knob in ("return_fields", "group_by"):
+        #    The wave-C knobs follow the same rule: None knobs and a False ``debug`` are dropped.
+        for knob in ("return_fields", "group_by", "min_score", "rerank", "fusion"):
             if body.get(knob) is None:
                 body.pop(knob, None)
         if request.group_by is None and "max_per_document" not in request.model_fields_set:
             body.pop("max_per_document")
+        if not request.debug:
+            body.pop("debug", None)
         return RequestSpec("POST", f"{self._COLLECTIONS_PATH}/{collection_id}/search", json=body)
+
+    def _browse_spec(self, collection_id: str, request: ChunkBrowseRequest) -> RequestSpec:
+        """
+        Build the spec for browsing a collection's chunks without a query.
+
+        Args:
+            collection_id (str): The collection to browse.
+            request (ChunkBrowseRequest): Filters, page size, cursor and optional return_fields.
+
+        Returns:
+            RequestSpec: A POST to ``/chunks/browse``; unset ``filters``/``cursor``/``return_fields``
+                are omitted.
+        """
+        body = request.model_dump(mode="json", exclude_none=True)
+        return RequestSpec(
+            "POST", f"{self._COLLECTIONS_PATH}/{collection_id}/chunks/browse", json=body
+        )
 
     def _search_health_spec(self) -> RequestSpec:
         """
@@ -68,6 +94,21 @@ class AsyncSearch(AsyncResource, _SearchSpecs):
             self._search_spec(collection_id, request), SearchResponse
         )
 
+    async def browse(self, collection_id: str, request: ChunkBrowseRequest) -> ChunkBrowseResponse:
+        """
+        List a collection's chunks matching a filter, in reading order, without a query.
+
+        Args:
+            collection_id (str): The collection to browse.
+            request (ChunkBrowseRequest): Filters, page size, cursor and optional return_fields.
+
+        Returns:
+            ChunkBrowseResponse: One page, the next page's cursor (None on the last) and any hints.
+        """
+        return await self._transport.request(
+            self._browse_spec(collection_id, request), ChunkBrowseResponse
+        )
+
     async def get_search_health(self) -> SearchHealthSummary:
         """
         Fetch the deployment-wide search-runtime health summary (the cockpit tile).
@@ -94,6 +135,21 @@ class SyncSearch(SyncResource, _SearchSpecs):
             SearchResponse: The echoed query and its hits, best first.
         """
         return self._transport.request(self._search_spec(collection_id, request), SearchResponse)
+
+    def browse(self, collection_id: str, request: ChunkBrowseRequest) -> ChunkBrowseResponse:
+        """
+        List a collection's chunks matching a filter, in reading order, without a query.
+
+        Args:
+            collection_id (str): The collection to browse.
+            request (ChunkBrowseRequest): Filters, page size, cursor and optional return_fields.
+
+        Returns:
+            ChunkBrowseResponse: One page, the next page's cursor (None on the last) and any hints.
+        """
+        return self._transport.request(
+            self._browse_spec(collection_id, request), ChunkBrowseResponse
+        )
 
     def get_search_health(self) -> SearchHealthSummary:
         """

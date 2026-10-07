@@ -3,6 +3,8 @@
 # the named vectors) and return lean (chunk_id, score) pairs — the lean-vector principle. The
 # unbypassable searchability exclusion (disabled chunks/documents) is injected here, so every caller
 # (the graph read port) inherits it without re-deriving it. Postgres hydration is the caller's job.
+# The query-less browse (browse_keys) pages the same filtered, exclusion-guarded point set in
+# (document, chunk_index) order instead of ranking it.
 
 # ====== Standard Library Imports ======
 import uuid
@@ -17,9 +19,11 @@ from shared_libs.services.db.postgresql.apis import DocumentApi
 from shared_libs.services.db.qdrant import (
     DOCUMENT_ID_KEY,
     ENABLED_KEY,
+    BrowseKey,
     Condition,
     Match,
     MatchAny,
+    QdrantBrowseApi,
     QdrantClient,
     QdrantSearchApi,
     SparseVec,
@@ -86,12 +90,9 @@ class SearchFacade(LoggerClass):
         #    point predating the flag is not matched, so it stays searchable). The disabled-DOCUMENT
         #    guard is bounded (see __apply_document_scope) so it can never bloat every query on a big
         #    archived collection.
-        exclusions: list[Condition] = [Match(field=ENABLED_KEY, value=False)]
-        conditions = list(conditions)
-        async with self._postgres.session() as session:
-            await self.__apply_document_scope(
-                session, collection_id, conditions, exclusions, max_disabled_exclusions
-            )
+        conditions, exclusions = await self.__guarded_filter(
+            collection_id, conditions, max_disabled_exclusions
+        )
         return await QdrantSearchApi.hybrid(
             self._qdrant.raw,
             name,
@@ -103,6 +104,33 @@ class SearchFacade(LoggerClass):
             prefetch_limit=prefetch_limit,
             fusion=fusion,
         )
+
+    async def __guarded_filter(
+        self,
+        collection_id: uuid.UUID,
+        conditions: Sequence[Condition],
+        max_disabled_exclusions: int | None,
+    ) -> tuple[list[Condition], list[Condition]]:
+        """
+        The caller's conditions + the searchability exclusions (disabled chunks AND documents).
+
+        Args:
+            collection_id (uuid.UUID): The collection being read.
+            conditions (Sequence[Condition]): The caller's filter conditions.
+            max_disabled_exclusions (int | None): The disabled-document exclusion cap.
+
+        Returns:
+            tuple[list[Condition], list[Condition]]: The ``must`` and ``must_not`` lists.
+        """
+        # 1. The chunk guard is a must_not on enabled == False (a legacy flag-less point stays
+        #    visible); the document guard is bounded (see __apply_document_scope).
+        exclusions: list[Condition] = [Match(field=ENABLED_KEY, value=False)]
+        musts = list(conditions)
+        async with self._postgres.session() as session:
+            await self.__apply_document_scope(
+                session, collection_id, musts, exclusions, max_disabled_exclusions
+            )
+        return musts, exclusions
 
     async def __apply_document_scope(
         self,
@@ -152,6 +180,49 @@ class SearchFacade(LoggerClass):
         self.logger.warning(
             f"Collection {collection_id}: disabled-document exclusion exceeded its cap ({cap}) — "
             f"search switched to a positive enabled-inclusion of {len(enabled)} document(s)"
+        )
+
+    async def browse_keys(
+        self,
+        collection_id: uuid.UUID,
+        *,
+        conditions: Sequence[Condition] = (),
+        after: BrowseKey | None = None,
+        limit: int = 20,
+        max_disabled_exclusions: int | None = None,
+    ) -> list[BrowseKey]:
+        """
+        Page a collection's filtered, searchable points in (document, chunk_index) order — no query.
+
+        The SAME searchability exclusion as ``hybrid_ids`` (disabled chunks/documents never appear),
+        so a browse can never list what a search would hide.
+
+        Args:
+            collection_id (uuid.UUID): The collection to browse.
+            conditions (Sequence[Condition]): Filters on the filterable metadata fields.
+            after (BrowseKey | None): The keyset cursor (last key of the previous page); None = start.
+            limit (int): The page size.
+            max_disabled_exclusions (int | None): The disabled-document exclusion cap.
+
+        Returns:
+            list[BrowseKey]: (document_id, chunk_index, chunk_id) keys, ascending (empty when the
+                collection has no Qdrant space yet or nothing matched).
+        """
+        # 1. A never-ingested collection has no space yet — an empty page, not a 500.
+        name = DatabaseHelpers.qdrant_collection_name(collection_id)
+        if not await self._qdrant.raw.collection_exists(name):
+            return []
+        # 2. Same guarded filter as the search, then the ordered keyset page.
+        musts, exclusions = await self.__guarded_filter(
+            collection_id, conditions, max_disabled_exclusions
+        )
+        return await QdrantBrowseApi.page(
+            self._qdrant.raw,
+            name,
+            conditions=musts,
+            exclusions=exclusions,
+            after=after,
+            limit=limit,
         )
 
 

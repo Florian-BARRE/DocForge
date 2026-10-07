@@ -2,7 +2,8 @@
 # MetadataValueResolver — Postgres as the VALUE ORACLE of a collection's metadata fields. Given a field
 # spec (its collection-scoped row) and user value(s), it resolves against the field's DISTINCT stored
 # values: `canonicalize` maps a value to the exact stored variants matching it case-insensitively (so a
-# search filter can then match those canonical values exactly in Qdrant), `suggest` ranks the closest
+# search filter can then match those canonical values exactly in Qdrant), `contains` / `prefix` expand a
+# substring / prefix filter operator to the stored values it covers, `suggest` ranks the closest
 # stored values for a "did you mean" hint, and `distinct_values` / `distinct_count` describe a field.
 # Every read is a bounded query (LIMIT or a single aggregate); the similarity fallback runs Python
 # difflib on a bounded, frequency-ordered pool (no pg_trgm dependency — the extension is not installed).
@@ -75,6 +76,42 @@ class MetadataValueResolver(LoggerClass):
             value: [variant for variant in stored if variant.lower() == value.lower()]
             for value in requested
         }
+
+    async def contains(self, field: MetadataField, substring: str, limit: int) -> list[str]:
+        """
+        Return the stored values containing ``substring``, ignoring case (a ``contains`` filter).
+
+        Args:
+            field (MetadataField): The field to match against.
+            substring (str): The user substring (``%``/``_`` are literal characters).
+            limit (int): Cap on the number of returned values.
+
+        Returns:
+            list[str]: The exact stored values (every case variant), most frequent first.
+        """
+        # 1. A single bounded query.
+        async with self._postgres.session() as session:
+            return await MetadataValueApi.pattern_matches(
+                session, field.id, field.scope, substring, prefix=False, limit=limit
+            )
+
+    async def prefix(self, field: MetadataField, prefix: str, limit: int) -> list[str]:
+        """
+        Return the stored values starting with ``prefix``, ignoring case (a ``prefix`` filter).
+
+        Args:
+            field (MetadataField): The field to match against.
+            prefix (str): The user prefix (``%``/``_`` are literal characters).
+            limit (int): Cap on the number of returned values.
+
+        Returns:
+            list[str]: The exact stored values (every case variant), most frequent first.
+        """
+        # 1. A single bounded query.
+        async with self._postgres.session() as session:
+            return await MetadataValueApi.pattern_matches(
+                session, field.id, field.scope, prefix, prefix=True, limit=limit
+            )
 
     async def suggest(self, field: MetadataField, value: str, k: int = 5) -> list[str]:
         """

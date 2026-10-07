@@ -65,6 +65,7 @@ ROUTES: set[tuple[str, str]] = {
     ("GET", "/api/v1/documents/{document_id}/html"),
     # Search — resources/search.py
     ("POST", "/api/v1/collections/{collection_id}/search"),
+    ("POST", "/api/v1/collections/{collection_id}/chunks/browse"),
     ("GET", "/api/v1/search/health"),
     # Snippets — resources/snippets.py
     ("GET", "/api/v1/collections/{collection_id}/snippets/{kind}"),

@@ -1,8 +1,8 @@
 # ====== Code Summary ======
 # ExampleRequestBuilder — builds 2–4 ready-to-send search request bodies from a collection's REAL
 # described fields and stored example values: a plain content search, an equality filter on a real
-# value, a `search_in` on a vector-indexed metadata field, then a range (numeric/datetime) or an any-of
-# filter. Values are coerced to their field's JSON type so the body works verbatim. Pure — no I/O.
+# value, a `search_in` on a vector-indexed metadata field, then a range (numeric/datetime), a
+# case-insensitive `prefix` operator, or an any-of filter. Values are coerced to their field's JSON type so the body works verbatim. Pure — no I/O.
 
 # ====== Standard Library Imports ======
 from collections.abc import Sequence
@@ -12,6 +12,7 @@ from typing import Any
 from shared_libs.public_models import FieldType
 
 # ====== Local Project Imports ======
+from ..search.filter_resolver import MAX_PATTERN_VALUES
 from .field_guide_builder import VALUE_MAX_CHARS
 from .models import FieldGuide
 
@@ -26,6 +27,8 @@ _EQUALITY_TYPES = frozenset(
 )
 # Types an any-of example may use.
 _ANY_OF_TYPES = frozenset({FieldType.STRING, FieldType.ENUM, FieldType.KEYWORD_LIST})
+# Shortest stored value a prefix example is cut from (a shorter one makes a meaningless prefix).
+_PREFIX_MIN_VALUE_CHARS = 4
 # Types the search route accepts a range on.
 _RANGE_TYPES = frozenset({FieldType.INTEGER, FieldType.FLOAT, FieldType.DATETIME})
 
@@ -52,7 +55,7 @@ class ExampleRequestBuilder:
         examples: list[dict[str, Any]] = [{"query": EXAMPLE_QUERY, "limit": EXAMPLE_LIMIT}]
 
         # 2. Each candidate builder contributes one body when the schema/values allow it.
-        for make in (cls.__equality, cls.__search_in, cls.__range, cls.__any_of):
+        for make in (cls.__equality, cls.__search_in, cls.__range, cls.__prefix, cls.__any_of):
             body = make(fields)
             if body is not None:
                 examples.append(body)
@@ -102,6 +105,25 @@ class ExampleRequestBuilder:
             "query": EXAMPLE_QUERY,
             "limit": EXAMPLE_LIMIT,
             "filters": {field.name: {"gte": bound}},
+        }
+
+    @classmethod
+    def __prefix(cls, fields: Sequence[FieldGuide]) -> dict[str, Any] | None:
+        """A content search with a `prefix` operator built from a real stored keyword value."""
+        # 1. First filterable keyword field with a value long enough to shorten; half of it (at
+        #    least 2 chars) still matches that very value, so the example never comes back empty.
+        #    A field with more distinct values than a pattern may expand to could 422 — skipped.
+        found = cls.__first_value(fields, _ANY_OF_TYPES, minimum=1)
+        if found is None or len(found[1][0]) < _PREFIX_MIN_VALUE_CHARS:
+            return None
+        if found[0].distinct_count > MAX_PATTERN_VALUES:
+            return None
+        field, values = found
+        stem = values[0][: max(2, len(values[0]) // 2)]
+        return {
+            "query": EXAMPLE_QUERY,
+            "limit": EXAMPLE_LIMIT,
+            "filters": {field.name: {"prefix": stem}},
         }
 
     @classmethod

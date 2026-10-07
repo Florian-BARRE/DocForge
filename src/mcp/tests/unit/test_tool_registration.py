@@ -23,7 +23,8 @@ from libs.server import build_mcp
 # dry-run (covers every pipeline incl. docling) + its poll.
 # 71 -> 72: update_document_metadata (documents) — PATCH /documents/{id}/metadata.
 # 72 -> 73: describe_collection (collections) — GET /collections/{id}/describe, the agent guide.
-EXPECTED_TOOL_COUNT = 73
+# 73 -> 74: browse_chunks (search) - POST /collections/{id}/chunks/browse.
+EXPECTED_TOOL_COUNT = 74
 
 EXPECTED_TOOL_NAMES = {
     # health
@@ -79,6 +80,7 @@ EXPECTED_TOOL_NAMES = {
     "set_chunks_enabled",
     # search
     "search_collection",
+    "browse_chunks",
     "get_search_health",
     # jobs
     "list_jobs",

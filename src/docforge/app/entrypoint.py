@@ -16,7 +16,7 @@ from backend.libs.health import CollectionHealthService
 from backend.libs.logbridge import UvicornLogBridge
 from backend.libs.metrics import MetricsService
 from backend.libs.preview import PreviewService
-from backend.libs.search import SearchService
+from backend.libs.search import ChunkBrowser, SearchService
 from backend.utils.queue import QueueClient
 from config import RUNTIME_CONFIG  # MUST be first — registers backend/libs/ on sys.path
 from shared_libs.observability import CorrelationContext
@@ -86,6 +86,7 @@ def _build_app() -> FastAPI:
     CONTEXT.search_service = SearchService(
         CONTEXT.database, timeout_seconds=RUNTIME_CONFIG.SEARCH_RUN_TIMEOUT_SECONDS
     )
+    CONTEXT.chunk_browser = ChunkBrowser(CONTEXT.database)
 
     # 3c. Collection health — on-demand, zero-spend build + reachability probe (no job, no write).
     #     Reuses the shared builder/validator so "does it build?" is answered exactly as a real run.

@@ -7,10 +7,19 @@ from .vectors import (
     DOCUMENT_ID_KEY,
     ENABLED_KEY,
     RESERVED_PAYLOAD_KEYS,
+    EXCLUSION_OPS,
+    LIST_OPS,
+    MAX_LIST_VALUES,
+    PATTERN_OPS,
     Condition,
+    FilterOp,
+    FilterOperatorGrammar,
+    IsEmpty,
     Match,
     MatchAny,
+    MatchPattern,
     MatchText,
+    Not,
     PayloadType,
     QdrantPoint,
     QdrantVectorSchema,
@@ -22,7 +31,13 @@ from .vectors import (
 )
 
 # ---------------------- Operations ---------------------- #
-from .apis import QdrantCollectionApi, QdrantIndexApi, QdrantSearchApi
+from .apis import (
+    BrowseKey,
+    QdrantBrowseApi,
+    QdrantCollectionApi,
+    QdrantIndexApi,
+    QdrantSearchApi,
+)
 
 # ------------------- Public API ------------------- #
 __all__ = [
@@ -36,10 +51,21 @@ __all__ = [
     "MatchAny",
     "MatchText",
     "Range",
+    "Not",
+    "IsEmpty",
+    "MatchPattern",
     "Condition",
     "build_match_conditions",
+    "FilterOp",
+    "FilterOperatorGrammar",
+    "LIST_OPS",
+    "EXCLUSION_OPS",
+    "PATTERN_OPS",
+    "MAX_LIST_VALUES",
     "parse_range",
     "QdrantCollectionApi",
+    "QdrantBrowseApi",
+    "BrowseKey",
     "QdrantIndexApi",
     "QdrantSearchApi",
     "CHUNK_INDEX_KEY",

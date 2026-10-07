@@ -134,6 +134,8 @@ from docforge_sdk.models.preview import (
 )
 from docforge_sdk.models.search import (
     BlockLocation,
+    ChunkBrowseRequest,
+    ChunkBrowseResponse,
     SearchCost,
     SearchHealthSummary,
     SearchHint,
@@ -255,6 +257,8 @@ MODELS: dict[str, type[BaseModel]] = {
     "SearchHint": SearchHint,
     "SearchResponse": SearchResponse,
     "SearchHealthSummary": SearchHealthSummary,
+    "ChunkBrowseRequest": ChunkBrowseRequest,
+    "ChunkBrowseResponse": ChunkBrowseResponse,
     # Jobs
     "JobStatus": JobStatus,
     "JobPage": JobPage,

@@ -12,7 +12,7 @@ import respx
 
 # ====== Local Project Imports ======
 from docforge_sdk import AsyncClient, Client
-from docforge_sdk.models.search import SearchRequest, SearchResponse
+from docforge_sdk.models.search import ChunkBrowseRequest, SearchRequest, SearchResponse
 
 BASE = "http://test"
 API = f"{BASE}/api/v1"
@@ -73,6 +73,8 @@ async def test_search_default_body_omits_max_per_document() -> None:
     assert "max_per_document" not in body
     assert "return_fields" not in body
     assert "group_by" not in body
+    for knob in ("min_score", "rerank", "fusion", "debug"):
+        assert knob not in body
 
 
 @respx.mock
@@ -103,3 +105,52 @@ def test_sync_search_explicit_orphan_max_per_document_is_sent() -> None:
     with Client(BASE) as client:
         client.search.search(CID, SearchRequest(query="q", max_per_document=3))
     assert json.loads(route.calls.last.request.content)["max_per_document"] == 3
+
+
+@respx.mock
+async def test_search_forwards_wave_c_knobs_when_set() -> None:
+    route = respx.post(f"{API}/collections/{CID}/search").mock(
+        return_value=httpx.Response(200, json=_RESPONSE_SAMPLE)
+    )
+    request = SearchRequest(
+        query="q", min_score=0.3, rerank=False, fusion="dbsf", debug=True, filters={"k": {"not": 1}}
+    )
+    async with AsyncClient(BASE) as client:
+        await client.search.search(CID, request)
+    body = json.loads(route.calls.last.request.content)
+    assert (body["min_score"], body["rerank"], body["fusion"], body["debug"]) == (
+        0.3,
+        False,
+        "dbsf",
+        True,
+    )
+    assert body["filters"] == {"k": {"not": 1}}
+
+
+@respx.mock
+async def test_browse_posts_and_parses_cursor() -> None:
+    route = respx.post(f"{API}/collections/{CID}/chunks/browse").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "chunks": [{"chunk_id": "c1", "document_id": "d1", "text": "t"}],
+                "next_cursor": "abc",
+                "hints": [],
+            },
+        )
+    )
+    async with AsyncClient(BASE) as client:
+        page = await client.search.browse(CID, ChunkBrowseRequest(filters={"a": "b"}, limit=5))
+    assert json.loads(route.calls.last.request.content) == {"filters": {"a": "b"}, "limit": 5}
+    assert page.next_cursor == "abc" and page.chunks[0].chunk_id == "c1"
+
+
+@respx.mock
+def test_sync_browse_sends_cursor() -> None:
+    route = respx.post(f"{API}/collections/{CID}/chunks/browse").mock(
+        return_value=httpx.Response(200, json={"chunks": [], "next_cursor": None, "hints": []})
+    )
+    with Client(BASE) as client:
+        page = client.search.browse(CID, ChunkBrowseRequest(cursor="abc"))
+    assert json.loads(route.calls.last.request.content)["cursor"] == "abc"
+    assert page.next_cursor is None

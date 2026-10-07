@@ -8,27 +8,71 @@ from __future__ import annotations
 from typing import Annotated, Any, Literal
 
 # ====== Third-Party Library Imports ======
-from docforge_sdk import AsyncClient, SearchRequest, SearchTarget
+from docforge_sdk import AsyncClient, ChunkBrowseRequest, SearchRequest, SearchTarget
 from mcp.server.fastmcp import FastMCP
-from pydantic import Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 # ====== Local Project Imports ======
 from ..compact_json import compact_json
-from .search_rendering import AGENT_RETURN_FIELDS, SearchTextRenderer
+from .search_rendering import AGENT_RETURN_FIELDS, BROWSE_RETURN_FIELDS, SearchTextRenderer
 
 _Scalar = str | int | float | bool
+_Bound = int | float | str
+
+
+class FilterOperator(BaseModel):
+    """One filter operator object: any subset of the backend's operator keys, nothing else.
+
+    Per-type validity (e.g. no prefix on a number field) stays the server's call - it answers 422
+    with the valid operators for the field.
+    """
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=False)
+
+    eq: _Scalar | None = Field(default=None, description="Equals this value.")
+    in_: list[_Scalar] | None = Field(default=None, alias="in", description="Any of these values.")
+    not_: _Scalar | list[_Scalar] | None = Field(
+        default=None, alias="not", description="Exclude this value (or any of a list)."
+    )
+    not_in: list[_Scalar] | None = Field(default=None, description="Exclude all of these values.")
+    contains: str | None = Field(default=None, description="Substring (case-insensitive).")
+    prefix: str | None = Field(default=None, description="Prefix (case-insensitive).")
+    exists: bool | None = Field(default=None, description="true = value present; false = absent.")
+    gte: _Bound | None = Field(default=None, description="Range: >= (number or ISO datetime).")
+    gt: _Bound | None = Field(default=None, description="Range: > (number or ISO datetime).")
+    lte: _Bound | None = Field(default=None, description="Range: <= (number or ISO datetime).")
+    lt: _Bound | None = Field(default=None, description="Range: < (number or ISO datetime).")
+
+    @model_validator(mode="after")
+    def _require_one_operator(self) -> FilterOperator:
+        """Reject an empty operator object (it would constrain nothing)."""
+        if not self.model_fields_set:
+            raise ValueError("an operator object needs at least one operator key")
+        return self
+
 
 # The documented value forms of one `filters` entry; module-level so FastMCP can resolve it from
 # the (lazy, `from __future__ import annotations`) signature and emit it in the tool's JSON schema.
-FilterValue = _Scalar | list[_Scalar] | dict[Literal["gte", "gt", "lte", "lt"], int | float | str]
+FilterValue = _Scalar | list[_Scalar] | FilterOperator
 
 _FILTERS_DOC = (
-    "Constraints on FILTERABLE metadata fields: {field_name: value}. Value forms: a scalar = "
-    "equality (strings match case-insensitively); a list = any-of; "
-    '{"gte"|"gt"|"lte"|"lt": number-or-ISO-datetime} = a range on number/datetime fields; text '
-    'fields use full-text matching. Example: {"topic": "billing", "year": {"gte": 2023}}. '
-    "Use describe_collection to see each field's real example values."
+    "Constraints on FILTERABLE metadata fields, ANDed: {field_name: value}. Value forms: a scalar "
+    "= equality (strings case-insensitive); a list = any-of; an operator object: "
+    '{"eq"|"not": v}, {"in"|"not_in": [..]}, {"contains"|"prefix": "text"}, {"exists": bool}, '
+    '{"gte"|"gt"|"lte"|"lt": number-or-ISO-datetime}. Example: {"topic": {"not": "legal"}, '
+    '"title": {"contains": "audit"}, "year": {"gte": 2023}}. Call describe_collection for each '
+    "field's type and allowed operators (a wrong operator for a type is refused with the valid ones)."
 )
+
+
+def _plain_filters(filters: dict[str, FilterValue] | None) -> dict[str, Any] | None:
+    """Turn operator models back into the plain JSON the API expects (aliases, set keys only)."""
+    if filters is None:
+        return None
+    return {
+        k: v.model_dump(by_alias=True, exclude_unset=True) if isinstance(v, FilterOperator) else v
+        for k, v in filters.items()
+    }
 
 
 def register(mcp: FastMCP, sdk: AsyncClient) -> None:
@@ -76,6 +120,32 @@ def register(mcp: FastMCP, sdk: AsyncClient) -> None:
             int | None,
             Field(ge=1, le=10, description="Per-document hit cap (default 1); needs group_by."),
         ] = None,
+        min_score: Annotated[
+            float | None,
+            Field(
+                ge=0,
+                description="Drop hits scoring below this (scale = score_kind; a "
+                "cross-encoder rerank score is 0..1, fusion scores are only a coarse cut).",
+            ),
+        ] = None,
+        rerank: Annotated[
+            bool | None,
+            Field(
+                description="false = skip the reranker for this call (faster); true = require "
+                "it. Omit = the collection's pipeline decides."
+            ),
+        ] = None,
+        fusion: Annotated[
+            Literal["rrf", "dbsf"] | None,
+            Field(
+                description="Override dense/sparse fusion: 'rrf' (rank-based) or 'dbsf' (a "
+                "confident axis can dominate). Omit = the collection's setting."
+            ),
+        ] = None,
+        debug: Annotated[
+            bool,
+            Field(description="true = also show each hit's fusion_score and rerank_score."),
+        ] = False,
         format: Annotated[
             Literal["text", "json"],
             Field(
@@ -89,7 +159,8 @@ def register(mcp: FastMCP, sdk: AsyncClient) -> None:
 
         Call describe_collection(collection_id) FIRST: it lists the fields (meaning, type, real
         example values), the valid search_in targets, the filter grammar and ready-to-use example
-        requests. Filters only work on FILTERABLE fields and unknown arguments are rejected.
+        requests. Filters only work on FILTERABLE fields and unknown arguments are rejected. The query
+        must not be blank: to list passages by filter without a query, use browse_chunks.
 
         OUTPUT (format="text", the default): a header `N hits for "<query>"`, then per hit
         `[rank] <title> | p.<page_number> | <heading > path> | score <s> | doc <id> |
@@ -115,10 +186,14 @@ def register(mcp: FastMCP, sdk: AsyncClient) -> None:
         request = SearchRequest(
             query=query,
             limit=limit,
-            filters=filters,
+            filters=_plain_filters(filters),
             search_in=search_in,
             return_fields=return_fields if return_fields is not None else AGENT_RETURN_FIELDS,
             group_by=group_by,
+            min_score=min_score,
+            rerank=rerank,
+            fusion=fusion,
+            debug=debug,
             **({"max_per_document": max_per_document} if max_per_document is not None else {}),
         )
         result = await sdk.search.search(collection_id, request)
@@ -127,6 +202,57 @@ def register(mcp: FastMCP, sdk: AsyncClient) -> None:
         if format == "json":
             return compact_json(result.model_dump(mode="json", exclude_unset=True))
         return SearchTextRenderer().render(result)
+
+    @mcp.tool()
+    async def browse_chunks(
+        collection_id: str,
+        filters: Annotated[dict[str, FilterValue] | None, Field(description=_FILTERS_DOC)] = None,
+        limit: Annotated[int, Field(ge=1, le=200, description="Chunks per page.")] = 20,
+        cursor: Annotated[
+            str | None,
+            Field(
+                description="The previous page's next_cursor, with the SAME filters. Omit for "
+                "the first page."
+            ),
+        ] = None,
+        return_fields: Annotated[
+            list[str] | None,
+            Field(
+                description="Chunk fields to return (as search_collection, minus score). Omit "
+                "for the agent default: text, document_title, page_number, heading_path, "
+                "metadata (+ chunk_id, document_id)."
+            ),
+        ] = None,
+        format: Annotated[
+            Literal["text", "json"],
+            Field(description="'text' (default) = one block per chunk; 'json' = compact response."),
+        ] = "text",
+    ) -> Any:
+        """
+        List a document's / a filter's passages in reading order, without a query.
+
+        Use it to read "all passages of document X" (filter on its identifier field) or to walk a
+        process page by page; pass next_cursor back (with the same filters) to continue. Order is
+        document then chunk position. For relevance-ranked retrieval use search_collection.
+        Call describe_collection first for the filterable fields.
+
+        OUTPUT (format="text"): per chunk `[n] <title> | p.<page_number> | <heading > path> | doc
+        <id> | chunk <id>` then the text; then `next_cursor: <token>` (or `end of results`) and
+        `Hint: ...` lines. format="json": the compact {chunks, next_cursor, hints}.
+        """
+        # 1. Build the request with the lean default projection
+        request = ChunkBrowseRequest(
+            filters=_plain_filters(filters),
+            limit=limit,
+            cursor=cursor,
+            return_fields=return_fields if return_fields is not None else BROWSE_RETURN_FIELDS,
+        )
+        page = await sdk.search.browse(collection_id, request)
+
+        # 2. Text for reading, compact JSON for programmatic use
+        if format == "json":
+            return compact_json(page.model_dump(mode="json", exclude_unset=True))
+        return SearchTextRenderer().render_browse(page)
 
     @mcp.tool()
     async def get_search_health() -> Any:

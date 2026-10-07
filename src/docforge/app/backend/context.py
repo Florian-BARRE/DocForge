@@ -29,7 +29,7 @@ if TYPE_CHECKING:
     from .libs.health import CollectionHealthService
     from .libs.metrics import MetricsService
     from .libs.preview import PreviewService
-    from .libs.search import SearchService
+    from .libs.search import ChunkBrowser, SearchService
     from .utils.queue import QueueClient
 
 
@@ -60,6 +60,8 @@ class CONTEXT:
     # The /collections/{id}/search endpoint is NOT cut over to this yet; it is the invocation
     # seam for the search graph (a later phase wires it to a route).
     search_service: SearchService
+    # Backs POST /collections/{id}/chunks/browse — the query-less, filter-only ordered chunk listing.
+    chunk_browser: ChunkBrowser
 
     # ── Collection health (on-demand, zero-spend reachability + build probe) ──
     # Backs GET /collections/{id}/health — builds both graphs, sweeps their providers, rolls up.

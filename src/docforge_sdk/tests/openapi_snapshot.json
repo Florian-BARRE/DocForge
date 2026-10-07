@@ -3414,7 +3414,7 @@
                     "search"
                 ],
                 "summary": "Search Collection",
-                "description": "Run a hybrid search over a collection and return ranked, hydrated chunk hits.\n\nDelegates retrieval to the graph-based search pipeline (CONTEXT.search_service); the router\nstays the request-side gate and diagnostic layer.\n\nReturns:\n    SearchResponse: The echoed query, its hits (best first) and any filter hints. 404 when the\n    collection is unknown, 409 when it has no embedder wired, 422 when a filter names a\n    non-filterable field, a value outside a field's enum, or an empty/oversized value list, or\n    when return_fields names an unknown hit field.",
+                "description": "Run a hybrid search over a collection and return ranked, hydrated chunk hits.\n\nDelegates retrieval to the graph-based search pipeline (CONTEXT.search_service); the router\nstays the request-side gate and diagnostic layer.\n\nReturns:\n    SearchResponse: The echoed query, its hits (best first) and any filter hints. 404 when the\n    collection is unknown, 409 when it has no embedder wired, 422 when a filter names a\n    non-filterable field, a value outside a field's enum, or an empty/oversized value list,\n    when return_fields names an unknown hit field, or when rerank=true but the collection's\n    search pipeline has no rerank stage.",
                 "operationId": "search_collection_api_v1_collections__collection_id__search_post",
                 "parameters": [
                     {
@@ -3445,6 +3445,60 @@
                             "application/json": {
                                 "schema": {
                                     "$ref": "#/components/schemas/SearchResponse"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/collections/{collection_id}/chunks/browse": {
+            "post": {
+                "tags": [
+                    "search"
+                ],
+                "summary": "Browse Chunks",
+                "description": "List a collection's chunks matching a filter, without a query, in (document, chunk_index) order.\n\nReturns:\n    ChunkBrowseResponse: One page of chunks, the next page's cursor and any filter hints. 404\n    when the collection is unknown; 422 on an invalid filter, an unknown return_fields name, or\n    a cursor this API did not issue.",
+                "operationId": "browse_chunks_api_v1_collections__collection_id__chunks_browse_post",
+                "parameters": [
+                    {
+                        "name": "collection_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid",
+                            "title": "Collection Id"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/ChunkBrowseRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ChunkBrowseResponse"
                                 }
                             }
                         }
@@ -5001,6 +5055,98 @@
                 ],
                 "title": "ChainView",
                 "description": "A fallback chain the user can build at one model-call site of a stage.\n\nFlagged with its family so the UI can colour chains distinctly from the linear stage rail.\n\nAttributes:\n    slot (str): Stable slot key of the model-call site (e.g. ``scanned_text_ocr``).\n    title (str): Human label of the site.\n    description (str): What this model call is for.\n    family (str): The model family the chain draws from (``ocr`` / ``vlm`` / ``llm``).\n    available (list[str]): The registry kinds available in the family (the step choices).\n    steps (list[ChainStep]): The ordered providers of the chain (cheap \u2192 robust)."
+            },
+            "ChunkBrowseRequest": {
+                "properties": {
+                    "filters": {
+                        "anyOf": [
+                            {
+                                "additionalProperties": true,
+                                "type": "object"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Filters",
+                        "description": "Constraints on the FILTERABLE metadata fields \u2014 exactly the grammar of POST /collections/{id}/search `filters` (same validation, same case-insensitive resolution, same hints). None \u2192 every searchable chunk of the collection."
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "maximum": 200.0,
+                        "minimum": 1.0,
+                        "title": "Limit",
+                        "description": "Chunks per page (1-200).",
+                        "default": 20
+                    },
+                    "cursor": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Cursor",
+                        "description": "Opaque cursor: the `next_cursor` of the previous page, sent back unchanged with the SAME filters. None \u2192 the first page. A tampered/foreign cursor \u2192 422."
+                    },
+                    "return_fields": {
+                        "anyOf": [
+                            {
+                                "items": {
+                                    "type": "string"
+                                },
+                                "type": "array",
+                                "maxItems": 64
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Return Fields",
+                        "description": "The chunk fields to return \u2014 any search hit field name except score (chunk_id, document_id, filename, document_title, heading_path, metadata, text, chunk_index, token_count, block_ids, page, page_number, bbox, block_locations) or 'metadata.<field>'. chunk_id and document_id are ALWAYS returned. None \u2192 every field EXCEPT the geometry ones (block_ids, page, bbox, block_locations) \u2014 page_number is kept for citation. Omitted fields are absent (not null). An unknown name \u2192 422."
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "title": "ChunkBrowseRequest",
+                "description": "List a collection's chunks by filter, without a query.\n\nAttributes:\n    filters (dict | None): The same filter map as POST /search (same gate, same resolution).\n    limit (int): Page size (1-200, default 20).\n    cursor (str | None): The previous page's ``next_cursor``; None = the first page.\n    return_fields (list[str] | None): Hit fields to return (as search; ``score`` is not one)."
+            },
+            "ChunkBrowseResponse": {
+                "properties": {
+                    "chunks": {
+                        "items": {
+                            "$ref": "#/components/schemas/SearchHitModel"
+                        },
+                        "type": "array",
+                        "title": "Chunks",
+                        "description": "The chunks of this page in browse order \u2014 document id ascending, then chunk_index ascending. Same shape as a search hit, WITHOUT a score (no query, no ranking: the key is absent)."
+                    },
+                    "next_cursor": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Next Cursor",
+                        "description": "Opaque cursor of the next page (send it as `cursor` with the same filters); null on the last page."
+                    },
+                    "hints": {
+                        "items": {
+                            "$ref": "#/components/schemas/SearchHint"
+                        },
+                        "type": "array",
+                        "title": "Hints",
+                        "description": "Filter hints, as search: a filter value no document stores (with the closest stored values), or the likely culprit filter when the first page is empty."
+                    }
+                },
+                "type": "object",
+                "title": "ChunkBrowseResponse",
+                "description": "One page of browsed chunks.\n\nAttributes:\n    chunks (list[SearchHitModel]): The page, ordered by document id then chunk_index.\n    next_cursor (str | None): Pass back as ``cursor`` for the next page; None on the last page.\n    hints (list[SearchHint]): Filter hints (a value nothing stores; the culprit of an empty page)."
             },
             "ChunkEnabledPatch": {
                 "properties": {
@@ -11290,6 +11436,30 @@
                         "type": "array",
                         "title": "Block Locations",
                         "description": "Every source block's page + NORMALISED bbox \u2014 draw one box per block. Empty when the chunk carries no block location."
+                    },
+                    "fusion_score": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Fusion Score",
+                        "description": "DEBUG only (present when the request set debug=true): the hit's retrieval fusion score (RRF/DBSF) \u2014 equal to score when the hit was not reranked. Absent otherwise."
+                    },
+                    "rerank_score": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Rerank Score",
+                        "description": "DEBUG only (present when the request set debug=true AND a rerank stage re-scored the hit): the cross-encoder score, equal to score. Absent otherwise."
                     }
                 },
                 "type": "object",
@@ -11298,7 +11468,7 @@
                     "document_id"
                 ],
                 "title": "SearchHitModel",
-                "description": "One ranked search result \u2014 the flat view of a hydrated chunk hit.\n\nAttributes:\n    chunk_id (str): The chunk's UUID (doubles as its Qdrant point id).\n    document_id (str): The document the chunk belongs to.\n    score (float): The fused RRF score (higher is better).\n    text (str): The chunk's enriched text.\n    chunk_index (int): The chunk's ordinal within its document.\n    token_count (int): The chunk's token count.\n    block_ids (list[str]): The IR block ids the chunk was assembled from (assembly order).\n    page (int | None): The 0-based page index of the chunk's primary (leading) block.\n    page_number (int | None): The 1-based page number (``page + 1``) \u2014 cite this one.\n    bbox (list[float] | None): The primary block's NORMALISED [0, 1] bounding box.\n    block_locations (list[BlockLocationModel]): Every source block's page + bbox (draw them all).\n\nEvery field but the identity (``chunk_id``, ``document_id``) is optional in the wire schema: a\nrequest's ``return_fields`` projection omits the unrequested keys (absent, not null). Without a\nprojection every field is always present."
+                "description": "One ranked search result \u2014 the flat view of a hydrated chunk hit.\n\nAttributes:\n    chunk_id (str): The chunk's UUID (doubles as its Qdrant point id).\n    document_id (str): The document the chunk belongs to.\n    score (float): The fused RRF score (higher is better).\n    text (str): The chunk's enriched text.\n    chunk_index (int): The chunk's ordinal within its document.\n    token_count (int): The chunk's token count.\n    block_ids (list[str]): The IR block ids the chunk was assembled from (assembly order).\n    page (int | None): The 0-based page index of the chunk's primary (leading) block.\n    page_number (int | None): The 1-based page number (``page + 1``) \u2014 cite this one.\n    bbox (list[float] | None): The primary block's NORMALISED [0, 1] bounding box.\n    block_locations (list[BlockLocationModel]): Every source block's page + bbox (draw them all).\n    fusion_score (float | None): The retrieval fusion score \u2014 only with ``debug=true``.\n    rerank_score (float | None): The rerank score \u2014 only with ``debug=true`` on a reranked hit.\n\nEvery field but the identity (``chunk_id``, ``document_id``) is optional in the wire schema: a\nrequest's ``return_fields`` projection omits the unrequested keys (absent, not null). Without a\nprojection every field is always present."
             },
             "SearchIndex": {
                 "properties": {
@@ -11355,7 +11525,7 @@
                             }
                         ],
                         "title": "Filters",
-                        "description": "Constraints on the FILTERABLE metadata fields \u2014 field \u2192 a scalar (equality), a list (any-of), or a range mapping of gte/gt/lte/lt bounds (numeric or ISO-8601 datetime, e.g. {\"published\": {\"gte\": \"2024-01-01\", \"lte\": \"2024-12-31\"}}). String/enum/keyword_list values match case-insensitively; text/text_list values are full-text matched. A value no document stores yields a response hint with the closest stored values."
+                        "description": "Metadata filters, ANDed across fields: {field: value}. A scalar = equality (string/enum/keyword_list match case-insensitively); a list = any-of (max 100); an object = ONE operator: {\"eq\": v}, {\"in\": [..]}, {\"not\": v}, {\"not_in\": [..]} (exclusion \u2014 string values exclude every case variant), {\"contains\": \"sub\"} / {\"prefix\": \"pre\"} (string/enum/keyword_list: case-insensitive match against stored values, >500 matches \u2192 422; text fields: contains = full-text, no prefix), {\"exists\": true|false} (value present / absent-null-empty), or range bounds {\"gte\",\"gt\",\"lte\",\"lt\"} on integer/float/datetime fields (datetime bounds = ISO-8601 strings). Only filterable fields; an operator not valid for the field type \u2192 422 listing the valid ones. A value no document stores yields a response hint with the closest stored values. GET /collections/{id}/describe lists the fields, their types and real values."
                     },
                     "search_in": {
                         "anyOf": [
@@ -11408,6 +11578,53 @@
                         "title": "Max Per Document",
                         "description": "Per-document hit cap when group_by='document' (default 1). Only valid together with group_by.",
                         "default": 1
+                    },
+                    "min_score": {
+                        "anyOf": [
+                            {
+                                "type": "number",
+                                "minimum": 0.0
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Min Score",
+                        "description": "Drop hits whose final score is below this threshold, applied AFTER the final ranking (and before group_by). The scale is the response's score_kind: 'cross_encoder_rerank' is a [0, 1] relevance score (a meaningful absolute cut, e.g. 0.3); 'rrf_fusion'/'dbsf_fusion' are rank-based / normalised fusion aggregates that can exceed 1.0 and are NOT comparable across queries \u2014 a threshold on them is a coarse filter only. Fewer than `limit` hits come back when hits fall below it. None \u2192 no threshold."
+                    },
+                    "rerank": {
+                        "anyOf": [
+                            {
+                                "type": "boolean"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Rerank",
+                        "description": "Override the collection's rerank stage for this request: false skips it (the fusion-ranked hits are returned; the reranker is never called), true requires it \u2014 422 when the collection's search pipeline has no rerank stage. None \u2192 the pipeline decides."
+                    },
+                    "fusion": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "enum": [
+                                    "rrf",
+                                    "dbsf"
+                                ]
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Fusion",
+                        "description": "Override how the dense and sparse branches are fused for this request: 'rrf' (Reciprocal Rank Fusion, rank-based) or 'dbsf' (Distribution-Based Score Fusion, lets a confident axis dominate). None \u2192 the collection's configured fusion."
+                    },
+                    "debug": {
+                        "type": "boolean",
+                        "title": "Debug",
+                        "description": "True \u2192 each hit also carries fusion_score (its retrieval fusion score) and, when a rerank stage re-scored it, rerank_score. False \u2192 neither key is present.",
+                        "default": false
                     }
                 },
                 "additionalProperties": false,
@@ -11416,7 +11633,7 @@
                     "query"
                 ],
                 "title": "SearchRequest",
-                "description": "A hybrid search over one collection.\n\nAttributes:\n    query (str): The natural-language query, embedded with the collection's own embedder.\n    limit (int): Number of fused results to return.\n    filters (dict | None): Constraints on the collection's FILTERABLE fields \u2014 a scalar becomes\n        an equality match, a list becomes a set-membership (any-of) match, and a mapping of range\n        bounds (``gte``/``gt``/``lte``/``lt``) becomes a numeric or datetime range (e.g.\n        ``{\"published\": {\"gte\": \"2024-01-01\", \"lte\": \"2024-12-31\"}}`` or ``{\"pages\": {\"gt\": 10}}``).\n        A range on a non-range-typed (keyword/bool) field, or a malformed range, is rejected 422.\n        String / enum / keyword_list values match case-insensitively (resolved to the stored\n        spelling); text / text_list values are full-text matched (all words present).\n    search_in (list[SearchTargetModel] | None): What to search \u2014 the fields (content and/or\n        metadata) and modalities (semantic/lexical). None searches content on both axes\n        (unchanged default). A target naming a vector the collection never indexed \u2192 422.\n    return_fields (list[str] | None): The hit fields to return \u2014 SearchHitModel field names,\n        plus ``metadata.<field>`` to keep a single metadata entry. ``chunk_id`` and\n        ``document_id`` are ALWAYS returned (a hit's identity). None returns the full hit\n        (unchanged default). An unknown name \u2192 422 listing the allowed names.\n    group_by (Literal[\"document\"] | None): ``\"document\"`` caps how many hits one document may\n        contribute (``max_per_document``); None = no grouping (unchanged default).\n    max_per_document (int): The per-document cap when ``group_by=\"document\"`` (1-10, default 1);\n        only valid together with ``group_by``."
+                "description": "A hybrid search over one collection.\n\nAttributes:\n    query (str): The natural-language query, embedded with the collection's own embedder.\n    limit (int): Number of fused results to return.\n    filters (dict | None): Constraints on the collection's FILTERABLE fields \u2014 a scalar becomes\n        an equality match, a list becomes a set-membership (any-of) match, and a mapping of range\n        bounds (``gte``/``gt``/``lte``/``lt``) becomes a numeric or datetime range (e.g.\n        ``{\"published\": {\"gte\": \"2024-01-01\", \"lte\": \"2024-12-31\"}}`` or ``{\"pages\": {\"gt\": 10}}``).\n        A range on a non-range-typed (keyword/bool) field, or a malformed range, is rejected 422.\n        String / enum / keyword_list values match case-insensitively (resolved to the stored\n        spelling); text / text_list values are full-text matched (all words present).\n    search_in (list[SearchTargetModel] | None): What to search \u2014 the fields (content and/or\n        metadata) and modalities (semantic/lexical). None searches content on both axes\n        (unchanged default). A target naming a vector the collection never indexed \u2192 422.\n    return_fields (list[str] | None): The hit fields to return \u2014 SearchHitModel field names,\n        plus ``metadata.<field>`` to keep a single metadata entry. ``chunk_id`` and\n        ``document_id`` are ALWAYS returned (a hit's identity). None returns the full hit\n        (unchanged default). An unknown name \u2192 422 listing the allowed names.\n    group_by (Literal[\"document\"] | None): ``\"document\"`` caps how many hits one document may\n        contribute (``max_per_document``); None = no grouping (unchanged default).\n    max_per_document (int): The per-document cap when ``group_by=\"document\"`` (1-10, default 1);\n        only valid together with ``group_by``.\n    min_score (float | None): Drop the hits whose final ``score`` is below this threshold (on the\n        scale named by the response's ``score_kind``). None = no threshold (unchanged default).\n    rerank (bool | None): Override the collection's rerank stage for this request \u2014 False skips\n        it, True requires it (422 when the search graph has none). None = the graph decides.\n    fusion (Literal[\"rrf\", \"dbsf\"] | None): Override the retrieve node's fusion strategy for this\n        request. None = the graph's configured fusion.\n    debug (bool): Add each hit's ``fusion_score`` (and ``rerank_score`` when reranked)."
             },
             "SearchResponse": {
                 "properties": {

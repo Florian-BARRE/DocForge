@@ -22,11 +22,20 @@ from .runner import (
 from .filter_hint import FilterHint
 from .filter_resolution import FilterResolution
 from .filter_resolver import SearchFilterResolver
+from .min_score_hint import MinScoreHint
 from .zero_hit_hints import ZeroHitHintBuilder
 
 # ---------------------- Response shaping (projection + grouping) ---------------------- #
 from .hit_projection import HitProjection
 from .document_grouping import DocumentHitGrouper
+from .result_finalizer import SearchResultFinalizer
+
+# ---------------------- Per-request tuning ---------------------- #
+from .tuning import SearchTuning, SearchTuningError
+
+# ---------------------- Query-less browse ---------------------- #
+from .browse_cursor import BrowseCursor, BrowseCursorError
+from .chunk_browser import BrowsePage, ChunkBrowser
 
 # ---------------------- Invocation seam ---------------------- #
 from .service import SearchService, SearchServiceError
@@ -45,9 +54,17 @@ __all__ = [
     "FilterHint",
     "FilterResolution",
     "SearchFilterResolver",
+    "MinScoreHint",
     "ZeroHitHintBuilder",
     "HitProjection",
     "DocumentHitGrouper",
+    "SearchResultFinalizer",
+    "SearchTuning",
+    "SearchTuningError",
+    "BrowseCursor",
+    "BrowseCursorError",
+    "BrowsePage",
+    "ChunkBrowser",
     "SearchService",
     "SearchServiceError",
 ]

@@ -8,6 +8,8 @@
 # mean" hints), then flattens the graph's Hits and the filter hints into the client response — projected
 # to the request's return_fields (served with response_model_exclude_unset, so an omitted field is
 # ABSENT from the hit, not null) and, with group_by="document", capped per document by the service.
+# Per-request tuning (min_score, rerank skip/require, fusion override, debug scores) rides through the
+# service as a SearchTuning; a rerank=true request on a graph with no rerank stage is a 422.
 
 # ====== Standard Library Imports ======
 import uuid
@@ -21,19 +23,22 @@ from ...libs.auth import Capability, require
 from ...libs.metrics.search_health import SearchHealthReader
 from ...libs.search import (
     HitProjection,
+    MinScoreHint,
     QueryEmbedderProbe,
-    SearchFilterResolver,
     SearchRunError,
     SearchRunTimeout,
+    SearchTuning,
+    SearchTuningError,
     SearchUnavailableError,
     ZeroHitHintBuilder,
 )
 from ...utils.error_handling import auto_handle_errors
+from .filter_gate import SearchFilterGate
 from .helpers import SearchHelpers
+from .hit_mapper import SearchHitMapper
 from .models import (
     SearchCostModel,
     SearchHealthSummary,
-    SearchHitModel,
     SearchRequest,
     SearchResponse,
 )
@@ -84,12 +89,13 @@ async def search_collection(collection_id: uuid.UUID, request: SearchRequest) ->
     Returns:
         SearchResponse: The echoed query, its hits (best first) and any filter hints. 404 when the
         collection is unknown, 409 when it has no embedder wired, 422 when a filter names a
-        non-filterable field, a value outside a field's enum, or an empty/oversized value list, or
-        when return_fields names an unknown hit field.
+        non-filterable field, a value outside a field's enum, or an empty/oversized value list,
+        when return_fields names an unknown hit field, or when rerank=true but the collection's
+        search pipeline has no rerank stage.
     """
     # 0. Parse the hit-field projection first — a typo'd field name is a caller error, rejected
     #    before any read or spend.
-    allowed_fields = sorted(SearchHitModel.model_fields)
+    allowed_fields = SearchHitMapper.projectable_fields()
     projection, unknown_fields = HitProjection.from_request(request.return_fields, allowed_fields)
     if unknown_fields:
         raise HTTPException(
@@ -97,6 +103,12 @@ async def search_collection(collection_id: uuid.UUID, request: SearchRequest) ->
             detail=f"Unknown return_fields {unknown_fields} — allowed: {allowed_fields} or "
             f"'metadata.<field>'.",
         )
+    tuning = SearchTuning(
+        min_score=request.min_score,
+        rerank=request.rerank,
+        fusion=request.fusion,
+        debug=request.debug,
+    )
 
     # 1. The collection must exist — everything (its embedder, its schema) derives from it.
     collection = await CONTEXT.database.collections.get(collection_id)
@@ -110,50 +122,18 @@ async def search_collection(collection_id: uuid.UUID, request: SearchRequest) ->
             status_code=409, detail="Collection has no embed node — search is unavailable."
         )
 
-    # 3. Stay the filterability gate — the graph trusts the filters it is handed, so a filter that
-    #    names a non-filterable field is rejected 422 BEFORE the service is invoked.
+    # 3. Stay the filter gate — the graph trusts the filters it is handed, so an invalid filter is
+    #    rejected 422 BEFORE the service is invoked; string-ish values are then resolved against the
+    #    stored values (case-insensitive canonical spelling + "did you mean" hints). Shared with the
+    #    browse route, so both accept exactly the same filter maps.
     schema = await CONTEXT.database.collections.get_schema(collection_id)
-
-    # 3a. Reject empty (Qdrant would read an empty any-of as "no constraint" → a WIDER search) and
-    #     oversized list filters before anything else looks at them.
-    list_errors = SearchHelpers.list_violations(request.filters)
-    if list_errors:
-        raise HTTPException(status_code=422, detail=f"Invalid filter value(s): {list_errors}")
-
-    # 3b. Gate RANGE filters (before build_conditions, which builds the range and would raise
-    #     on a malformed one): a range mapping is only valid on a range-typed filterable field
-    #     (integer/float/datetime), well-formed, and with bounds whose kind matches the field.
-    range_errors = SearchHelpers.range_violations(request.filters, schema)
-    if range_errors:
-        raise HTTPException(status_code=422, detail=f"Invalid range filter(s): {range_errors}")
-
-    _, invalid = SearchHelpers.build_conditions(request.filters, schema)
-    if invalid:
-        raise HTTPException(
-            status_code=422,
-            detail=f"Not a filterable field for this collection: {sorted(invalid)}",
-        )
-
-    # 3c. A filterable ENUM field only accepts its declared members: a case-only difference is mapped
-    #     to the member, a value outside the enum is a caller error rejected 422 listing the allowed
-    #     values (else it silently returns 0 hits and reads as "nothing matches").
-    filters, enum_errors = SearchHelpers.canonical_enum_filters(request.filters, schema)
-    if enum_errors:
-        raise HTTPException(status_code=422, detail=f"Invalid filter value(s): {enum_errors}")
+    resolution = await SearchFilterGate.resolve(request.filters, schema)
 
     # 4. Gate the search targets the same way — a target naming a field/vector the collection never
     #    indexed (or a selection with no modality) is a caller error rejected 422 before any spend.
     target_errors = SearchHelpers.validate_search_targets(request.search_in, schema)
     if target_errors:
         raise HTTPException(status_code=422, detail=f"Invalid search target(s): {target_errors}")
-
-    # 4b. Resolve string-ish filter values against the stored values (case-insensitive → the exact
-    #     stored spellings) and flag full-text fields — BEFORE the map reaches the pure graph. A value
-    #     nothing stores keeps its literal and yields a "did you mean" hint.
-    #     The as-sent map rides along so hints quote the caller's own value (pre-enum-mapping).
-    resolution = await SearchFilterResolver(CONTEXT.database.metadata_values).resolve(
-        filters, schema, sent=request.filters
-    )
 
     # 5. Delegate the retrieval to the graph-based search pipeline. The failure classes are mapped
     #    distinctly so the caller can tell "retry shortly" from "fix your config":
@@ -170,14 +150,17 @@ async def search_collection(collection_id: uuid.UUID, request: SearchRequest) ->
             collection_id,
             request.query,
             top_k=request.limit,
-            filters=resolution.filters if filters is not None else None,
+            filters=resolution.filters if request.filters is not None else None,
             search_targets=SearchHelpers.to_search_targets(request.search_in),
             collection=collection,
             text_fields=resolution.text_fields,
             title_field=SearchHelpers.title_field_spec(collection, schema),
             projection=projection,
             max_per_document=request.max_per_document if request.group_by else None,
+            tuning=tuning,
         )
+    except SearchTuningError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
     except SearchRunTimeout as exc:
         raise HTTPException(
             status_code=504,
@@ -212,16 +195,28 @@ async def search_collection(collection_id: uuid.UUID, request: SearchRequest) ->
         if call_count > 0
         else None
     )
-    hints = resolution.hints + ZeroHitHintBuilder.build(resolution, len(result.hits))
-    hits = [SearchHelpers.to_hit_model(hit) for hit in result.hits]
-    if projection is not None:
-        hits = [SearchHitModel.model_validate(projection.apply(hit.model_dump())) for hit in hits]
+    # The filter-culprit hints must judge the filters on what they LET THROUGH — before the
+    # min_score cut — or a threshold that dropped every hit would be blamed on a valid filter.
+    min_score_cut = (result.debug or {}).get("min_score") or {}
+    pre_cut_count = len(result.hits) + int(min_score_cut.get("dropped") or 0)
+    hints = (
+        resolution.hints
+        + ZeroHitHintBuilder.build(resolution, pre_cut_count)
+        + MinScoreHint.build(min_score_cut, len(result.hits))
+    )
+    #    Hits are projected to return_fields and, on a debug search, carry their fusion/rerank
+    #    scores; score_kind names what the TUNED run delivered (a skipped rerank → its fusion kind).
+    hits = SearchHitMapper.map(result.hits, projection, debug=tuning.debug)
+    score_kind = tuning.score_kind(
+        SearchHelpers.score_kind(
+            collection.search, rerank_degraded=SearchHelpers.rerank_degraded(result.debug)
+        ),
+        SearchHelpers.score_kind(collection.search, rerank_degraded=True),
+    )
     return SearchResponse(
         query=request.query,
         hits=hits,
-        score_kind=SearchHelpers.score_kind(
-            collection.search, rerank_degraded=SearchHelpers.rerank_degraded(result.debug)
-        ),
+        score_kind=score_kind,
         cost=cost,
         debug_info=result.debug,
         hints=[SearchHelpers.to_hint_model(hint) for hint in hints],

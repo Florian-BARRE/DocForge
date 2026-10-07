@@ -50,6 +50,10 @@ export interface SearchHitModel {
   bbox?: number[] | null;
   /** Every source block's page + NORMALISED bbox — draw one box per block. */
   block_locations?: BlockLocationModel[];
+  /** Retrieval fusion score — present only when the request set `debug: true`. */
+  fusion_score?: number | null;
+  /** Cross-encoder rerank score — present only with `debug: true` on a reranked hit. */
+  rerank_score?: number | null;
 }
 
 /** The run's priced search-time LLM spend (query rewrite / HyDE) — mirrors `SearchCostModel`. */

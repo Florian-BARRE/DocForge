@@ -4,8 +4,9 @@
 # for the rich fields (document_id, text, metadata) of ONLY that cut set — so the over-sampled pool is
 # never hydrated wholesale. It emits one Hit per hydrated candidate carrying the authoritative rank +
 # the candidate's score. A cut candidate whose row has vanished (deleted between search and hydration)
-# is dropped, not fatal — so fewer than top_k hits is possible. No direct store import — the port
-# arrives via bind().
+# is dropped, not fatal — so fewer than top_k hits is possible. Each Hit also records its score
+# provenance (fusion_score, and rerank_score when a rerank stage re-scored it) for debug responses.
+# No direct store import — the port arrives via bind().
 
 # ====== Third-Party Library Imports ======
 from pydantic import Field
@@ -88,6 +89,13 @@ class PostprocessHydrateNode(PortBackedNode):
                     rank=len(hits) + 1,
                     text=base.text,
                     metadata=base.metadata,
+                    # A reranked candidate kept its fusion score aside; otherwise score IS fusion.
+                    fusion_score=(
+                        candidate.fusion_score
+                        if candidate.fusion_score is not None
+                        else candidate.score
+                    ),
+                    rerank_score=candidate.score if candidate.fusion_score is not None else None,
                 )
             )
         self.logger.debug(f"Hydrated {len(hits)}/{top_k} hit(s)")

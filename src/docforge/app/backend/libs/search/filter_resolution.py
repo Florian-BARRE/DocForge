@@ -24,6 +24,8 @@ class FilterResolution:
         text_fields (frozenset[str]): Filtered fields with a full-text payload index (text/text_list).
         verified_fields (frozenset[str]): Keyword-typed filtered fields whose EVERY value was found
             stored (case-insensitively) — the only fields a zero-hit hint may claim "exist".
+        exclusion_fields (frozenset[str]): Fields filtered by ``not``/``not_in`` — a hint about
+            them explains an exclusion that removes nothing, never an empty result.
         hints (list[FilterHint]): Hints for filter values that match no stored value at all.
     """
 
@@ -31,6 +33,7 @@ class FilterResolution:
     original: dict[str, Any] = field(default_factory=dict)
     text_fields: frozenset[str] = frozenset()
     verified_fields: frozenset[str] = frozenset()
+    exclusion_fields: frozenset[str] = frozenset()
     hints: list[FilterHint] = field(default_factory=list)
 
 

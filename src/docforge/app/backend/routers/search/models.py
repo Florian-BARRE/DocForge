@@ -9,6 +9,12 @@ from typing import Any, Literal
 # ====== Third-Party Library Imports ======
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+# The 422 message for a missing/blank query — a query-less listing is the browse endpoint's job.
+_BLANK_QUERY_MESSAGE = (
+    "query must not be blank — use POST /collections/{id}/chunks/browse to list chunks by filter "
+    "without a query"
+)
+
 
 class SearchTargetModel(BaseModel):
     """
@@ -60,6 +66,13 @@ class SearchRequest(BaseModel):
             contribute (``max_per_document``); None = no grouping (unchanged default).
         max_per_document (int): The per-document cap when ``group_by="document"`` (1-10, default 1);
             only valid together with ``group_by``.
+        min_score (float | None): Drop the hits whose final ``score`` is below this threshold (on the
+            scale named by the response's ``score_kind``). None = no threshold (unchanged default).
+        rerank (bool | None): Override the collection's rerank stage for this request — False skips
+            it, True requires it (422 when the search graph has none). None = the graph decides.
+        fusion (Literal["rrf", "dbsf"] | None): Override the retrieve node's fusion strategy for this
+            request. None = the graph's configured fusion.
+        debug (bool): Add each hit's ``fusion_score`` (and ``rerank_score`` when reranked).
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -68,11 +81,17 @@ class SearchRequest(BaseModel):
     limit: int = Field(default=10, ge=1, le=100, description="Number of fused results.")
     filters: dict[str, Any] | None = Field(
         default=None,
-        description="Constraints on the FILTERABLE metadata fields — field → a scalar (equality), "
-        "a list (any-of), or a range mapping of gte/gt/lte/lt bounds (numeric or ISO-8601 datetime, "
-        'e.g. {"published": {"gte": "2024-01-01", "lte": "2024-12-31"}}). String/enum/keyword_list '
-        "values match case-insensitively; text/text_list values are full-text matched. A value no "
-        "document stores yields a response hint with the closest stored values.",
+        description="Metadata filters, ANDed across fields: {field: value}. A scalar = equality "
+        "(string/enum/keyword_list match case-insensitively); a list = any-of (max 100); an object = "
+        'ONE operator: {"eq": v}, {"in": [..]}, {"not": v}, {"not_in": [..]} (exclusion — string '
+        'values exclude every case variant), {"contains": "sub"} / {"prefix": "pre"} '
+        "(string/enum/keyword_list: case-insensitive match against stored values, >500 matches → "
+        '422; text fields: contains = full-text, no prefix), {"exists": true|false} (value present '
+        '/ absent-null-empty), or range bounds {"gte","gt","lte","lt"} on integer/float/datetime '
+        "fields (datetime bounds = ISO-8601 strings). Only filterable fields; an operator not valid "
+        "for the field type → 422 listing the valid ones. A value no document stores yields a "
+        "response hint with the closest stored values. GET /collections/{id}/describe lists the "
+        "fields, their types and real values.",
     )
     search_in: list[SearchTargetModel] | None = Field(
         default=None,
@@ -105,6 +124,45 @@ class SearchRequest(BaseModel):
         "together with group_by.",
     )
 
+    min_score: float | None = Field(
+        default=None,
+        ge=0.0,
+        description="Drop hits whose final score is below this threshold, applied AFTER the final "
+        "ranking (and before group_by). The scale is the response's score_kind: "
+        "'cross_encoder_rerank' is a [0, 1] relevance score (a meaningful absolute cut, e.g. 0.3); "
+        "'rrf_fusion'/'dbsf_fusion' are rank-based / normalised fusion aggregates that can exceed "
+        "1.0 and are NOT comparable across queries — a threshold on them is a coarse filter only. "
+        "Fewer than `limit` hits come back when hits fall below it. None → no threshold.",
+    )
+    rerank: bool | None = Field(
+        default=None,
+        description="Override the collection's rerank stage for this request: false skips it (the "
+        "fusion-ranked hits are returned; the reranker is never called), true requires it — 422 when "
+        "the collection's search pipeline has no rerank stage. None → the pipeline decides.",
+    )
+    fusion: Literal["rrf", "dbsf"] | None = Field(
+        default=None,
+        description="Override how the dense and sparse branches are fused for this request: 'rrf' "
+        "(Reciprocal Rank Fusion, rank-based) or 'dbsf' (Distribution-Based Score Fusion, lets a "
+        "confident axis dominate). None → the collection's configured fusion.",
+    )
+    debug: bool = Field(
+        default=False,
+        description="True → each hit also carries fusion_score (its retrieval fusion score) and, "
+        "when a rerank stage re-scored it, rerank_score. False → neither key is present.",
+    )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _query_required_or_browse(cls, data: Any) -> Any:
+        """Reject a missing/blank query with a pointer to the query-less browse endpoint."""
+        # 1. A filters-only call is a browse, not a search — say where to go instead of a bare 422.
+        if isinstance(data, dict):
+            query = data.get("query")
+            if query is None or (isinstance(query, str) and not query.strip()):
+                raise ValueError(_BLANK_QUERY_MESSAGE)
+        return data
+
     @model_validator(mode="after")
     def _grouping_knob_needs_group_by(self) -> "SearchRequest":
         """Reject a max_per_document sent without group_by — it would be silently ignored."""
@@ -116,11 +174,12 @@ class SearchRequest(BaseModel):
     @field_validator("query")
     @classmethod
     def _reject_blank(cls, value: str) -> str:
-        """Reject a whitespace-only query — embedding it would spend on nothing."""
-        # min_length=1 lets " " through; strip and fail so a blank query never reaches the embedder.
+        """Strip the query; a whitespace-only one never reaches the embedder (spend on nothing)."""
+        # The "before" validator already rejected a blank query with the browse pointer; this keeps
+        # the stripped text (and stays a backstop for a non-dict input path).
         stripped = value.strip()
         if not stripped:
-            raise ValueError("query must not be blank")
+            raise ValueError(_BLANK_QUERY_MESSAGE)
         return stripped
 
 
@@ -168,6 +227,8 @@ class SearchHitModel(BaseModel):
         page_number (int | None): The 1-based page number (``page + 1``) — cite this one.
         bbox (list[float] | None): The primary block's NORMALISED [0, 1] bounding box.
         block_locations (list[BlockLocationModel]): Every source block's page + bbox (draw them all).
+        fusion_score (float | None): The retrieval fusion score — only with ``debug=true``.
+        rerank_score (float | None): The rerank score — only with ``debug=true`` on a reranked hit.
 
     Every field but the identity (``chunk_id``, ``document_id``) is optional in the wire schema: a
     request's ``return_fields`` projection omits the unrequested keys (absent, not null). Without a
@@ -232,6 +293,16 @@ class SearchHitModel(BaseModel):
         default_factory=list,
         description="Every source block's page + NORMALISED bbox — draw one box per block. Empty "
         "when the chunk carries no block location.",
+    )
+    fusion_score: float | None = Field(
+        default=None,
+        description="DEBUG only (present when the request set debug=true): the hit's retrieval "
+        "fusion score (RRF/DBSF) — equal to score when the hit was not reranked. Absent otherwise.",
+    )
+    rerank_score: float | None = Field(
+        default=None,
+        description="DEBUG only (present when the request set debug=true AND a rerank stage "
+        "re-scored the hit): the cross-encoder score, equal to score. Absent otherwise.",
     )
 
 

@@ -298,6 +298,31 @@ export interface paths {
         patch: operations["update_collection_api_v1_collections__collection_id__patch"];
         trace?: never;
     };
+    "/api/v1/collections/{collection_id}/chunks/browse": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Browse Chunks
+         * @description List a collection's chunks matching a filter, without a query, in (document, chunk_index) order.
+         *
+         *     Returns:
+         *         ChunkBrowseResponse: One page of chunks, the next page's cursor and any filter hints. 404
+         *         when the collection is unknown; 422 on an invalid filter, an unknown return_fields name, or
+         *         a cursor this API did not issue.
+         */
+        post: operations["browse_chunks_api_v1_collections__collection_id__chunks_browse_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/collections/{collection_id}/describe": {
         parameters: {
             query?: never;
@@ -686,8 +711,9 @@ export interface paths {
          *     Returns:
          *         SearchResponse: The echoed query, its hits (best first) and any filter hints. 404 when the
          *         collection is unknown, 409 when it has no embedder wired, 422 when a filter names a
-         *         non-filterable field, a value outside a field's enum, or an empty/oversized value list, or
-         *         when return_fields names an unknown hit field.
+         *         non-filterable field, a value outside a field's enum, or an empty/oversized value list,
+         *         when return_fields names an unknown hit field, or when rerank=true but the collection's
+         *         search pipeline has no rerank stage.
          */
         post: operations["search_collection_api_v1_collections__collection_id__search_post"];
         delete?: never;
@@ -2749,6 +2775,67 @@ export interface components {
              * @description Human label of the model-call site.
              */
             title: string;
+        };
+        /**
+         * ChunkBrowseRequest
+         * @description List a collection's chunks by filter, without a query.
+         *
+         *     Attributes:
+         *         filters (dict | None): The same filter map as POST /search (same gate, same resolution).
+         *         limit (int): Page size (1-200, default 20).
+         *         cursor (str | None): The previous page's ``next_cursor``; None = the first page.
+         *         return_fields (list[str] | None): Hit fields to return (as search; ``score`` is not one).
+         */
+        ChunkBrowseRequest: {
+            /**
+             * Cursor
+             * @description Opaque cursor: the `next_cursor` of the previous page, sent back unchanged with the SAME filters. None → the first page. A tampered/foreign cursor → 422.
+             */
+            cursor?: string | null;
+            /**
+             * Filters
+             * @description Constraints on the FILTERABLE metadata fields — exactly the grammar of POST /collections/{id}/search `filters` (same validation, same case-insensitive resolution, same hints). None → every searchable chunk of the collection.
+             */
+            filters?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Limit
+             * @description Chunks per page (1-200).
+             * @default 20
+             */
+            limit: number;
+            /**
+             * Return Fields
+             * @description The chunk fields to return — any search hit field name except score (chunk_id, document_id, filename, document_title, heading_path, metadata, text, chunk_index, token_count, block_ids, page, page_number, bbox, block_locations) or 'metadata.<field>'. chunk_id and document_id are ALWAYS returned. None → every field EXCEPT the geometry ones (block_ids, page, bbox, block_locations) — page_number is kept for citation. Omitted fields are absent (not null). An unknown name → 422.
+             */
+            return_fields?: string[] | null;
+        };
+        /**
+         * ChunkBrowseResponse
+         * @description One page of browsed chunks.
+         *
+         *     Attributes:
+         *         chunks (list[SearchHitModel]): The page, ordered by document id then chunk_index.
+         *         next_cursor (str | None): Pass back as ``cursor`` for the next page; None on the last page.
+         *         hints (list[SearchHint]): Filter hints (a value nothing stores; the culprit of an empty page).
+         */
+        ChunkBrowseResponse: {
+            /**
+             * Chunks
+             * @description The chunks of this page in browse order — document id ascending, then chunk_index ascending. Same shape as a search hit, WITHOUT a score (no query, no ranking: the key is absent).
+             */
+            chunks?: components["schemas"]["SearchHitModel"][];
+            /**
+             * Hints
+             * @description Filter hints, as search: a filter value no document stores (with the closest stored values), or the likely culprit filter when the first page is empty.
+             */
+            hints?: components["schemas"]["SearchHint"][];
+            /**
+             * Next Cursor
+             * @description Opaque cursor of the next page (send it as `cursor` with the same filters); null on the last page.
+             */
+            next_cursor?: string | null;
         };
         /**
          * ChunkEnabledPatch
@@ -6778,6 +6865,8 @@ export interface components {
          *         page_number (int | None): The 1-based page number (``page + 1``) — cite this one.
          *         bbox (list[float] | None): The primary block's NORMALISED [0, 1] bounding box.
          *         block_locations (list[BlockLocationModel]): Every source block's page + bbox (draw them all).
+         *         fusion_score (float | None): The retrieval fusion score — only with ``debug=true``.
+         *         rerank_score (float | None): The rerank score — only with ``debug=true`` on a reranked hit.
          *
          *     Every field but the identity (``chunk_id``, ``document_id``) is optional in the wire schema: a
          *     request's ``return_fields`` projection omits the unrequested keys (absent, not null). Without a
@@ -6826,6 +6915,11 @@ export interface components {
              */
             filename?: string | null;
             /**
+             * Fusion Score
+             * @description DEBUG only (present when the request set debug=true): the hit's retrieval fusion score (RRF/DBSF) — equal to score when the hit was not reranked. Absent otherwise.
+             */
+            fusion_score?: number | null;
+            /**
              * Heading Path
              * @description The chunk's section ancestry, top-down (e.g. ['Article 7 — Audit rights']) — so a hit self-cites the section/clause it came from. Empty when the chunk sits under no section.
              */
@@ -6847,6 +6941,11 @@ export interface components {
              * @description 1-based page number (page + 1) of the chunk's primary block — the page as a reader counts it; use it to cite. None when the chunk carries no block location.
              */
             page_number?: number | null;
+            /**
+             * Rerank Score
+             * @description DEBUG only (present when the request set debug=true AND a rerank stage re-scored the hit): the cross-encoder score, equal to score. Absent otherwise.
+             */
+            rerank_score?: number | null;
             /**
              * Score
              * @description The hit's ranking score, higher is better. Its meaning is given by the response-level ``score_kind``: for the default hybrid retrieval it is Qdrant's SERVER-SIDE FUSION score (Reciprocal Rank Fusion by default, or DBSF) — a RANK-based aggregate, NOT a cosine similarity or a 0-1 probability; when reranking is enabled it is the cross-encoder relevance score instead. The absolute magnitude is NOT comparable across queries or collections — only the relative ordering WITHIN one response is meaningful. On a tiny corpus (e.g. a single document) the top hit's score can legitimately pin to a round value like 1.0000 — that is expected, not a bug.
@@ -6907,15 +7006,33 @@ export interface components {
          *             contribute (``max_per_document``); None = no grouping (unchanged default).
          *         max_per_document (int): The per-document cap when ``group_by="document"`` (1-10, default 1);
          *             only valid together with ``group_by``.
+         *         min_score (float | None): Drop the hits whose final ``score`` is below this threshold (on the
+         *             scale named by the response's ``score_kind``). None = no threshold (unchanged default).
+         *         rerank (bool | None): Override the collection's rerank stage for this request — False skips
+         *             it, True requires it (422 when the search graph has none). None = the graph decides.
+         *         fusion (Literal["rrf", "dbsf"] | None): Override the retrieve node's fusion strategy for this
+         *             request. None = the graph's configured fusion.
+         *         debug (bool): Add each hit's ``fusion_score`` (and ``rerank_score`` when reranked).
          */
         SearchRequest: {
             /**
+             * Debug
+             * @description True → each hit also carries fusion_score (its retrieval fusion score) and, when a rerank stage re-scored it, rerank_score. False → neither key is present.
+             * @default false
+             */
+            debug: boolean;
+            /**
              * Filters
-             * @description Constraints on the FILTERABLE metadata fields — field → a scalar (equality), a list (any-of), or a range mapping of gte/gt/lte/lt bounds (numeric or ISO-8601 datetime, e.g. {"published": {"gte": "2024-01-01", "lte": "2024-12-31"}}). String/enum/keyword_list values match case-insensitively; text/text_list values are full-text matched. A value no document stores yields a response hint with the closest stored values.
+             * @description Metadata filters, ANDed across fields: {field: value}. A scalar = equality (string/enum/keyword_list match case-insensitively); a list = any-of (max 100); an object = ONE operator: {"eq": v}, {"in": [..]}, {"not": v}, {"not_in": [..]} (exclusion — string values exclude every case variant), {"contains": "sub"} / {"prefix": "pre"} (string/enum/keyword_list: case-insensitive match against stored values, >500 matches → 422; text fields: contains = full-text, no prefix), {"exists": true|false} (value present / absent-null-empty), or range bounds {"gte","gt","lte","lt"} on integer/float/datetime fields (datetime bounds = ISO-8601 strings). Only filterable fields; an operator not valid for the field type → 422 listing the valid ones. A value no document stores yields a response hint with the closest stored values. GET /collections/{id}/describe lists the fields, their types and real values.
              */
             filters?: {
                 [key: string]: unknown;
             } | null;
+            /**
+             * Fusion
+             * @description Override how the dense and sparse branches are fused for this request: 'rrf' (Reciprocal Rank Fusion, rank-based) or 'dbsf' (Distribution-Based Score Fusion, lets a confident axis dominate). None → the collection's configured fusion.
+             */
+            fusion?: SearchRequestFusionAnyOf0 | null;
             /**
              * Group By
              * @description 'document' → no document contributes more than max_per_document hits: the final ranking (after fusion and any rerank) keeps its order and the page is filled with the next best hits of other documents. Fewer than `limit` hits come back when the collection holds too few matching documents. None → no grouping.
@@ -6934,10 +7051,20 @@ export interface components {
              */
             max_per_document: number;
             /**
+             * Min Score
+             * @description Drop hits whose final score is below this threshold, applied AFTER the final ranking (and before group_by). The scale is the response's score_kind: 'cross_encoder_rerank' is a [0, 1] relevance score (a meaningful absolute cut, e.g. 0.3); 'rrf_fusion'/'dbsf_fusion' are rank-based / normalised fusion aggregates that can exceed 1.0 and are NOT comparable across queries — a threshold on them is a coarse filter only. Fewer than `limit` hits come back when hits fall below it. None → no threshold.
+             */
+            min_score?: number | null;
+            /**
              * Query
              * @description The natural-language query to search for.
              */
             query: string;
+            /**
+             * Rerank
+             * @description Override the collection's rerank stage for this request: false skips it (the fusion-ranked hits are returned; the reranker is never called), true requires it — 422 when the collection's search pipeline has no rerank stage. None → the pipeline decides.
+             */
+            rerank?: boolean | null;
             /**
              * Return Fields
              * @description The hit fields to return (a lean response): any hit field name (chunk_id, document_id, filename, document_title, heading_path, metadata, score, text, chunk_index, token_count, block_ids, page, page_number, bbox, block_locations) or 'metadata.<field>' to keep one metadata entry. chunk_id and document_id are ALWAYS returned. Omitted fields are ABSENT from each hit (not null), and their hydration reads are skipped (e.g. no geometry read without page/page_number/bbox/block_ids/block_locations). None → the full hit. An unknown name → 422 listing the allowed names.
@@ -8638,6 +8765,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CollectionModel"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    browse_chunks_api_v1_collections__collection_id__chunks_browse_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                collection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChunkBrowseRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChunkBrowseResponse"];
                 };
             };
             /** @description Validation Error */
@@ -10663,6 +10825,10 @@ export enum RemoveNodeOp {
 }
 export enum ScoreBelowKind {
     score_below = "score_below"
+}
+export enum SearchRequestFusionAnyOf0 {
+    rrf = "rrf",
+    dbsf = "dbsf"
 }
 export enum SetAfterOp {
     set_after = "set_after"

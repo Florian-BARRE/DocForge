@@ -151,3 +151,86 @@ def test_zero_hit_does_not_claim_existence_for_unverified_filters() -> None:
     assert all(
         "Each value exists" in h.message for h in ZeroHitHintBuilder.build(verified, hit_count=0)
     )
+
+
+# --------------------------------------------------------------------------- #
+# Operator objects ({field: {"<op>": value}})
+# --------------------------------------------------------------------------- #
+
+
+def _pattern_oracle(matches: list[str]) -> SimpleNamespace:
+    oracle = _oracle()
+    oracle.prefix = AsyncMock(return_value=matches)
+    oracle.contains = AsyncMock(return_value=matches)
+    oracle.distinct_values = AsyncMock(return_value=["Audit", "Law"])
+    return oracle
+
+
+def test_not_excludes_every_stored_case_variant() -> None:
+    resolution = _resolve({"identifiant": {"not": "afd-p0153"}})
+    assert resolution.filters == {"identifiant": {"not_in": ["AFD-P0153", "afd-P0153"]}}
+    assert resolution.exclusion_fields == frozenset({"identifiant"})
+    assert resolution.hints == []
+
+
+def test_in_and_not_in_operands_are_canonicalized() -> None:
+    resolution = _resolve({"tags": {"in": ["audit"]}, "identifiant": {"not_in": ["afd-p0154"]}})
+    assert resolution.filters == {
+        "tags": {"in": ["Audit"]},
+        "identifiant": {"not_in": ["AFD-P0154"]},
+    }
+
+
+def test_eq_with_several_variants_becomes_in() -> None:
+    assert _resolve({"identifiant": {"eq": "AFD-p0153"}}).filters == {
+        "identifiant": {"in": ["AFD-P0153", "afd-P0153"]}
+    }
+
+
+def test_unstored_exclusion_is_hinted_but_never_the_zero_hit_culprit() -> None:
+    resolution = _resolve({"identifiant": {"not": "nope"}})
+    (hint,) = resolution.hints
+    assert "so this exclusion removes nothing" in hint.message
+    # The exclusion cannot have emptied the result → the zero-hit builder still explains it.
+    (zero,) = ZeroHitHintBuilder.build(resolution, 0)
+    assert 'identifiant {"not": "nope"}' in zero.message
+
+
+def test_prefix_expands_to_the_stored_values() -> None:
+    oracle = _pattern_oracle(["Alpha", "alpha", "ALPHABET"])
+    resolution = _resolve({"tags": {"prefix": "AL"}}, oracle)
+    assert resolution.filters == {"tags": {"in": ["Alpha", "alpha", "ALPHABET"]}}
+    assert "tags" in resolution.verified_fields
+    oracle.prefix.assert_awaited_once()
+    assert oracle.prefix.await_args.args[1:] == ("AL", 501)
+
+
+def test_contains_with_no_match_is_an_honest_empty_with_a_hint() -> None:
+    oracle = _pattern_oracle([])
+    oracle.suggest = AsyncMock(return_value=[])
+    resolution = _resolve({"tags": {"contains": "zzz"}}, oracle)
+    assert resolution.filters == {"tags": {"in": ["zzz"]}}
+    (hint,) = resolution.hints
+    assert hint.message.startswith('No stored value of tags contains "zzz"')
+    assert hint.suggestions == ["Audit", "Law"]
+    assert hint.value == {"contains": "zzz"}
+
+
+def test_pattern_past_the_cap_is_a_422_never_a_silent_narrowing() -> None:
+    import pytest  # noqa: PLC0415
+    from fastapi import HTTPException  # noqa: PLC0415
+
+    oracle = _pattern_oracle([f"v{i}" for i in range(501)])
+    with pytest.raises(HTTPException) as caught:
+        _resolve({"tags": {"prefix": "v"}}, oracle)
+    assert caught.value.status_code == 422
+    assert "more than 500 distinct stored values" in caught.value.detail
+
+
+def test_text_contains_and_exists_pass_through_untouched() -> None:
+    oracle = _oracle()
+    filters = {"summary": {"contains": "audit"}, "tags": {"exists": False}, "year": {"not": 3}}
+    resolution = _resolve(filters, oracle)
+    assert resolution.filters == filters
+    assert resolution.text_fields == frozenset({"summary"})
+    oracle.canonicalize.assert_not_awaited()
