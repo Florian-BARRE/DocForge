@@ -1081,7 +1081,7 @@
                     "collections"
                 ],
                 "summary": "Reingest Collection",
-                "description": "Re-run the full pipeline over a collection's corpus \u2014 all documents, or an explicit subset.\n\nThe run is idempotent per document (a REPLACE at every layer: chunks/IR purged-then-inserted,\nQdrant points deleted-by-document before upsert) and the original bytes are already stored, so\nthis never re-uploads. Each document gets a FRESH job; poll each returned job for progress.\n\nReturns:\n    BulkReingestAccepted: matched / enqueued / capped + one job handle per enqueued run (202);\n        404 when the collection is unknown, 422 on a stale/broken pipeline or a bad document subset.",
+                "description": "Re-run the full pipeline over a collection's corpus \u2014 all documents, or an explicit subset.\n\nThe run is idempotent per document (a REPLACE at every layer: chunks/IR purged-then-inserted,\nQdrant points deleted-by-document before upsert) and the original bytes are already stored, so\nthis never re-uploads. Each document gets a FRESH job; poll each returned job for progress.\n\nReturns:\n    BulkReingestAccepted: matched / enqueued / capped + one job handle per enqueued run (202);\n        404 when the collection is unknown, 422 on a stale/broken pipeline, a bad document subset\n        or an unreplayable stage, 409 ``estimate_required`` above the confirm threshold without\n        ``confirm_estimate``, 429 ``queue_saturated`` (+ Retry-After) on a saturated queue.",
                 "operationId": "reingest_collection_api_v1_collections__collection_id__reingest_post",
                 "parameters": [
                     {
@@ -1694,7 +1694,7 @@
                     "documents"
                 ],
                 "summary": "Reingest Document",
-                "description": "Re-run ingestion on an existing document \u2014 no delete-and-re-upload.\n\nThe original bytes are already stored (content-addressed) and the worker refetches them, so\nre-uploading the same file is refused as a duplicate; this re-processes the stored original with\nthe collection's CURRENT pipeline (and the current engine) instead. The run is idempotent \u2014 the\nprevious chunks/IR/pages are purged and the vectors overwritten \u2014 and the user-declared metadata\nsurvives. Poll the returned job for progress. ``force=true`` recomputes every stage (no cache).\n\nReturns:\n    UploadAccepted: The document id and the new ingestion job id (202); 404 when unknown.",
+                "description": "Re-run ingestion on an existing document \u2014 no delete-and-re-upload.\n\nThe original bytes are already stored (content-addressed) and the worker refetches them, so\nre-uploading the same file is refused as a duplicate; this re-processes the stored original with\nthe collection's CURRENT pipeline (and the current engine) instead. The run is idempotent \u2014 the\nprevious chunks/IR/pages are purged and the vectors overwritten \u2014 and the user-declared metadata\nsurvives. Poll the returned job for progress. ``force=true`` recomputes every stage (no cache).\n``replay_from=<stage>`` re-runs only that stage and its downstream on the persisted IR.\n\nReturns:\n    UploadAccepted: The document id and the new ingestion job id (202); 404 when unknown.",
                 "operationId": "reingest_document_api_v1_documents__document_id__reingest_post",
                 "parameters": [
                     {
@@ -1718,6 +1718,24 @@
                             "title": "Force"
                         },
                         "description": "Bypass the stage cache and recompute every stage from scratch (no cache read/write). Use to rebuild after a code change that did not bump a node's CACHE_VERSION."
+                    },
+                    {
+                        "name": "replay_from",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "description": "Replay only this post-IR stage and its downstream from the document's persisted IR (no re-parse) \u2014 enrich, chunk, metagen_chunk, metagen_document or embed, as the collection's pipeline allows (422 lists the allowed stages). Only the downstream layers (enrichments / chunks / generated metadata / vectors) are replaced. Omit for a full run.",
+                            "title": "Replay From"
+                        },
+                        "description": "Replay only this post-IR stage and its downstream from the document's persisted IR (no re-parse) \u2014 enrich, chunk, metagen_chunk, metagen_document or embed, as the collection's pipeline allows (422 lists the allowed stages). Only the downstream layers (enrichments / chunks / generated metadata / vectors) are replaced. Omit for a full run."
                     }
                 ],
                 "responses": {
@@ -4003,7 +4021,7 @@
                     "corpus"
                 ],
                 "summary": "Bulk Reingest",
-                "description": "Re-run the full pipeline over every selected document \u2014 one fresh job per document (poll each).\n\nFail-fast: after the collection (404) + scope (403) gates, the stored pipeline is healed +\nstructurally validated ONCE (422) before any job is minted, so a broken collection surfaces here\ninstead of as N failed jobs. A filter selector matching MORE than the fan-out ceiling enqueues\nonly the first N and reports ``capped=true`` with the full ``matched`` count.\n\nReturns:\n    BulkReingestResponse: matched / enqueued / capped + one job handle per run (202); 404 unknown\n        collection, 422 on a stale/broken pipeline or a bad selector.",
+                "description": "Re-run the full pipeline over every selected document \u2014 one fresh job per document (poll each).\n\nFail-fast: after the collection (404) + scope (403) gates, the stored pipeline is healed +\nstructurally validated ONCE (422) before any job is minted, so a broken collection surfaces here\ninstead of as N failed jobs. A filter selector matching MORE than the fan-out ceiling enqueues\nonly the first N and reports ``capped=true`` with the full ``matched`` count.\n\nReturns:\n    BulkReingestResponse: matched / enqueued / capped + one job handle per run (202); 404 unknown\n        collection, 422 on a stale/broken pipeline, a bad selector or an unreplayable stage, 409\n        ``estimate_required`` above the confirm threshold without ``confirm_estimate``, 429\n        ``queue_saturated`` (+ Retry-After) when the queue cannot absorb the fan-out.",
                 "operationId": "bulk_reingest_api_v1_collections__collection_id__documents_reingest_post",
                 "parameters": [
                     {
@@ -4028,6 +4046,36 @@
                             "title": "Force"
                         },
                         "description": "Bypass the stage cache and recompute every stage from scratch (no cache read/write). Use to rebuild after a code change that did not bump a node's CACHE_VERSION."
+                    },
+                    {
+                        "name": "replay_from",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "description": "Replay only this post-IR stage and its downstream from each document's persisted IR (no re-parse) \u2014 e.g. embed, metagen_document, chunk. 422 lists the stages the collection's pipeline allows. Omit for a full re-run.",
+                            "title": "Replay From"
+                        },
+                        "description": "Replay only this post-IR stage and its downstream from each document's persisted IR (no re-parse) \u2014 e.g. embed, metagen_document, chunk. 422 lists the stages the collection's pipeline allows. Omit for a full re-run."
+                    },
+                    {
+                        "name": "confirm_estimate",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "boolean",
+                            "description": "Acknowledge the cost estimate of a reingest matching more documents than CORPUS_REINGEST_CONFIRM_THRESHOLD; without it such a call is refused 409 estimate_required carrying the estimate summary.",
+                            "default": false,
+                            "title": "Confirm Estimate"
+                        },
+                        "description": "Acknowledge the cost estimate of a reingest matching more documents than CORPUS_REINGEST_CONFIRM_THRESHOLD; without it such a call is refused 409 estimate_required carrying the estimate summary."
                     }
                 ],
                 "requestBody": {
@@ -5368,6 +5416,12 @@
                         "description": "Documents skipped because an ingestion job was already active for them.",
                         "default": 0
                     },
+                    "skipped_not_replayable": {
+                        "type": "integer",
+                        "title": "Skipped Not Replayable",
+                        "description": "Documents skipped by a replay_from run because they have no persisted IR.",
+                        "default": 0
+                    },
                     "jobs": {
                         "items": {
                             "$ref": "#/components/schemas/ReingestJobHandle"
@@ -5412,11 +5466,29 @@
                         "title": "Force",
                         "description": "Bypass the stage cache and recompute every stage from scratch (no cache read/write). Use to rebuild after a code change that did not bump a node's CACHE_VERSION.",
                         "default": false
+                    },
+                    "replay_from": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Replay From",
+                        "description": "Replay only this post-IR stage and its downstream from each document's PERSISTED IR (no re-parse): one of enrich, chunk, metagen_chunk, metagen_document, embed \u2014 as the collection's pipeline allows (422 lists the allowed stages). Only the downstream layers are replaced. Omit for a full re-run."
+                    },
+                    "confirm_estimate": {
+                        "type": "boolean",
+                        "title": "Confirm Estimate",
+                        "description": "Acknowledge the cost estimate of a LARGE reingest (more documents than CORPUS_REINGEST_CONFIRM_THRESHOLD). Without it such a call is refused 409 estimate_required carrying the estimate summary; review it and resend with true.",
+                        "default": false
                     }
                 },
                 "type": "object",
                 "title": "BulkReingestRequest",
-                "description": "The re-run request over a collection's corpus (a full-pipeline re-ingest).\n\nAttributes:\n    document_ids (list[str] | None): The explicit subset to re-run. Omit or null \u2192 EVERY\n        document in the collection. An empty list is rejected (an ambiguous no-op)."
+                "description": "The re-run request over a collection's corpus (a full-pipeline re-ingest).\n\nAttributes:\n    document_ids (list[str] | None): The explicit subset to re-run. Omit or null \u2192 EVERY\n        document in the collection. An empty list is rejected (an ambiguous no-op).\n    force (bool): Bypass the stage cache.\n    replay_from (str | None): Replay from this post-IR stage (no re-parse); None = full re-run.\n    confirm_estimate (bool): Acknowledge the estimate of a reingest above the confirm threshold."
             },
             "BulkReingestResponse": {
                 "properties": {
@@ -5449,6 +5521,12 @@
                         "type": "integer",
                         "title": "Skipped In Flight",
                         "description": "Documents skipped because an ingestion job was already active for them.",
+                        "default": 0
+                    },
+                    "skipped_not_replayable": {
+                        "type": "integer",
+                        "title": "Skipped Not Replayable",
+                        "description": "Documents skipped by a replay_from run because they have no persisted IR.",
                         "default": 0
                     },
                     "jobs": {
@@ -10538,6 +10616,18 @@
                         "title": "Kind",
                         "description": "The kind of work this job tracks: 'ingest' (a full document pipeline run) or 'metadata_sync' (a lightweight per-document metadata re-embed after an in-place value edit) or 'rebuild_index' (a collection-level vector-store rebuild \u2014 document_id is null). Lets the UI/Activity render a side-job distinctly from a full ingestion."
                     },
+                    "replay_from": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Replay From",
+                        "description": "For an ingest job re-running from a stage on the persisted IR (replay_from reingest): that stage key (e.g. 'embed'). None for a full pipeline run."
+                    },
                     "cancel_requested": {
                         "type": "boolean",
                         "title": "Cancel Requested",
@@ -10731,7 +10821,7 @@
                     "cost_usd"
                 ],
                 "title": "JobStatus",
-                "description": "One ingestion job's live state \u2014 written by the worker, only read here.\n\nAttributes:\n    job_id (str): The job row's UUID.\n    document_id (str | None): The document being ingested (None for a rebuild_index job).\n    collection_id (str): Its collection.\n    status (str): queued / running / done / failed.\n    kind (str): ingest, metadata_sync (per-document metadata re-embed) or rebuild_index.\n    progress (int): 0\u2013100 (completed pipeline nodes over total).\n    current_stage (str | None): The node currently (or last) executed.\n    error (str | None): The failure \u2014 only set when status is failed; verbatim for a\n        read_technical caller, its network locators (URLs, host:port, paths) masked otherwise.\n    attempt (int): arq retry attempt (1 = first run).\n    started_at (datetime | None): When the worker picked it up.\n    finished_at (datetime | None): When it ended (done or failed).\n    updated_at (datetime): Last progress/lifecycle write \u2014 freezes when a job wedges.\n    stalled (bool): A RUNNING job idle past STALLED_AFTER_SECONDS (an early wedge warning).\n    total_prompt_tokens (int): The document's lifetime input tokens across paid text-gen calls.\n    total_completion_tokens (int): The document's lifetime output tokens.\n    cost_usd (float): The document's lifetime USD cost (0 while no priceable call has run).\n    items_done (int | None): Child items finished in the CURRENT fan-out stage (None off fan-out).\n    items_total (int | None): The current fan-out's width (None when not in a fan-out stage).\n    failed_node_id (str | None): The deepest node that raised (only set on a failed job).\n    failed_node_kind (str | None): That node's kind/family label (only set on a failed job).\n    failed_item_index (int | None): The fan-out item index the failure sits in (None outside one).\n    error_type (str | None): The exception class name (e.g. \"TimeoutError\") \u2014 set on failure."
+                "description": "One ingestion job's live state \u2014 written by the worker, only read here.\n\nAttributes:\n    job_id (str): The job row's UUID.\n    document_id (str | None): The document being ingested (None for a rebuild_index job).\n    collection_id (str): Its collection.\n    status (str): queued / running / done / failed.\n    kind (str): ingest, metadata_sync (per-document metadata re-embed) or rebuild_index.\n    replay_from (str | None): The stage an ingest job replays from (None = a full run).\n    progress (int): 0\u2013100 (completed pipeline nodes over total).\n    current_stage (str | None): The node currently (or last) executed.\n    error (str | None): The failure \u2014 only set when status is failed; verbatim for a\n        read_technical caller, its network locators (URLs, host:port, paths) masked otherwise.\n    attempt (int): arq retry attempt (1 = first run).\n    started_at (datetime | None): When the worker picked it up.\n    finished_at (datetime | None): When it ended (done or failed).\n    updated_at (datetime): Last progress/lifecycle write \u2014 freezes when a job wedges.\n    stalled (bool): A RUNNING job idle past STALLED_AFTER_SECONDS (an early wedge warning).\n    total_prompt_tokens (int): The document's lifetime input tokens across paid text-gen calls.\n    total_completion_tokens (int): The document's lifetime output tokens.\n    cost_usd (float): The document's lifetime USD cost (0 while no priceable call has run).\n    items_done (int | None): Child items finished in the CURRENT fan-out stage (None off fan-out).\n    items_total (int | None): The current fan-out's width (None when not in a fan-out stage).\n    failed_node_id (str | None): The deepest node that raised (only set on a failed job).\n    failed_node_kind (str | None): That node's kind/family label (only set on a failed job).\n    failed_item_index (int | None): The fan-out item index the failure sits in (None outside one).\n    error_type (str | None): The exception class name (e.g. \"TimeoutError\") \u2014 set on failure."
             },
             "JobTimeseries": {
                 "properties": {

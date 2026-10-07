@@ -750,10 +750,19 @@ documents.
 | Query param | Type | Default | Meaning |
 |---|---|---|---|
 | `force` | bool | `false` | Bypass the stage cache and recompute every stage from scratch. Use after a code change that did not bump a node's cache version. |
+| `replay_from` | string | — | Replay only this post-IR stage and its downstream on the document's **persisted** IR — no re-parse, no re-upload. One of `enrich`, `chunk`, `metagen_chunk`, `metagen_document`, `embed` as the pipeline allows (`contextualize` is never replayable — the raw chunker text it reads is not persisted; replay from `chunk`). A failed replay fails the job but keeps the document's prior status (plus a `warning_reason`): its previous chunks and vectors stay served. Only the downstream layers (enrichments / chunks / generated metadata / vectors) are replaced; blocks, pages and blobs stay. |
 
 ```bash
 curl -sX POST "http://localhost:10040/api/v1/documents/d4c3.../reingest?force=true"
+# a new metagen prompt, without re-parsing:
+curl -sX POST "http://localhost:10040/api/v1/documents/d4c3.../reingest?replay_from=metagen_document"
 ```
+
+`replay_from` errors (`422`, before any job is minted): `{"code": "replay_unsupported", "reason": …,
+"allowed": [<stages this pipeline can replay from>]}` — an unknown/pre-IR stage, a stage not enabled in
+the pipeline, or one whose upstream artefact is never persisted; a document with no persisted IR
+(never fully ingested) is the same code with `allowed: []` — run a full reingest first. The job records
+it as `JobStatus.replay_from` and its trace has no intake/parse node.
 
 Response is an `UploadAccepted` (`202`) — `{document_id, job_id, duplicate}` — poll the job (§7). The
 run is idempotent: the previous chunks/IR/pages are purged and the vectors overwritten, while the
@@ -1046,7 +1055,23 @@ Exactly one mode is allowed (`422` otherwise); `document_ids` must be non-empty,
   `CORPUS_MAX_REINGEST_FANOUT` enqueues only the first N and reports `capped: true` with the full
   `matched`. `skipped_in_flight` counts documents skipped because an ingestion job was already active
   for them (at most one active run per document is a hard invariant), so `enqueued + skipped_in_flight`
-  can be below the kept count when some targets were already running.
+  can be below the kept count when some targets were already running. `?replay_from=<stage>` replays
+  every target from that stage (same contract and `422 replay_unsupported` as the single-document
+  route); targets with no persisted IR are skipped and counted in `skipped_not_replayable`.
+- **Bulk reingest guardrails** (this route AND `POST /collections/{id}/reingest`, whose JSON body takes
+  the same `replay_from` / `confirm_estimate` fields):
+  - **`409 estimate_required`** — more than `CORPUS_REINGEST_CONFIRM_THRESHOLD` resolved documents
+    (default 200, `0` = off) without `confirm_estimate=true` (`?confirm_estimate=true` here, body field
+    on the collection route). Detail: `{code, message, matched, threshold, estimate}` where `estimate` =
+    `{document_count, total_cost_usd, total_cost_lower_bound_usd, cost_complete}` over the SAME targets
+    — plus `total_prompt_tokens, total_completion_tokens, priced_stages, caveats` (which name models,
+    providers and rate keys) ONLY for a caller holding `read_technical` (with `replay_from`, only
+    the stages from it onward are priced; `null` if the estimator failed). Review it, resend with
+    `confirm_estimate=true`. Nothing is minted on refusal.
+  - **`429 queue_saturated`** + `Retry-After: QUEUE_RETRY_AFTER_SECONDS` — the arq backlog plus this
+    call's jobs (kept targets minus those already running) would exceed `QUEUE_MAX_DEPTH`. Detail:
+    `{code, message, queue_depth, requested, max_depth}`. Checked before any job is minted. A single
+    upload/reingest is never gated.
 
 ---
 
@@ -1313,7 +1338,8 @@ order (newest first by default).
 
 A `JobStatus` carries `job_id, document_id, collection_id, status` (`queued`/`running`/`done`/
 `failed`/`cancelled`), `kind` (`ingest` — a full pipeline run — or `metadata_sync` — a lightweight
-per-document metadata re-embed following an in-place value edit), `progress` (0–100), `current_stage`,
+per-document metadata re-embed following an in-place value edit), `replay_from` (the stage an ingest
+job replays from on the persisted IR; `null` for a full run), `progress` (0–100), `current_stage`,
 `error` (only when failed — verbatim for a `read_technical` key, its URLs/`host:port`/paths masked as `<redacted>` otherwise),
 `attempt`, `started_at`, `finished_at`, and `updated_at` (last progress write — freezes on a wedge).
 It also joins display labels (`document_filename`, `document_title`, `collection_name`, each `null`

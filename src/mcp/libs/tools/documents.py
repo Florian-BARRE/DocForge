@@ -139,9 +139,18 @@ def register(
         return view.model_dump(mode="json")
 
     @mcp.tool()
-    async def reingest_document(document_id: str, force: bool = False) -> Any:
-        """Re-run the full ingestion of a single document (force bypasses the doc cache)."""
-        accepted = await sdk.documents.reingest(document_id, force)
+    async def reingest_document(
+        document_id: str, force: bool = False, replay_from: str | None = None
+    ) -> Any:
+        """
+        Re-run the ingestion of a single document (force bypasses the doc cache). Never gated by the
+        bulk cost confirmation. `replay_from` re-runs only that stage and its downstream on the document's PERSISTED IR (no
+        re-parse, no re-upload) — one of enrich, chunk, metagen_chunk, metagen_document, embed (e.g.
+        `metagen_document` after editing a metagen prompt, `embed` after switching embedder); a stage
+        the pipeline cannot replay is a 422 `replay_unsupported` whose `allowed` lists the valid ones.
+        A document with no persisted IR is a 422 — run a full reingest (omit replay_from) first.
+        """
+        accepted = await sdk.documents.reingest(document_id, force, replay_from=replay_from)
         return accepted.model_dump(mode="json")
 
     @mcp.tool()

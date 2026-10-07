@@ -189,6 +189,26 @@ class RUNTIME_CONFIG(EnvConfigLoader):
     # ───── Run limits ─────
     WORKER_CONCURRENCY = env("WORKER_CONCURRENCY", cast=int, default=2)
     WORKER_JOB_TIMEOUT_SECONDS = env("WORKER_JOB_TIMEOUT_SECONDS", cast=float, default=1800.0)
+    # Shared-embedder guard: max concurrent in-flight embed requests per endpoint (host:port), counted
+    # across EVERY worker process via a Redis lease semaphore. A mass reingest otherwise stacks
+    # WORKER_CONCURRENCY x replicas x (retries) requests onto an embedder other products also use.
+    # 0 disables the guard. A node's `max_concurrency` config overrides it per collection.
+    WORKER_EMBED_MAX_INFLIGHT_PER_ENDPOINT = env(
+        "WORKER_EMBED_MAX_INFLIGHT_PER_ENDPOINT", cast=int, default=2
+    )
+    # Longest an embed call waits for a slot. Past it the call raises a transient ProviderSlotTimeout
+    # (retried with backoff by the embed node, never split) instead of proceeding without a slot —
+    # which would disable the cap exactly under overload. Only a Redis outage fails open. Keep it well
+    # under WORKER_JOB_TIMEOUT_SECONDS.
+    WORKER_EMBED_SLOT_MAX_WAIT_SECONDS = env(
+        "WORKER_EMBED_SLOT_MAX_WAIT_SECONDS", cast=float, default=600.0
+    )
+    # Fallback docling subprocess memory cap (MiB, RLIMIT_AS) applied when a collection's
+    # parse_memory_mb is 0/unset. OFF (0) by default: RLIMIT_AS bounds VIRTUAL address space, and the
+    # docling child (torch + onnxruntime, mmapped layout weights, per-thread arenas) reserves far more
+    # virtual than resident memory — a 4096 MiB cap made the layout model's mmap fail on a real PDF.
+    # Opt in only after measuring the parse child's VmPeak on the target host.
+    WORKER_PARSE_MEMORY_MB = env("WORKER_PARSE_MEMORY_MB", cast=int, default=0)
     # rebuild_index job: points per Qdrant scroll/upsert batch during the store copy, and how long it
     # waits for the collection's OTHER live jobs (active when it started) before aborting untouched.
     WORKER_REBUILD_INDEX_BATCH_SIZE = env("WORKER_REBUILD_INDEX_BATCH_SIZE", cast=int, default=128)

@@ -208,6 +208,10 @@ class BulkReingestResponse(BaseModel):
         default=0,
         description="Documents skipped because an ingestion job was already active for them.",
     )
+    skipped_not_replayable: int = Field(
+        default=0,
+        description="Documents skipped by a replay_from run because they have no persisted IR.",
+    )
     jobs: list[ReingestJobHandle] = Field(description="One handle per enqueued run.")
 
 

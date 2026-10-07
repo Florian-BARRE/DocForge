@@ -421,11 +421,11 @@ async def test_index_derives_vector_space_from_schema_and_marks_chunks_indexed(m
     ]
     monkeypatch.setattr(facade_module.CollectionApi, "get_schema", AsyncMock(return_value=schema))
     ensure = AsyncMock(return_value=set())
-    delete_by_document = AsyncMock()
+    delete_stale = AsyncMock()
     upsert = AsyncMock()
     mark_indexed = AsyncMock()
     monkeypatch.setattr(facade_module.QdrantCollectionApi, "ensure", ensure)
-    monkeypatch.setattr(facade_module.QdrantIndexApi, "delete_by_document", delete_by_document)
+    monkeypatch.setattr(facade_module.QdrantIndexApi, "delete_stale_for_document", delete_stale)
     monkeypatch.setattr(facade_module.QdrantIndexApi, "upsert", upsert)
     monkeypatch.setattr(facade_module.ChunkApi, "mark_indexed", mark_indexed)
 
@@ -448,39 +448,73 @@ async def test_index_derives_vector_space_from_schema_and_marks_chunks_indexed(m
         "topic": PayloadType.KEYWORD,
         "year": PayloadType.INTEGER,
     }
-    # 2. The document's stale points are purged (scoped to this one document) before the upsert.
-    delete_by_document.assert_awaited_once_with(qdrant.raw, ANY, document_id)
-    # 3. The points are upserted, then their chunks flagged indexed by parsed point ids.
+    # 2. The points are upserted, then ONLY the document's leftover points (ids not produced by
+    #    this run) are purged — scoped to this one document.
     upsert.assert_awaited_once_with(qdrant.raw, ANY, points)
+    delete_stale.assert_awaited_once_with(
+        qdrant.raw, ANY, document_id, [str(cid) for cid in chunk_ids]
+    )
+    # 3. Their chunks are flagged indexed by parsed point ids.
     mark_indexed.assert_awaited_once()
     marked_ids = mark_indexed.await_args.args[1]
     assert set(marked_ids) == set(chunk_ids)
 
 
-async def test_index_deletes_document_points_before_upsert_so_reingest_never_orphans(
+async def test_index_upserts_before_purging_stale_points_so_a_failed_upsert_keeps_the_old_ones(
     monkeypatch,
 ) -> None:
-    """A re-ingest mints fresh chunk ids, so the facade must delete the document's OLD points BEFORE
-    upserting the new ones — otherwise the previous run's points survive with a live document_id +
-    enabled payload and pollute the candidate pool. Prove the delete-then-upsert ordering."""
+    """Point ids are deterministic per (document, ordinal): the facade upserts FIRST (overwrite in
+    place), THEN purges only the leftover ids. A failing upsert must leave the previous points
+    untouched — never delete-then-upsert, which left the document with ZERO points on a failure."""
     collection_id = uuid.uuid4()
     document_id = uuid.uuid4()
     monkeypatch.setattr(facade_module.CollectionApi, "get_schema", AsyncMock(return_value=[]))
     monkeypatch.setattr(facade_module.QdrantCollectionApi, "ensure", AsyncMock(return_value=set()))
     monkeypatch.setattr(facade_module.ChunkApi, "mark_indexed", AsyncMock())
+    full_delete = AsyncMock()
+    monkeypatch.setattr(facade_module.QdrantIndexApi, "delete_by_document", full_delete)
 
     calls: list[str] = []
     monkeypatch.setattr(
-        facade_module.QdrantIndexApi, "delete_by_document", _tracking(calls, "delete")
+        facade_module.QdrantIndexApi, "delete_stale_for_document", _tracking(calls, "purge")
     )
     monkeypatch.setattr(facade_module.QdrantIndexApi, "upsert", _tracking(calls, "upsert"))
 
     points = [QdrantPoint(point_id=str(uuid.uuid4()), payload={})]
     facade = IngestionFacade(_postgres_yielding(MagicMock()), MagicMock(), MagicMock())
     await facade.index(collection_id, document_id, dense_dim=8, points=points)
+    assert calls == ["upsert", "purge"]
+    full_delete.assert_not_awaited()
 
-    # The stale-point purge always precedes the upsert — a re-ingest REPLACES, never accumulates.
-    assert calls == ["delete", "upsert"]
+    # A failing upsert: nothing is deleted at all.
+    purge = AsyncMock()
+    monkeypatch.setattr(facade_module.QdrantIndexApi, "delete_stale_for_document", purge)
+    monkeypatch.setattr(
+        facade_module.QdrantIndexApi, "upsert", AsyncMock(side_effect=RuntimeError("qdrant down"))
+    )
+    with pytest.raises(RuntimeError):
+        await facade.index(collection_id, document_id, dense_dim=8, points=points)
+    purge.assert_not_awaited()
+    full_delete.assert_not_awaited()
+
+
+async def test_delete_stale_for_document_keeps_the_new_ids() -> None:
+    """The purge filter is (document_id == X) AND NOT has_id(new ids) — the fresh points survive."""
+    from shared_libs.services.db.qdrant.apis import index_api  # noqa: PLC0415
+
+    client = MagicMock()
+    client.delete = AsyncMock()
+    document_id = uuid.uuid4()
+    keep = [str(uuid.uuid4()), str(uuid.uuid4())]
+    original = index_api.QdrantAliasApi.resolve_or_adopt
+    index_api.QdrantAliasApi.resolve_or_adopt = AsyncMock(return_value=True)
+    try:
+        await index_api.QdrantIndexApi.delete_stale_for_document(client, "c", document_id, keep)
+    finally:
+        index_api.QdrantAliasApi.resolve_or_adopt = original
+    selector = client.delete.await_args.kwargs["points_selector"]
+    assert selector.must[0].match.value == str(document_id)
+    assert list(selector.must_not[0].has_id) == keep
 
 
 async def test_index_fails_clearly_on_an_undeclared_chunk_scope_vector(monkeypatch) -> None:
@@ -531,7 +565,7 @@ async def test_index_skips_the_store_read_for_content_only_points(monkeypatch) -
     monkeypatch.setattr(facade_module.QdrantCollectionApi, "ensure", AsyncMock(return_value=set()))
     declared = AsyncMock()
     monkeypatch.setattr(facade_module.QdrantCollectionApi, "declared_vectors", declared)
-    monkeypatch.setattr(facade_module.QdrantIndexApi, "delete_by_document", AsyncMock())
+    monkeypatch.setattr(facade_module.QdrantIndexApi, "delete_stale_for_document", AsyncMock())
     monkeypatch.setattr(facade_module.QdrantIndexApi, "upsert", AsyncMock())
     monkeypatch.setattr(facade_module.ChunkApi, "mark_indexed", AsyncMock())
 
@@ -583,7 +617,7 @@ async def test_reingest_admits_a_fresh_job_when_the_document_is_idle(monkeypatch
 
 async def test_reingest_refuses_a_document_that_already_has_an_active_job(monkeypatch) -> None:
     """The concurrency guard: a live (PENDING/RUNNING) job blocks a second concurrent run — otherwise
-    two parallel runs interleave their Qdrant delete-by-document + upsert and strand orphan points."""
+    two parallel runs interleave their Qdrant upsert + stale-point purge and strand orphan points."""
     doc_id, active_id = uuid.uuid4(), uuid.uuid4()
     document = MagicMock(id=doc_id, collection_id=uuid.uuid4())
     monkeypatch.setattr(
@@ -713,3 +747,52 @@ async def test_admit_reraises_an_unrelated_integrity_error(monkeypatch) -> None:
         await facade.admit(document, MagicMock())
 
     find.assert_not_awaited()  # an unrelated failure is not treated as a benign duplicate
+
+
+async def _reingest_with_status(monkeypatch, status, replay_from):
+    """Run an admitted reingest for a document in ``status``; return the set_status mock."""
+    from shared_libs.services.db.facades import ingestion_facade as module  # noqa: PLC0415
+
+    document = MagicMock(id=uuid.uuid4(), collection_id=uuid.uuid4(), status=status)
+    monkeypatch.setattr(module.DocumentApi, "get_for_update", AsyncMock(return_value=document))
+    monkeypatch.setattr(module.RebuildGuard, "assert_no_rebuild", AsyncMock())
+    monkeypatch.setattr(module.JobApi, "get_active_for_document", AsyncMock(return_value=None))
+    monkeypatch.setattr(module.IRApi, "has_blocks", AsyncMock(return_value=True))
+    monkeypatch.setattr(module.JobApi, "list_job_ids_for_document", AsyncMock(return_value=[]))
+    monkeypatch.setattr(module.JobApi, "create", AsyncMock(return_value=MagicMock()))
+    monkeypatch.setattr(module.TracePurgeHelper, "purge", AsyncMock(return_value=0))
+    set_status = AsyncMock()
+    monkeypatch.setattr(module.DocumentApi, "set_status", set_status)
+    facade = IngestionFacade(_postgres_yielding(MagicMock()), MagicMock(), MagicMock())
+    result = await facade.reingest(document.id, replay_from=replay_from)
+    assert result.outcome is ReingestOutcome.ADMITTED
+    return set_status
+
+
+async def test_replay_admission_keeps_a_done_or_failed_document_status(monkeypatch) -> None:
+    """M-1: a replay does not reset a DONE/FAILED document to PENDING — so a failed replay can leave
+    it exactly as it was (its old chunks/points are still served). A full run still resets it."""
+    from shared_libs.services.db.postgresql.tables import DocumentStatus  # noqa: PLC0415
+
+    for status in (DocumentStatus.DONE, DocumentStatus.FAILED):
+        (await _reingest_with_status(monkeypatch, status, "chunk")).assert_not_awaited()
+    (await _reingest_with_status(monkeypatch, DocumentStatus.DONE, None)).assert_awaited_once()
+    (
+        await _reingest_with_status(monkeypatch, DocumentStatus.CANCELLED, "chunk")
+    ).assert_awaited_once()
+
+
+async def test_flag_replay_failure_keeps_status_and_stamps_the_warning() -> None:
+    from shared_libs.services.db.postgresql.apis import DocumentApi  # noqa: PLC0415
+    from shared_libs.services.db.postgresql.tables import DocumentStatus  # noqa: PLC0415
+
+    for prior, expected in (
+        (DocumentStatus.DONE, DocumentStatus.DONE),
+        (DocumentStatus.FAILED, DocumentStatus.FAILED),
+        (DocumentStatus.PROCESSING, DocumentStatus.FAILED),
+    ):
+        document = SimpleNamespace(status=prior, warning_reason=None)
+        session = MagicMock()
+        session.get = AsyncMock(return_value=document)
+        await DocumentApi.flag_replay_failure(session, uuid.uuid4(), "replay failed")
+        assert document.status == expected and document.warning_reason == "replay failed"

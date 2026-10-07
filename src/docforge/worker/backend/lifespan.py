@@ -13,10 +13,15 @@ from typing import Any
 # ====== Third-Party Library Imports ======
 from loggerplusplus import loggerplusplus
 from pyfiglet import Figlet
+from redis.asyncio import Redis
 
 # ====== Internal Project Imports ======
 from config import RUNTIME_CONFIG
 from shared_libs.observability import ConfigDumpHelpers, CorrelationContext
+from shared_libs.pipelines.base import ProviderLimiterRegistry
+from shared_libs.pipelines.ingest.nodes.parse.parser.docling_base.subprocess import (
+    ParseMemoryFallback,
+)
 from shared_libs.pipelines.nodes.http_pool import HttpClientPool
 from shared_libs.pipelines.nodes.openai_compat import LangChainClientPool
 from shared_libs.services.db import Database
@@ -27,6 +32,7 @@ from shared_libs.services.db.s3 import S3Client
 # ====== Local Project Imports ======
 from .context import CONTEXT
 from .libs.heartbeat import HeartbeatWriter
+from .libs.limiter import RedisProviderLimiter
 from .libs.runner import PipelineRunner
 
 # Total number of startup steps — update when adding/removing steps.
@@ -113,6 +119,21 @@ async def startup(ctx: dict[str, Any]) -> None:
     CONTEXT.worker_name = RUNTIME_CONFIG.WORKER_NAME or CONTEXT.worker_id
     CONTEXT.job_timeout_seconds = RUNTIME_CONFIG.WORKER_JOB_TIMEOUT_SECONDS
 
+    # 4a. Docling/granite parse memory fallback for collections that leave parse_memory_mb at 0.
+    ParseMemoryFallback.install(RUNTIME_CONFIG.WORKER_PARSE_MEMORY_MB)
+
+    # 4a'. Shared-embedder guard — install the Redis lease semaphore the embed nodes consult (pure
+    #     nodes see only the ProviderLimiter interface; unbound they get the no-op). 0 disables it.
+    if RUNTIME_CONFIG.WORKER_EMBED_MAX_INFLIGHT_PER_ENDPOINT > 0:
+        CONTEXT.limiter_redis = Redis.from_url(RUNTIME_CONFIG.REDIS_URL)
+        ProviderLimiterRegistry.install(
+            RedisProviderLimiter(
+                CONTEXT.limiter_redis,
+                default_limit=RUNTIME_CONFIG.WORKER_EMBED_MAX_INFLIGHT_PER_ENDPOINT,
+                max_wait_seconds=RUNTIME_CONFIG.WORKER_EMBED_SLOT_MAX_WAIT_SECONDS,
+            )
+        )
+
     # 4b. Reclaim this worker's orphaned RUNNING jobs from a previous incarnation (hot-reload/crash):
     #     a just-started process owns no in-flight task, so any RUNNING row still stamped with our
     #     worker_id is dead — fail it now so the "stalled" pile-up clears instantly instead of lingering
@@ -158,6 +179,9 @@ async def shutdown(ctx: dict[str, Any]) -> None:
         await CONTEXT.heartbeat.stop()
     if hasattr(CONTEXT, "database"):
         await CONTEXT.database.close()
+    ProviderLimiterRegistry.reset()
+    if hasattr(CONTEXT, "limiter_redis"):
+        await CONTEXT.limiter_redis.aclose()
     # Close the pooled provider HTTP clients the nodes kept alive for connection reuse.
     await HttpClientPool.shutdown()
     # Close the pooled LangChain clients (hosted LLM/VLM/embed) kept alive for connection reuse.

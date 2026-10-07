@@ -177,6 +177,10 @@ class Job(Base, UUIDPrimaryKey, TimestampedMixin):
     failed_node_kind: Mapped[str | None] = mapped_column(String(64), nullable=True)
     failed_item_index: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
     error_type: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    # Replay-from-stage: the post-IR stage key (e.g. "embed") this ingest job re-runs from, starting on
+    # the document's persisted IR (no parse). NULL = a full pipeline run. The worker reads it here (the
+    # queue carries ids only). Added by migration e5c1a8f3b7d2.
+    replay_from: Mapped[str | None] = mapped_column(String(32), nullable=True)
 
 
 __all__ = ["Job", "JobKind", "JobStatus"]

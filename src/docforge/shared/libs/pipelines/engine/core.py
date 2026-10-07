@@ -37,6 +37,7 @@ from .errors import EngineInvariantError
 from .navigation import GraphNavigator
 from .progress import ProgressCallback, ProgressEvent, ProgressPhase
 from .resolver import InputResolver, ResolutionError
+from .resume import ResumePoint
 from .trace import RecordTrace, TraceLevel
 
 
@@ -465,7 +466,14 @@ class FlowEngine(LoggerClass):
         group_output: NodeOutput | None = None
         visited: set[str] = set()
 
-        node = GraphNavigator.entry(group)
+        # A resumed (replay) run seeds the ROOT group's outputs with the persisted upstream artefacts
+        # and starts at the requested stage instead of the entry; the seeded nodes never run (no
+        # record, no progress) — downstream bindings resolve against the seeds exactly as in a full run.
+        if is_root and context.resume is not None:
+            node_outputs.update(context.resume.seeded_outputs)
+            node = GraphNavigator.child_by_id(group, context.resume.start_node_id)
+        else:
+            node = GraphNavigator.entry(group)
         while node is not None:
             # 0. Guard against a cyclic graph that slipped past validation (no node runs twice).
             if node.id in visited:
@@ -521,6 +529,7 @@ class FlowEngine(LoggerClass):
         timeout_seconds: float | None = None,
         progress_callback: ProgressCallback | None = None,
         cache_hook: "CacheHook | None" = None,
+        resume: ResumePoint | None = None,
     ) -> tuple[NodeOutput | None, NodeExecutionRecord]:
         """
         Execute a pipeline graph and return its output plus the full execution trace.
@@ -535,6 +544,10 @@ class FlowEngine(LoggerClass):
             cache_hook (CacheHook | None): Optional stage-cache seam. When provided, a cacheable
                 root stage is served from / stored into it; when None, the run is byte-for-byte the
                 same as if the cache did not exist.
+            resume (ResumePoint | None): Optional mid-graph start (replay from a stage): the root walk
+                begins at ``start_node_id`` with ``seeded_outputs`` standing in for the upstream root
+                nodes, which never run. An unknown start node is a recorded FAILED run. None runs
+                from the entry, unchanged.
 
         Returns:
             tuple[NodeOutput | None, NodeExecutionRecord]: The final output (None if the run failed)
@@ -542,7 +555,10 @@ class FlowEngine(LoggerClass):
         """
         self.logger.info(f"Running pipeline '{group.id}'")
         context = RunContext(
-            run_input=run_input, progress_callback=progress_callback, cache_hook=cache_hook
+            run_input=run_input,
+            progress_callback=progress_callback,
+            cache_hook=cache_hook,
+            resume=resume,
         )
         started = perf_counter()
         run = self._run_group(group, context, group_input=run_input, is_root=True)

@@ -41,6 +41,15 @@ from .io import (
     ScoredOutput,
 )
 
+# ---------------------- Provider concurrency seam ---------------------- #
+from .provider_limiter import (
+    EndpointKey,
+    NoOpProviderLimiter,
+    ProviderLimiter,
+    ProviderLimiterRegistry,
+    ProviderSlotTimeout,
+)
+
 # ---------------------- Self-description ---------------------- #
 from .describe import IoSlot, NodeDescription
 
@@ -53,6 +62,12 @@ from .execution import ErrorInfo, NodeExecutionRecord, NodeStatus, NodeUsage
 
 # ------------------- Public API ------------------- #
 __all__ = [
+    # provider concurrency seam
+    "EndpointKey",
+    "NoOpProviderLimiter",
+    "ProviderLimiter",
+    "ProviderLimiterRegistry",
+    "ProviderSlotTimeout",
     # node contract
     "AbstractNode",
     "ActionNode",

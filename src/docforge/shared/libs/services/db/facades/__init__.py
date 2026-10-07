@@ -54,6 +54,9 @@ from .index_rebuild_payloads import (
 from .rebuild_guard import RebuildGuard
 from .store_rebuild_facade import StoreRebuildFacade
 from .ingestion_facade import IngestionFacade
+from .ir_bundle_adapter import IRBundleAdapter
+from .replay_persist_facade import ReplayPersistFacade
+from .replay_source_facade import ReplaySourceFacade
 from .artifact_cache_facade import ArtifactCacheFacade, ArtifactCacheGcSummary
 from .meta_vector_sync_facade import MetaVectorSyncFacade
 from .metadata_edit_facade import (
@@ -107,6 +110,9 @@ __all__ = [
     "CollectionUpdateSpec",
     "IngestionPayload",
     "IRBundle",
+    "IRBundleAdapter",
+    "ReplayPersistFacade",
+    "ReplaySourceFacade",
     "ReingestOutcome",
     "ReingestResult",
     "ChunkIndexEntry",

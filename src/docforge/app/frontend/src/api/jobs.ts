@@ -84,6 +84,9 @@ export interface JobStatus {
   failed_item_index: number | null;
   /** Exception class name of the failure (e.g. "TimeoutError"); only set on a failed job. */
   error_type: string | null;
+  /** The stage an ingest job replays from on the persisted IR (a `replay_from` reingest); absent/null
+   *  for a full pipeline run. */
+  replay_from?: string | null;
 }
 
 /** The one human label to show for a job, everywhere it's shown (job rows, worker cards, the job

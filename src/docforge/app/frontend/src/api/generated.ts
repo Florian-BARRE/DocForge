@@ -640,7 +640,9 @@ export interface paths {
          *
          *     Returns:
          *         BulkReingestResponse: matched / enqueued / capped + one job handle per run (202); 404 unknown
-         *             collection, 422 on a stale/broken pipeline or a bad selector.
+         *             collection, 422 on a stale/broken pipeline, a bad selector or an unreplayable stage, 409
+         *             ``estimate_required`` above the confirm threshold without ``confirm_estimate``, 429
+         *             ``queue_saturated`` (+ Retry-After) when the queue cannot absorb the fan-out.
          */
         post: operations["bulk_reingest_api_v1_collections__collection_id__documents_reingest_post"];
         delete?: never;
@@ -931,7 +933,9 @@ export interface paths {
          *
          *     Returns:
          *         BulkReingestAccepted: matched / enqueued / capped + one job handle per enqueued run (202);
-         *             404 when the collection is unknown, 422 on a stale/broken pipeline or a bad document subset.
+         *             404 when the collection is unknown, 422 on a stale/broken pipeline, a bad document subset
+         *             or an unreplayable stage, 409 ``estimate_required`` above the confirm threshold without
+         *             ``confirm_estimate``, 429 ``queue_saturated`` (+ Retry-After) on a saturated queue.
          */
         post: operations["reingest_collection_api_v1_collections__collection_id__reingest_post"];
         delete?: never;
@@ -1446,6 +1450,7 @@ export interface paths {
          *     the collection's CURRENT pipeline (and the current engine) instead. The run is idempotent — the
          *     previous chunks/IR/pages are purged and the vectors overwritten — and the user-declared metadata
          *     survives. Poll the returned job for progress. ``force=true`` recomputes every stage (no cache).
+         *     ``replay_from=<stage>`` re-runs only that stage and its downstream on the persisted IR.
          *
          *     Returns:
          *         UploadAccepted: The document id and the new ingestion job id (202); 404 when unknown.
@@ -2756,6 +2761,12 @@ export interface components {
              * @default 0
              */
             skipped_in_flight: number;
+            /**
+             * Skipped Not Replayable
+             * @description Documents skipped by a replay_from run because they have no persisted IR.
+             * @default 0
+             */
+            skipped_not_replayable: number;
         };
         /**
          * BulkReingestRequest
@@ -2764,8 +2775,17 @@ export interface components {
          *     Attributes:
          *         document_ids (list[str] | None): The explicit subset to re-run. Omit or null → EVERY
          *             document in the collection. An empty list is rejected (an ambiguous no-op).
+         *         force (bool): Bypass the stage cache.
+         *         replay_from (str | None): Replay from this post-IR stage (no re-parse); None = full re-run.
+         *         confirm_estimate (bool): Acknowledge the estimate of a reingest above the confirm threshold.
          */
         BulkReingestRequest: {
+            /**
+             * Confirm Estimate
+             * @description Acknowledge the cost estimate of a LARGE reingest (more documents than CORPUS_REINGEST_CONFIRM_THRESHOLD). Without it such a call is refused 409 estimate_required carrying the estimate summary; review it and resend with true.
+             * @default false
+             */
+            confirm_estimate: boolean;
             /**
              * Document Ids
              * @description Explicit document UUIDs to re-run; omit for the whole collection.
@@ -2777,6 +2797,11 @@ export interface components {
              * @default false
              */
             force: boolean;
+            /**
+             * Replay From
+             * @description Replay only this post-IR stage and its downstream from each document's PERSISTED IR (no re-parse): one of enrich, chunk, metagen_chunk, metagen_document, embed — as the collection's pipeline allows (422 lists the allowed stages). Only the downstream layers are replaced. Omit for a full re-run.
+             */
+            replay_from?: string | null;
         };
         /**
          * BulkReingestResponse
@@ -2819,6 +2844,12 @@ export interface components {
              * @default 0
              */
             skipped_in_flight: number;
+            /**
+             * Skipped Not Replayable
+             * @description Documents skipped by a replay_from run because they have no persisted IR.
+             * @default 0
+             */
+            skipped_not_replayable: number;
         };
         /**
          * CancelResult
@@ -6000,6 +6031,7 @@ export interface components {
          *         collection_id (str): Its collection.
          *         status (str): queued / running / done / failed.
          *         kind (str): ingest, metadata_sync (per-document metadata re-embed) or rebuild_index.
+         *         replay_from (str | None): The stage an ingest job replays from (None = a full run).
          *         progress (int): 0–100 (completed pipeline nodes over total).
          *         current_stage (str | None): The node currently (or last) executed.
          *         error (str | None): The failure — only set when status is failed; verbatim for a
@@ -6131,6 +6163,11 @@ export interface components {
              * @description 0-100, completed pipeline nodes over total.
              */
             progress: number;
+            /**
+             * Replay From
+             * @description For an ingest job re-running from a stage on the persisted IR (replay_from reingest): that stage key (e.g. 'embed'). None for a full pipeline run.
+             */
+            replay_from?: string | null;
             /**
              * Stalled
              * @description A RUNNING job idle past the stall threshold — an early wedge warning surfaced before the worker reaper hard-fails it.
@@ -10310,8 +10347,12 @@ export interface operations {
     bulk_reingest_api_v1_collections__collection_id__documents_reingest_post: {
         parameters: {
             query?: {
+                /** @description Acknowledge the cost estimate of a reingest matching more documents than CORPUS_REINGEST_CONFIRM_THRESHOLD; without it such a call is refused 409 estimate_required carrying the estimate summary. */
+                confirm_estimate?: boolean;
                 /** @description Bypass the stage cache and recompute every stage from scratch (no cache read/write). Use to rebuild after a code change that did not bump a node's CACHE_VERSION. */
                 force?: boolean;
+                /** @description Replay only this post-IR stage and its downstream from each document's persisted IR (no re-parse) — e.g. embed, metagen_document, chunk. 422 lists the stages the collection's pipeline allows. Omit for a full re-run. */
+                replay_from?: string | null;
             };
             header?: never;
             path: {
@@ -11314,6 +11355,8 @@ export interface operations {
             query?: {
                 /** @description Bypass the stage cache and recompute every stage from scratch (no cache read/write). Use to rebuild after a code change that did not bump a node's CACHE_VERSION. */
                 force?: boolean;
+                /** @description Replay only this post-IR stage and its downstream from the document's persisted IR (no re-parse) — enrich, chunk, metagen_chunk, metagen_document or embed, as the collection's pipeline allows (422 lists the allowed stages). Only the downstream layers (enrichments / chunks / generated metadata / vectors) are replaced. Omit for a full run. */
+                replay_from?: string | null;
             };
             header?: never;
             path: {

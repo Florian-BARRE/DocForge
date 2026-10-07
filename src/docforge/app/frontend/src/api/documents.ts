@@ -63,14 +63,20 @@ export interface ReingestOptions {
    *  `force` query flag (default false). Use to rebuild after a code change that didn't bump a
    *  node's CACHE_VERSION. */
   force?: boolean;
+  /** Replay only this post-IR stage and its downstream on the persisted IR (no re-parse). Omit/null
+   *  for a full re-run. A 422 `replay_unsupported` lists the stages the pipeline allows. */
+  replayFrom?: string | null;
 }
 
 /** Re-run ingestion on the document's stored original — no re-upload — with the collection's current
  *  pipeline. Idempotent (previous chunks/IR/pages purged, vectors overwritten). Returns the new job.
  *  Throws `HttpError` 409 when a run is already active for this document. */
 export function reingestDocument(id: string, options: ReingestOptions = {}): Promise<UploadAccepted> {
-  const query = options.force ? "?force=true" : "";
-  return apiFetch(`${BASE}/${id}/reingest${query}`, { method: "POST" });
+  const params = new URLSearchParams();
+  if (options.force) params.set("force", "true");
+  if (options.replayFrom) params.set("replay_from", options.replayFrom);
+  const query = params.toString();
+  return apiFetch(`${BASE}/${id}/reingest${query ? `?${query}` : ""}`, { method: "POST" });
 }
 
 /** Reclaims every stored full execution-trace payload across this document's jobs — the

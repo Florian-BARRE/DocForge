@@ -3,7 +3,8 @@
 # rehydrate the inputs (document row + original bytes from S3 + the collection's contract and
 # pipeline blob), run the pipeline (fresh input, live progress), translate the delivery, persist
 # through the facade (S3 → Postgres one-tx → Qdrant), close the job. Any failure marks BOTH the
-# document and the job failed with the error in clear, then re-raises so arq accounts the attempt.
+# document and the job failed with the error in clear (a REPLAY failure fails only the job: the
+# document keeps its status + gets a warning, its previous content still served), then re-raises.
 
 # ====== Standard Library Imports ======
 import asyncio
@@ -36,7 +37,9 @@ from shared_libs.services.db.s3 import S3ObjectApi
 
 # ====== Local Project Imports ======
 from .cancellation import CancellationGuard, JobCancelledError
+from .indexing import DocumentIndexer
 from .progress import JobProgressRecorder
+from .replay import ReplayInputs, ReplayRun
 from .stage_plan import StagePlanHelpers
 
 
@@ -95,8 +98,39 @@ def _resolve_trace_level(collection_verbosity: str | None, ceiling: str) -> Trac
     return requested.clamp(cap)
 
 
+def _replay_stage(job: Any) -> str | None:
+    """The job's ``replay_from`` stage, or None for a full run (or an unknown job)."""
+    replay_from = getattr(job, "replay_from", None)
+    return replay_from if isinstance(replay_from, str) and replay_from else None
+
+
+async def _mark_document_failed(
+    database: Any, doc_uuid: uuid.UUID, replay_from: str | None, error: str
+) -> None:
+    """Flag the document after a failed run: FAILED for a full run; for a REPLAY, keep its status.
+
+    A replay commits nothing before its single downstream save, so on failure the document's previous
+    chunks/points are untouched and still served — demoting a DONE document to FAILED would lie. The
+    job carries the FAILED verdict; the document only gets a warning naming the failed replay.
+    """
+    if replay_from is None:
+        await database.ingestion.mark_failed(doc_uuid)
+        return
+    await database.ingestion.mark_replay_failed(
+        doc_uuid,
+        ConfigDumpHelpers.redact_text(
+            f"Replay from '{replay_from}' failed ({error}) — the previous chunks and vectors are "
+            f"still served; re-run the replay or a full reingest."
+        ),
+    )
+
+
 async def _commit_terminal_cancel_write(
-    database: Any, doc_uuid: uuid.UUID, job_uuid: uuid.UUID, logger: Any
+    database: Any,
+    doc_uuid: uuid.UUID,
+    job_uuid: uuid.UUID,
+    logger: Any,
+    replay_from: str | None = None,
 ) -> None:
     """Commit BOTH terminal truths (document + job FAILED) for a hard-cancelled run, guaranteed.
 
@@ -122,12 +156,14 @@ async def _commit_terminal_cancel_write(
         doc_uuid (uuid.UUID): The document to mark FAILED (re-ingestable).
         job_uuid (uuid.UUID): The job to mark FAILED (terminal).
         logger (Any): The worker logger (a write error is logged, never raised).
+        replay_from (str | None): Set for a replay job — the document then keeps its status (its
+            previous content is untouched) and only gets a warning.
     """
 
     async def _writes() -> None:
         # 1. Both truths in one shielded unit so a second cancel cannot land BETWEEN them (which is
         #    exactly how the old two-await form left the JOB row non-terminal).
-        await database.ingestion.mark_failed(doc_uuid)
+        await _mark_document_failed(database, doc_uuid, replay_from, "cancelled or timed out")
         await database.jobs.mark_failed(
             job_uuid,
             error="cancelled or timed out (worker shutdown / job timeout) — re-ingest to retry",
@@ -225,6 +261,7 @@ async def ingest_document(
     # without this the document reads "pending" for the whole run. Guarded to PENDING → PROCESSING,
     # and the terminal DONE/FAILED writes below still win.
     await database.ingestion.mark_processing(doc_uuid)
+    replay_from = _replay_stage(existing)
     try:
         # 1. Rehydrate the inputs: rows, original bytes (key = source_hash), contract + blob.
         document = await database.documents.get(doc_uuid)
@@ -232,8 +269,12 @@ async def ingest_document(
             raise RuntimeError(f"document {document_id} not found")
         collection = await database.collections.get(document.collection_id)
         schema = await database.collections.get_schema(document.collection_id)
-        async with s3.client() as client:
-            raw = await S3ObjectApi.get(client, s3.bucket, document.source_hash)
+        # A replay never reads the original bytes (it stands on the persisted IR), so it does not
+        # fetch them either — a garbage-collected source object must not fail a replay.
+        raw = b""
+        if not replay_from:
+            async with s3.client() as client:
+                raw = await S3ObjectApi.get(client, s3.bucket, document.source_hash)
         field_names = {row.id: row.field_name for row in schema}
         declared = {
             field_names[meta.field_id]: meta.value
@@ -257,6 +298,35 @@ async def ingest_document(
                 f"engine: {exc}"
             ) from exc
 
+        # 1b. The run's wall-clock budget + effective trace level (shared by both run modes).
+        run_job_timeout = _resolve_run_job_timeout(
+            collection.job_timeout_seconds,
+            CONTEXT.job_timeout_seconds,
+            CONTEXT.RUNTIME_CONFIG.WORKER_JOB_TIMEOUT_MAX_SECONDS,
+        )
+        trace_level = _resolve_trace_level(
+            collection.trace_verbosity, CONTEXT.RUNTIME_CONFIG.WORKER_TRACE_MAX_VERBOSITY
+        )
+
+        # 1c. REPLAY mode (job.replay_from set at admission): re-run only that stage and its
+        #     downstream on the persisted IR — no intake/parse, downstream-only persistence.
+        if replay_from:
+            await ReplayRun.execute(
+                ReplayInputs(
+                    job_id=job_uuid,
+                    document=document,
+                    collection=collection,
+                    schema=schema,
+                    source=source,
+                    contract=contract,
+                    blob=blob,
+                    stage=replay_from,
+                    timeout_seconds=run_job_timeout,
+                    trace_level=trace_level,
+                )
+            )
+            return
+
         # 2. Live progress: the recorder keeps the job row current (START = stage running
         #    now, END = percentage + one trace row) — root nodes only. BlobNormalizer.normalize
         #    always returns a plain dict, so the top-level ids read straight off ``nodes``. The
@@ -274,20 +344,9 @@ async def ingest_document(
         # root-stage boundary, raising JobCancelledError to stop the run between nodes when requested.
         guarded_progress = CancellationGuard(job_uuid, root_ids, on_progress)
 
-        # 3. Run (fresh input inside), then translate the delivery. The wall-clock job timeout is the
-        #    collection's per-collection override when set, else the worker's global default (NULL) —
+        # 3. Run (fresh input inside), then translate the delivery. The wall-clock job timeout (1b) is
+        #    the collection's per-collection override when set, else the worker's global default —
         #    fail-fast (before any spend) if the override exceeds arq's hard ceiling, never truncated.
-        run_job_timeout = _resolve_run_job_timeout(
-            collection.job_timeout_seconds,
-            CONTEXT.job_timeout_seconds,
-            CONTEXT.RUNTIME_CONFIG.WORKER_JOB_TIMEOUT_MAX_SECONDS,
-        )
-        # Effective execution-trace level: the collection's per-run request clamped by the operator
-        # ceiling. Drives how much the engine captures onto the record (shape summaries always, the
-        # full payload only when the collection opted in AND the ceiling allows it).
-        trace_level = _resolve_trace_level(
-            collection.trace_verbosity, CONTEXT.RUNTIME_CONFIG.WORKER_TRACE_MAX_VERBOSITY
-        )
         # Stage cache: attached ONLY when enabled AND this is not a forced full recompute. When it is
         # None the engine runs byte-for-byte as if the cache did not exist. A cacheable stage (parse)
         # is served from / stored into the per-collection cache; the report surfaces hit/miss/stored.
@@ -359,38 +418,10 @@ async def ingest_document(
         # 4. Persist in the safe order: blobs (S3) → the one-tx save (PG) → the vectors (Qdrant).
         await database.ingestion.store_blobs(translated.objects, translated.blob_rows)
         await database.ingestion.save(doc_uuid, translated.payload, warning_reason=warning_reason)
-        if translated.points:
-            await database.ingestion.index(
-                document.collection_id,
-                doc_uuid,
-                translated.dense_dim,
-                translated.points,
-            )
-            # 5. Denormalise the document's filterable doc-scope metadata onto the fresh points
-            #    (runs AFTER save() wrote generated doc metadata and index() minted the points),
-            #    so a document-level field is searchable as a Qdrant filter without any re-embed.
-            #    Best-effort: the document is already fully ingested and searchable here — a filter
-            #    hiccup must NOT fail the job (which would re-embed on retry). The
-            #    backfill_collection_filters job is the explicit repair path.
-            try:
-                await database.filters.sync_document_filter_payloads(doc_uuid)
-            except Exception as filter_exc:
-                CONTEXT.logger.warning(
-                    f"Filter denormalisation failed for document {document_id} "
-                    f"(ingestion kept; repair via backfill): {filter_exc}"
-                )
-            # 6. Populate the document-scope metadata named vectors (semantic dense / lexical sparse)
-            #    on the same fresh points, so a metadata-only search resolves to a non-empty vector.
-            #    Same best-effort contract as the filter sync: the document is already ingested and
-            #    searchable — a meta-vector hiccup must NOT fail the job (retry would re-embed the
-            #    content). The backfill_collection_meta_vectors job is the explicit repair path.
-            try:
-                await database.meta_vectors.sync_document_meta_vectors(doc_uuid)
-            except Exception as meta_exc:
-                CONTEXT.logger.warning(
-                    f"Meta-vector population failed for document {document_id} "
-                    f"(ingestion kept; repair via backfill): {meta_exc}"
-                )
+        # 5. Vectors + the best-effort doc-scope denormalisations (shared with the replay path).
+        await DocumentIndexer.index(
+            database, document.collection_id, doc_uuid, translated, CONTEXT.logger
+        )
         await database.jobs.mark_done(job_uuid, finished_at=datetime.now(UTC))
 
     except JobCancelledError as exc:
@@ -412,7 +443,9 @@ async def ingest_document(
         # Guaranteed terminal write: survives a SECOND cancellation racing the write and handles
         # CancelledError explicitly (it is a BaseException, missed by `except Exception`). Only the
         # cancellation is finally propagated (bare `raise`) once the row is terminal.
-        await _commit_terminal_cancel_write(database, doc_uuid, job_uuid, CONTEXT.logger)
+        await _commit_terminal_cancel_write(
+            database, doc_uuid, job_uuid, CONTEXT.logger, replay_from=replay_from
+        )
         raise
 
     except Exception as exc:
@@ -437,7 +470,7 @@ async def ingest_document(
                     f"Persisting the partial execution tree failed for document {document_id} "
                     f"(the job is still marked failed): {persist_exc}"
                 )
-        await database.ingestion.mark_failed(doc_uuid)
+        await _mark_document_failed(database, doc_uuid, replay_from, f"{type(exc).__name__}: {exc}")
         # Redact any ``scheme://user:pass@host`` userinfo a provider exception may echo (a
         # credential-bearing base_url surfaced in a transport/auth error) before it is persisted on
         # the job row — the message is otherwise preserved verbatim for diagnostics.

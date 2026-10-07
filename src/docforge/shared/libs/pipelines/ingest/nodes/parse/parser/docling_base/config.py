@@ -30,8 +30,10 @@ class BaseDoclingParserConfig(NodeConfig):
         ge=0,
         description="Address-space (RLIMIT_AS) cap in MiB for the parse subprocess. >0 makes a runaway "
         "allocation die with a clean, attributed MemoryError BEFORE the container's cgroup OOM-killer "
-        "(which could otherwise reap the worker). 0 (default) disables the cap — the time limit + "
-        "kill-on-crash still keep the worker alive. Tune ABOVE the model footprint; note that on the "
+        "(which could otherwise reap the worker). 0 (default) means the deployment fallback "
+        "(WORKER_PARSE_MEMORY_MB, off by default = no cap) — set a value to override it for this "
+        "collection. It bounds VIRTUAL memory, which torch/onnx over-reserve (~5.7 GiB virtual for "
+        "~2.3 GiB resident measured on a 6-page PDF), so size it >= 8192; note that on the "
         "GPU (granite) an RLIMIT_AS cap can break CUDA's large virtual reservations, so leave it 0 "
         "there and rely on the time cap + GPU-OOM kill.",
     )

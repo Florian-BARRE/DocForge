@@ -28,6 +28,7 @@ from shared_libs.services.db.postgresql.tables import Collection
 
 # ====== Local Project Imports ======
 from ...context import CONTEXT
+from ...libs.admission import QueueAdmission, ReingestEstimateGate
 from ...libs.auth import AuthPrincipal, AuthzGuard, Capability, require
 from ...libs.collection_ref import CollectionRef
 from ...libs.config_history import ConfigAuthorResolver
@@ -43,7 +44,12 @@ from ...libs.preview import (
     PreviewResponse,
     PreviewSourceResolver,
 )
-from ...libs.reingest import BulkReingestAccepted, BulkReingestRequest, BulkReingestService
+from ...libs.reingest import (
+    BulkReingestAccepted,
+    BulkReingestRequest,
+    BulkReingestService,
+    ReplayGuard,
+)
 from ...utils.error_handling import auto_handle_errors
 from ...utils.pipeline_validation import PipelineBlobValidator
 from ...utils.upload_reader import UploadReader
@@ -859,7 +865,9 @@ async def reingest_collection(
 
     Returns:
         BulkReingestAccepted: matched / enqueued / capped + one job handle per enqueued run (202);
-            404 when the collection is unknown, 422 on a stale/broken pipeline or a bad document subset.
+            404 when the collection is unknown, 422 on a stale/broken pipeline, a bad document subset
+            or an unreplayable stage, 409 ``estimate_required`` above the confirm threshold without
+            ``confirm_estimate``, 429 ``queue_saturated`` (+ Retry-After) on a saturated queue.
     """
     # 1. The collection must exist — its job timeout + pipeline drive every run.
     collection = await CONTEXT.database.collections.get(collection_id)
@@ -878,6 +886,8 @@ async def reingest_collection(
     except BlobNormalizationError as exc:
         raise HTTPException(status_code=422, detail=f"Collection {collection_id}: {exc}")
     PipelineBlobValidator.validate(pipeline_blob)
+    # 3b. A replay must be honourable by THIS pipeline (422 names why + the allowed stages).
+    ReplayGuard.assert_replayable(collection, request.replay_from)
 
     # 4. Map the request to the SHARED DocumentSelector: an explicit subset → id mode (validated to
     #    exist AND belong here by the resolver), or omitted → filter mode with an EMPTY filter (the
@@ -905,11 +915,32 @@ async def reingest_collection(
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
 
+    # 4b. A LARGE reingest must be acknowledged (409 estimate_required carries the estimate over the
+    #     SAME targets, priced on the replayed stages only when replay_from is set).
+    await ReingestEstimateGate(
+        CONTEXT.estimate_service, RUNTIME_CONFIG.CORPUS_REINGEST_CONFIRM_THRESHOLD
+    ).require(
+        collection_id,
+        len(matched),
+        request.confirm_estimate,
+        CollectionEstimateRequest(document_ids=[str(document_id) for document_id in matched]),
+        replay_from=request.replay_from,
+        technical=AuthzGuard.holds(principal, Capability.READ_TECHNICAL),
+    )
+
     # 5. Fan out through the SHARED capped path — a huge corpus enqueues only the first N and reports
-    #    capped=true (never silently floods the queue), exactly like the corpus selector route.
+    #    capped=true (never silently floods the queue), exactly like the corpus selector route; the
+    #    queue backpressure (429) is applied before any job is minted.
     service = BulkReingestService(CONTEXT.database, CONTEXT.queue)
     result = await service.enqueue_capped(
-        collection, matched, RUNTIME_CONFIG.CORPUS_MAX_REINGEST_FANOUT, force=request.force
+        collection,
+        matched,
+        RUNTIME_CONFIG.CORPUS_MAX_REINGEST_FANOUT,
+        force=request.force,
+        replay_from=request.replay_from,
+        admission=QueueAdmission(
+            CONTEXT.queue, RUNTIME_CONFIG.QUEUE_MAX_DEPTH, RUNTIME_CONFIG.QUEUE_RETRY_AFTER_SECONDS
+        ),
     )
     return BulkReingestAccepted(
         collection_id=str(collection_id),
@@ -919,6 +950,7 @@ async def reingest_collection(
         capped=result.capped,
         max_fanout=result.ceiling,
         skipped_in_flight=result.skipped_in_flight,
+        skipped_not_replayable=result.skipped_not_replayable,
         jobs=result.handles,
     )
 

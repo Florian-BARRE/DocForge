@@ -43,6 +43,7 @@ from ...libs.auth import AuthPrincipal, AuthzGuard, Capability, require
 from ...libs.collection_ref import CollectionRefResolver
 from ...libs.index_rebuild import IndexRebuildGuards
 from ...libs.logsafe import LogSafeHelpers
+from ...libs.reingest import ReplayGuard
 from ...utils.error_handling import auto_handle_errors
 from ...utils.ingest_enqueuer import IngestEnqueuer
 from ...utils.pipeline_validation import PipelineBlobValidator
@@ -306,6 +307,13 @@ async def reingest_document(
         description="Bypass the stage cache and recompute every stage from scratch (no cache "
         "read/write). Use to rebuild after a code change that did not bump a node's CACHE_VERSION.",
     ),
+    replay_from: str | None = Query(
+        default=None,
+        description="Replay only this post-IR stage and its downstream from the document's persisted "
+        "IR (no re-parse) — enrich, chunk, metagen_chunk, metagen_document or embed, as the "
+        "collection's pipeline allows (422 lists the allowed stages). Only the downstream layers "
+        "(enrichments / chunks / generated metadata / vectors) are replaced. Omit for a full run.",
+    ),
     principal: AuthPrincipal = Depends(require(Capability.WRITE)),
 ) -> UploadAccepted:
     """
@@ -316,6 +324,7 @@ async def reingest_document(
     the collection's CURRENT pipeline (and the current engine) instead. The run is idempotent — the
     previous chunks/IR/pages are purged and the vectors overwritten — and the user-declared metadata
     survives. Poll the returned job for progress. ``force=true`` recomputes every stage (no cache).
+    ``replay_from=<stage>`` re-runs only that stage and its downstream on the persisted IR.
 
     Returns:
         UploadAccepted: The document id and the new ingestion job id (202); 404 when unknown.
@@ -332,15 +341,22 @@ async def reingest_document(
     #     would reject — a reingest cannot add a missing chunk-scope semantic/lexical vector.
     await IndexRebuildGuards.assert_chunk_vectors_declared(CONTEXT.database, document.collection_id)
 
+    # 1c. A replay must be honourable by THIS pipeline (422 names why + the allowed stages).
+    if replay_from is not None:
+        collection = await CONTEXT.database.collections.get(document.collection_id)
+        ReplayGuard.assert_replayable(collection, replay_from)
+
     # 2. Admit a fresh run. NOT_FOUND = unknown document (404); ALREADY_ACTIVE = a run is already
     #    queued/executing (409) — minting a second concurrent job would interleave the two runs'
-    #    Qdrant delete-by-document + upsert and strand orphan points, so refuse rather than duplicate.
+    #    Qdrant upsert + stale-point purge and strand orphan points, so refuse rather than duplicate.
     try:
-        result = await CONTEXT.database.ingestion.reingest(document_id)
+        result = await CONTEXT.database.ingestion.reingest(document_id, replay_from=replay_from)
     except IndexRebuildActiveError as exc:
         raise IndexRebuildGuards.active_conflict(exc)
     if result.outcome is ReingestOutcome.NOT_FOUND:
         raise HTTPException(status_code=404, detail=f"Document {document_id} not found.")
+    if result.outcome is ReingestOutcome.NOT_REPLAYABLE:
+        raise ReplayGuard.not_replayable(document_id)
     if result.outcome is ReingestOutcome.ALREADY_ACTIVE:
         raise HTTPException(
             status_code=409,
@@ -365,7 +381,10 @@ async def reingest_document(
                 f"failed. Retry once the queue is reachable."
             ),
         )
-    CONTEXT.logger.info(f"Re-ingest enqueued for {document.id} (job {job.id}, force={force})")
+    CONTEXT.logger.info(
+        f"Re-ingest enqueued for {document.id} (job {job.id}, force={force}, "
+        f"replay_from={replay_from})"
+    )
     return UploadAccepted(document_id=str(document.id), job_id=str(job.id))
 
 

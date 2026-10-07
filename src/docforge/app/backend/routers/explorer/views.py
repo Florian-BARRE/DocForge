@@ -20,12 +20,11 @@ from loggerplusplus import loggerplusplus
 
 # ====== Internal Project Imports ======
 from shared_libs.pipelines.ingest.linearize import IRLinearizer
-from shared_libs.services.db.facades import IRBundle
+from shared_libs.services.db.facades import IRBundle, IRBundleAdapter
 from shared_libs.services.db.postgresql.tables import Document
 
 # ====== Local Project Imports ======
 from ...libs.reading import IRPageFilter
-from .ir_adapter import IRBundleAdapter
 
 # Charset-qualified media types — the body is a unicode string, always encoded as UTF-8.
 _MARKDOWN_MEDIA_TYPE = "text/markdown; charset=utf-8"

@@ -5,6 +5,7 @@
 
 # ====== Third-Party Library Imports ======
 from loggerplusplus import LoggerPlusPlus
+from redis.asyncio import Redis
 
 # ====== Internal Project Imports ======
 from config import RUNTIME_CONFIG
@@ -37,6 +38,8 @@ class CONTEXT:
     worker_id: str
     worker_name: str
     job_timeout_seconds: float
+    # Dedicated Redis client of the shared-embedder limiter (absent when the guard is disabled).
+    limiter_redis: Redis
 
     # ── Liveness ──
     heartbeat: HeartbeatWriter

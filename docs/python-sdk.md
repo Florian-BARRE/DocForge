@@ -136,7 +136,7 @@ assert status.status == "ok"
 | `collections.delete(collection_id)` | `None` | Delete a collection. |
 | `collections.health(collection_id)` | `CollectionHealthResponse` | Zero-spend provider preflight sweep + an overall verdict. |
 | `collections.storage(collection_id)` | `CollectionStorageResponse` | Material footprint across all three stores (exact S3, estimated PG/Qdrant). |
-| `collections.reingest(collection_id, force=False)` | `BulkReingestAccepted` | Re-run the full pipeline over the whole collection (async). |
+| `collections.reingest(collection_id, request)` | `BulkReingestAccepted` | Re-run the pipeline over the collection (async). `BulkReingestRequest` carries `document_ids`, `force`, `replay_from` (replay a post-IR stage, no re-parse) and `confirm_estimate` (required above the server threshold — else `409 estimate_required` with the estimate; `429 queue_saturated` when the queue is full). |
 | `collections.rebuild_index(collection_id)` | `RebuildIndexAccepted` | Rebuild the vector index from the current schema, no content re-embed (async job; `ConflictError` on `409 rebuild_index_active` / `collection_busy`). Poll `jobs.get(job_id)` — its `document_id` is `None`. |
 | `collections.estimate(...)` | `CostEstimate` | Dry-run cost estimate for a (subset of a) collection — no spend. |
 | `collections.contract_schema()` | `CollectionContractSchemaResponse` | JSON Schema of the collection identity/limits contract (drives a discovery form). |
@@ -217,7 +217,7 @@ client.collections.update(
 |---|---|---|
 | `documents.upload(collection_id, file, metadata=None, filename=None)` | `UploadAccepted` | Upload a file (path, `Path` or raw `bytes`) for asynchronous ingestion. |
 | `documents.set_enabled(document_id, enabled)` | `DocumentEnabledResponse` | Toggle a document's searchability (hides/reveals all its chunks). |
-| `documents.reingest(document_id, force=False)` | `UploadAccepted` | Re-run the full pipeline over one document (async). |
+| `documents.reingest(document_id, force=False, replay_from=None)` | `UploadAccepted` | Re-run the pipeline over one document (async); `replay_from` replays a post-IR stage on the persisted IR. |
 | `documents.get_markdown(document_id, download=False, pages=None)` | `DocumentView` | The document rendered as Markdown (a generated view of the IR); `pages` (1-based: `"5"`, `"5-7"`, `"5,7-9"`) renders only those pages and is not sent when `None`. `get_html` takes the same arguments. |
 | `documents.get_html(document_id, download=False)` | `DocumentView` | The document rendered as HTML (a generated view of the IR). |
 
@@ -494,7 +494,7 @@ documents by a `DocumentSelector` (`{document_ids: [...]}` XOR `{filter: {...}, 
 | `corpus.query(collection_id, request)` | `DocumentQueryResponse` | One filtered/sorted/paginated page + the total match count. |
 | `corpus.bulk_delete(collection_id, selector)` | `BulkDeleteResponse` | Delete the selected documents everywhere (PG + Qdrant + S3). |
 | `corpus.bulk_set_enabled(collection_id, selector, enabled)` | `BulkEnabledResponse` | Bulk enable/disable searchability by selector. |
-| `corpus.bulk_reingest(collection_id, selector, force=False)` | `BulkReingestResponse` | Bulk full re-ingest by selector (capped fan-out, one job handle). |
+| `corpus.bulk_reingest(collection_id, selector, force=False, replay_from=None, confirm_estimate=False)` | `BulkReingestResponse` | Bulk re-ingest by selector (capped fan-out, one job handle); same `409 estimate_required` / `429 queue_saturated` guardrails. |
 
 ### `snippets` — granular config export/import
 

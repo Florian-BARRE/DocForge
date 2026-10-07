@@ -204,7 +204,7 @@ flowchart TB
 
 **Contrat de la famille** (`BaseParserNode`) : tout parseur consomme `{source: IntakeResult}` et produit `{ir, score}` ; pas de PDF → IR vide + score 0 (dégradation) ; l'escalade se câble dans le graphe par `ScoreBelow(threshold)` — rien à changer au moteur.
 
-**Isolation du convert in-worker (`docling` · `granite_docling`)** : leur convert natif (lourd, non tuable en thread) tourne dans un **sous-processus TUABLE** que le worker gère (`DoclingSubprocessPool`, fork — modèles chargés une fois, ré-utilisés à chaud, ré-engendrés après un échec), borné par deux caps par-collection sur le blob : `parse_timeout_seconds` (le child est SIGKILL au-delà) et `parse_memory_mb` (cap RLIMIT_AS optionnel, `0` = off ; **laisser `0` sur granite/GPU** — un RLIMIT_AS casse les réservations virtuelles CUDA, on s'appuie alors sur le time-cap + le kill GPU-OOM). Un OOM / hang / crash du parse devient donc un **échec de job propre et attribué** (`ParseSubprocessError`, le worker survit, slot libéré, aucun lock laissé bloqué) au lieu de figer le worker. Les parseurs **sidecar** (`pp_structure` · `paddleocr_vl` · `mineru` · `dots_ocr`) sont déjà hors-process en HTTP → non concernés.
+**Isolation du convert in-worker (`docling` · `granite_docling`)** : leur convert natif (lourd, non tuable en thread) tourne dans un **sous-processus TUABLE** que le worker gère (`DoclingSubprocessPool`, fork — modèles chargés une fois, ré-utilisés à chaud, ré-engendrés après un échec), borné par deux caps par-collection sur le blob : `parse_timeout_seconds` (le child est SIGKILL au-delà) et `parse_memory_mb` (cap RLIMIT_AS optionnel ; `0` = repli worker `WORKER_PARSE_MEMORY_MB` via `ParseMemoryFallback` pour docling — **OFF (0) par défaut** : RLIMIT_AS borne le VIRTUEL, que torch/onnx sur-réservent (mesuré : PDF réel 6 pages ≈ 5,7 Gio virtuel / 2,3 Gio résident ; un cap 4096 casse le mmap du modèle de layout) — jamais appliqué à granite ; **laisser `0` sur granite/GPU** — un RLIMIT_AS casse les réservations virtuelles CUDA, on s'appuie alors sur le time-cap + le kill GPU-OOM). Un OOM / hang / crash du parse devient donc un **échec de job propre et attribué** (`ParseSubprocessError`, le worker survit, slot libéré, aucun lock laissé bloqué) au lieu de figer le worker. Les parseurs **sidecar** (`pp_structure` · `paddleocr_vl` · `mineru` · `dots_ocr`) sont déjà hors-process en HTTP → non concernés.
 
 **Doctrine scans (persona-hardening — OCR-default)** : `do_ocr=true` **par défaut** — c'est l'OCR *interne* de
 docling (local, in-stack, aucune API externe), qui ne s'applique qu'aux régions bitmap sans couche texte : un
@@ -469,7 +469,7 @@ Le texte embeddé est l'**`enriched_text`** (toute la raison d'être du contextu
 | **bge_server** ✅ | notre serveur custom (BGE-M3, TEI-compat) : `/embed_all` (dense+sparse en UNE passe) avec repli `/embed` + `/embed_sparse` sur un serveur plus ancien (404) | dense **+ sparse** — le défaut du produit · `UNIQUE_IN_GRAPH=True` |
 | **openai_compatible** ✅ | `/v1/embeddings` via la factory | dense seul (le protocole n'a pas de sparse — axe sauté proprement, loggé) |
 
-**Config commune** : `model` (provenance, stocké avec les vecteurs) · `batch_size=32` · `embed_sparse=true` ·
+**Config commune** : `model` (provenance, stocké avec les vecteurs) · `batch_size=32` · `embed_sparse=true` · `max_concurrency` (défaut null → `WORKER_EMBED_MAX_INFLIGHT_PER_ENDPOINT` ; plafond d'appels embed simultanés par endpoint, sémaphore Redis partagé injecté via `ProviderLimiterRegistry`, no-op hors worker — baux scorés par leur **expiration** sur l'horloge **serveur** Redis (`TIME`), admission FIFO ; bail = `timeout_seconds + 15` s, rendu au succès mais **conservé jusqu'à expiration** si l'appel timeout/casse en vol (le serveur calcule encore la requête abandonnée) ; au-delà de `WORKER_EMBED_SLOT_MAX_WAIT_SECONDS` l'appel lève `ProviderSlotTimeout` (transitoire : retry+backoff, **jamais de split**) — seule une panne Redis passe en fail-open) ·
 **`embed_semantic_fields=false`** (défaut) — quand activé, les champs chunk-scope `semantic=True` du contrat
 sont embeddés en **vecteurs nommés par champ** (dense `fields["keywords"]` — seulement les chunks qui portent une
 valeur ; une liste se rend en texte joint). Le **read-side EST câblé** : un `SearchTarget{field, semantic}` sur un
@@ -579,6 +579,56 @@ source_resolver), réutilisé par les **deux** chemins :
   test (`tests/units/worker/test_jobs_preview.py` : aucun writer document/chunk/qdrant/s3/trace appelé). Garde-fous :
   `WORKER_PREVIEW_RUN_TIMEOUT_SECONDS` + `WORKER_PREVIEW_MAX_BYTES` + `WORKER_PREVIEW_MAX_CHUNKS`. Un blob cassé /
   une source invalide est une **donnée** (`ok=false`), jamais une exception — un poll résout toujours en `PreviewResponse`.
+
+
+### Replay depuis une étape (`replay_from` — sans re-parse)
+
+Un reingest peut repartir **au milieu du graphe** au lieu de tout refaire (ex. un nouveau prompt metagen ne
+re-parse plus le PDF). `replay_from=<stage>` sur `POST /documents/{id}/reingest`, `POST /collections/{id}/reingest`
+(body) et `POST /collections/{id}/documents/reingest` (query) ; persisté sur `job.replay_from` (migration
+`e5c1a8f3b7d2`, exposé dans `JobStatus.replay_from`).
+
+- **Étapes rejouables** (`REPLAYABLE_STAGES`, post-IR uniquement) : `enrich · chunk · metagen_chunk ·
+  metagen_document · embed`. Les étapes pré-IR (intake/convert/parse/language/render) réécrivent l'IR → reingest
+  complet. `contextualize` n'est **pas** rejouable : il lit toujours le texte BRUT du chunker, jamais persisté (seul
+  le texte final contextualisé l'est) → rejouer depuis `chunk` (422 `replay_unsupported` qui le dit).
+- **Échec d'un replay** : le JOB passe FAILED (breadcrumb + trace partielle), mais le DOCUMENT garde son statut
+  antérieur (l'admission d'un replay ne remet pas un document DONE/FAILED en PENDING) et reçoit un `warning_reason`
+  — rien n'est commité avant la sauvegarde aval unique, ses anciens chunks/points restent servis. Un replay ne
+  télécharge jamais les octets d'origine (S3) : un objet source purgé ne le fait pas échouer.
+- **Indexation (replay ET run complet)** : ids de points déterministes (document, ordinal) → `IngestionFacade.index`
+  **upsert d'abord** (écrase en place), **puis** purge les points restants du document que ce run n'a pas produits
+  (`delete_stale_for_document`) — un upsert en échec laisse les anciens points servis, jamais zéro point.
+- **Planification PURE** (`shared_libs/pipelines/ingest/replay/` — `ReplayPlanner` · `ReplayStageMap` · `ReplaySeeder`) :
+  sur le graphe construit, le planner trouve le node de tête UNIQUE de l'étape, le scope aval (tout ce qui en est
+  atteignable — refusé si un node pré-étape y figure), et type chaque binding aval→amont comme un artefact
+  **persisté** (`IntakeResult · DocumentIR · PageRenders · list[Chunk] · GeneratedDocumentMeta`) ; un artefact
+  en vol non persisté est refusé avec sa raison (`ReplayUnsupportedError`). `ReplayPlanner.allowed(group)` liste
+  les étapes que CE pipeline accepte.
+- **Moteur** : `ResumePoint(start_node_id, seeded_outputs, downstream_ids)` (`engine/resume.py`) — le moteur reste
+  générique : il pré-remplit les sorties racines amont et démarre la marche au node de tête ; les bindings
+  `FromNode`/`FromFirst` aval se résolvent comme dans un run complet.
+- **Bords (worker)** : `ReplayRun` (`worker/backend/libs/jobs/replay.py`) relit l'état persisté via
+  `ReplaySourceFacade` (IR re-plié depuis blocks/tables/figures/enrichments, crops réhydratés si `enrich` rejoue ;
+  chunks finaux ; métadonnées document générées), seed le moteur, exécute l'aval seul (**aucun intake/parse dans la
+  trace**), traduit par le même `RunTranslator` et persiste via `ReplayPersistFacade` **les couches aval seulement**
+  (enrichments si enrich a rejoué, meta document si livrée, chunks toujours — ids déterministes (document, ordinal)
+  → points Qdrant stables) ; blocks/pages/blobs intacts ; indexation par le chemin normal.
+- **Fail-fast route** : `ReplayGuard` planifie sur le pipeline courant → **422** `replay_unsupported`
+  `{reason, allowed}` avant tout job ; un document sans IR persisté → 422 (single) ou `skipped_not_replayable` (bulk).
+  Le worker re-planifie au run (un pipeline édité entre-temps fait échouer le job, nommé).
+
+### Garde-fous du reingest de masse (backpressure + estimation)
+
+- **Confirmation d'estimation** : au-delà de `CORPUS_REINGEST_CONFIRM_THRESHOLD` documents résolus, un reingest bulk
+  sans `confirm_estimate=true` est refusé **409** `estimate_required` (`ReingestEstimateGate`) portant le résumé
+  d'estimation (`CostEstimateService` sur les MÊMES cibles) ; avec `replay_from`, seules les lignes d'étape au/après
+  l'étape rejouée sont chiffrées (`priced_stages`).
+- **Backpressure queue** : après le cap de fan-out et AVANT de créer le moindre job, `QueueAdmission.check_bulk(n)`
+  (n = cibles gardées − documents déjà en RUNNING) refuse **429** `queue_saturated` + `Retry-After`
+  (`QUEUE_RETRY_AFTER_SECONDS`) si `profondeur + n > QUEUE_MAX_DEPTH`. Un upload/reingest unitaire n'est jamais gaté.
+- **Limiteur embedder partagé** : sémaphore Redis par endpoint (`ProviderLimiterRegistry`, cf. EMBED `max_concurrency`) — attente bornée → `ProviderSlotTimeout` transitoire, jamais de passage sans slot (sauf Redis injoignable).
+- **Plafond mémoire docling** : repli opt-in `WORKER_PARSE_MEMORY_MB` (défaut 0 = off) quand le blob laisse `parse_memory_mb=0` (cf. PARSE).
 
 ---
 

@@ -135,7 +135,16 @@ export interface BulkReingestResponse {
   max_fanout: number;
   /** Documents skipped because a run was already active for them (the per-document active-job lock). */
   skipped_in_flight: number;
+  /** Documents a `replay_from` run skipped because they have no persisted IR. */
+  skipped_not_replayable?: number;
   jobs: ReingestJobHandle[];
+}
+
+export interface BulkReingestOptions {
+  /** Replay from this post-IR stage; omit/null for a full re-run. */
+  replayFrom?: string | null;
+  /** Acknowledge the cost estimate of a large reingest (else the server refuses 409 estimate_required). */
+  confirmEstimate?: boolean;
 }
 
 /** One filtered/sorted/paginated page of a collection's documents + the total match count. */
@@ -160,6 +169,14 @@ export function bulkSetDocumentsEnabled(
 /** Re-run the full pipeline over every selected document — one fresh job per document. A filter
  *  selector matching more than the server's fan-out ceiling enqueues only the first N and reports
  *  `capped=true` with the full `matched` count. */
-export function bulkReingestDocuments(collectionId: string, selector: DocumentSelector): Promise<BulkReingestResponse> {
-  return apiFetch(`${BASE}/${collectionId}/documents/reingest`, jsonInit("POST", selector));
+export function bulkReingestDocuments(
+  collectionId: string,
+  selector: DocumentSelector,
+  options: BulkReingestOptions = {},
+): Promise<BulkReingestResponse> {
+  const params = new URLSearchParams();
+  if (options.replayFrom) params.set("replay_from", options.replayFrom);
+  if (options.confirmEstimate) params.set("confirm_estimate", "true");
+  const query = params.toString();
+  return apiFetch(`${BASE}/${collectionId}/documents/reingest${query ? `?${query}` : ""}`, jsonInit("POST", selector));
 }

@@ -232,6 +232,17 @@ class RUNTIME_CONFIG(EnvConfigLoader):
     # only the first N (deterministic order) and reports ``capped=true`` + the total ``matched``, so a
     # single call can never silently flood the queue with 100k jobs. Raise it for a big planned re-run.
     CORPUS_MAX_REINGEST_FANOUT: int = env("CORPUS_MAX_REINGEST_FANOUT", cast=int, default=1000)
+    # A bulk reingest matching MORE than this many documents must be acknowledged with
+    # ``confirm_estimate=true``; otherwise it is refused 409 ``estimate_required`` with the cost
+    # estimate summary. 0 disables the gate.
+    CORPUS_REINGEST_CONFIRM_THRESHOLD: int = env(
+        "CORPUS_REINGEST_CONFIRM_THRESHOLD", cast=int, default=200
+    )
+    # Backpressure: a BULK enqueue whose size would push the arq queue depth past this is refused 429
+    # (+ Retry-After). A single upload/reingest is never gated. 0 disables.
+    QUEUE_MAX_DEPTH: int = env("QUEUE_MAX_DEPTH", cast=int, default=2000)
+    # The Retry-After (seconds) hint sent with a queue_saturated 429.
+    QUEUE_RETRY_AFTER_SECONDS: int = env("QUEUE_RETRY_AFTER_SECONDS", cast=int, default=60)
     # Per-call cap on a bulk DELETE selection: a filter selector matching MORE than this deletes only
     # the first N (deterministic order) and reports ``capped=true``, so one call never materialises a
     # 100k-id set in memory. Delete is convergent — re-run the same selector to remove the remainder.

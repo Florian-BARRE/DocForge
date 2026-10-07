@@ -275,7 +275,7 @@ class RunTranslator:
         filterable = {spec.field_name for spec in schema if spec.filterable}
         # THE chunk remap: pipeline chunk ids are per-run ordinal strings → deterministic UUID v5
         # point ids keyed on (document_id, chunk_index). Re-ingesting the same chunk yields the SAME
-        # point id, so the Qdrant upsert overwrites in place (the delete-by-document in the facade
+        # point id, so the Qdrant upsert overwrites in place (the facade's post-upsert stale purge
         # still clears chunks a re-ingest dropped). chunk_index is the stable retrieval-unit identity
         # within a document; block ids are deliberately NOT in the key (parser-scoped, they can shift
         # between runs and would needlessly churn point ids), and document_id is already globally

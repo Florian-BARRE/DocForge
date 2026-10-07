@@ -11,6 +11,7 @@ from typing import Any
 # ====== Local Project Imports ======
 from .cache import CacheHook
 from .progress import ProgressCallback
+from .resume import ResumePoint
 
 
 @dataclass(slots=True)
@@ -28,12 +29,15 @@ class RunContext:
             raised (caller-owned control flow — e.g. the worker's cooperative-cancel guard aborting
             at a stage boundary). ``execute``'s record-not-crash net re-raises this UNCHANGED instead
             of converting it into a recorded FAILED run, so the caller's abort semantics stay intact.
+        resume (ResumePoint | None): A mid-graph start (replay): the root walk begins at its start
+            node with its seeded upstream outputs. None (the default) runs from the entry.
     """
 
     run_input: dict[str, Any]
     progress_callback: ProgressCallback | None = None
     cache_hook: CacheHook | None = None
     callback_error: BaseException | None = None
+    resume: ResumePoint | None = None
 
 
 __all__ = ["RunContext"]

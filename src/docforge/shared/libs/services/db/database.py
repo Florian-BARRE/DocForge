@@ -34,6 +34,8 @@ from .facades import (
     MetadataEditFacade,
     MetadataValueResolver,
     MetaVectorSyncFacade,
+    ReplayPersistFacade,
+    ReplaySourceFacade,
     SchemaChangeFacade,
     SearchFacade,
     StorageFootprintFacade,
@@ -53,6 +55,9 @@ class Database(LoggerClass):
             ref/key-scope resolution, listing, atomic create/re-point, delete.
         config_history (ConfigHistoryFacade): The versioned config history (list page, one version).
         ingestion (IngestionFacade): The worker's persistence path (admit, blobs, save, index).
+        replay_source (ReplaySourceFacade): Rebuild a document's persisted IR / chunks / generated
+            metadata as pipeline artefacts (the replay-from-stage seeds).
+        replay_persist (ReplayPersistFacade): Persist a replay's downstream layers only.
         artifact_cache (ArtifactCacheFacade): The per-collection stage-artifact cache (hook I/O + GC).
         documents (DocumentsFacade): Reading, inspection (raw/enriched IR, chunks), deletion.
         enablement (EnablementFacade): Reversible enable/disable of documents/chunks (flag + payload).
@@ -98,6 +103,9 @@ class Database(LoggerClass):
         self.collection_aliases = CollectionAliasFacade(postgres)
         self.config_history = ConfigHistoryFacade(postgres)
         self.ingestion = IngestionFacade(postgres, qdrant, s3)
+        # Replay-from-stage: rebuild the persisted IR/chunks as artefacts, persist downstream only.
+        self.replay_source = ReplaySourceFacade(postgres, s3)
+        self.replay_persist = ReplayPersistFacade(postgres)
         self.artifact_cache = ArtifactCacheFacade(postgres, s3)
         self.documents = DocumentsFacade(postgres, qdrant, s3)
         self.enablement = EnablementFacade(postgres, qdrant)

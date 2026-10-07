@@ -21,7 +21,7 @@ import pytest
 @pytest.fixture
 def adapter(fastapi_app):
     """IRBundleAdapter, imported only after the app fixture put app/ on sys.path."""
-    from backend.routers.explorer.ir_adapter import IRBundleAdapter  # noqa: PLC0415
+    from shared_libs.services.db.facades import IRBundleAdapter  # noqa: PLC0415
 
     return IRBundleAdapter
 

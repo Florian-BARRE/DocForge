@@ -27,7 +27,7 @@ def _wire(monkeypatch, missing: set[str]) -> AsyncMock:
     monkeypatch.setattr(
         facade_module.QdrantCollectionApi, "ensure", AsyncMock(return_value=missing)
     )
-    monkeypatch.setattr(facade_module.QdrantIndexApi, "delete_by_document", AsyncMock())
+    monkeypatch.setattr(facade_module.QdrantIndexApi, "delete_stale_for_document", AsyncMock())
     monkeypatch.setattr(facade_module.QdrantIndexApi, "upsert", AsyncMock())
     monkeypatch.setattr(facade_module.ChunkApi, "mark_indexed", AsyncMock())
     collection = MagicMock(pipeline={})

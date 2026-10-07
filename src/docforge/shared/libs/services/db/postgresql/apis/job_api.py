@@ -176,7 +176,7 @@ class JobApi:
 
         The guard the reingest admission consults so a document whose run is already queued or
         executing never mints a SECOND concurrent job: two parallel runs of one document interleave
-        their Qdrant delete-by-document + upsert (each remints chunk ids) and strand the loser's
+        their Qdrant upsert + stale-point purge and strand the loser's
         points as live orphans while Postgres keeps only the winner's chunks. Only the non-terminal
         statuses count — DONE/FAILED/CANCELLED are over, so a terminal-only history reads as idle.
 

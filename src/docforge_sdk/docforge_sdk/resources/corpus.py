@@ -52,13 +52,21 @@ class _CorpusSpecs(_ResourceMixin):
         )
 
     def _bulk_reingest_spec(
-        self, collection_id: str, selector: DocumentSelector, force: bool
+        self,
+        collection_id: str,
+        selector: DocumentSelector,
+        force: bool,
+        replay_from: str | None,
+        confirm_estimate: bool,
     ) -> RequestSpec:
-        """A POST carrying the selector (+ ``force`` query param) → a bulk re-ingest fan-out."""
+        """A POST carrying the selector (+ force/replay_from/confirm_estimate query params)."""
+        params: dict[str, object] = {"force": force, "confirm_estimate": confirm_estimate}
+        if replay_from is not None:
+            params["replay_from"] = replay_from
         return RequestSpec(
             "POST",
             self._docs_path(collection_id, "reingest"),
-            params={"force": force},
+            params=params,
             json=selector.model_dump(mode="json"),
         )
 
@@ -101,11 +109,32 @@ class AsyncCorpus(AsyncResource, _CorpusSpecs):
         )
 
     async def bulk_reingest(
-        self, collection_id: str, selector: DocumentSelector, force: bool = False
+        self,
+        collection_id: str,
+        selector: DocumentSelector,
+        force: bool = False,
+        replay_from: str | None = None,
+        confirm_estimate: bool = False,
     ) -> BulkReingestResponse:
-        """Re-run the full ingestion over every document the selector resolves to (capped fan-out)."""
+        """
+        Re-run ingestion over every document the selector resolves to (capped fan-out).
+
+        Args:
+            collection_id (str): The target collection.
+            selector (DocumentSelector): The documents to re-run.
+            force (bool): Bypass the stage cache.
+            replay_from (str | None): Replay from this post-IR stage on the persisted IR (no
+                re-parse); 422 lists the stages the pipeline allows.
+            confirm_estimate (bool): Acknowledge the estimate of a reingest above the server's
+                threshold (otherwise 409 ``estimate_required`` with the estimate summary).
+
+        Returns:
+            BulkReingestResponse: matched / enqueued / capped / skips + one handle per job (429
+                ``queue_saturated`` with Retry-After when the queue is full).
+        """
         return await self._transport.request(
-            self._bulk_reingest_spec(collection_id, selector, force), BulkReingestResponse
+            self._bulk_reingest_spec(collection_id, selector, force, replay_from, confirm_estimate),
+            BulkReingestResponse,
         )
 
 
@@ -136,11 +165,32 @@ class SyncCorpus(SyncResource, _CorpusSpecs):
         )
 
     def bulk_reingest(
-        self, collection_id: str, selector: DocumentSelector, force: bool = False
+        self,
+        collection_id: str,
+        selector: DocumentSelector,
+        force: bool = False,
+        replay_from: str | None = None,
+        confirm_estimate: bool = False,
     ) -> BulkReingestResponse:
-        """Re-run the full ingestion over every document the selector resolves to (capped fan-out)."""
+        """
+        Re-run ingestion over every document the selector resolves to (capped fan-out).
+
+        Args:
+            collection_id (str): The target collection.
+            selector (DocumentSelector): The documents to re-run.
+            force (bool): Bypass the stage cache.
+            replay_from (str | None): Replay from this post-IR stage on the persisted IR (no
+                re-parse); 422 lists the stages the pipeline allows.
+            confirm_estimate (bool): Acknowledge the estimate of a reingest above the server's
+                threshold (otherwise 409 ``estimate_required`` with the estimate summary).
+
+        Returns:
+            BulkReingestResponse: matched / enqueued / capped / skips + one handle per job (429
+                ``queue_saturated`` with Retry-After when the queue is full).
+        """
         return self._transport.request(
-            self._bulk_reingest_spec(collection_id, selector, force), BulkReingestResponse
+            self._bulk_reingest_spec(collection_id, selector, force, replay_from, confirm_estimate),
+            BulkReingestResponse,
         )
 
 

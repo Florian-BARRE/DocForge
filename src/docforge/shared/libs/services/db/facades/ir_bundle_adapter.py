@@ -6,6 +6,9 @@
 # Enrichment rows are folded back onto each figure's slot, table rows become TableData, and every
 # block's reading_order is preserved verbatim — the linearizer folds a figure's caption purely by
 # reading-order adjacency (caption_block_id lives only in the DB model, not in DocumentIR).
+# Shared by the app's explorer views and the worker's replay (``ReplaySourceFacade.load_ir``), which
+# asks for PIPELINE-scope ids (the translator's document prefix stripped) so a re-persisted run is not
+# double-prefixed.
 
 # ====== Standard Library Imports ======
 from __future__ import annotations
@@ -26,7 +29,6 @@ from shared_libs.public_models import (
     TableData,
 )
 from shared_libs.public_models.ir import FigureKind
-from shared_libs.services.db.facades import IRBundle
 from shared_libs.services.db.postgresql.tables import (
     Block as BlockRow,
 )
@@ -39,6 +41,9 @@ from shared_libs.services.db.postgresql.tables import (
     EnrichmentStatus,
 )
 
+# ====== Local Project Imports ======
+from .payloads import IRBundle
+
 
 class IRBundleAdapter:
     """Rebuild a canonical DocumentIR from the DB-shaped IRBundle for on-the-fly linearization."""
@@ -49,13 +54,17 @@ class IRBundleAdapter:
         raise TypeError("IRBundleAdapter is a static-only class and cannot be instantiated.")
 
     @classmethod
-    def to_document_ir(cls, document: Document, bundle: IRBundle) -> DocumentIR:
+    def to_document_ir(
+        cls, document: Document, bundle: IRBundle, *, pipeline_ids: bool = False
+    ) -> DocumentIR:
         """
         Reconstruct the canonical DocumentIR from a document row and its stored IR rows.
 
         Args:
             document (Document): The document row (supplies doc_id, source_hash and header facts).
             bundle (IRBundle): The stored blocks, tables, figures and enrichments.
+            pipeline_ids (bool): Strip the translator's ``<document_id>:`` prefix from block ids and
+                parent ids (the pipeline-scope ids a replay run must carry). False keeps the DB ids.
 
         Returns:
             DocumentIR: The canonical IR, blocks in preserved reading order, figure slots folded
@@ -78,6 +87,13 @@ class IRBundleAdapter:
             )
             for row in bundle.blocks
         ]
+
+        # 2b. A replay runs in the pipeline id space — undo the translator's document prefix.
+        if pipeline_ids:
+            prefix = f"{document.id}:"
+            for block in blocks:
+                block.id = block.id.removeprefix(prefix)
+                block.parent_id = block.parent_id.removeprefix(prefix) if block.parent_id else None
 
         # 3. Assemble the document envelope; reading order is carried on each block, not reordered.
         return DocumentIR(

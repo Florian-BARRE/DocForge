@@ -126,5 +126,22 @@ class IRApi:
         )
         return list(result.scalars().all())
 
+    @staticmethod
+    async def replace_enrichments(
+        session: AsyncSession, document_id: uuid.UUID, enrichments: Sequence[BlockEnrichment]
+    ) -> None:
+        """Replace a document's enrichment rows, keeping its blocks/details (a replay from enrich)."""
+        blocks = select(Block.id).where(Block.document_id == document_id)
+        await session.execute(delete(BlockEnrichment).where(BlockEnrichment.block_id.in_(blocks)))
+        session.add_all(list(enrichments))
+
+    @staticmethod
+    async def has_blocks(session: AsyncSession, document_id: uuid.UUID) -> bool:
+        """Whether a document has a persisted IR (at least one block) — the replay precondition."""
+        result = await session.execute(
+            select(Block.id).where(Block.document_id == document_id).limit(1)
+        )
+        return result.first() is not None
+
 
 __all__ = ["IRApi"]

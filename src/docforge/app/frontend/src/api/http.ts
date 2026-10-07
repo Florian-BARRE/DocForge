@@ -38,11 +38,22 @@ export interface ApiIssue {
 export class HttpError extends Error {
   readonly status: number;
   readonly issues: ApiIssue[];
+  /** The raw `detail` object of a structured error (e.g. `estimate_required`, `replay_unsupported`),
+   *  kept so a caller can read fields the flattened issues drop. Null for string/array details. */
+  readonly detail: Record<string, unknown> | null;
+  /** The `Retry-After` header in seconds (429 back-pressure), null when absent/unparseable. */
+  readonly retryAfterSeconds: number | null;
 
-  constructor(status: number, issues: ApiIssue[]) {
+  constructor(
+    status: number,
+    issues: ApiIssue[],
+    extras: { detail?: Record<string, unknown> | null; retryAfterSeconds?: number | null } = {},
+  ) {
     super(issues.map((i) => i.message).join("; ") || `Request failed (${status})`);
     this.status = status;
     this.issues = issues;
+    this.detail = extras.detail ?? null;
+    this.retryAfterSeconds = extras.retryAfterSeconds ?? null;
   }
 }
 
@@ -143,14 +154,21 @@ export async function apiFetch<T>(url: string, init?: RequestInit): Promise<T> {
     // surfaced to the caller below, unchanged).
     if (response.status === 401) clearApiToken();
     let issues: ApiIssue[] = [{ message: `Request failed (${response.status})` }];
+    let detail: Record<string, unknown> | null = null;
     try {
       const body = await response.json();
-      const normalized = normalizeDetail(body?.detail ?? body);
+      const rawDetail = body?.detail ?? body;
+      if (rawDetail && typeof rawDetail === "object" && !Array.isArray(rawDetail)) detail = rawDetail as Record<string, unknown>;
+      const normalized = normalizeDetail(rawDetail);
       if (normalized.length) issues = normalized;
     } catch {
       // Body was not JSON — keep the generic issue.
     }
-    throw new HttpError(response.status, issues);
+    const retryAfter = Number(response.headers?.get?.("Retry-After"));
+    throw new HttpError(response.status, issues, {
+      detail,
+      retryAfterSeconds: Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter : null,
+    });
   }
   if (response.status === 204) return undefined as T;
   return response.json();

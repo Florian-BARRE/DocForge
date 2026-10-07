@@ -218,6 +218,25 @@ class DocumentApi:
                 document.chunk_count = chunk_count
 
     @staticmethod
+    async def flag_replay_failure(
+        session: AsyncSession, document_id: uuid.UUID, warning_reason: str
+    ) -> None:
+        """
+        Stamp a failed replay's warning, keeping a DONE/FAILED status (else fall back to FAILED).
+
+        Args:
+            session (AsyncSession): The unit of work.
+            document_id (uuid.UUID): The replayed document.
+            warning_reason (str): The failure surfaced on the document.
+        """
+        document = await session.get(Document, document_id)
+        if document is None:
+            return
+        if document.status in (DocumentStatus.PENDING, DocumentStatus.PROCESSING):
+            document.status = DocumentStatus.FAILED
+        document.warning_reason = warning_reason
+
+    @staticmethod
     async def mark_processing(session: AsyncSession, document_id: uuid.UUID) -> None:
         """
         Transition a document PENDING → PROCESSING at job-claim time.

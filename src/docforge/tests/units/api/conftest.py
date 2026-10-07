@@ -113,3 +113,18 @@ def _rebuild_guards_idle(fastapi_app, monkeypatch, request):
 def real_rebuild_guards() -> None:
     """Opt-out marker fixture: the rebuild_index pre-checks run for real (with mocked façades)."""
     return None
+
+
+@pytest.fixture(autouse=True)
+def _bulk_admission_idle(fastapi_app, monkeypatch):
+    """Keep the bulk-reingest backpressure hermetic: an empty queue and no running job by default.
+
+    The admission reads the live arq ZSET depth and the running jobs through the real clients; a test
+    exercising a saturated queue overrides ``queue_depth`` / ``list_active`` itself.
+    """
+    from unittest.mock import AsyncMock  # noqa: PLC0415
+
+    from backend.context import CONTEXT  # noqa: PLC0415
+
+    monkeypatch.setattr(CONTEXT.queue, "queue_depth", AsyncMock(return_value=0))
+    monkeypatch.setattr(CONTEXT.database.jobs, "list_active", AsyncMock(return_value=[]))

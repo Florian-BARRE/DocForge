@@ -7,6 +7,9 @@ from .trace import RecordTrace, TraceLevel
 # ---------------------- Run context ---------------------- #
 from .context import RunContext
 
+# ---------------------- Mid-graph start (replay) ---------------------- #
+from .resume import ResumePoint
+
 # ---------------------- Cache seam ---------------------- #
 from .cache import CacheHook, ENGINE_CACHE_EPOCH
 
@@ -25,6 +28,7 @@ __all__ = [
     "RecordTrace",
     "TraceLevel",
     "RunContext",
+    "ResumePoint",
     "CacheHook",
     "ENGINE_CACHE_EPOCH",
     "EngineInvariantError",

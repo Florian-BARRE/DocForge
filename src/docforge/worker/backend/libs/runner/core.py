@@ -19,7 +19,13 @@ from shared_libs.pipelines.base import (
     NodeExecutionRecord,
 )
 from shared_libs.pipelines.build import GroupNodeBlob, PipelineBuilder
-from shared_libs.pipelines.engine import CacheHook, FlowEngine, ProgressCallback, TraceLevel
+from shared_libs.pipelines.engine import (
+    CacheHook,
+    FlowEngine,
+    ProgressCallback,
+    ResumePoint,
+    TraceLevel,
+)
 from shared_libs.pipelines.reachability import (
     ProbeStatus,
     ProviderEgressPolicy,
@@ -101,6 +107,7 @@ class PipelineRunner(LoggerClass):
         collection_id: str,
         blob_hash: str,
         cache_ttl_seconds: float,
+        scope: frozenset[str] | None = None,
     ) -> None:
         """
         Sweep every provider leaf's reachability BEFORE the first spend — fail fast if any is down.
@@ -125,6 +132,9 @@ class PipelineRunner(LoggerClass):
             collection_id (str): The owning collection id — the cache key's isolation axis.
             blob_hash (str): The stable hash of the pipeline blob — the cache key's config axis.
             cache_ttl_seconds (float): TTL for a remembered positive result (<= 0 disables the cache).
+            scope (frozenset[str] | None): A replay's downstream root ids — only their leaves are
+                probed (an upstream converter/parser that will not run is never a reason to abort).
+                None sweeps the whole graph.
 
         Raises:
             PipelineRunError: One or more provider leaves failed preflight (named with their reason).
@@ -138,7 +148,11 @@ class PipelineRunner(LoggerClass):
             return
 
         # 2. Structured per-leaf outcomes from the shared sweep (probes run concurrently, capped).
-        results = await self._sweep.sweep(group, _INGEST_SIDE, egress_policy)
+        if scope is None:
+            results = await self._sweep.sweep(group, _INGEST_SIDE, egress_policy)
+        else:
+            scoped = Group(f"{group.id}.replay", [c for c in group.children if c.id in scope])
+            results = await self._sweep.sweep(scoped, _INGEST_SIDE, egress_policy)
 
         # 3. The worker's policy: anything that is not ok/skipped aborts BEFORE spend, named.
         failures = [
@@ -169,6 +183,7 @@ class PipelineRunner(LoggerClass):
         cache_hook: CacheHook | None = None,
         egress_policy: ProviderEgressPolicy | None = None,
         trace_level: TraceLevel = TraceLevel.SHAPE,
+        resume: ResumePoint | None = None,
     ) -> tuple[RunBundle, NodeExecutionRecord]:
         """
         Execute one ingestion run end to end.
@@ -197,6 +212,10 @@ class PipelineRunner(LoggerClass):
             trace_level (TraceLevel): How much of each node's input/output the engine captures onto
                 the execution record — the worker's already-clamped effective level (``shape`` by
                 default: cheap inline shape summaries; ``full`` adds the object-store payload).
+            resume (ResumePoint | None): A replay-from-stage start: the engine begins at its start
+                node on the seeded (persisted) upstream outputs, and preflight probes only the
+                downstream nodes (its positive result is cached under a replay-scoped key). None runs
+                the whole graph.
 
         Returns:
             tuple[RunBundle, NodeExecutionRecord]: The delivery and the full execution trace.
@@ -223,8 +242,9 @@ class PipelineRunner(LoggerClass):
                 group,
                 egress_policy,
                 str(contract.collection_id),
-                self.__blob_hash(blob),
+                self.__blob_hash(blob) + (f":replay:{resume.start_node_id}" if resume else ""),
                 preflight_cache_ttl_seconds,
+                scope=resume.downstream_ids if resume else None,
             )
 
         # 3. A FRESH run input per job — the run MUTATES what it carries (the ir, by design).
@@ -241,6 +261,7 @@ class PipelineRunner(LoggerClass):
             timeout_seconds=timeout_seconds,
             progress_callback=progress_callback,
             cache_hook=cache_hook,
+            resume=resume,
         )
 
         # 4. A failed run surfaces the engine's error, verbatim — and the structured breadcrumb (the

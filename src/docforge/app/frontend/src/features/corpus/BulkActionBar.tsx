@@ -7,10 +7,15 @@
 import { useState } from "react";
 import { bulkDeleteDocuments, bulkReingestDocuments, bulkSetDocumentsEnabled, type DocumentSelector } from "../../api/corpus";
 import { HttpError } from "../../api/http";
+import {
+  readEstimateRequired, readQueueSaturated, readReplayUnsupported,
+  type EstimateRequired, type ReplayFrom, type ReplayUnsupported,
+} from "../../api/reingest";
 import { Button } from "../../components/Button";
 import { useToast } from "../../shell/toast";
 import { theme } from "../../theme";
 import { BulkConfirmDialog } from "./BulkConfirmDialog";
+import { BulkReingestChoices } from "./BulkReingestChoices";
 
 type BulkAction = "reingest" | "delete" | "disable" | "enable";
 
@@ -49,8 +54,20 @@ export function BulkActionBar({ collectionId, count, buildSelector, onDone }: Bu
   const toast = useToast();
   const [confirming, setConfirming] = useState<BulkAction | null>(null);
   const [pending, setPending] = useState(false);
+  const [replayFrom, setReplayFrom] = useState<ReplayFrom>(null);
+  const [estimate, setEstimate] = useState<EstimateRequired | null>(null);
+  const [unsupported, setUnsupported] = useState<ReplayUnsupported | null>(null);
+  const [queueRetry, setQueueRetry] = useState<number | null | undefined>(undefined);
 
   if (count === 0) return null;
+
+  const openAction = (action: BulkAction) => {
+    setReplayFrom(null);
+    setEstimate(null);
+    setUnsupported(null);
+    setQueueRetry(undefined);
+    setConfirming(action);
+  };
 
   const run = async () => {
     if (!confirming) return;
@@ -64,18 +81,27 @@ export function BulkActionBar({ collectionId, count, buildSelector, onDone }: Bu
         const response = await bulkSetDocumentsEnabled(collectionId, confirming === "enable", selector);
         toast.success(`${response.updated} of ${response.matched} document${response.matched === 1 ? "" : "s"} ${confirming === "enable" ? "enabled" : "disabled"}`);
       } else {
-        const response = await bulkReingestDocuments(collectionId, selector);
+        const response = await bulkReingestDocuments(collectionId, selector, { replayFrom, confirmEstimate: estimate !== null });
         const remaining = response.matched - response.enqueued;
         const cappedNote = response.capped ? ` — capped at ${response.max_fanout}; run again to continue the remaining ${remaining}` : "";
         const skippedNote = response.skipped_in_flight > 0
           ? ` (${response.skipped_in_flight} skipped — already in flight)`
           : "";
-        toast.success(`Queued ${response.enqueued} of ${response.matched} document${response.matched === 1 ? "" : "s"} for re-ingestion — see the Jobs tab${cappedNote}${skippedNote}`);
+        const notReplayable = response.skipped_not_replayable ?? 0;
+        const notReplayableNote = notReplayable > 0 ? ` (${notReplayable} skipped — no persisted IR to replay)` : "";
+        toast.success(`Queued ${response.enqueued} of ${response.matched} document${response.matched === 1 ? "" : "s"} for re-ingestion — see the Jobs tab${cappedNote}${skippedNote}${notReplayableNote}`);
       }
       setConfirming(null);
       onDone();
     } catch (e) {
-      toast.error(e instanceof HttpError ? e.message : String(e));
+      // Structured refusals stay in the dialog so the user can act on them; anything else is a toast.
+      const needsEstimate = confirming === "reingest" ? readEstimateRequired(e) : null;
+      const unsupportedStage = confirming === "reingest" ? readReplayUnsupported(e) : null;
+      const saturated = confirming === "reingest" ? readQueueSaturated(e) : null;
+      if (needsEstimate) setEstimate(needsEstimate);
+      else if (unsupportedStage) setUnsupported(unsupportedStage);
+      else if (saturated) setQueueRetry(saturated.retryAfterSeconds);
+      else toast.error(e instanceof HttpError ? e.message : String(e));
     } finally {
       setPending(false);
     }
@@ -93,22 +119,33 @@ export function BulkActionBar({ collectionId, count, buildSelector, onDone }: Bu
         <span style={{ fontSize: theme.font.size.s, color: theme.color.text, fontWeight: 600 }}>
           {count.toLocaleString()} selected
         </span>
-        <Button variant="primary" size="sm" onClick={() => setConfirming("reingest")}>Re-ingest</Button>
-        <Button size="sm" onClick={() => setConfirming("enable")}>Enable</Button>
-        <Button size="sm" onClick={() => setConfirming("disable")}>Disable</Button>
-        <Button variant="danger" size="sm" onClick={() => setConfirming("delete")}>Delete</Button>
+        <Button variant="primary" size="sm" onClick={() => openAction("reingest")}>Re-ingest</Button>
+        <Button size="sm" onClick={() => openAction("enable")}>Enable</Button>
+        <Button size="sm" onClick={() => openAction("disable")}>Disable</Button>
+        <Button variant="danger" size="sm" onClick={() => openAction("delete")}>Delete</Button>
       </div>
       {confirming && (
         <BulkConfirmDialog
           title={ACTION_META[confirming].title}
           description={ACTION_META[confirming].description}
           count={count}
-          confirmLabel={ACTION_META[confirming].confirmLabel}
+          confirmLabel={confirming === "reingest" && estimate ? "Confirm and reingest" : ACTION_META[confirming].confirmLabel}
           variant={ACTION_META[confirming].variant}
           pending={pending}
           onConfirm={run}
           onCancel={() => setConfirming(null)}
-        />
+        >
+          {confirming === "reingest" && (
+            <BulkReingestChoices
+              replayFrom={replayFrom}
+              onReplayFromChange={(stage) => { setReplayFrom(stage); setUnsupported(null); setEstimate(null); }}
+              pending={pending}
+              estimate={estimate}
+              unsupported={unsupported}
+              queueRetry={queueRetry}
+            />
+          )}
+        </BulkConfirmDialog>
       )}
     </>
   );

@@ -320,8 +320,9 @@ def test_bulk_reingest_filter_fans_out(client, monkeypatch) -> None:
             ingestion=SimpleNamespace(
                 reingest=AsyncMock(side_effect=[_admitted(docs[i], jobs[i]) for i in range(3)])
             ),
-            # The shared enqueue helper reads database.jobs (only touched on a queue failure).
-            jobs=SimpleNamespace(mark_failed=AsyncMock()),
+            # The shared enqueue helper reads database.jobs (only touched on a queue failure); the
+            # bulk admission reads the running jobs to pre-count the in-flight skip.
+            jobs=SimpleNamespace(mark_failed=AsyncMock(), list_active=AsyncMock(return_value=[])),
         ),
     )
     monkeypatch.setattr(CONTEXT.queue, "enqueue_ingest", enqueue)
@@ -365,8 +366,9 @@ def test_bulk_reingest_caps_fanout(client, monkeypatch) -> None:
                     side_effect=[_admitted(docs[0], jobs[0]), _admitted(docs[1], jobs[1])]
                 )
             ),
-            # The shared enqueue helper reads database.jobs (only touched on a queue failure).
-            jobs=SimpleNamespace(mark_failed=AsyncMock()),
+            # The shared enqueue helper reads database.jobs (only touched on a queue failure); the
+            # bulk admission reads the running jobs to pre-count the in-flight skip.
+            jobs=SimpleNamespace(mark_failed=AsyncMock(), list_active=AsyncMock(return_value=[])),
         ),
     )
     monkeypatch.setattr(CONTEXT.queue, "enqueue_ingest", enqueue)
@@ -377,3 +379,136 @@ def test_bulk_reingest_caps_fanout(client, monkeypatch) -> None:
     body = response.json()
     assert body["matched"] == 5 and body["enqueued"] == 2
     assert body["capped"] is True and body["max_fanout"] == 2
+
+
+# -------------------- bulk reingest admission (estimate gate + queue backpressure) --------------------
+def _reingest_database(matched, docs, reingest) -> SimpleNamespace:
+    """A façade stub for the corpus reingest route over ``matched`` resolved ids."""
+    return SimpleNamespace(
+        collections=SimpleNamespace(
+            get=AsyncMock(
+                return_value=SimpleNamespace(
+                    id=COLLECTION_ID, pipeline={}, job_timeout_seconds=None
+                )
+            ),
+            get_schema=AsyncMock(return_value=[]),
+        ),
+        documents=SimpleNamespace(
+            resolve_query_ids=AsyncMock(return_value=matched),
+            get_by_ids=AsyncMock(return_value=docs),
+        ),
+        ingestion=SimpleNamespace(reingest=reingest),
+        jobs=SimpleNamespace(mark_failed=AsyncMock(), list_active=AsyncMock(return_value=[])),
+    )
+
+
+def _estimate(cost: float = 2.5) -> SimpleNamespace:
+    return SimpleNamespace(
+        document_count=3,
+        total_cost_usd=cost,
+        total_cost_lower_bound_usd=cost,
+        cost_complete=True,
+        total_prompt_tokens=100,
+        total_completion_tokens=10,
+        stages=[],
+        caveats=[],
+    )
+
+
+def test_bulk_reingest_above_threshold_is_409_estimate_required(client, monkeypatch) -> None:
+    from backend.context import CONTEXT
+    from config import RUNTIME_CONFIG
+
+    _patch_pipeline_validation(monkeypatch)
+    monkeypatch.setattr(RUNTIME_CONFIG, "CORPUS_REINGEST_CONFIRM_THRESHOLD", 2)
+    matched = [uuid.uuid4() for _ in range(3)]
+    reingest = AsyncMock()
+    estimate = AsyncMock(return_value=_estimate())
+    monkeypatch.setattr(CONTEXT, "database", _reingest_database(matched, [], reingest))
+    monkeypatch.setattr(CONTEXT.estimate_service, "estimate", estimate)
+    response = client.post(
+        f"/api/v1/collections/{COLLECTION_ID}/documents/reingest", json={"filter": {}}
+    )
+    assert response.status_code == 409, response.text
+    detail = response.json()["detail"]
+    assert detail["code"] == "estimate_required"
+    assert detail["matched"] == 3 and detail["threshold"] == 2
+    assert detail["estimate"]["total_cost_usd"] == 2.5
+    # The estimate covers exactly the resolved targets, and nothing was minted.
+    request = estimate.await_args.args[1]
+    assert request.document_ids == [str(i) for i in matched]
+    reingest.assert_not_awaited()
+
+
+def test_bulk_reingest_confirm_estimate_proceeds(client, monkeypatch) -> None:
+    from backend.context import CONTEXT
+    from config import RUNTIME_CONFIG
+
+    _patch_pipeline_validation(monkeypatch)
+    monkeypatch.setattr(RUNTIME_CONFIG, "CORPUS_REINGEST_CONFIRM_THRESHOLD", 2)
+    matched = [uuid.uuid4() for _ in range(3)]
+    docs = [SimpleNamespace(id=i, collection_id=COLLECTION_ID) for i in matched]
+    jobs = [SimpleNamespace(id=uuid.uuid4()) for _ in docs]
+    reingest = AsyncMock(side_effect=[_admitted(docs[i], jobs[i]) for i in range(3)])
+    estimate = AsyncMock(return_value=_estimate())
+    enqueue = AsyncMock()
+    monkeypatch.setattr(CONTEXT, "database", _reingest_database(matched, docs, reingest))
+    monkeypatch.setattr(CONTEXT.estimate_service, "estimate", estimate)
+    monkeypatch.setattr(CONTEXT.queue, "enqueue_ingest", enqueue)
+    response = client.post(
+        f"/api/v1/collections/{COLLECTION_ID}/documents/reingest?confirm_estimate=true",
+        json={"filter": {}},
+    )
+    assert response.status_code == 202, response.text
+    assert response.json()["enqueued"] == 3
+    estimate.assert_not_awaited()
+    assert enqueue.await_count == 3
+
+
+def test_bulk_reingest_saturated_queue_is_429_with_retry_after(client, monkeypatch) -> None:
+    from backend.context import CONTEXT
+    from config import RUNTIME_CONFIG
+
+    _patch_pipeline_validation(monkeypatch)
+    monkeypatch.setattr(RUNTIME_CONFIG, "QUEUE_MAX_DEPTH", 10)
+    monkeypatch.setattr(RUNTIME_CONFIG, "QUEUE_RETRY_AFTER_SECONDS", 33)
+    matched = [uuid.uuid4() for _ in range(3)]
+    reingest = AsyncMock()
+    enqueue = AsyncMock()
+    monkeypatch.setattr(CONTEXT, "database", _reingest_database(matched, [], reingest))
+    monkeypatch.setattr(CONTEXT.queue, "queue_depth", AsyncMock(return_value=9))
+    monkeypatch.setattr(CONTEXT.queue, "enqueue_ingest", enqueue)
+    response = client.post(
+        f"/api/v1/collections/{COLLECTION_ID}/documents/reingest", json={"filter": {}}
+    )
+    assert response.status_code == 429, response.text
+    assert response.headers["Retry-After"] == "33"
+    detail = response.json()["detail"]
+    assert detail["code"] == "queue_saturated"
+    assert detail["queue_depth"] == 9 and detail["requested"] == 3
+    # Refused BEFORE any job was minted — no PENDING orphan.
+    reingest.assert_not_awaited()
+    enqueue.assert_not_awaited()
+
+
+def test_bulk_reingest_admission_discounts_running_documents(client, monkeypatch) -> None:
+    from backend.context import CONTEXT
+    from config import RUNTIME_CONFIG
+
+    _patch_pipeline_validation(monkeypatch)
+    monkeypatch.setattr(RUNTIME_CONFIG, "QUEUE_MAX_DEPTH", 10)
+    matched = [uuid.uuid4() for _ in range(3)]
+    database = _reingest_database(matched, [], AsyncMock())
+    # Two of the three targets already run — only one job would be enqueued, which fits (9 + 1).
+    database.jobs.list_active = AsyncMock(
+        return_value=[
+            SimpleNamespace(document_id=matched[0]),
+            SimpleNamespace(document_id=matched[1]),
+        ]
+    )
+    monkeypatch.setattr(CONTEXT, "database", database)
+    monkeypatch.setattr(CONTEXT.queue, "queue_depth", AsyncMock(return_value=9))
+    response = client.post(
+        f"/api/v1/collections/{COLLECTION_ID}/documents/reingest", json={"filter": {}}
+    )
+    assert response.status_code == 202, response.text

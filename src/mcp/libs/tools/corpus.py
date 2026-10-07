@@ -77,13 +77,33 @@ def register(mcp: FastMCP, sdk: AsyncClient) -> None:
 
     @mcp.tool()
     async def reingest_documents(
-        collection_id: str, selector: dict[str, Any], force: bool = False
+        collection_id: str,
+        selector: dict[str, Any],
+        force: bool = False,
+        replay_from: str | None = None,
+        confirm_estimate: bool = False,
     ) -> Any:
         """
         Bulk re-run the full ingestion over the selected documents (capped fan-out). `selector` is the
         shared id-XOR-filter target. Returns matched/enqueued/capped/skipped_in_flight + one job
         handle per enqueued run (documents that already had a running job are skipped, not re-queued).
+        `replay_from` re-runs only that stage and its downstream on the document's PERSISTED IR (no
+        re-parse, no re-upload) — one of enrich, chunk, metagen_chunk, metagen_document, embed (e.g.
+        `metagen_document` after editing a metagen prompt, `embed` after switching embedder); a stage
+        the pipeline cannot replay is a 422 `replay_unsupported` whose `allowed` lists the valid ones.
+        A LARGE reingest (more documents than the server's confirm threshold) is refused 409
+        `estimate_required`: the error detail carries `matched`, `threshold` and an `estimate`
+        summary (total_cost_usd, tokens, priced_stages, caveats). Show/review that cost, then call
+        this tool AGAIN with the same arguments plus `confirm_estimate=true` to proceed. A 429
+        `queue_saturated` (with Retry-After) means the ingestion queue is full — wait that many
+        seconds and retry; nothing was enqueued.
         """
         return (
-            await sdk.corpus.bulk_reingest(collection_id, DocumentSelector(**selector), force)
+            await sdk.corpus.bulk_reingest(
+                collection_id,
+                DocumentSelector(**selector),
+                force,
+                replay_from=replay_from,
+                confirm_estimate=confirm_estimate,
+            )
         ).model_dump(mode="json")

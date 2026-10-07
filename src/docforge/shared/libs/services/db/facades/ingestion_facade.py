@@ -3,9 +3,9 @@
 # (document + job), blob storage (S3 then registry), the ONE-TRANSACTION save of everything a pure
 # pipeline run produced (facts + pages + metadata + IR + chunks — idempotent on re-ingest via the
 # purge-then-insert pattern), and the vector indexing (ensure the Qdrant collection from the schema,
-# delete the document's stale points, upsert the fresh ones, flag the chunks indexed). Re-ingest is
-# a REPLACE at every layer: Postgres purges-then-inserts, and Qdrant deletes-by-document before
-# upsert (the run remints chunk ids, so a plain upsert would orphan the previous run's points).
+# upsert the fresh points, purge the document's leftover ones, flag the chunks indexed). Re-ingest is
+# a REPLACE at every layer: Postgres purges-then-inserts, and Qdrant upserts the deterministic
+# (document, ordinal) point ids in place, then drops the ids the new run no longer produced.
 
 # ====== Standard Library Imports ======
 import hashlib
@@ -201,21 +201,23 @@ class IngestionFacade(LoggerClass):
                 await DocumentApi.replace_metadata(session, created.id, list(declared_metadata))
         return AdmissionResult(created=True, document=created, job=created_job)
 
-    async def reingest(self, document_id: uuid.UUID) -> ReingestResult:
+    async def reingest(
+        self, document_id: uuid.UUID, replay_from: str | None = None
+    ) -> ReingestResult:
         """
         Re-enqueue ingestion for an EXISTING document — no re-upload needed.
 
         The original bytes are content-addressed (``source_hash``) and the worker refetches them,
         the collection's CURRENT pipeline is read at run time, and a run is idempotent (the previous
-        chunks/IR/pages are purged in ``save`` and the previous Qdrant points are deleted-by-document
-        in ``index`` before the fresh points are upserted — a REPLACE, never an accumulation). So
+        chunks/IR/pages are purged in ``save`` and ``index`` upserts the fresh points in place then purges
+        the previous run's leftover points — a REPLACE, never an accumulation). So
         re-processing a document — e.g. after a pipeline or engine change — is just a fresh job on
         the same document, reset to PENDING. The USER-declared metadata rows survive (never touched
         here).
 
         CONCURRENCY GUARD: a document that already has a live (PENDING/RUNNING) job is REFUSED
         (``ALREADY_ACTIVE``) rather than given a second job — two parallel runs of one document
-        interleave their Qdrant delete-by-document + upsert and strand the loser's points as live
+        interleave their Qdrant upsert + stale-point purge and strand the loser's points as live
         orphans. Two layers enforce this: (1) the document row is locked ``FOR UPDATE`` for the
         admission so two concurrent reingests serialise — the second blocks, then sees the first's
         fresh PENDING job and refuses at the pre-check; (2) the DB invariant
@@ -224,12 +226,20 @@ class IngestionFacade(LoggerClass):
         does not take the document lock), the flush raises and is resolved here to ``ALREADY_ACTIVE``
         pointing at the winning job, never a 500 and never a second active row.
 
+        REPLAY: ``replay_from`` (a post-IR stage key, already validated against the pipeline by the
+        caller) is stamped on the job row — the worker reads it there and re-runs only that stage and
+        its downstream from the persisted IR. It requires a persisted IR (checked under the same lock), and
+        it keeps a DONE/FAILED document's status (not reset to PENDING): the prior content stays served
+        until the replay commits, and a failed replay leaves the status as it was.
+
         Args:
             document_id (uuid.UUID): The document to re-ingest.
+            replay_from (str | None): Replay from this stage instead of a full run (None = full run).
 
         Returns:
             ReingestResult: ADMITTED (+ document + fresh job) when a run was minted; NOT_FOUND for an
-                unknown id; ALREADY_ACTIVE (+ the blocking job id) when a run is already in flight.
+                unknown id; ALREADY_ACTIVE (+ the blocking job id) when a run is already in flight;
+                NOT_REPLAYABLE when a replay was asked but no IR is persisted.
         """
         async with self._postgres.session() as session:
             # 1. Lock the row so a concurrent reingest of the same document can't also pass step 2.
@@ -244,6 +254,9 @@ class IngestionFacade(LoggerClass):
                 return ReingestResult(
                     outcome=ReingestOutcome.ALREADY_ACTIVE, active_job_id=active.id
                 )
+            # 2b. A replay stands on the persisted IR — refuse it when there is none.
+            if replay_from is not None and not await IRApi.has_blocks(session, document_id):
+                return ReingestResult(outcome=ReingestOutcome.NOT_REPLAYABLE)
             # 3. Capture the document's PRIOR job ids (before minting the fresh one) — the run being
             #    replaced; their full-trace payloads are reclaimed after the commit.
             prior_job_ids = await JobApi.list_job_ids_for_document(session, document_id)
@@ -251,7 +264,11 @@ class IngestionFacade(LoggerClass):
             #    the race-safe admission: on the per-document active-job index violation the whole tx
             #    is rolled back and resolved to the winning live job (ALREADY_ACTIVE), so a run that
             #    slipped past the pre-check never mints a second active row.
-            job = Job(document_id=document.id, collection_id=document.collection_id)
+            job = Job(
+                document_id=document.id,
+                collection_id=document.collection_id,
+                replay_from=replay_from,
+            )
             try:
                 created_job = await JobApi.create(session, job)
             except IntegrityError as error:
@@ -263,7 +280,13 @@ class IngestionFacade(LoggerClass):
                     outcome=ReingestOutcome.ALREADY_ACTIVE,
                     active_job_id=existing.id if existing is not None else None,
                 )
-            await DocumentApi.set_status(session, document_id, DocumentStatus.PENDING)
+            # A replay keeps a DONE/FAILED document's status: its persisted chunks/points stay served
+            # until the replay commits, and a failed replay must leave that status as it was.
+            if replay_from is None or document.status not in (
+                DocumentStatus.DONE,
+                DocumentStatus.FAILED,
+            ):
+                await DocumentApi.set_status(session, document_id, DocumentStatus.PENDING)
         # 5. Reclaim the superseded runs' full-trace payloads (best-effort — the old job rows survive
         #    a reingest, so this also clears their now-dangling refs; a failure never blocks the run).
         await TracePurgeHelper.purge(self._postgres, self._s3, prior_job_ids)
@@ -485,6 +508,22 @@ class IngestionFacade(LoggerClass):
         async with self._postgres.session() as session:
             await DocumentApi.set_status(session, document_id, DocumentStatus.FAILED)
 
+    async def mark_replay_failed(self, document_id: uuid.UUID, warning_reason: str) -> None:
+        """
+        Record a failed REPLAY without demoting the document (its previous content is still served).
+
+        A replay persists nothing before its single downstream commit, so a failure leaves the prior
+        chunks/points intact: the document keeps its DONE/FAILED status and gets a visible warning.
+        Only a document with no trustworthy prior status (PENDING/PROCESSING — admission reset it)
+        falls back to FAILED.
+
+        Args:
+            document_id (uuid.UUID): The replayed document.
+            warning_reason (str): The human-readable failure surfaced on the document.
+        """
+        async with self._postgres.session() as session:
+            await DocumentApi.flag_replay_failure(session, document_id, warning_reason)
+
     async def index(
         self,
         collection_id: uuid.UUID,
@@ -496,11 +535,12 @@ class IngestionFacade(LoggerClass):
         Push a document's chunk vectors into Qdrant (replacing its old points) and flag them indexed.
 
         The Qdrant collection is ensured (lazily created) from the CURRENT metadata schema; a
-        dimension change without reindex surfaces as a loud upsert error, never silently. Because
-        each run mints FRESH chunk point ids (the translator's chunk-UUID remap), a re-ingest's new
-        points would NOT overwrite the previous run's — so the document's old points are deleted
-        first (scoped to this one document_id), making a re-ingest a REPLACE, not an accumulation.
-        On a first ingest the delete is a harmless no-op (the document has no points yet).
+        dimension change without reindex surfaces as a loud upsert error, never silently. Point ids
+        are deterministic per (document, chunk ordinal) (the translator's UUID v5 remap), so the
+        fresh points are upserted FIRST — overwriting the previous run's same-ordinal points in place
+        — and only THEN are the document's leftover points (ids this run no longer produced: a
+        shorter re-chunk, a now-disabled chunk) deleted. A re-ingest is a REPLACE, never an
+        accumulation, and a failed upsert leaves the previous points serving instead of none.
 
         Args:
             collection_id (uuid.UUID): The target collection.
@@ -529,13 +569,15 @@ class IngestionFacade(LoggerClass):
         # 2. Refuse points carrying a named vector the store never declared (before any purge, so a
         #    failed re-ingest keeps the document's previous points) — Qdrant would 400 on the upsert.
         await self._guard_declared_vectors(collection_id, name, schema, points)
-        # 3. Purge this document's previous points BEFORE upserting the fresh ones — the run remints
-        #    chunk ids, so without this a re-ingest would leave the old points orphaned (live
-        #    document_id + enabled payload → polluting the candidate pool and growing Qdrant
-        #    unbounded). Scoped to the single document; a first ingest deletes nothing.
-        await QdrantIndexApi.delete_by_document(self._qdrant.raw, name, document_id)
-        # 4. Upsert, then flag the chunks as indexed.
+        # 3. Upsert FIRST (deterministic ids overwrite the previous run's points in place), THEN purge
+        #    the document's leftover points this run did not produce — otherwise they would survive
+        #    as orphans (live document_id + enabled payload → polluting the candidate pool). Never
+        #    delete-then-upsert: a failed upsert would leave the document with zero points.
         await QdrantIndexApi.upsert(self._qdrant.raw, name, points)
+        await QdrantIndexApi.delete_stale_for_document(
+            self._qdrant.raw, name, document_id, [point.point_id for point in points]
+        )
+        # 4. Flag the chunks as indexed.
         async with self._postgres.session() as session:
             await ChunkApi.mark_indexed(session, [uuid.UUID(point.point_id) for point in points])
         # 5. Advance the indexed baseline: the vectors just landed under the CURRENT config, so stamp

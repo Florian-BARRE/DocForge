@@ -27,6 +27,7 @@ class JobStatus(BaseModel):
         collection_id (str): Its collection.
         status (str): queued / running / done / failed.
         kind (str): ingest, metadata_sync (per-document metadata re-embed) or rebuild_index.
+        replay_from (str | None): The stage an ingest job replays from (None = a full run).
         progress (int): 0–100 (completed pipeline nodes over total).
         current_stage (str | None): The node currently (or last) executed.
         error (str | None): The failure — only set when status is failed; verbatim for a
@@ -80,6 +81,11 @@ class JobStatus(BaseModel):
         "'metadata_sync' (a lightweight per-document metadata re-embed after an in-place value edit) or "
         "'rebuild_index' (a collection-level vector-store rebuild — document_id is null). "
         "Lets the UI/Activity render a side-job distinctly from a full ingestion."
+    )
+    replay_from: str | None = Field(
+        default=None,
+        description="For an ingest job re-running from a stage on the persisted IR (replay_from "
+        "reingest): that stage key (e.g. 'embed'). None for a full pipeline run.",
     )
     cancel_requested: bool = Field(
         default=False,
@@ -186,6 +192,9 @@ class JobStatus(BaseModel):
             collection_name=collection_name,
             status=job.status.value,
             kind=job.kind.value,
+            replay_from=(
+                job.replay_from if isinstance(getattr(job, "replay_from", None), str) else None
+            ),
             cancel_requested=bool(getattr(job, "cancel_requested", False)),
             progress=job.progress,
             current_stage=job.current_stage,

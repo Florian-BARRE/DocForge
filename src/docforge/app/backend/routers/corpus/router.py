@@ -20,6 +20,7 @@ from shared_libs.services.db.postgresql.tables import Collection
 
 # ====== Local Project Imports ======
 from ...context import CONTEXT
+from ...libs.admission import QueueAdmission, ReingestEstimateGate
 from ...libs.auth import AuthPrincipal, AuthzGuard, Capability, require
 from ...libs.collection_ref import CollectionRef
 from ...libs.corpus import (
@@ -32,7 +33,8 @@ from ...libs.corpus import (
     DocumentSelector,
     DocumentSelectorResolver,
 )
-from ...libs.reingest import BulkReingestService
+from ...libs.estimate import CollectionEstimateRequest
+from ...libs.reingest import BulkReingestService, ReplayGuard
 from ...utils.error_handling import auto_handle_errors
 from ...utils.pipeline_validation import PipelineBlobValidator
 
@@ -211,6 +213,18 @@ async def bulk_reingest(
         description="Bypass the stage cache and recompute every stage from scratch (no cache "
         "read/write). Use to rebuild after a code change that did not bump a node's CACHE_VERSION.",
     ),
+    replay_from: str | None = Query(
+        default=None,
+        description="Replay only this post-IR stage and its downstream from each document's "
+        "persisted IR (no re-parse) — e.g. embed, metagen_document, chunk. 422 lists the stages the "
+        "collection's pipeline allows. Omit for a full re-run.",
+    ),
+    confirm_estimate: bool = Query(
+        default=False,
+        description="Acknowledge the cost estimate of a reingest matching more documents than "
+        "CORPUS_REINGEST_CONFIRM_THRESHOLD; without it such a call is refused 409 estimate_required "
+        "carrying the estimate summary.",
+    ),
     principal: AuthPrincipal = Depends(require(Capability.WRITE)),
 ) -> BulkReingestResponse:
     """
@@ -223,7 +237,9 @@ async def bulk_reingest(
 
     Returns:
         BulkReingestResponse: matched / enqueued / capped + one job handle per run (202); 404 unknown
-            collection, 422 on a stale/broken pipeline or a bad selector.
+            collection, 422 on a stale/broken pipeline, a bad selector or an unreplayable stage, 409
+            ``estimate_required`` above the confirm threshold without ``confirm_estimate``, 429
+            ``queue_saturated`` (+ Retry-After) when the queue cannot absorb the fan-out.
     """
     # 1. Existence + scope.
     collection = await _require_scoped_collection(collection_id, principal)
@@ -234,6 +250,8 @@ async def bulk_reingest(
     except BlobNormalizationError as exc:
         raise HTTPException(status_code=422, detail=f"Collection {collection_id}: {exc}")
     PipelineBlobValidator.validate(pipeline_blob)
+    # 2b. A replay must be honourable by THIS pipeline (422 names why + the allowed stages).
+    ReplayGuard.assert_replayable(collection, replay_from)
 
     # 3. Resolve the selector to the concrete target id set (422 on a bad selector).
     schema = await CONTEXT.database.collections.get_schema(collection_id)
@@ -244,10 +262,31 @@ async def bulk_reingest(
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
 
+    # 3b. A LARGE reingest must be acknowledged (409 estimate_required carries the estimate over the
+    #     SAME targets, priced on the replayed stages only when replay_from is set).
+    await ReingestEstimateGate(
+        CONTEXT.estimate_service, RUNTIME_CONFIG.CORPUS_REINGEST_CONFIRM_THRESHOLD
+    ).require(
+        collection_id,
+        len(matched),
+        confirm_estimate,
+        CollectionEstimateRequest(document_ids=[str(document_id) for document_id in matched]),
+        replay_from=replay_from,
+        technical=AuthzGuard.holds(principal, Capability.READ_TECHNICAL),
+    )
+
     # 4. Fan out through the SHARED capped path — caps the fan-out (never floods the queue with 100k
-    #    jobs on one call) and fetches + enqueues the kept documents; same code the collection route uses.
+    #    jobs on one call), applies the queue backpressure (429) before minting any job, then fetches +
+    #    enqueues the kept documents; same code the collection route uses.
     result = await BulkReingestService(CONTEXT.database, CONTEXT.queue).enqueue_capped(
-        collection, matched, RUNTIME_CONFIG.CORPUS_MAX_REINGEST_FANOUT, force=force
+        collection,
+        matched,
+        RUNTIME_CONFIG.CORPUS_MAX_REINGEST_FANOUT,
+        force=force,
+        replay_from=replay_from,
+        admission=QueueAdmission(
+            CONTEXT.queue, RUNTIME_CONFIG.QUEUE_MAX_DEPTH, RUNTIME_CONFIG.QUEUE_RETRY_AFTER_SECONDS
+        ),
     )
     return BulkReingestResponse(
         collection_id=str(collection_id),
@@ -256,6 +295,7 @@ async def bulk_reingest(
         capped=result.capped,
         max_fanout=result.ceiling,
         skipped_in_flight=result.skipped_in_flight,
+        skipped_not_replayable=result.skipped_not_replayable,
         jobs=result.handles,
     )
 

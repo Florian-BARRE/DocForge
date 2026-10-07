@@ -15,6 +15,9 @@ class BulkReingestRequest(BaseModel):
     Attributes:
         document_ids (list[str] | None): The explicit subset to re-run. Omit or null → EVERY
             document in the collection. An empty list is rejected (an ambiguous no-op).
+        force (bool): Bypass the stage cache.
+        replay_from (str | None): Replay from this post-IR stage (no re-parse); None = full re-run.
+        confirm_estimate (bool): Acknowledge the estimate of a reingest above the confirm threshold.
     """
 
     document_ids: list[str] | None = Field(
@@ -25,6 +28,19 @@ class BulkReingestRequest(BaseModel):
         default=False,
         description="Bypass the stage cache and recompute every stage from scratch (no cache "
         "read/write). Use to rebuild after a code change that did not bump a node's CACHE_VERSION.",
+    )
+    replay_from: str | None = Field(
+        default=None,
+        description="Replay only this post-IR stage and its downstream from each document's PERSISTED "
+        "IR (no re-parse): one of enrich, chunk, metagen_chunk, metagen_document, embed — as the "
+        "collection's pipeline allows (422 lists the allowed stages). Only the downstream layers are "
+        "replaced. Omit for a full re-run.",
+    )
+    confirm_estimate: bool = Field(
+        default=False,
+        description="Acknowledge the cost estimate of a LARGE reingest (more documents than "
+        "CORPUS_REINGEST_CONFIRM_THRESHOLD). Without it such a call is refused 409 estimate_required "
+        "carrying the estimate summary; review it and resend with true.",
     )
 
 
@@ -68,6 +84,10 @@ class BulkReingestAccepted(BaseModel):
     skipped_in_flight: int = Field(
         default=0,
         description="Documents skipped because an ingestion job was already active for them.",
+    )
+    skipped_not_replayable: int = Field(
+        default=0,
+        description="Documents skipped by a replay_from run because they have no persisted IR.",
     )
     jobs: list[ReingestJobHandle] = Field(description="One handle per enqueued run.")
 

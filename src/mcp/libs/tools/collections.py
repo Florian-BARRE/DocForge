@@ -358,7 +358,11 @@ def register(mcp: FastMCP, sdk: AsyncClient) -> None:
 
     @mcp.tool()
     async def reingest_collection(
-        collection_id: str, document_ids: list[str] | None = None, force: bool = False
+        collection_id: str,
+        document_ids: list[str] | None = None,
+        force: bool = False,
+        replay_from: str | None = None,
+        confirm_estimate: bool = False,
     ) -> Any:
         """
         Re-run the full pipeline over a collection's corpus — every document, or an explicit
@@ -368,8 +372,23 @@ def register(mcp: FastMCP, sdk: AsyncClient) -> None:
         match above the server's fan-out ceiling enqueues only the first N and reports
         `capped=true` with the full `matched` count — poll each returned job handle for progress.
         Documents that already have a running job are skipped (`skipped_in_flight`), not re-queued.
+        `replay_from` re-runs only that stage and its downstream on the document's PERSISTED IR (no
+        re-parse, no re-upload) — one of enrich, chunk, metagen_chunk, metagen_document, embed (e.g.
+        `metagen_document` after editing a metagen prompt, `embed` after switching embedder); a stage
+        the pipeline cannot replay is a 422 `replay_unsupported` whose `allowed` lists the valid ones. Documents with no persisted IR are skipped (`skipped_not_replayable`).
+        A LARGE reingest (more documents than the server's confirm threshold) is refused 409
+        `estimate_required`: the error detail carries `matched`, `threshold` and an `estimate`
+        summary (total_cost_usd, tokens, priced_stages, caveats). Show/review that cost, then call
+        this tool AGAIN with the same arguments plus `confirm_estimate=true` to proceed. A 429
+        `queue_saturated` (with Retry-After) means the ingestion queue is full — wait that many
+        seconds and retry; nothing was enqueued.
         """
-        request = BulkReingestRequest(document_ids=document_ids, force=force)
+        request = BulkReingestRequest(
+            document_ids=document_ids,
+            force=force,
+            replay_from=replay_from,
+            confirm_estimate=confirm_estimate,
+        )
         accepted = await sdk.collections.reingest(collection_id, request)
         return accepted.model_dump(mode="json")
 

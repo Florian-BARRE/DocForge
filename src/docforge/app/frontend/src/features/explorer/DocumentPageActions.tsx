@@ -7,7 +7,11 @@
 import { useState } from "react";
 import { deleteDocument } from "../../api/explorer";
 import { reingestDocument } from "../../api/documents";
+import { HttpError } from "../../api/http";
+import { readReplayUnsupported, type ReplayFrom, type ReplayUnsupported } from "../../api/reingest";
 import { Button } from "../../components/Button";
+import { ReplayStageSelect } from "../../components/reingest/ReplayStageSelect";
+import { ReplayUnsupportedNotice } from "../../components/reingest/ReplayUnsupportedNotice";
 import { theme } from "../../theme";
 import type { Navigate } from "../../shell/view";
 import { useToast } from "../../shell/toast";
@@ -28,6 +32,8 @@ export function DocumentPageActions({
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [reingesting, setReingesting] = useState(false);
+  const [replayFrom, setReplayFrom] = useState<ReplayFrom>(null);
+  const [unsupported, setUnsupported] = useState<ReplayUnsupported | null>(null);
 
   const handleDelete = async () => {
     setDeleting(true);
@@ -44,14 +50,17 @@ export function DocumentPageActions({
 
   const handleReingest = async () => {
     setReingesting(true);
+    setUnsupported(null);
     try {
       // Re-runs the stored original through the collection's current pipeline — no re-upload. Jump
       // to the new job so its progress (and the live stage feed) is watched straight away.
-      const { job_id } = await reingestDocument(documentId);
+      const { job_id } = await reingestDocument(documentId, { replayFrom });
       toast.success("Re-ingest started");
       onNavigate({ name: "job", collectionId, jobId: job_id });
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : String(e));
+      const refusal = readReplayUnsupported(e);
+      if (refusal) setUnsupported(refusal);
+      else toast.error(e instanceof HttpError || e instanceof Error ? e.message : String(e));
       setReingesting(false);
     }
   };
@@ -59,7 +68,19 @@ export function DocumentPageActions({
   return (
     <>
       <DocumentEnabledToggle documentId={documentId} enabled={enabled} onChanged={onEnabledChanged} />
+      <ReplayStageSelect
+        compact
+        value={replayFrom}
+        onChange={(stage) => { setReplayFrom(stage); setUnsupported(null); }}
+        allowed={unsupported?.allowed}
+        disabled={reingesting}
+      />
       <Button onClick={handleReingest} disabled={reingesting}>{reingesting ? "re-ingesting…" : "Re-ingest"}</Button>
+      {unsupported && (
+        <div style={{ flexBasis: "100%" }}>
+          <ReplayUnsupportedNotice issue={unsupported} onPick={(stage) => { setReplayFrom(stage); setUnsupported(null); }} />
+        </div>
+      )}
       {confirmingDelete ? (
         <span style={{ display: "inline-flex", gap: theme.space.s, alignItems: "center" }}>
           <span style={{ color: theme.color.dim, fontSize: theme.font.size.s }}>Delete for good?</span>

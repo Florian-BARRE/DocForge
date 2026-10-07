@@ -50,6 +50,8 @@ class ParserGraniteDoclingNode(BaseDoclingParserNode):
     NATIVE_FORMATS = frozenset()
 
     _PIPELINE = "vlm"
+    # CUDA-bound VLM: the deployment-wide RLIMIT_AS fallback would break its virtual reservations.
+    _MEMORY_FALLBACK = False
     # Own converter cache + locks so the VLM and standard flavours never share a dict/lock.
     _converters: dict[tuple[Any, ...], Any] = {}
     _build_lock = threading.Lock()

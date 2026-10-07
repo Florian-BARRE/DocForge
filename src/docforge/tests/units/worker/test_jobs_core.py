@@ -552,3 +552,67 @@ async def test_cooperative_cancel_at_boundary_terminates_without_failing(
     database.jobs.force_terminate.assert_awaited_once()
     database.jobs.mark_done.assert_not_awaited()
     database.jobs.mark_failed.assert_not_awaited()
+
+
+def _replay_job(stage: str = "chunk") -> SimpleNamespace:
+    from shared_libs.services.db.postgresql.tables import JobStatus  # noqa: PLC0415
+
+    return SimpleNamespace(status=JobStatus.PENDING, replay_from=stage)
+
+
+async def test_replay_failure_fails_the_job_but_keeps_the_document_status(
+    jobs_core, monkeypatch
+) -> None:
+    """M-1: a failed replay commits nothing, so the document's previous chunks/points are still
+    served — the JOB goes FAILED, the DOCUMENT keeps its status and only gets a warning."""
+    import pytest  # noqa: PLC0415
+
+    database = _fake_database()
+    database.ingestion.mark_replay_failed = AsyncMock()
+    document_id, _ = _wire(jobs_core, monkeypatch, database, points=[MagicMock()])
+    database.jobs.get = AsyncMock(return_value=_replay_job())
+    monkeypatch.setattr(
+        jobs_core.ReplayRun, "execute", AsyncMock(side_effect=RuntimeError("embed exploded"))
+    )
+
+    with pytest.raises(RuntimeError, match="embed exploded"):
+        await jobs_core.ingest_document({}, str(document_id), str(uuid.uuid4()))
+
+    database.ingestion.mark_failed.assert_not_awaited()
+    database.ingestion.mark_replay_failed.assert_awaited_once()
+    warned_id, warning = database.ingestion.mark_replay_failed.await_args.args
+    assert warned_id == document_id and "Replay from 'chunk' failed" in warning
+    assert "embed exploded" in warning
+    database.jobs.mark_failed.assert_awaited_once()
+
+
+async def test_replay_never_downloads_the_original_bytes(jobs_core, monkeypatch) -> None:
+    """L-3: a replay stands on the persisted IR — it must not fetch (nor depend on) the source
+    object, which may have been garbage-collected."""
+    database = _fake_database()
+    document_id, _ = _wire(jobs_core, monkeypatch, database, points=[])
+    database.jobs.get = AsyncMock(return_value=_replay_job("embed"))
+    s3_get = AsyncMock(side_effect=AssertionError("replay must not read S3"))
+    monkeypatch.setattr(jobs_core.S3ObjectApi, "get", s3_get)
+    execute = AsyncMock()
+    monkeypatch.setattr(jobs_core.ReplayRun, "execute", execute)
+
+    await jobs_core.ingest_document({}, str(document_id), str(uuid.uuid4()))
+
+    s3_get.assert_not_awaited()
+    assert execute.await_args.args[0].stage == "embed"
+    database.jobs.mark_failed.assert_not_awaited()
+
+
+async def test_full_run_failure_still_marks_the_document_failed(jobs_core, monkeypatch) -> None:
+    """The replay carve-out never leaks into a full run: its failure still flags the document."""
+    import pytest  # noqa: PLC0415
+
+    database = _fake_database()
+    database.ingestion.mark_replay_failed = AsyncMock()
+    document_id, context = _wire(jobs_core, monkeypatch, database, points=[MagicMock()])
+    context.runner.run = AsyncMock(side_effect=RuntimeError("boom"))
+    with pytest.raises(RuntimeError):
+        await jobs_core.ingest_document({}, str(document_id), str(uuid.uuid4()))
+    database.ingestion.mark_failed.assert_awaited_once_with(document_id)
+    database.ingestion.mark_replay_failed.assert_not_awaited()

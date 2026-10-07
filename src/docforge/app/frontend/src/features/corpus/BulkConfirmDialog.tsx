@@ -4,7 +4,7 @@
 // features/auth/CreatedKeyModal.tsx (feature-local duplicate, not shared — see feature-slice
 // isolation convention).
 
-import { useId } from "react";
+import { useId, type ReactNode } from "react";
 import { Button, type ButtonVariant } from "../../components/Button";
 import { useFocusTrap } from "../../shell/useFocusTrap";
 import { theme } from "../../theme";
@@ -18,9 +18,11 @@ interface BulkConfirmDialogProps {
   pending: boolean;
   onConfirm: () => void;
   onCancel: () => void;
+  /** Extra controls/notices between the count and the buttons (e.g. the reingest stage choice). */
+  children?: ReactNode;
 }
 
-export function BulkConfirmDialog({ title, description, count, confirmLabel, variant, pending, onConfirm, onCancel }: BulkConfirmDialogProps) {
+export function BulkConfirmDialog({ title, description, count, confirmLabel, variant, pending, onConfirm, onCancel, children }: BulkConfirmDialogProps) {
   const titleId = useId();
   const panelRef = useFocusTrap<HTMLDivElement>(onCancel);
 
@@ -50,6 +52,7 @@ export function BulkConfirmDialog({ title, description, count, confirmLabel, var
         <div style={{ fontFamily: theme.font.mono, fontSize: theme.font.size.xl, color: theme.color.accentSafe, fontWeight: 700 }}>
           {count.toLocaleString()} document{count === 1 ? "" : "s"}
         </div>
+        {children}
         <div style={{ display: "flex", gap: theme.space.s, justifyContent: "flex-end" }}>
           <Button size="sm" disabled={pending} onClick={onCancel}>Cancel</Button>
           <Button variant={variant} size="sm" disabled={pending} onClick={onConfirm}>{pending ? "working…" : confirmLabel}</Button>

@@ -1,8 +1,8 @@
 # ====== Code Summary ======
 # QdrantIndexApi — the WRITE operations of the vector store: upsert points (id = chunk id), delete a
-# document's points (the re-ingest cleanup — the ingestion facade deletes-by-document before it
-# upserts, because each run remints chunk ids so a plain upsert would NOT overwrite the previous
-# run's points), and the two POST-HOC metagen writes on EXISTING points — patch payload values (a
+# document's points (document delete), delete only a document's STALE points (the re-ingest cleanup —
+# point ids are deterministic per (document, chunk ordinal), so the ingestion facade upserts FIRST,
+# overwriting in place, then drops the ids the new run no longer produced), and the two POST-HOC metagen writes on EXISTING points — patch payload values (a
 # filterable generated field) and update named vectors (a semantic/lexical generated field) — so new
 # chunk metadata lands in the index without re-embedding the content. Converts the clean QdrantPoint
 # into qdrant structs; nothing leaks up.
@@ -90,8 +90,8 @@ class QdrantIndexApi:
 
     @staticmethod
     async def upsert(client: AsyncQdrantClient, name: str, points: Sequence[QdrantPoint]) -> None:
-        """Upsert points (id = chunk id) — a matching id overwrites in place. Re-ingest mints NEW
-        chunk ids, so its idempotency comes from the facade's prior delete-by-document, not here."""
+        """Upsert points (id = chunk id) — a matching id overwrites in place. Point ids are
+        deterministic per (document, ordinal); the facade's post-upsert stale purge drops the rest."""
         # Byte-bounded batches so no single request exceeds Qdrant's limit (empty input → no batch).
         for batch in QdrantIndexApi.__batched_by_bytes(points, QdrantIndexApi._to_struct):
             await client.upsert(collection_name=name, points=batch)
@@ -160,6 +160,37 @@ class QdrantIndexApi:
                         key=DOCUMENT_ID_KEY, match=models.MatchValue(value=str(document_id))
                     )
                 ]
+            ),
+        )
+
+    @staticmethod
+    async def delete_stale_for_document(
+        client: AsyncQdrantClient, name: str, document_id: uuid.UUID, keep_ids: Sequence[str]
+    ) -> None:
+        """
+        Delete a document's points whose id is NOT in ``keep_ids`` (the post-upsert stale purge).
+
+        Run AFTER the fresh points were upserted: the document is never left without points, even if
+        this purge (or the upsert before it) fails. Guards the missing-collection case like
+        ``delete_by_document``.
+
+        Args:
+            client (AsyncQdrantClient): The raw Qdrant client.
+            name (str): The collection's Qdrant collection name.
+            document_id (uuid.UUID): The document whose leftover points are purged.
+            keep_ids (Sequence[str]): The point ids the current run produced (kept).
+        """
+        if not await QdrantAliasApi.resolve_or_adopt(client, name):
+            return
+        await client.delete(
+            collection_name=name,
+            points_selector=models.Filter(
+                must=[
+                    models.FieldCondition(
+                        key=DOCUMENT_ID_KEY, match=models.MatchValue(value=str(document_id))
+                    )
+                ],
+                must_not=[models.HasIdCondition(has_id=list(keep_ids))] if keep_ids else None,
             ),
         )
 

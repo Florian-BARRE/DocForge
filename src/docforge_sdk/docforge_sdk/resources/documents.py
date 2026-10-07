@@ -83,11 +83,12 @@ class _DocumentsSpecs(_ResourceMixin):
             json=MetadataValuesPatch(values=values).model_dump(mode="json"),
         )
 
-    def _reingest_spec(self, document_id: str, force: bool) -> RequestSpec:
-        """A POST re-running the full ingestion of one document (``force`` bypasses the doc cache)."""
-        return RequestSpec(
-            "POST", f"{self._DOCUMENTS_PATH}/{document_id}/reingest", params={"force": force}
-        )
+    def _reingest_spec(self, document_id: str, force: bool, replay_from: str | None) -> RequestSpec:
+        """A POST re-running one document (``force`` bypasses the cache, ``replay_from`` skips parse)."""
+        params: dict[str, object] = {"force": force}
+        if replay_from is not None:
+            params["replay_from"] = replay_from
+        return RequestSpec("POST", f"{self._DOCUMENTS_PATH}/{document_id}/reingest", params=params)
 
     def _purge_trace_payloads_spec(self, document_id: str) -> RequestSpec:
         """A POST reclaiming one document's stored full execution-trace payloads (best-effort)."""
@@ -179,19 +180,23 @@ class AsyncDocuments(AsyncResource, _DocumentsSpecs):
             self._update_metadata_spec(document_id, values), MetadataUpdateResponse
         )
 
-    async def reingest(self, document_id: str, force: bool = False) -> UploadAccepted:
+    async def reingest(
+        self, document_id: str, force: bool = False, replay_from: str | None = None
+    ) -> UploadAccepted:
         """
         Re-run the full ingestion of a single document.
 
         Args:
             document_id (str): The document to re-ingest.
             force (bool): Bypass the document cache and re-run every stage.
+            replay_from (str | None): Replay only this post-IR stage and its downstream on the
+                persisted IR (no re-parse); 422 ``replay_unsupported`` lists the allowed stages.
 
         Returns:
             UploadAccepted: The fresh ingestion job handle (poll it for status).
         """
         return await self._transport.request(
-            self._reingest_spec(document_id, force), UploadAccepted
+            self._reingest_spec(document_id, force, replay_from), UploadAccepted
         )
 
     async def purge_trace_payloads(self, document_id: str) -> TracePurgeResult:
@@ -301,9 +306,13 @@ class SyncDocuments(SyncResource, _DocumentsSpecs):
             self._update_metadata_spec(document_id, values), MetadataUpdateResponse
         )
 
-    def reingest(self, document_id: str, force: bool = False) -> UploadAccepted:
-        """Re-run the full ingestion of a single document (``force`` bypasses the doc cache)."""
-        return self._transport.request(self._reingest_spec(document_id, force), UploadAccepted)
+    def reingest(
+        self, document_id: str, force: bool = False, replay_from: str | None = None
+    ) -> UploadAccepted:
+        """Re-run one document (``force`` bypasses the cache, ``replay_from`` skips the re-parse)."""
+        return self._transport.request(
+            self._reingest_spec(document_id, force, replay_from), UploadAccepted
+        )
 
     def purge_trace_payloads(self, document_id: str) -> TracePurgeResult:
         """Reclaim one document's stored full execution-trace payloads (idempotent, best-effort)."""

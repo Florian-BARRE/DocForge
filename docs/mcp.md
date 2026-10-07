@@ -89,7 +89,7 @@ vector space is fixed at creation), plus optional ingestion/search pipeline blob
 | `set_collection_alias` | Create an alias or re-point ("switch") it (`name`, `collection_id`, `confirm=false`). Creating writes at once; re-pointing an existing alias without `confirm=true` writes nothing and returns the old → new target. Full-access admin key only. |
 | `delete_collection_alias` | Delete an alias (`name`); the collection is untouched. Full-access admin key only; refused (409) while live keys are scoped `alias:<name>`. |
 | `collection_health` | Zero-spend, on-demand provider-reachability sweep across the ingest AND search graphs, plus index/doc stats and a rolled-up verdict. No job enqueued, nothing billed. |
-| `reingest_collection` | Re-run the full pipeline over a collection's corpus (`collection_id`, optional `document_ids` subset, `force`) — the collection-scoped bulk reingest. Capped fan-out, one job handle per enqueued run. Answers `409 rebuild_index_required` while the index lacks a named vector: run `rebuild_collection_index` first. |
+| `reingest_collection` | Re-run the full pipeline over a collection's corpus (`collection_id`, optional `document_ids` subset, `force`, `replay_from`, `confirm_estimate`) — the collection-scoped bulk reingest. Capped fan-out, one job handle per enqueued run. `replay_from` (`enrich`·`chunk`·`metagen_chunk`·`metagen_document`·`embed`) replays from the persisted IR without re-parse (`422 replay_unsupported` lists the allowed stages). Above the confirm threshold it answers `409 estimate_required` with the cost estimate: review it, then re-call with `confirm_estimate=true`. `429 queue_saturated` = queue full, retry after `Retry-After`. Answers `409 rebuild_index_required` while the index lacks a named vector: run `rebuild_collection_index` first. |
 | `rebuild_collection_index` | Rebuild a collection's vector index from its current schema, without re-embedding content (`collection_id`). Use it after a field was made semantic/lexical post-ingest (search `422` / reingest `409 rebuild_index_required`). Returns a `job_id` to follow with `wait_for_job`; the job's `document_id` is null. Uploads/reingests get `409 rebuild_index_active` while it runs. |
 
 ### Documents (upload / admission)
@@ -187,7 +187,7 @@ multi-GB) — `get_export_download_ref` instead points the caller at the REST do
 | `query_documents` | One filtered/sorted/paginated page of a collection's documents + total match count (`collection_id`, `filter`, `sort`, `limit`, `offset`). Rows carry the catalogue fields + a `{field_name: value}` metadata map. |
 | `delete_documents` | Bulk-delete by selector (`{document_ids:[…]}` XOR `{filter:{…}, exclude_ids:[…]}`) — everywhere (PG + Qdrant + S3). |
 | `set_documents_enabled` | Bulk enable/disable searchability by selector (`enabled`). |
-| `reingest_documents` | Bulk re-run the full ingestion by selector (`force`), capped fan-out, one job handle per run. |
+| `reingest_documents` | Bulk re-run the ingestion by selector (`force`, `replay_from`, `confirm_estimate`), capped fan-out, one job handle per run. Same `409 estimate_required` → re-call with `confirm_estimate=true`, and `429 queue_saturated` contract as `reingest_collection`. |
 
 ### Jobs telemetry & introspection
 
@@ -196,7 +196,7 @@ multi-GB) — `get_export_download_ref` instead points the caller at the REST do
 | `get_collection_cost` | Paid text-gen roll-up (tokens + USD) for a collection. |
 | `get_queue_depth` | Backlog counters (pending/running) — fleet-wide (root) or per-collection. |
 | `get_stage_durations` | Average per-stage wall-clock for a collection (a running job's ETA basis). |
-| `reingest_document` | Re-run the full ingestion of a single document (`force`). |
+| `reingest_document` | Re-run the ingestion of a single document (`force`, `replay_from` — replay a post-IR stage without re-parse). Never estimate-gated. |
 | `get_collection_contract_schema` | JSON Schema of the collection identity/limits contract (build a valid create/update). |
 | `whoami` | The calling token's own capabilities, collection scope and usage `profile` — what it may do. |
 

@@ -26,7 +26,7 @@ from shared_libs.public_models import DocumentIR, IntakeResult
 from ..base import BaseParserNode
 from ..docling.mapper import DoclingIRMapper
 from .config import BaseDoclingParserConfig
-from .subprocess import DoclingSubprocessPool
+from .subprocess import DoclingSubprocessPool, ParseMemoryFallback
 
 
 class BaseDoclingParserNode(BaseParserNode):
@@ -36,6 +36,11 @@ class BaseDoclingParserNode(BaseParserNode):
     # the FIRST element of every cache key so two Docling flavours can never share a cached converter —
     # a belt-and-braces guard on top of each concrete class owning its OWN cache dict (below).
     _PIPELINE: str = "docling"
+
+    # Whether the deployment-wide parse-memory fallback (WORKER_PARSE_MEMORY_MB) applies when the
+    # collection leaves parse_memory_mb at 0. A flavour that runs on CUDA turns it off: an RLIMIT_AS cap
+    # breaks CUDA's large virtual reservations.
+    _MEMORY_FALLBACK: bool = True
 
     # Structured text formats read natively from the ORIGINAL bytes → temp-file suffix (Docling picks
     # its backend from the extension). A child with no native path leaves NATIVE_FORMATS empty and
@@ -142,7 +147,9 @@ class BaseDoclingParserNode(BaseParserNode):
             suffix=suffix,
             source_hash=source.source_hash,
             timeout_seconds=config.parse_timeout_seconds,
-            memory_mb=config.parse_memory_mb,
+            memory_mb=ParseMemoryFallback.resolve(
+                config.parse_memory_mb, applies=self._MEMORY_FALLBACK
+            ),
         )
 
 

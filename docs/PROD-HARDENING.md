@@ -172,6 +172,17 @@ at `WORKER_CONCURRENCY=2` on a single VM the blast radius is small and a subproc
 + cold-model-load cost + orphan-process management. Revisit if concurrency rises or you go
 multi-worker.
 
+### Mass-reingest protection (shared embedder, memory, queue)
+
+- `WORKER_EMBED_MAX_INFLIGHT_PER_ENDPOINT` (default 2) caps concurrent embed requests per embedder
+  host across all workers (Redis lease semaphore); lower it if the embedder is shared with other products.
+- `WORKER_PARSE_MEMORY_MB` (default 0 = off) is an optional docling parse subprocess cap (`RLIMIT_AS`) when a
+  collection leaves `parse_memory_mb` at 0 - an oversized PDF then fails with an attributed MemoryError instead of
+  OOM-killing the worker. It caps VIRTUAL memory: measured on dev, a 6-page PDF peaked at ~5.7 GiB virtual /
+  ~2.3 GiB resident and a 4096 cap broke the layout-model mmap. Enable at >= 8192 after measuring `VmPeak`.
+- `QUEUE_MAX_DEPTH` / `CORPUS_REINGEST_CONFIRM_THRESHOLD` bound the backlog and force an estimate
+  acknowledgement for large bulk reingests.
+
 ## 7. Provider preflight (fail-fast before spend, on by default)
 
 Every provider node (llm/vlm/ocr-mistral/embed) has a `preflight()` that probes its `base_url`

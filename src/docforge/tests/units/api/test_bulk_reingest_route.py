@@ -242,3 +242,63 @@ def test_bulk_reingest_skips_documents_with_an_active_job(client, monkeypatch) -
     assert body["matched"] == 2 and body["enqueued"] == 1  # the active doc was skipped
     assert body["skipped_in_flight"] == 1  # and it is reported as skipped-in-flight
     enqueue.assert_awaited_once()  # only the idle document was enqueued
+
+
+def test_collection_reingest_above_threshold_is_409_then_confirm_proceeds(
+    client, monkeypatch
+) -> None:
+    from backend.context import CONTEXT
+    from config import RUNTIME_CONFIG
+
+    _patch_pipeline_validation(monkeypatch)
+    monkeypatch.setattr(RUNTIME_CONFIG, "CORPUS_REINGEST_CONFIRM_THRESHOLD", 1)
+    docs = [SimpleNamespace(id=uuid.uuid4(), collection_id=COLLECTION_ID) for _ in range(2)]
+    jobs = [SimpleNamespace(id=uuid.uuid4()) for _ in docs]
+    monkeypatch.setattr(CONTEXT.database.collections, "get", AsyncMock(return_value=_collection()))
+    monkeypatch.setattr(CONTEXT.database.collections, "get_schema", AsyncMock(return_value=[]))
+    monkeypatch.setattr(
+        CONTEXT.database.documents,
+        "resolve_query_ids",
+        AsyncMock(return_value=[d.id for d in docs]),
+    )
+    monkeypatch.setattr(CONTEXT.database.documents, "get_by_ids", AsyncMock(return_value=docs))
+    reingest = AsyncMock(side_effect=[_admitted(docs[i], jobs[i]) for i in range(2)])
+    monkeypatch.setattr(CONTEXT.database.ingestion, "reingest", reingest)
+    monkeypatch.setattr(CONTEXT.estimate_service, "estimate", AsyncMock(return_value=None))
+    monkeypatch.setattr(CONTEXT.queue, "enqueue_ingest", AsyncMock())
+
+    refused = client.post(f"/api/v1/collections/{COLLECTION_ID}/reingest", json={})
+    assert refused.status_code == 409, refused.text
+    assert refused.json()["detail"]["code"] == "estimate_required"
+    reingest.assert_not_awaited()
+
+    accepted = client.post(
+        f"/api/v1/collections/{COLLECTION_ID}/reingest", json={"confirm_estimate": True}
+    )
+    assert accepted.status_code == 202, accepted.text
+    assert accepted.json()["enqueued"] == 2
+
+
+def test_collection_reingest_saturated_queue_is_429(client, monkeypatch) -> None:
+    from backend.context import CONTEXT
+    from config import RUNTIME_CONFIG
+
+    _patch_pipeline_validation(monkeypatch)
+    monkeypatch.setattr(RUNTIME_CONFIG, "QUEUE_MAX_DEPTH", 1)
+    docs = [SimpleNamespace(id=uuid.uuid4(), collection_id=COLLECTION_ID) for _ in range(2)]
+    monkeypatch.setattr(CONTEXT.database.collections, "get", AsyncMock(return_value=_collection()))
+    monkeypatch.setattr(CONTEXT.database.collections, "get_schema", AsyncMock(return_value=[]))
+    monkeypatch.setattr(
+        CONTEXT.database.documents,
+        "resolve_query_ids",
+        AsyncMock(return_value=[d.id for d in docs]),
+    )
+    reingest = AsyncMock()
+    monkeypatch.setattr(CONTEXT.database.ingestion, "reingest", reingest)
+
+    response = client.post(f"/api/v1/collections/{COLLECTION_ID}/reingest", json={})
+
+    assert response.status_code == 429, response.text
+    assert "Retry-After" in response.headers
+    assert response.json()["detail"]["code"] == "queue_saturated"
+    reingest.assert_not_awaited()

@@ -192,6 +192,9 @@ class ReingestOutcome(StrEnum):
     # The document already has a live (PENDING/RUNNING) job — refuse rather than run two concurrent
     # runs of one document (they strand orphan Qdrant points). A 409 (single) / skip-with-reason (bulk).
     ALREADY_ACTIVE = "already_active"
+    # A replay was requested but the document has no persisted IR to replay from (never ingested, or
+    # an empty parse) — a 422 (single) / skip-with-reason (bulk); a full reingest is needed.
+    NOT_REPLAYABLE = "not_replayable"
 
 
 @dataclass(slots=True)

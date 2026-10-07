@@ -19,7 +19,13 @@ from typing import TypeVar
 import httpx
 
 # ====== Internal Project Imports ======
-from shared_libs.pipelines.base import ActionNode, NodeUsage
+from shared_libs.pipelines.base import (
+    ActionNode,
+    EndpointKey,
+    NodeUsage,
+    ProviderLimiterRegistry,
+    ProviderSlotTimeout,
+)
 from shared_libs.public_models import (
     Chunk,
     ChunkEmbeddings,
@@ -72,6 +78,32 @@ class BaseEmbedderNode(ActionNode):
                 return True
         return False
 
+    async def _limited(
+        self, embed_fn: Callable[[list[str]], Awaitable[_Batch | None]], texts: list[str]
+    ) -> _Batch | None:
+        """Run ONE provider call while holding an in-flight slot on this embedder's endpoint.
+
+        The limiter is the shared-embedder guard: a massive reingest across N workers/collections
+        must not stack unbounded concurrent requests onto a CPU embedder that other products also use.
+        The slot wraps only the wire call — never the retry backoff sleep — so a backing-off job does
+        not hold capacity (except a call abandoned in flight: its slot stays held until the lease
+        expires, since the provider is still computing it). Unbound (tests, search) the registry
+        yields the no-op limiter. Raises ``ProviderSlotTimeout`` when no slot frees up in time.
+        """
+        config: BaseEmbedConfig = self.config
+        base_url = getattr(config, "base_url", "")
+        if not base_url:  # in-process encoder (lexical): no remote capacity to protect
+            return await embed_fn(texts)
+        # The lease outlives one request (timeout + margin): a crashed holder frees itself, and an
+        # abandoned (timed-out) request keeps its slot about as long as the provider may still run it.
+        lease_seconds = getattr(config, "timeout_seconds", 60.0) + 15.0
+        async with ProviderLimiterRegistry.current().slot(
+            EndpointKey.normalize(base_url),
+            max_inflight=config.max_concurrency,
+            lease_seconds=lease_seconds,
+        ):
+            return await embed_fn(texts)
+
     @abstractmethod
     async def _embed_dense(self, texts: list[str]) -> list[list[float]]:
         """Embed one batch of texts into dense vectors (same order)."""
@@ -99,8 +131,10 @@ class BaseEmbedderNode(ActionNode):
 
     @staticmethod
     def __is_transient(error: Exception) -> bool:
-        """A provider error worth retrying: a timeout, a transport blip, or a 429/5xx status."""
-        if isinstance(error, httpx.TimeoutException | httpx.TransportError):
+        """A provider error worth retrying: a timeout, a transport blip, a 429/5xx status, or no
+        limiter slot within the wait budget (the shared endpoint is saturated — back off like a
+        timeout)."""
+        if isinstance(error, httpx.TimeoutException | httpx.TransportError | ProviderSlotTimeout):
             return True
         return isinstance(error, httpx.HTTPStatusError) and error.response.status_code in (
             429,
@@ -144,15 +178,21 @@ class BaseEmbedderNode(ActionNode):
         budget is still spent in full for a NON-timeout transient (a 429/5xx/transport blip, which a
         retry genuinely resolves) and for a single-text timeout (nothing left to split — the retry
         budget is its only recourse before the terminal raise).
+
+        Slot-wait rule: a ``ProviderSlotTimeout`` (no limiter slot within the wait budget) is retried
+        with backoff like a provider timeout but NEVER split — the halves would only queue behind the
+        same saturated endpoint — so once the budget is spent it is raised as is.
         """
         config: BaseEmbedConfig = self.config
         if config.max_retries == 0:
-            return await embed_fn(texts)  # one-shot opt-out: no retry, no adaptive split
+            return await self._limited(
+                embed_fn, texts
+            )  # one-shot opt-out: no retry, no adaptive split
         total_attempts = 1 + config.max_retries
         last_error: Exception | None = None
         for attempt in range(1, total_attempts + 1):
             try:
-                return await embed_fn(texts)
+                return await self._limited(embed_fn, texts)
             except Exception as error:  # noqa: BLE001 — re-raised below unless transient
                 if not self.__is_transient(error):
                     raise
@@ -174,7 +214,7 @@ class BaseEmbedderNode(ActionNode):
         # Retries exhausted — split and embed the halves independently, or surface the genuine error
         # on a single text (nothing left to split). ``last_error`` is always set here: the loop only
         # falls through after every attempt raised a transient (a success returns, a hard error raises).
-        if len(texts) <= 1:
+        if len(texts) <= 1 or isinstance(last_error, ProviderSlotTimeout):
             raise last_error  # type: ignore[misc]
         mid = len(texts) // 2
         self.logger.warning(

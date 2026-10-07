@@ -37,6 +37,14 @@ class BaseEmbedConfig(TimeoutRetryConfig):
         description="Base delay for the exponential backoff between retries (delay = base * attempt). "
         "Relaxed to allow 0 (the embed hand-loop treats 0 as no wait between retries).",
     )
+    max_concurrency: int | None = Field(
+        default=None,
+        ge=1,
+        description="Cap on concurrent in-flight embed requests to THIS endpoint across every worker "
+        "process (a shared Redis lease semaphore keyed by the endpoint's host:port). Unset → the "
+        "deployment default (WORKER_EMBED_MAX_INFLIGHT_PER_ENDPOINT). Lower it for a fragile/shared "
+        "embedder; it has no effect when the deployment limiter is disabled.",
+    )
     embed_sparse: bool = Field(
         default=True,
         description="Also produce the lexical sparse vectors (skipped when the provider "

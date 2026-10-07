@@ -30,6 +30,7 @@ class JobStatus(BaseModel):
         collection_name (str | None): The collection's name, joined at read (None if the
             collection is gone).
         status (str): queued / running / done / failed / cancelled.
+        replay_from (str | None): The stage an ingest job replays from (None = a full run).
         cancel_requested (bool): A cooperative stop has been requested; the running job stops at
             its next stage boundary (still 'running' until it does).
         progress (int): 0–100 (completed pipeline nodes over total).
@@ -82,6 +83,11 @@ class JobStatus(BaseModel):
         "'metadata_sync' (a lightweight per-document metadata re-embed after an in-place value edit) or "
         "'rebuild_index' (a collection-level vector-store rebuild — document_id is null). "
         "Lets a client render a side-job distinctly from a full ingestion."
+    )
+    replay_from: str | None = Field(
+        default=None,
+        description="The stage an ingest job replays from on the persisted IR (no re-parse); null "
+        "for a full run.",
     )
     cancel_requested: bool = Field(
         default=False,
