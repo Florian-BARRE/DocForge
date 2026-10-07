@@ -9,6 +9,9 @@
 # CONTRACT: a search pipeline must deliver a SearchResult, then returns the graph to the pool. The
 # engine, builder and validator are reused verbatim.
 
+# ====== Standard Library Imports ======
+from collections.abc import Callable
+
 # ====== Third-Party Library Imports ======
 from loggerplusplus import LoggerClass
 
@@ -197,6 +200,7 @@ class SearchRunner(LoggerClass):
         rates: RateTable,
         graph_key: str,
         timeout_seconds: float | None = None,
+        finalize: Callable[[SearchResult], SearchResult] | None = None,
     ) -> tuple[SearchResult, tuple[int, int, float | None, int]]:
         """
         Execute one search run end to end and return its SearchResult plus its priced usage.
@@ -216,6 +220,9 @@ class SearchRunner(LoggerClass):
             graph_key (str): The blob's stable cache key — the stock default's sentinel, or a stored
                 blob's content hash. Graphs built for the same key are reused across requests.
             timeout_seconds (float | None): Wall-clock cap for the whole run (None = no cap).
+            finalize (Callable[[SearchResult], SearchResult] | None): An edge reshape of the final
+                answer (e.g. the per-document cap) applied BEFORE the metrics are emitted, so the
+                recorded hit count is what the caller receives, not the over-fetched page.
 
         Returns:
             tuple[SearchResult, tuple[int, int, float | None, int]]: the ranked answer, and the run's
@@ -274,6 +281,10 @@ class SearchRunner(LoggerClass):
                     f"the pipeline's final node produced '{type(output).__name__}' — a search "
                     f"pipeline must end on a deliver/hits node producing a SearchResult"
                 )
+            # 5b. Reshape the answer at the edge (e.g. the per-document cap) BEFORE the metrics in
+            #     the finally record it — otherwise a grouped search reports its over-fetched page.
+            if finalize is not None:
+                result = finalize(result)
             # 6. Meter the run's paid text-gen spend (rewrite/HyDE LLM calls stamp usage on the
             #    records), priced against the collection's effective rates — search cost is surfaced.
             usage = UsageSummer.summarize(record, rates)

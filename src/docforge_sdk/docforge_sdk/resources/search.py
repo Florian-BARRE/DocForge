@@ -21,16 +21,23 @@ class _SearchSpecs(_ResourceMixin):
 
         Args:
             collection_id (str): The collection to search.
-            request (SearchRequest): The query, filters and target modalities.
+            request (SearchRequest): The query, filters, target modalities and the optional
+                ``return_fields`` / ``group_by`` / ``max_per_document`` shaping.
 
         Returns:
             RequestSpec: A POST to the collection's ``/search`` route carrying the query body.
         """
-        return RequestSpec(
-            "POST",
-            f"{self._COLLECTIONS_PATH}/{collection_id}/search",
-            json=request.model_dump(mode="json"),
-        )
+        # 1. Dump the body, sending the response-shaping knobs only when used: a pre-0.24 server's
+        #    SearchRequest forbids unknown keys (even a null return_fields/group_by would 422 every
+        #    plain search), and the backend 422s a max_per_document sent without group_by — so the
+        #    untouched default (1) is dropped unless grouping is on or the caller set it explicitly.
+        body = request.model_dump(mode="json")
+        for knob in ("return_fields", "group_by"):
+            if body.get(knob) is None:
+                body.pop(knob, None)
+        if request.group_by is None and "max_per_document" not in request.model_fields_set:
+            body.pop("max_per_document")
+        return RequestSpec("POST", f"{self._COLLECTIONS_PATH}/{collection_id}/search", json=body)
 
     def _search_health_spec(self) -> RequestSpec:
         """
@@ -51,7 +58,8 @@ class AsyncSearch(AsyncResource, _SearchSpecs):
 
         Args:
             collection_id (str): The collection to search.
-            request (SearchRequest): The query, filters and target modalities.
+            request (SearchRequest): The query, filters, target modalities and the optional
+                ``return_fields`` / ``group_by`` / ``max_per_document`` shaping.
 
         Returns:
             SearchResponse: The echoed query and its hits, best first.
@@ -79,7 +87,8 @@ class SyncSearch(SyncResource, _SearchSpecs):
 
         Args:
             collection_id (str): The collection to search.
-            request (SearchRequest): The query, filters and target modalities.
+            request (SearchRequest): The query, filters, target modalities and the optional
+                ``return_fields`` / ``group_by`` / ``max_per_document`` shaping.
 
         Returns:
             SearchResponse: The echoed query and its hits, best first.

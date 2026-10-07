@@ -3414,7 +3414,7 @@
                     "search"
                 ],
                 "summary": "Search Collection",
-                "description": "Run a hybrid search over a collection and return ranked, hydrated chunk hits.\n\nDelegates retrieval to the graph-based search pipeline (CONTEXT.search_service); the router\nstays the request-side gate and diagnostic layer.\n\nReturns:\n    SearchResponse: The echoed query, its hits (best first) and any filter hints. 404 when the\n    collection is unknown, 409 when it has no embedder wired, 422 when a filter names a\n    non-filterable field, a value outside a field's enum, or an empty/oversized value list.",
+                "description": "Run a hybrid search over a collection and return ranked, hydrated chunk hits.\n\nDelegates retrieval to the graph-based search pipeline (CONTEXT.search_service); the router\nstays the request-side gate and diagnostic layer.\n\nReturns:\n    SearchResponse: The echoed query, its hits (best first) and any filter hints. 404 when the\n    collection is unknown, 409 when it has no embedder wired, 422 when a filter names a\n    non-filterable field, a value outside a field's enum, or an empty/oversized value list, or\n    when return_fields names an unknown hit field.",
                 "operationId": "search_collection_api_v1_collections__collection_id__search_post",
                 "parameters": [
                     {
@@ -11215,22 +11215,26 @@
                     "score": {
                         "type": "number",
                         "title": "Score",
-                        "description": "The hit's ranking score, higher is better. Its meaning is given by the response-level ``score_kind``: for the default hybrid retrieval it is Qdrant's SERVER-SIDE FUSION score (Reciprocal Rank Fusion by default, or DBSF) \u2014 a RANK-based aggregate, NOT a cosine similarity or a 0-1 probability; when reranking is enabled it is the cross-encoder relevance score instead. The absolute magnitude is NOT comparable across queries or collections \u2014 only the relative ordering WITHIN one response is meaningful. On a tiny corpus (e.g. a single document) the top hit's score can legitimately pin to a round value like 1.0000 \u2014 that is expected, not a bug."
+                        "description": "The hit's ranking score, higher is better. Its meaning is given by the response-level ``score_kind``: for the default hybrid retrieval it is Qdrant's SERVER-SIDE FUSION score (Reciprocal Rank Fusion by default, or DBSF) \u2014 a RANK-based aggregate, NOT a cosine similarity or a 0-1 probability; when reranking is enabled it is the cross-encoder relevance score instead. The absolute magnitude is NOT comparable across queries or collections \u2014 only the relative ordering WITHIN one response is meaningful. On a tiny corpus (e.g. a single document) the top hit's score can legitimately pin to a round value like 1.0000 \u2014 that is expected, not a bug.",
+                        "default": 0.0
                     },
                     "text": {
                         "type": "string",
                         "title": "Text",
-                        "description": "The chunk's enriched text."
+                        "description": "The chunk's enriched text.",
+                        "default": ""
                     },
                     "chunk_index": {
                         "type": "integer",
                         "title": "Chunk Index",
-                        "description": "Ordinal within the document."
+                        "description": "Ordinal within the document.",
+                        "default": 0
                     },
                     "token_count": {
                         "type": "integer",
                         "title": "Token Count",
-                        "description": "Token count of the chunk."
+                        "description": "Token count of the chunk.",
+                        "default": 0
                     },
                     "block_ids": {
                         "items": {
@@ -11291,14 +11295,10 @@
                 "type": "object",
                 "required": [
                     "chunk_id",
-                    "document_id",
-                    "score",
-                    "text",
-                    "chunk_index",
-                    "token_count"
+                    "document_id"
                 ],
                 "title": "SearchHitModel",
-                "description": "One ranked search result \u2014 the flat view of a hydrated chunk hit.\n\nAttributes:\n    chunk_id (str): The chunk's UUID (doubles as its Qdrant point id).\n    document_id (str): The document the chunk belongs to.\n    score (float): The fused RRF score (higher is better).\n    text (str): The chunk's enriched text.\n    chunk_index (int): The chunk's ordinal within its document.\n    token_count (int): The chunk's token count.\n    block_ids (list[str]): The IR block ids the chunk was assembled from (assembly order).\n    page (int | None): The 0-based page index of the chunk's primary (leading) block.\n    page_number (int | None): The 1-based page number (``page + 1``) \u2014 cite this one.\n    bbox (list[float] | None): The primary block's NORMALISED [0, 1] bounding box.\n    block_locations (list[BlockLocationModel]): Every source block's page + bbox (draw them all)."
+                "description": "One ranked search result \u2014 the flat view of a hydrated chunk hit.\n\nAttributes:\n    chunk_id (str): The chunk's UUID (doubles as its Qdrant point id).\n    document_id (str): The document the chunk belongs to.\n    score (float): The fused RRF score (higher is better).\n    text (str): The chunk's enriched text.\n    chunk_index (int): The chunk's ordinal within its document.\n    token_count (int): The chunk's token count.\n    block_ids (list[str]): The IR block ids the chunk was assembled from (assembly order).\n    page (int | None): The 0-based page index of the chunk's primary (leading) block.\n    page_number (int | None): The 1-based page number (``page + 1``) \u2014 cite this one.\n    bbox (list[float] | None): The primary block's NORMALISED [0, 1] bounding box.\n    block_locations (list[BlockLocationModel]): Every source block's page + bbox (draw them all).\n\nEvery field but the identity (``chunk_id``, ``document_id``) is optional in the wire schema: a\nrequest's ``return_fields`` projection omits the unrequested keys (absent, not null). Without a\nprojection every field is always present."
             },
             "SearchIndex": {
                 "properties": {
@@ -11371,6 +11371,43 @@
                         ],
                         "title": "Search In",
                         "description": "Fields \u00d7 modalities to search (content and/or metadata). None \u2192 content on both semantic and lexical (the unchanged default)."
+                    },
+                    "return_fields": {
+                        "anyOf": [
+                            {
+                                "items": {
+                                    "type": "string"
+                                },
+                                "type": "array",
+                                "maxItems": 64
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Return Fields",
+                        "description": "The hit fields to return (a lean response): any hit field name (chunk_id, document_id, filename, document_title, heading_path, metadata, score, text, chunk_index, token_count, block_ids, page, page_number, bbox, block_locations) or 'metadata.<field>' to keep one metadata entry. chunk_id and document_id are ALWAYS returned. Omitted fields are ABSENT from each hit (not null), and their hydration reads are skipped (e.g. no geometry read without page/page_number/bbox/block_ids/block_locations). None \u2192 the full hit. An unknown name \u2192 422 listing the allowed names."
+                    },
+                    "group_by": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "const": "document"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Group By",
+                        "description": "'document' \u2192 no document contributes more than max_per_document hits: the final ranking (after fusion and any rerank) keeps its order and the page is filled with the next best hits of other documents. Fewer than `limit` hits come back when the collection holds too few matching documents. None \u2192 no grouping."
+                    },
+                    "max_per_document": {
+                        "type": "integer",
+                        "maximum": 10.0,
+                        "minimum": 1.0,
+                        "title": "Max Per Document",
+                        "description": "Per-document hit cap when group_by='document' (default 1). Only valid together with group_by.",
+                        "default": 1
                     }
                 },
                 "additionalProperties": false,
@@ -11379,7 +11416,7 @@
                     "query"
                 ],
                 "title": "SearchRequest",
-                "description": "A hybrid search over one collection.\n\nAttributes:\n    query (str): The natural-language query, embedded with the collection's own embedder.\n    limit (int): Number of fused results to return.\n    filters (dict | None): Constraints on the collection's FILTERABLE fields \u2014 a scalar becomes\n        an equality match, a list becomes a set-membership (any-of) match, and a mapping of range\n        bounds (``gte``/``gt``/``lte``/``lt``) becomes a numeric or datetime range (e.g.\n        ``{\"published\": {\"gte\": \"2024-01-01\", \"lte\": \"2024-12-31\"}}`` or ``{\"pages\": {\"gt\": 10}}``).\n        A range on a non-range-typed (keyword/bool) field, or a malformed range, is rejected 422.\n        String / enum / keyword_list values match case-insensitively (resolved to the stored\n        spelling); text / text_list values are full-text matched (all words present).\n    search_in (list[SearchTargetModel] | None): What to search \u2014 the fields (content and/or\n        metadata) and modalities (semantic/lexical). None searches content on both axes\n        (unchanged default). A target naming a vector the collection never indexed \u2192 422."
+                "description": "A hybrid search over one collection.\n\nAttributes:\n    query (str): The natural-language query, embedded with the collection's own embedder.\n    limit (int): Number of fused results to return.\n    filters (dict | None): Constraints on the collection's FILTERABLE fields \u2014 a scalar becomes\n        an equality match, a list becomes a set-membership (any-of) match, and a mapping of range\n        bounds (``gte``/``gt``/``lte``/``lt``) becomes a numeric or datetime range (e.g.\n        ``{\"published\": {\"gte\": \"2024-01-01\", \"lte\": \"2024-12-31\"}}`` or ``{\"pages\": {\"gt\": 10}}``).\n        A range on a non-range-typed (keyword/bool) field, or a malformed range, is rejected 422.\n        String / enum / keyword_list values match case-insensitively (resolved to the stored\n        spelling); text / text_list values are full-text matched (all words present).\n    search_in (list[SearchTargetModel] | None): What to search \u2014 the fields (content and/or\n        metadata) and modalities (semantic/lexical). None searches content on both axes\n        (unchanged default). A target naming a vector the collection never indexed \u2192 422.\n    return_fields (list[str] | None): The hit fields to return \u2014 SearchHitModel field names,\n        plus ``metadata.<field>`` to keep a single metadata entry. ``chunk_id`` and\n        ``document_id`` are ALWAYS returned (a hit's identity). None returns the full hit\n        (unchanged default). An unknown name \u2192 422 listing the allowed names.\n    group_by (Literal[\"document\"] | None): ``\"document\"`` caps how many hits one document may\n        contribute (``max_per_document``); None = no grouping (unchanged default).\n    max_per_document (int): The per-document cap when ``group_by=\"document\"`` (1-10, default 1);\n        only valid together with ``group_by``."
             },
             "SearchResponse": {
                 "properties": {

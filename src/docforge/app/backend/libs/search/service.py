@@ -5,7 +5,10 @@
 # OWN embedder, for the shared vector space), constructs the read-only CollectionReadPort scoped to
 # that collection (the disabled-point exclusion baked in), assembles the run-input, RESOLVES the
 # search blob to run (the collection's own stored search graph when it carries one, else the stock
-# default), and runs it inline through the SearchRunner. Returns the terminal SearchResult.
+# default), and runs it inline through the SearchRunner. Returns the terminal SearchResult. Two
+# request-edge response shapers ride along without touching the pure graph: a HitProjection (the
+# read port skips the hydration reads of unrequested fields) and a per-document cap (the graph is
+# asked for a deeper page, then DocumentHitGrouper caps the FINAL ranking — after any rerank).
 
 # ====== Standard Library Imports ======
 import uuid
@@ -35,6 +38,8 @@ from shared_libs.services.db.postgresql.tables import MetadataField
 # ====== Local Project Imports ======
 from ..blob_hash import BlobHasher
 from .contract import SearchContractBuilder
+from .document_grouping import DocumentHitGrouper
+from .hit_projection import HitProjection
 from .read_port import CollectionReadPortImpl
 from .runner import SearchRunError, SearchRunner
 
@@ -148,6 +153,8 @@ class SearchService(LoggerClass):
         collection: Any | None = None,
         text_fields: Collection[str] = frozenset(),
         title_field: MetadataField | None = None,
+        projection: HitProjection | None = None,
+        max_per_document: int | None = None,
     ) -> tuple[SearchResult, tuple[int, int, float | None, int]]:
         """
         Run the search graph against a collection and return the ranked SearchResult plus its cost.
@@ -164,6 +171,12 @@ class SearchService(LoggerClass):
                 filters become full-text matches) — resolved at the request edge from the schema.
             title_field (MetadataField | None): The collection's display-title field (resolved at
                 the request edge); None keeps the parser titles on the hits.
+            projection (HitProjection | None): The hit fields the client asked for — hydration
+                skips the reads feeding only unrequested fields. None = hydrate everything.
+            max_per_document (int | None): Group by document: no document contributes more than
+                this many hits. The graph is asked for a deeper page and the cap applies to its
+                FINAL ranking (after fusion and any rerank); fewer than ``top_k`` hits come back
+                when the deeper page holds too few distinct documents. None = no grouping.
 
         Returns:
             tuple[SearchResult, tuple[int, int, float | None, int]]: the ranked hits (best first) and
@@ -188,17 +201,27 @@ class SearchService(LoggerClass):
 
         # 3. Construct the read port scoped to this collection (exclusion baked into the facade).
         read_port = CollectionReadPortImpl(
-            self._database, collection_id, text_fields=text_fields, title_field=title_field
+            self._database,
+            collection_id,
+            text_fields=text_fields,
+            title_field=title_field,
+            projection=projection,
         )
 
         # 4. Assemble the search run-input the graph binds by FromRunInput. When the caller named no
         #    targets we pass an EMPTY list through, so the normalize node owns the content-target
         #    default (its content_modalities config — the dense_only preset's seam). For the stock
-        #    'hybrid' config that default is both axes, exactly as before targets existed.
+        #    'hybrid' config that default is both axes, exactly as before targets existed. A grouped
+        #    request asks the graph for a deeper page so the per-document cap can still fill top_k.
+        fetch_k = (
+            DocumentHitGrouper.fetch_depth(top_k, max_per_document)
+            if max_per_document is not None
+            else top_k
+        )
         run_input = {
             "query": RawQuery(
                 text=query,
-                top_k=top_k,
+                top_k=fetch_k,
                 search_targets=search_targets or [],
                 flags={},
             ),
@@ -218,14 +241,22 @@ class SearchService(LoggerClass):
         #    defaults folded with its per-collection overrides) — the same numbers the estimator/ingest
         #    meter use, so search cost is consistent with the rest of the platform's metering.
         rates = RateTable.from_overrides(getattr(collection, "estimate_overrides", None))
-        return await self._runner.run(
+        result, usage = await self._runner.run(
             blob,
             run_input,
             read_port,
             rates,
             graph_key=graph_key,
             timeout_seconds=self._timeout_seconds,
+            # 7. Group by document on the FINAL ranking (the graph never sees the cap), inside the
+            #    runner so the per-search metrics count the hits actually delivered.
+            finalize=(
+                (lambda answer: DocumentHitGrouper.apply(answer, top_k, max_per_document))
+                if max_per_document is not None
+                else None
+            ),
         )
+        return result, usage
 
 
 __all__ = ["SearchService", "SearchServiceError"]

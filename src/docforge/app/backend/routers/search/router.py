@@ -5,7 +5,9 @@
 # the query with the collection's own embedder and runs the hybrid fusion + hydration). The router
 # keeps the filterability gate (the graph trusts the filters it is handed), resolves string-ish filter
 # values to their stored spelling (Postgres is the value oracle — case-insensitive filters + "did you
-# mean" hints), then flattens the graph's Hits and the filter hints into the client response.
+# mean" hints), then flattens the graph's Hits and the filter hints into the client response — projected
+# to the request's return_fields (served with response_model_exclude_unset, so an omitted field is
+# ABSENT from the hit, not null) and, with group_by="document", capped per document by the service.
 
 # ====== Standard Library Imports ======
 import uuid
@@ -18,6 +20,7 @@ from ...context import CONTEXT
 from ...libs.auth import Capability, require
 from ...libs.metrics.search_health import SearchHealthReader
 from ...libs.search import (
+    HitProjection,
     QueryEmbedderProbe,
     SearchFilterResolver,
     SearchRunError,
@@ -27,7 +30,13 @@ from ...libs.search import (
 )
 from ...utils.error_handling import auto_handle_errors
 from .helpers import SearchHelpers
-from .models import SearchCostModel, SearchHealthSummary, SearchRequest, SearchResponse
+from .models import (
+    SearchCostModel,
+    SearchHealthSummary,
+    SearchHitModel,
+    SearchRequest,
+    SearchResponse,
+)
 
 router = APIRouter(tags=["search"])
 
@@ -59,6 +68,9 @@ async def search_health() -> SearchHealthSummary:
 @router.post(
     "/collections/{collection_id}/search",
     response_model=SearchResponse,
+    # A return_fields projection leaves the unrequested hit fields UNSET so they are absent from the
+    # wire (not null); the full (default) response sets every field explicitly, so it is unchanged.
+    response_model_exclude_unset=True,
     dependencies=[Depends(require(Capability.SEARCH))],
 )
 @auto_handle_errors
@@ -72,8 +84,20 @@ async def search_collection(collection_id: uuid.UUID, request: SearchRequest) ->
     Returns:
         SearchResponse: The echoed query, its hits (best first) and any filter hints. 404 when the
         collection is unknown, 409 when it has no embedder wired, 422 when a filter names a
-        non-filterable field, a value outside a field's enum, or an empty/oversized value list.
+        non-filterable field, a value outside a field's enum, or an empty/oversized value list, or
+        when return_fields names an unknown hit field.
     """
+    # 0. Parse the hit-field projection first — a typo'd field name is a caller error, rejected
+    #    before any read or spend.
+    allowed_fields = sorted(SearchHitModel.model_fields)
+    projection, unknown_fields = HitProjection.from_request(request.return_fields, allowed_fields)
+    if unknown_fields:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Unknown return_fields {unknown_fields} — allowed: {allowed_fields} or "
+            f"'metadata.<field>'.",
+        )
+
     # 1. The collection must exist — everything (its embedder, its schema) derives from it.
     collection = await CONTEXT.database.collections.get(collection_id)
     if collection is None:
@@ -151,6 +175,8 @@ async def search_collection(collection_id: uuid.UUID, request: SearchRequest) ->
             collection=collection,
             text_fields=resolution.text_fields,
             title_field=SearchHelpers.title_field_spec(collection, schema),
+            projection=projection,
+            max_per_document=request.max_per_document if request.group_by else None,
         )
     except SearchRunTimeout as exc:
         raise HTTPException(
@@ -187,9 +213,12 @@ async def search_collection(collection_id: uuid.UUID, request: SearchRequest) ->
         else None
     )
     hints = resolution.hints + ZeroHitHintBuilder.build(resolution, len(result.hits))
+    hits = [SearchHelpers.to_hit_model(hit) for hit in result.hits]
+    if projection is not None:
+        hits = [SearchHitModel.model_validate(projection.apply(hit.model_dump())) for hit in hits]
     return SearchResponse(
         query=request.query,
-        hits=[SearchHelpers.to_hit_model(hit) for hit in result.hits],
+        hits=hits,
         score_kind=SearchHelpers.score_kind(
             collection.search, rerank_degraded=SearchHelpers.rerank_degraded(result.debug)
         ),

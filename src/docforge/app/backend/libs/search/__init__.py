@@ -24,6 +24,10 @@ from .filter_resolution import FilterResolution
 from .filter_resolver import SearchFilterResolver
 from .zero_hit_hints import ZeroHitHintBuilder
 
+# ---------------------- Response shaping (projection + grouping) ---------------------- #
+from .hit_projection import HitProjection
+from .document_grouping import DocumentHitGrouper
+
 # ---------------------- Invocation seam ---------------------- #
 from .service import SearchService, SearchServiceError
 
@@ -42,6 +46,8 @@ __all__ = [
     "FilterResolution",
     "SearchFilterResolver",
     "ZeroHitHintBuilder",
+    "HitProjection",
+    "DocumentHitGrouper",
     "SearchService",
     "SearchServiceError",
 ]

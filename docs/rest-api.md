@@ -839,9 +839,19 @@ Hybrid retrieval over one collection. Runs **inline** in the request (sub-second
 | `limit` | int (1–100) | `10` | Number of fused results. |
 | `filters` | object/null | `null` | Constraints on **filterable** fields: a scalar → equality (string equality is case-insensitive), a list → any-of, or a range mapping of `gte`/`gt`/`lte`/`lt` bounds → numeric or ISO-8601 datetime range (e.g. `{"published": {"gte": "2024-01-01", "lte": "2024-12-31"}}`). |
 | `search_in` | list/null | `null` | Fields × modalities to query. `null` → content on both semantic + lexical. |
+| `return_fields` | list/null | `null` | Lean hits: keep only these hit fields (any hit field name, or `metadata.<field>` for one metadata entry). `chunk_id` + `document_id` are **always** returned. Omitted fields are **absent** (not `null`) and their hydration reads are skipped. `null` → the full hit. Unknown name → `422` listing the allowed names. |
+| `group_by` | `"document"`/null | `null` | `"document"` → no document contributes more than `max_per_document` hits (see below). |
+| `max_per_document` | int (1–10) | `1` | Per-document cap under `group_by`; sending it without `group_by` → `422`. |
 
 Each `search_in` entry is a **SearchTarget**: `{ "field": "content"|<metadata field>,
 "semantic": bool, "lexical": bool }`. `field` defaults to `"content"` (the chunk body).
+
+**Grouping** (`group_by: "document"`): the graph is asked for a deeper page
+(`limit × max(3, 2 × max_per_document)`, capped at 200), then the **final** ranking — after fusion and
+any rerank — is walked in order, admitting a hit only while its document is under the cap, until
+`limit` hits. When that deeper page holds too few distinct documents, **fewer** than `limit` hits come
+back (never more than the cap per document); `debug_info.grouping.fetched` reports the page size read.
+With a rerank stage the deeper page also enlarges the reranked pool.
 
 Gates (all `422`, before any spend): a list filter that is empty (`[]` matches nothing — omit the
 filter instead) or carries more than 100 values; a filter naming a non-filterable field; an enum

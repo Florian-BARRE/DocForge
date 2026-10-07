@@ -306,6 +306,12 @@ A `SearchRequest` carries the query and its knobs:
   (`{field: value}`, `{field: [values]}`, or a range mapping `{field: {gte, gt, lte, lt}}`)
 - `search_in` (`list[SearchTarget] | None`) — which fields × modalities to query;
   `None` → `content` on both semantic and lexical (the default)
+- `return_fields` (`list[str] | None`) — lean hits: keep only these hit fields (or `metadata.<field>`);
+  `chunk_id`/`document_id` always come back and omitted keys are *absent* (a `SearchHit` parsed from a
+  projected response has only those keys in `model_fields_set`); `None` → the full hit
+- `group_by` (`"document" | None`) + `max_per_document` (int, 1–10, default `1`) — cap the hits one
+  document may contribute; the SDK drops an untouched `max_per_document` from the body when `group_by`
+  is unset (the API 422s an orphan one)
 
 Each `SearchTarget` names one field and its modalities:
 

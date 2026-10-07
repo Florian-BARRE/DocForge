@@ -22,6 +22,9 @@ from mcp.server.fastmcp.exceptions import ToolError
 from mcp.types import Icon, ToolAnnotations
 from pydantic import ValidationError
 
+# ====== Local Project Imports ======
+from .compact_json import compact_result
+
 AnyAsyncTool = Callable[..., Awaitable[Any]]
 
 
@@ -111,9 +114,10 @@ class ErrorTranslatingFastMCP(FastMCP):
         structured_output: bool | None = None,
     ) -> None:
         """Register `fn` wrapped by `translate_sdk_errors` — see `FastMCP.add_tool` for the args."""
-        # 1. Register normally (the wrapper keeps the original signature for introspection)
+        # 1. Register normally (the wrappers keep the original signature for introspection);
+        #    compact_result makes every structured return NON-indented JSON text (token cost)
         super().add_tool(
-            translate_sdk_errors(fn),
+            translate_sdk_errors(compact_result(fn)),
             name=name,
             title=title,
             description=description,

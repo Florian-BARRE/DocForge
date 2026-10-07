@@ -57,3 +57,49 @@ def test_sync_search_returns_response() -> None:
     with Client(BASE) as client:
         result = client.search.search(CID, SearchRequest(query="hello"))
     assert isinstance(result, SearchResponse)
+
+
+@respx.mock
+async def test_search_default_body_omits_max_per_document() -> None:
+    route = respx.post(f"{API}/collections/{CID}/search").mock(
+        return_value=httpx.Response(200, json=_RESPONSE_SAMPLE)
+    )
+    async with AsyncClient(BASE) as client:
+        await client.search.search(CID, SearchRequest(query="hello"))
+    body = json.loads(route.calls.last.request.content)
+    # The backend 422s an orphan max_per_document, so the untouched default must not be sent; and
+    # unused shaping knobs are omitted entirely so a pre-0.24 server (extra="forbid") still accepts
+    # a plain search.
+    assert "max_per_document" not in body
+    assert "return_fields" not in body
+    assert "group_by" not in body
+
+
+@respx.mock
+async def test_search_forwards_projection_and_grouping() -> None:
+    route = respx.post(f"{API}/collections/{CID}/search").mock(
+        return_value=httpx.Response(
+            200,
+            json={"query": "q", "hits": [{"chunk_id": "c1", "document_id": "d1", "text": "t"}]},
+        )
+    )
+    request = SearchRequest(
+        query="q", return_fields=["text", "metadata.topic"], group_by="document", max_per_document=2
+    )
+    async with AsyncClient(BASE) as client:
+        result = await client.search.search(CID, request)
+    body = json.loads(route.calls.last.request.content)
+    assert body["return_fields"] == ["text", "metadata.topic"]
+    assert body["group_by"] == "document" and body["max_per_document"] == 2
+    # A projected hit carries only identity + requested keys; the rest stay unset.
+    assert result.hits[0].model_fields_set == {"chunk_id", "document_id", "text"}
+
+
+@respx.mock
+def test_sync_search_explicit_orphan_max_per_document_is_sent() -> None:
+    route = respx.post(f"{API}/collections/{CID}/search").mock(
+        return_value=httpx.Response(200, json=_RESPONSE_SAMPLE)
+    )
+    with Client(BASE) as client:
+        client.search.search(CID, SearchRequest(query="q", max_per_document=3))
+    assert json.loads(route.calls.last.request.content)["max_per_document"] == 3

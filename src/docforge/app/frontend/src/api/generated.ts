@@ -686,7 +686,8 @@ export interface paths {
          *     Returns:
          *         SearchResponse: The echoed query, its hits (best first) and any filter hints. 404 when the
          *         collection is unknown, 409 when it has no embedder wired, 422 when a filter names a
-         *         non-filterable field, a value outside a field's enum, or an empty/oversized value list.
+         *         non-filterable field, a value outside a field's enum, or an empty/oversized value list, or
+         *         when return_fields names an unknown hit field.
          */
         post: operations["search_collection_api_v1_collections__collection_id__search_post"];
         delete?: never;
@@ -6777,6 +6778,10 @@ export interface components {
          *         page_number (int | None): The 1-based page number (``page + 1``) — cite this one.
          *         bbox (list[float] | None): The primary block's NORMALISED [0, 1] bounding box.
          *         block_locations (list[BlockLocationModel]): Every source block's page + bbox (draw them all).
+         *
+         *     Every field but the identity (``chunk_id``, ``document_id``) is optional in the wire schema: a
+         *     request's ``return_fields`` projection omits the unrequested keys (absent, not null). Without a
+         *     projection every field is always present.
          */
         SearchHitModel: {
             /**
@@ -6802,6 +6807,7 @@ export interface components {
             /**
              * Chunk Index
              * @description Ordinal within the document.
+             * @default 0
              */
             chunk_index: number;
             /**
@@ -6844,16 +6850,19 @@ export interface components {
             /**
              * Score
              * @description The hit's ranking score, higher is better. Its meaning is given by the response-level ``score_kind``: for the default hybrid retrieval it is Qdrant's SERVER-SIDE FUSION score (Reciprocal Rank Fusion by default, or DBSF) — a RANK-based aggregate, NOT a cosine similarity or a 0-1 probability; when reranking is enabled it is the cross-encoder relevance score instead. The absolute magnitude is NOT comparable across queries or collections — only the relative ordering WITHIN one response is meaningful. On a tiny corpus (e.g. a single document) the top hit's score can legitimately pin to a round value like 1.0000 — that is expected, not a bug.
+             * @default 0
              */
             score: number;
             /**
              * Text
              * @description The chunk's enriched text.
+             * @default
              */
             text: string;
             /**
              * Token Count
              * @description Token count of the chunk.
+             * @default 0
              */
             token_count: number;
         };
@@ -6890,6 +6899,14 @@ export interface components {
          *         search_in (list[SearchTargetModel] | None): What to search — the fields (content and/or
          *             metadata) and modalities (semantic/lexical). None searches content on both axes
          *             (unchanged default). A target naming a vector the collection never indexed → 422.
+         *         return_fields (list[str] | None): The hit fields to return — SearchHitModel field names,
+         *             plus ``metadata.<field>`` to keep a single metadata entry. ``chunk_id`` and
+         *             ``document_id`` are ALWAYS returned (a hit's identity). None returns the full hit
+         *             (unchanged default). An unknown name → 422 listing the allowed names.
+         *         group_by (Literal["document"] | None): ``"document"`` caps how many hits one document may
+         *             contribute (``max_per_document``); None = no grouping (unchanged default).
+         *         max_per_document (int): The per-document cap when ``group_by="document"`` (1-10, default 1);
+         *             only valid together with ``group_by``.
          */
         SearchRequest: {
             /**
@@ -6900,16 +6917,32 @@ export interface components {
                 [key: string]: unknown;
             } | null;
             /**
+             * Group By
+             * @description 'document' → no document contributes more than max_per_document hits: the final ranking (after fusion and any rerank) keeps its order and the page is filled with the next best hits of other documents. Fewer than `limit` hits come back when the collection holds too few matching documents. None → no grouping.
+             */
+            group_by?: "document" | null;
+            /**
              * Limit
              * @description Number of fused results.
              * @default 10
              */
             limit: number;
             /**
+             * Max Per Document
+             * @description Per-document hit cap when group_by='document' (default 1). Only valid together with group_by.
+             * @default 1
+             */
+            max_per_document: number;
+            /**
              * Query
              * @description The natural-language query to search for.
              */
             query: string;
+            /**
+             * Return Fields
+             * @description The hit fields to return (a lean response): any hit field name (chunk_id, document_id, filename, document_title, heading_path, metadata, score, text, chunk_index, token_count, block_ids, page, page_number, bbox, block_locations) or 'metadata.<field>' to keep one metadata entry. chunk_id and document_id are ALWAYS returned. Omitted fields are ABSENT from each hit (not null), and their hydration reads are skipped (e.g. no geometry read without page/page_number/bbox/block_ids/block_locations). None → the full hit. An unknown name → 422 listing the allowed names.
+             */
+            return_fields?: string[] | null;
             /**
              * Search In
              * @description Fields × modalities to search (content and/or metadata). None → content on both semantic and lexical (the unchanged default).

@@ -12,6 +12,8 @@
 # per-request facts ride in from the request edge: the filtered fields that are FULL-TEXT indexed (so
 # their filters translate to a full-text match, not an exact one) and the collection's display-title
 # field (so a hit's document_title resolves through DisplayTitleResolver, batch-read once per page).
+# An optional HitProjection (the request's return_fields) lets hydrate SKIP the reads whose fields
+# the client did not ask for (block geometry, document metadata, document identity/title).
 
 # ====== Standard Library Imports ======
 import asyncio
@@ -32,6 +34,7 @@ from shared_libs.services.db.postgresql.tables import MetadataField
 from shared_libs.services.db.qdrant import build_match_conditions
 
 # ====== Local Project Imports ======
+from .hit_projection import HitProjection
 from .probe import (
     AXES_DENSE_ONLY,
     AXES_DENSE_SPARSE,
@@ -54,6 +57,7 @@ class CollectionReadPortImpl(CollectionReadPort, LoggerClass):
         collection_id: uuid.UUID,
         text_fields: Collection[str] = frozenset(),
         title_field: MetadataField | None = None,
+        projection: HitProjection | None = None,
     ) -> None:
         """
         Args:
@@ -63,12 +67,15 @@ class CollectionReadPortImpl(CollectionReadPort, LoggerClass):
                 text_list) — their filters become full-text matches instead of exact matches.
             title_field (MetadataField | None): The collection's document-scope display-title field
                 (``collection.title_field`` resolved against its schema); None = parser titles.
+            projection (HitProjection | None): The hit fields the client asked for; hydration
+                skips the reads feeding only unrequested fields. None = hydrate everything.
         """
         LoggerClass.__init__(self)
         self._database = database
         self._collection_id = collection_id
         self._text_fields = frozenset(text_fields)
         self._title_field = title_field
+        self._projection = projection
         # Per-request retrieval probe — the app-side accumulator the SearchMetricsEmitter reads at
         # the runner boundary. The port is constructed per request (SearchService), so this rides
         # along with per-request scope; it is NOT part of the shared CollectionReadPort protocol (an
@@ -248,19 +255,29 @@ class CollectionReadPortImpl(CollectionReadPort, LoggerClass):
 
         # 3. Resolve source identity + declared metadata for the hit page's documents in TWO bulk
         #    reads (not per-hit) so every hit self-cites — the client never needs an N+1 GET
-        #    /documents/{id} to render "which document, which fields".
+        #    /documents/{id} to render "which document, which fields". Each read is skipped when the
+        #    request's projection asked for none of the fields it feeds.
+        projection = self._projection
         document_ids = list({row.document_id for row in rows})
-        documents = {doc.id: doc for doc in await self._database.documents.get_by_ids(document_ids)}
-        doc_metadata = await self._database.documents.get_filterable_metadata_for_documents(
-            document_ids
-        )
+        documents: dict[uuid.UUID, Any] = {}
+        if projection is None or projection.needs_document_identity:
+            documents = {
+                doc.id: doc for doc in await self._database.documents.get_by_ids(document_ids)
+            }
+        doc_metadata: dict[uuid.UUID, dict] = {}
+        if projection is None or projection.needs_document_metadata:
+            doc_metadata = await self._database.documents.get_filterable_metadata_for_documents(
+                document_ids
+            )
 
         # 4. Bulk-read each chunk's source blocks (page + bbox) so a hit self-cites WHERE on the page
         #    it came from — one query for the whole hit page (no per-hit N+1), the primary block is
-        #    the first in assembly order.
-        block_locations = await self._database.documents.get_block_locations_for_chunks(
-            [row.id for row in rows]
-        )
+        #    the first in assembly order. Skipped when no geometry field was requested.
+        block_locations: dict[str, list[dict]] = {}
+        if projection is None or projection.needs_geometry:
+            block_locations = await self._database.documents.get_block_locations_for_chunks(
+                [row.id for row in rows]
+            )
         # 4b. Each document's DISPLAY title (the collection's title_field value when configured and
         #     set, else the parser title) — at most one extra batch read for the whole hit page.
         titles = await self.__display_titles(documents)
@@ -269,30 +286,57 @@ class CollectionReadPortImpl(CollectionReadPort, LoggerClass):
         #    block location ride along in the metadata bag (lifted into the flat hit model by the router).
         hydrated = {}
         for row in rows:
-            document = documents.get(row.document_id)
-            locations = block_locations.get(str(row.id), [])
-            primary = locations[0] if locations else None
             hydrated[str(row.id)] = Hit(
                 chunk_id=str(row.id),
                 document_id=str(row.document_id),
                 text=row.text,
-                metadata={
-                    "chunk_index": row.chunk_index,
-                    "token_count": row.token_count,
-                    "heading_path": row.heading_path or [],
-                    "filename": document.filename if document else None,
-                    "document_title": titles.get(row.document_id),
-                    "document_metadata": doc_metadata.get(row.document_id, {}),
-                    "block_ids": [loc["block_id"] for loc in locations],
-                    "page": primary["page"] if primary else None,
-                    "bbox": primary["bbox"] if primary else None,
-                    "block_locations": [
-                        {"page": loc["page"], "bbox": loc["bbox"]} for loc in locations
-                    ],
-                },
+                metadata=self.__hit_metadata(
+                    row,
+                    documents.get(row.document_id),
+                    titles.get(row.document_id),
+                    doc_metadata.get(row.document_id, {}),
+                    block_locations.get(str(row.id), []),
+                ),
             )
         self.logger.debug(f"Hydrated {len(hydrated)}/{len(chunk_ids)} chunk(s)")
         return hydrated
+
+    @staticmethod
+    def __hit_metadata(
+        row: Any,
+        document: Any | None,
+        title: str | None,
+        document_metadata: dict,
+        locations: list[dict],
+    ) -> dict[str, Any]:
+        """
+        Build one hit's hydrated metadata bag (lifted into the flat client hit by the router).
+
+        Args:
+            row (Any): The chunk row.
+            document (Any | None): The owning document row (None when unread or vanished).
+            title (str | None): The document's resolved display title.
+            document_metadata (dict): The document's filterable metadata (empty when unread).
+            locations (list[dict]): The chunk's source-block locations, assembly order (empty
+                when unread or unlocated).
+
+        Returns:
+            dict[str, Any]: The chunk/document/geometry facts of the hit.
+        """
+        # 1. The primary block is the first in assembly order; its page/bbox locate the hit.
+        primary = locations[0] if locations else None
+        return {
+            "chunk_index": row.chunk_index,
+            "token_count": row.token_count,
+            "heading_path": row.heading_path or [],
+            "filename": document.filename if document else None,
+            "document_title": title,
+            "document_metadata": document_metadata,
+            "block_ids": [loc["block_id"] for loc in locations],
+            "page": primary["page"] if primary else None,
+            "bbox": primary["bbox"] if primary else None,
+            "block_locations": [{"page": loc["page"], "bbox": loc["bbox"]} for loc in locations],
+        }
 
     async def __display_titles(
         self, documents: dict[uuid.UUID, Any]

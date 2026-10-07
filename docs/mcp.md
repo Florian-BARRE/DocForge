@@ -20,7 +20,7 @@ the published [`docforge-sdk`](python-sdk.md) package. Each MCP tool is a small 
 1. accepts LLM-friendly dictionary/scalar arguments,
 2. validates them into the SDK's typed request models,
 3. calls the corresponding `docforge-sdk` resource method, and
-4. returns the JSON the SDK gives back (Pydantic models serialized with `model_dump(mode="json")`).
+4. returns the JSON the SDK gives back (Pydantic models serialized with `model_dump(mode="json")`) as **compact, non-indented JSON text** (token cost) - one serialisation choke point (`libs/compact_json.py`, applied to every tool at registration); `search_collection` is the one tool that defaults to plain text (below).
 
 Because it never imports the DocForge runtime config, it needs no Postgres/S3/Qdrant secrets — only
 the API URL plus its own transport and auth knobs. An AI connected to it can therefore operate a
@@ -37,7 +37,7 @@ The server surfaces a short instruction string to the connected model so it know
 ## 2. The tool catalogue
 
 All tools are registered over the SDK in `src/mcp/libs/tools/`. Tool inputs are plain dicts/scalars;
-outputs are the JSON returned by the REST API. **Unknown arguments are rejected**: every tool's
+outputs are the (compact, non-indented) JSON returned by the REST API. **Unknown arguments are rejected**: every tool's
 argument model is `extra="forbid"` (FastMCP would otherwise silently drop them), so a wrong
 parameter name (e.g. `page=5` on a tool that has no `page`) fails with an explicit validation error
 instead of quietly succeeding; each tool's advertised input schema carries `additionalProperties: false`.
@@ -111,7 +111,7 @@ vector space is fixed at creation), plus optional ingestion/search pipeline blob
 
 | Tool | Purpose |
 |---|---|
-| `search_collection` | Hybrid semantic + keyword search (dense + sparse fusion). **Typed parameters**: `filters` is `{field: value}` where value is a scalar (equality; strings case-insensitive), a list (any-of) or a `{gte,gt,lte,lt}` range; `search_in` is a list of `{field, semantic, lexical}` targets — both are documented in the tool's JSON schema, and the docstring tells the agent to call `describe_collection` first. Returns ranked hits (cite the 1-based `page_number` and `document_title`) plus `hints`: a filter value no document stores yields the closest stored values — read them before concluding nothing exists. |
+| `search_collection` | Hybrid semantic + keyword search (dense + sparse fusion). **Typed parameters**: `filters` is `{field: value}` where value is a scalar (equality; strings case-insensitive), a list (any-of) or a `{gte,gt,lte,lt}` range; `search_in` is a list of `{field, semantic, lexical}` targets — both are documented in the tool's JSON schema, and the docstring tells the agent to call `describe_collection` first. Returns ranked hits (cite the 1-based `page_number` and `document_title`) plus `hints`: a filter value no document stores yields the closest stored values — read them before concluding nothing exists. **Lean by default** for agents: `return_fields` (omitted → `text, document_title, page_number, heading_path, score, metadata`; `chunk_id`/`document_id` always come back; explicit list overrides, `metadata.<field>` keeps one entry; **geometry** = pass `return_fields` including `block_locations`/`bbox`/`page` with `format="json"`), `group_by="document"` + `max_per_document` (1-10, default 1: diverse sources instead of one document repeated), and `format`: `"text"` (default) = a header `N hits for "<query>"` then per hit `[rank] <title> | p.<page_number> | <heading > path> | score <s> | doc <id> | chunk <id>`, an optional `meta: k=v; ...` line and the chunk text, then `Hint: ...` lines (never any geometry); `"json"` = the compact response holding only the requested keys. Text mode uses `" | "` separators (ASCII-only output for Windows consoles). |
 
 ### Jobs
 
@@ -339,7 +339,7 @@ The MCP server is a **presentation layer over [`docforge-sdk`](python-sdk.md)**:
   (`sdk.collections.create`, `sdk.search.search`, `sdk.explorer.get_ir`, …), validating LLM dicts
   into the SDK's typed models (`CreateCollectionRequest`, `SearchRequest`, `KeyPermissions`, …)
   along the way.
-- Tool outputs are exactly the JSON the SDK returns — so anything you can do with the Python SDK,
+- Tool outputs are exactly the (compact) JSON the SDK returns — so anything you can do with the Python SDK,
   the model can do through MCP, and the two stay in lockstep (the SDK is held to the backend's
   OpenAPI contract by the CI [coherence gate](architecture.md#6-quality-gates)).
 

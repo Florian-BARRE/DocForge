@@ -3,7 +3,7 @@
 # router models. ``filters`` and ``debug_info`` are opaque, server-shaped JSON and are typed as dicts.
 
 # ====== Standard Library Imports ======
-from typing import Any
+from typing import Any, Literal
 
 # ====== Third-Party Library Imports ======
 from pydantic import BaseModel, Field
@@ -41,6 +41,9 @@ class SearchRequest(BaseModel):
         limit (int): Number of fused results to return.
         filters (dict[str, Any] | None): Exact/any-of constraints on the FILTERABLE fields.
         search_in (list[SearchTarget] | None): Fields × modalities to search. None → content on both.
+        return_fields (list[str] | None): Hit fields to return (lean response). None → the full hit.
+        group_by (Literal["document"] | None): ``"document"`` caps hits per document.
+        max_per_document (int): The per-document cap under ``group_by`` (1-10).
     """
 
     query: str = Field(min_length=1, description="The natural-language query to search for.")
@@ -53,6 +56,28 @@ class SearchRequest(BaseModel):
         default=None,
         description="Fields × modalities to search (content and/or metadata). None → content on "
         "both semantic and lexical (the unchanged default).",
+    )
+    return_fields: list[str] | None = Field(
+        default=None,
+        max_length=64,
+        description="The hit fields to return (a lean response): any hit field name (chunk_id, "
+        "document_id, filename, document_title, heading_path, metadata, score, text, chunk_index, "
+        "token_count, block_ids, page, page_number, bbox, block_locations) or 'metadata.<field>' to "
+        "keep one metadata entry. chunk_id and document_id are ALWAYS returned. Omitted fields are "
+        "ABSENT from each hit (not null). None → the full hit. An unknown name → 422.",
+    )
+    group_by: Literal["document"] | None = Field(
+        default=None,
+        description="'document' → no document contributes more than max_per_document hits; the "
+        "ranking keeps its order and is filled with the next best hits of other documents. "
+        "None → no grouping.",
+    )
+    max_per_document: int = Field(
+        default=1,
+        ge=1,
+        le=10,
+        description="Per-document hit cap when group_by='document' (default 1). Only valid "
+        "together with group_by.",
     )
 
 
@@ -97,6 +122,9 @@ class SearchHit(BaseModel):
         page_number (int | None): The same page, 1-based — the one to cite.
         bbox (list[float] | None): The primary block's NORMALISED [0, 1] bounding box.
         block_locations (list[BlockLocation]): Every source block's page + bbox (draw them all).
+
+    Only ``chunk_id`` and ``document_id`` are always present: a request's ``return_fields`` omits the
+    unrequested keys (absent, not null), so ``model_fields_set`` tells what the server really sent.
     """
 
     chunk_id: str = Field(description="The chunk's UUID.")
@@ -118,10 +146,10 @@ class SearchHit(BaseModel):
         description="The document's filterable metadata (field → value) — so a hit self-cites "
         "without a second GET /documents/{id}.",
     )
-    score: float = Field(description="Fused RRF score (higher is better).")
-    text: str = Field(description="The chunk's enriched text.")
-    chunk_index: int = Field(description="Ordinal within the document.")
-    token_count: int = Field(description="Token count of the chunk.")
+    score: float = Field(default=0.0, description="Fused RRF score (higher is better).")
+    text: str = Field(default="", description="The chunk's enriched text.")
+    chunk_index: int = Field(default=0, description="Ordinal within the document.")
+    token_count: int = Field(default=0, description="Token count of the chunk.")
     block_ids: list[str] = Field(
         default_factory=list,
         description="The IR block ids the chunk was assembled from, in assembly order.",
