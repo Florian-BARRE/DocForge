@@ -7,8 +7,13 @@
 # every check, so the AUTH_ENABLED=false path is entirely unaffected. A stored key whose permissions
 # blob is malformed is treated as granting NOTHING (deny), never a crash.
 #
+# The `collection_id` path param is a collection REF (UUID or collection-alias name): the async gate
+# resolves an alias ref to its target id before the scope check. A key's own `alias:<name>` scope entries
+# are evaluated against their per-request targets (`principal.alias_targets`) — a deleted alias grants
+# nothing (fail closed).
+#
 # NOTE ON SCOPE: `enforce` collection-scopes ONLY the `collection_id` PATH param — the check it can
-# make with zero I/O. Endpoints whose collection lives in the request BODY/QUERY, or is derived after
+# make from the path alone. Endpoints whose collection lives in the request BODY/QUERY, or is derived after
 # loading a resource (job/document/chunk/blob), close the gap by calling the `assert_collection_scope`
 # / `assert_any_collection_scope` helpers once they know the target collection(s).
 
@@ -23,6 +28,7 @@ from loggerplusplus import loggerplusplus
 from pydantic import ValidationError
 
 # ====== Local Project Imports ======
+from ..collection_ref import CollectionRefResolver
 from .permissions import Capability, KeyPermissions
 from .principal import AuthPrincipal
 
@@ -41,13 +47,14 @@ class AuthzGuard:
     @staticmethod
     def __parse(principal: AuthPrincipal) -> KeyPermissions:
         """
-        Parse the scoped key's stored permissions blob into a validated model.
+        Parse the scoped key's stored permissions blob into its EFFECTIVE scope (aliases resolved).
 
         Args:
             principal (AuthPrincipal): The authenticated, non-full-access principal.
 
         Returns:
-            KeyPermissions: The parsed scope.
+            KeyPermissions: The parsed scope, each ``alias:<name>`` entry replaced by the alias's
+                current target (a dangling alias dropped — fail closed).
 
         Raises:
             HTTPException: 403 when the stored blob is malformed (treated as no grants, not a crash).
@@ -55,15 +62,20 @@ class AuthzGuard:
         # 1. A non-full-access principal always carries a key with a dict permissions blob.
         raw = principal.key.permissions if principal.key is not None else None
         try:
-            return KeyPermissions.model_validate(raw)
+            parsed = KeyPermissions.model_validate(raw)
         except ValidationError:
             # A corrupt/legacy shape must DENY, never 500 — the key is authorized for nothing.
             AuthzGuard.logger.warning(f"API key has a malformed permissions blob — denying")
             raise HTTPException(status_code=403, detail="API key has malformed permissions.")
+        return parsed.with_resolved_aliases(principal.alias_targets)
 
     @classmethod
     def enforce(
-        cls, capability: Capability, principal: AuthPrincipal, request: Request
+        cls,
+        capability: Capability,
+        principal: AuthPrincipal,
+        request: Request,
+        collection_id: str | None = None,
     ) -> AuthPrincipal:
         """
         Authorize a principal for a capability and (when path-scoped) a collection.
@@ -72,6 +84,8 @@ class AuthzGuard:
             capability (Capability): The capability the endpoint demands.
             principal (AuthPrincipal): The authenticated caller.
             request (Request): The live request (source of the ``collection_id`` path param).
+            collection_id (str | None): The path ref ALREADY resolved to a collection id (the async
+                gate passes it); None = read the raw path param (a UUID ref).
 
         Returns:
             AuthPrincipal: The same principal, unchanged, when authorized.
@@ -93,7 +107,8 @@ class AuthzGuard:
             )
 
         # 4. Collection scoping — only when the endpoint carries a collection_id PATH param.
-        collection_id = request.path_params.get(_COLLECTION_PATH_PARAM)
+        if collection_id is None:
+            collection_id = request.path_params.get(_COLLECTION_PATH_PARAM)
         if collection_id is not None and not permissions.grants_collection(str(collection_id)):
             raise HTTPException(
                 status_code=403,
@@ -102,6 +117,30 @@ class AuthzGuard:
 
         # 5. Authorized.
         return principal
+
+    @classmethod
+    def holds(cls, principal: AuthPrincipal, capability: Capability) -> bool:
+        """
+        Tell whether a principal holds a capability — a soft check for in-route field shaping.
+
+        Used where a route is reachable at a lower capability but some of its output is reserved
+        to a higher one (e.g. ``get_collection`` omits the pipeline/search blobs for a key without
+        READ_TECHNICAL) — the route degrades its payload instead of refusing.
+
+        Args:
+            principal (AuthPrincipal): The authenticated caller (already authorized for the route).
+            capability (Capability): The capability gating the optional output.
+
+        Returns:
+            bool: True for a full-access principal or a scoped key granting ``capability``.
+
+        Raises:
+            HTTPException: 403 when the scoped key's permissions blob is malformed.
+        """
+        # 1. Full access holds everything; a scoped key holds what it explicitly grants.
+        if principal.is_full_access:
+            return True
+        return cls.__parse(principal).grants_capability(capability)
 
     @classmethod
     def assert_collection_scope(cls, principal: AuthPrincipal, collection_id: str) -> None:
@@ -212,8 +251,29 @@ def require(capability: Capability) -> Callable[..., Awaitable[AuthPrincipal]]:
                 headers={"WWW-Authenticate": "Bearer"},
             )
 
-        # 2. Delegate the full/scoped decision to the guard (raises 403 on any denial).
-        return AuthzGuard.enforce(capability, principal, request)
+        # 2. Full access, or no collection in the path: the guard decides alone.
+        ref = request.path_params.get(_COLLECTION_PATH_PARAM)
+        if ref is None or principal.is_full_access:
+            return AuthzGuard.enforce(capability, principal, request)
+
+        # 3. A scoped key on a collection path: capability FIRST, so a key that may not call the
+        #    route cannot use it to probe which alias names exist.
+        if not AuthzGuard.holds(principal, capability):
+            raise HTTPException(
+                status_code=403, detail=f"API key lacks the '{capability}' capability."
+            )
+
+        # 4. Resolve the ref (UUID or alias; an unknown alias is a 404), then check the scope. An
+        #    ALIAS outside the caller's scope answers the SAME 404 as an unknown one — never a 403
+        #    naming its target id — so a scoped key can neither enumerate other tenants' aliases
+        #    nor learn the collection ids behind them.
+        resolved = str(await CollectionRefResolver.resolve(request, str(ref)))
+        try:
+            return AuthzGuard.enforce(capability, principal, request, collection_id=resolved)
+        except HTTPException as exc:
+            if exc.status_code == 403 and not CollectionRefResolver.is_uuid_ref(str(ref)):
+                raise HTTPException(status_code=404, detail=f"Collection '{ref}' not found.")
+            raise
 
     return _authorize
 

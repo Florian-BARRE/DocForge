@@ -13,6 +13,9 @@ from .blobs import AsyncBlobs, SyncBlobs
 # ------------------- Capabilities resource ------------------- #
 from .capabilities import AsyncCapabilities, SyncCapabilities
 
+# ------------------- Collection aliases resource ------------------- #
+from .collection_aliases import AsyncCollectionAliases, SyncCollectionAliases
+
 # ------------------- Collections resource ------------------- #
 from .collections import AsyncCollections, SyncCollections
 
@@ -47,6 +50,8 @@ __all__ = [
     "SyncAuth",
     "AsyncHealth",
     "SyncHealth",
+    "AsyncCollectionAliases",
+    "SyncCollectionAliases",
     "AsyncCollections",
     "SyncCollections",
     "AsyncDocuments",

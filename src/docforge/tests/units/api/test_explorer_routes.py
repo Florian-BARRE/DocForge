@@ -24,10 +24,10 @@ def test_get_document_bad_uuid_is_422(client) -> None:
     assert response.status_code == 422, response.text
 
 
-def test_list_documents_bad_collection_uuid_is_422(client) -> None:
-    """A non-UUID collection id is rejected before the handler (no store touched)."""
-    response = client.get("/api/v1/collections/not-a-uuid/documents")
-    assert response.status_code == 422, response.text
+def test_list_documents_malformed_collection_ref_is_404(client) -> None:
+    """A ref that is neither a UUID nor an alias name is a 404 before the handler (no store touched)."""
+    response = client.get("/api/v1/collections/Not%20A%20Ref/documents")
+    assert response.status_code == 404, response.text
 
 
 def test_delete_document_bad_uuid_is_422(client) -> None:

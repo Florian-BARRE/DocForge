@@ -13,7 +13,9 @@ from .resources.audit import AsyncAudit, SyncAudit
 from .resources.auth import AsyncAuth, SyncAuth
 from .resources.blobs import AsyncBlobs, SyncBlobs
 from .resources.capabilities import AsyncCapabilities, SyncCapabilities
+from .resources.collection_aliases import AsyncCollectionAliases, SyncCollectionAliases
 from .resources.collections import AsyncCollections, SyncCollections
+from .resources.config_versions import AsyncConfigVersions, SyncConfigVersions
 from .resources.corpus import AsyncCorpus, SyncCorpus
 from .resources.documents import AsyncDocuments, SyncDocuments
 from .resources.explorer import AsyncExplorer, SyncExplorer
@@ -42,6 +44,8 @@ class AsyncClient:
         pipelines (AsyncPipelines): Pipeline discovery + design.
         transfers (AsyncTransfers): Collection export/import.
         snippets (AsyncSnippets): Granular collection-config snippet export/apply.
+        config_versions (AsyncConfigVersions): Collection config history (list/get/diff/restore).
+        collection_aliases (AsyncCollectionAliases): Stable collection names (list/set/delete).
         audit (AsyncAudit): Root-only audit-trail reads.
         corpus (AsyncCorpus): Server-side document grid — query + bulk delete/enable/reingest.
     """
@@ -69,6 +73,8 @@ class AsyncClient:
         self.pipelines = AsyncPipelines(self._transport)
         self.transfers = AsyncTransfers(self._transport)
         self.snippets = AsyncSnippets(self._transport)
+        self.config_versions = AsyncConfigVersions(self._transport)
+        self.collection_aliases = AsyncCollectionAliases(self._transport)
         self.corpus = AsyncCorpus(self._transport)
 
     async def __aenter__(self) -> "AsyncClient":
@@ -106,6 +112,8 @@ class Client:
         pipelines (SyncPipelines): Pipeline discovery + design.
         transfers (SyncTransfers): Collection export/import.
         snippets (SyncSnippets): Granular collection-config snippet export/apply.
+        config_versions (SyncConfigVersions): Collection config history (list/get/diff/restore).
+        collection_aliases (SyncCollectionAliases): Stable collection names (list/set/delete).
         audit (SyncAudit): Root-only audit-trail reads.
         corpus (SyncCorpus): Server-side document grid — query + bulk delete/enable/reingest.
     """
@@ -133,6 +141,8 @@ class Client:
         self.pipelines = SyncPipelines(self._transport)
         self.transfers = SyncTransfers(self._transport)
         self.snippets = SyncSnippets(self._transport)
+        self.config_versions = SyncConfigVersions(self._transport)
+        self.collection_aliases = SyncCollectionAliases(self._transport)
         self.corpus = SyncCorpus(self._transport)
 
     def __enter__(self) -> "Client":

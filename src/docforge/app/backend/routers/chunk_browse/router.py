@@ -3,18 +3,20 @@
 # matching a filter map WITHOUT a query (no embedding, no ranking), one ordered keyset page at a time
 # (document id, then chunk_index). It reuses the search route's filter gate (same 422s, same stored-
 # value resolution + hints), the search hit shape + return_fields projection (geometry off by default)
-# and, below it, the search's disabled-chunk/document exclusion — a browse can never list what a
+# — a caller without read_technical never gets block_ids / page / bbox / block_locations, even when it
+# asks for them (silently withheld, like the lean explorer chunks) — and, below it, the search's
+# disabled-chunk/document exclusion — a browse can never list what a
 # search would hide. The listing itself lives in CONTEXT.chunk_browser.
 
 # ====== Standard Library Imports ======
-import uuid
 
 # ====== Third-Party Library Imports ======
 from fastapi import APIRouter, Depends, HTTPException
 
 # ====== Local Project Imports ======
 from ...context import CONTEXT
-from ...libs.auth import Capability, require
+from ...libs.auth import AuthPrincipal, AuthzGuard, Capability, require
+from ...libs.collection_ref import CollectionRef
 from ...libs.search import (
     BrowseCursor,
     BrowseCursorError,
@@ -22,7 +24,7 @@ from ...libs.search import (
     SearchCollectionSpecs,
     ZeroHitHintBuilder,
 )
-from ...libs.search.hit_projection import GEOMETRY_FIELDS
+from ...libs.search.hit_projection import GEOMETRY_FIELDS, TECHNICAL_GEOMETRY_FIELDS
 from ...utils.error_handling import auto_handle_errors
 from ..search.filter_gate import SearchFilterGate
 from ..search.hit_mapper import SearchHitMapper
@@ -46,11 +48,12 @@ _DEFAULT_FIELDS = sorted(
     response_model=ChunkBrowseResponse,
     # Unrequested hit fields stay UNSET → absent from the wire (the score is never set at all).
     response_model_exclude_unset=True,
-    dependencies=[Depends(require(Capability.READ))],
 )
 @auto_handle_errors
 async def browse_chunks(
-    collection_id: uuid.UUID, request: ChunkBrowseRequest
+    collection_id: CollectionRef,
+    request: ChunkBrowseRequest,
+    principal: AuthPrincipal = Depends(require(Capability.READ_TEXT)),
 ) -> ChunkBrowseResponse:
     """
     List a collection's chunks matching a filter, without a query, in (document, chunk_index) order.
@@ -72,6 +75,8 @@ async def browse_chunks(
             detail=f"Unknown return_fields {unknown_fields} — allowed: {allowed_fields} or "
             f"'metadata.<field>'.",
         )
+    if not AuthzGuard.holds(principal, Capability.READ_TECHNICAL):
+        projection = HitProjection.without(projection, allowed_fields, TECHNICAL_GEOMETRY_FIELDS)
     try:
         cursor = BrowseCursor.decode(request.cursor) if request.cursor is not None else None
     except BrowseCursorError as exc:

@@ -115,6 +115,7 @@ async def test_facade_delete_refuses_before_cancelling_anything(monkeypatch) -> 
     monkeypatch.setattr(
         module.RebuildJobApi, "active_rebuild", AsyncMock(return_value=_rebuild_job())
     )
+    monkeypatch.setattr(module.CollectionAliasApi, "names_for", AsyncMock(return_value=[]))
     drop = AsyncMock()
     monkeypatch.setattr(module.QdrantCollectionApi, "drop", drop)
 

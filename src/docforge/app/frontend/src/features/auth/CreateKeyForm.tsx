@@ -6,7 +6,8 @@
 // this form never keeps a copy of it.
 
 import { useEffect, useState } from "react";
-import { createKey, type ApiCapability, type CreatedApiKey, type KeyPermissions } from "../../api/auth";
+import { createKey, type ApiCapability, type CreatedApiKey, type KeyPermissionsRequest, type KeyProfile } from "../../api/auth";
+import { listCollectionAliases, type CollectionAlias } from "../../api/collectionAliases";
 import { listCollections, type Collection } from "../../api/collections";
 import type { ApiIssue } from "../../api/http";
 import { HttpError } from "../../api/http";
@@ -24,6 +25,8 @@ import { PermissionsBuilder, type CollectionsScope } from "./PermissionsBuilder"
 export interface CreateKeyFormInitial {
   name: string;
   fullAccess: boolean;
+  /** `null` = a custom capability list (the checkboxes); else the preset the server expands. */
+  profile: KeyProfile | null;
   capabilities: ApiCapability[];
   collectionsScope: CollectionsScope;
   expiry: ExpiryChoice;
@@ -32,7 +35,7 @@ export interface CreateKeyFormInitial {
 /** The submitted payload — shared shape for both `createKey` and `rotateKey` requests. */
 export interface KeyFormPayload {
   name: string;
-  permissions: KeyPermissions | null;
+  permissions: KeyPermissionsRequest | null;
   expires_at: string | null;
 }
 
@@ -43,6 +46,8 @@ export interface KeyFormPayload {
 // mirror of a backend default (the backend itself defaults to unrestricted/never-expiring — see
 // `CreateKeyRequest` in app/backend/routers/auth/models.py, whose fields are all optional/null).
 const DEFAULT_KEY_EXPIRY_DAYS = 90;
+// Same least-privilege reasoning: a fresh scoped key starts as a text-only reading agent.
+const DEFAULT_KEY_PROFILE: KeyProfile = "agent_reader";
 
 interface CreateKeyFormProps {
   mode?: "create" | "rotate";
@@ -56,13 +61,15 @@ interface CreateKeyFormProps {
 export function CreateKeyForm({ mode = "create", initial, onSubmitOverride, onCreated, onCancel }: CreateKeyFormProps) {
   const [name, setName] = useState(initial?.name ?? "");
   const [fullAccess, setFullAccess] = useState(initial?.fullAccess ?? false);
-  const [capabilities, setCapabilities] = useState<ApiCapability[]>(initial?.capabilities ?? ["read"]);
+  const [profile, setProfile] = useState<KeyProfile | null>(initial ? initial.profile : DEFAULT_KEY_PROFILE);
+  const [capabilities, setCapabilities] = useState<ApiCapability[]>(initial?.capabilities ?? ["read_text"]);
   const [collectionsScope, setCollectionsScope] = useState<CollectionsScope>(initial?.collectionsScope ?? "all");
   const [expiry, setExpiry] = useState<ExpiryChoice>(
     initial?.expiry ?? { kind: "preset", days: DEFAULT_KEY_EXPIRY_DAYS },
   );
   const [collections, setCollections] = useState<Collection[] | null>(null);
   const [collectionsError, setCollectionsError] = useState<string | null>(null);
+  const [aliases, setAliases] = useState<CollectionAlias[] | null>(null);
   const toast = useToast();
   const [submitting, setSubmitting] = useState(false);
   const [issues, setIssues] = useState<ApiIssue[]>([]);
@@ -74,9 +81,14 @@ export function CreateKeyForm({ mode = "create", initial, onSubmitOverride, onCr
         setCollections([]);
         setCollectionsError(error instanceof Error ? error.message : String(error));
       });
+    // Aliases are an optional extra scope target: a failed fetch just offers none.
+    listCollectionAliases()
+      .then(setAliases)
+      .catch(() => setAliases([]));
   }, []);
 
-  const scopedValid = fullAccess || (capabilities.length > 0 && (collectionsScope === "all" || collectionsScope.length > 0));
+  const grantValid = profile !== null || capabilities.length > 0;
+  const scopedValid = fullAccess || (grantValid && (collectionsScope === "all" || collectionsScope.length > 0));
   const expiryValid = expiry.kind !== "custom" || expiry.date.length > 0;
   const valid = name.trim().length > 0 && scopedValid && expiryValid;
   const isRotate = mode === "rotate";
@@ -89,7 +101,10 @@ export function CreateKeyForm({ mode = "create", initial, onSubmitOverride, onCr
         name: name.trim(),
         permissions: fullAccess
           ? null
-          : { capabilities, collections: collectionsScope === "all" ? ["*"] : collectionsScope },
+          : {
+              ...(profile ? { profile } : { capabilities }),
+              collections: collectionsScope === "all" ? ["*"] : collectionsScope,
+            },
         expires_at: expiryToIso(expiry),
       };
       const created = onSubmitOverride ? await onSubmitOverride(payload) : await createKey(payload);
@@ -121,12 +136,15 @@ export function CreateKeyForm({ mode = "create", initial, onSubmitOverride, onCr
       <PermissionsBuilder
         fullAccess={fullAccess}
         onFullAccessChange={setFullAccess}
+        profile={profile}
+        onProfileChange={setProfile}
         capabilities={capabilities}
         onCapabilitiesChange={setCapabilities}
         collectionsScope={collectionsScope}
         onCollectionsScopeChange={setCollectionsScope}
         collections={collections}
         collectionsError={collectionsError}
+        aliases={aliases}
       />
       <ExpirySelector value={expiry} onChange={setExpiry} />
       <ApiIssueList issues={issues} />

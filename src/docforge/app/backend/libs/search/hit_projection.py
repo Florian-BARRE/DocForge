@@ -4,7 +4,8 @@
 # single metadata entry), projects a fully-built hit dict down to the requested keys (the identity
 # keys chunk_id + document_id are always kept), and tells the read port which hydration reads it can
 # SKIP (geometry, document metadata, document identity) — so a lean request is cheaper, not just
-# smaller. Model-agnostic: it works on plain dicts and is handed the allowed names by the caller.
+# smaller. ``without`` narrows a projection (or the full hit) so a caller lacking read_technical never
+# receives the drawing geometry (TECHNICAL_GEOMETRY_FIELDS — page_number, the citation, stays). Model-agnostic: it works on plain dicts and is handed the allowed names by the caller.
 
 # ====== Standard Library Imports ======
 from collections.abc import Collection, Iterable
@@ -19,6 +20,9 @@ GEOMETRY_FIELDS: frozenset[str] = frozenset(
     {"block_ids", "page", "page_number", "bbox", "block_locations"}
 )
 
+# The geometry reserved to read_technical: the IR block ids and the drawing coordinates. The 1-based
+# page_number stays — it is the reader-facing page to cite, part of the text surface.
+TECHNICAL_GEOMETRY_FIELDS: frozenset[str] = GEOMETRY_FIELDS - {"page_number"}
 # Hit fields derived from the owning document rows (+ the configured display-title field read).
 DOCUMENT_FIELDS: frozenset[str] = frozenset({"filename", "document_title"})
 
@@ -79,6 +83,26 @@ class HitProjection:
             return cls(frozenset(fields), frozenset(metadata_keys)), sorted(unknown)
         return cls(frozenset(fields)), sorted(unknown)
 
+    @classmethod
+    def without(
+        cls, projection: "HitProjection | None", allowed: Collection[str], dropped: frozenset[str]
+    ) -> "HitProjection":
+        """
+        Narrow a projection (None = the full hit) so it never returns the ``dropped`` fields.
+
+        Args:
+            projection (HitProjection | None): The request's projection; None = every allowed field.
+            allowed (Collection[str]): The projectable top-level hit field names.
+            dropped (frozenset[str]): The fields to withhold (identity keys are never dropped).
+
+        Returns:
+            HitProjection: The narrowed projection (metadata selection preserved).
+        """
+        # 1. The full hit becomes an explicit selection of every allowed field, minus the dropped.
+        if projection is None:
+            return cls(frozenset(allowed) - dropped | IDENTITY_FIELDS)
+        return cls(projection.fields - (dropped - IDENTITY_FIELDS), projection.metadata_keys)
+
     @property
     def needs_geometry(self) -> bool:
         """Whether any block-location-derived field (page, bbox, block ids…) was requested."""
@@ -121,6 +145,7 @@ __all__ = [
     "HitProjection",
     "IDENTITY_FIELDS",
     "GEOMETRY_FIELDS",
+    "TECHNICAL_GEOMETRY_FIELDS",
     "DOCUMENT_FIELDS",
     "METADATA_FIELD",
 ]

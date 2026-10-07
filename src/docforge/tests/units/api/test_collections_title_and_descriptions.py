@@ -82,6 +82,9 @@ def _mock_db(monkeypatch, **methods) -> SimpleNamespace:
         SimpleNamespace(
             collections=facade,
             schema_changes=schema_changes,
+            collection_aliases=SimpleNamespace(
+                names_for=AsyncMock(return_value=[]), name_is_alias=AsyncMock(return_value=False)
+            ),
             index_state=SimpleNamespace(
                 missing=AsyncMock(return_value=[]), missing_for=AsyncMock(return_value=[])
             ),

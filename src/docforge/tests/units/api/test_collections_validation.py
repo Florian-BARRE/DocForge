@@ -136,19 +136,20 @@ def test_create_collection_unknown_scope_enum_member_is_422(client) -> None:
     assert response.status_code == 422, response.text
 
 
-def test_get_collection_invalid_uuid_path_param_is_422(client) -> None:
-    response = client.get("/api/v1/collections/not-a-uuid")
-    assert response.status_code == 422, response.text
+def test_get_collection_malformed_ref_is_404(client) -> None:
+    """A ref that is neither a UUID nor an alias name names no collection (no store touched)."""
+    response = client.get("/api/v1/collections/Not%20A%20Ref")
+    assert response.status_code == 404, response.text
 
 
-def test_patch_collection_invalid_uuid_path_param_is_422(client) -> None:
-    response = client.patch("/api/v1/collections/not-a-uuid", json={"name": "new-name"})
-    assert response.status_code == 422, response.text
+def test_patch_collection_malformed_ref_is_404(client) -> None:
+    response = client.patch("/api/v1/collections/Not%20A%20Ref", json={"name": "new-name"})
+    assert response.status_code == 404, response.text
 
 
-def test_delete_collection_invalid_uuid_path_param_is_422(client) -> None:
-    response = client.delete("/api/v1/collections/not-a-uuid")
-    assert response.status_code == 422, response.text
+def test_delete_collection_malformed_ref_is_404(client) -> None:
+    response = client.delete("/api/v1/collections/Not%20A%20Ref")
+    assert response.status_code == 404, response.text
 
 
 def test_patch_collection_unknown_field_type_in_fields_is_422(client) -> None:

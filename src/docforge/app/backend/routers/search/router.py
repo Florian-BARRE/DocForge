@@ -12,14 +12,14 @@
 # service as a SearchTuning; a rerank=true request on a graph with no rerank stage is a 422.
 
 # ====== Standard Library Imports ======
-import uuid
 
 # ====== Third-Party Library Imports ======
 from fastapi import APIRouter, Depends, HTTPException
 
 # ====== Local Project Imports ======
 from ...context import CONTEXT
-from ...libs.auth import Capability, require
+from ...libs.auth import AuthPrincipal, AuthzGuard, Capability, require
+from ...libs.collection_ref import CollectionRef
 from ...libs.metrics.search_health import SearchHealthReader
 from ...libs.search import (
     HitProjection,
@@ -37,6 +37,7 @@ from ...libs.search import (
     TermlessQueryHint,
     ZeroHitHintBuilder,
 )
+from ...libs.search.hit_projection import TECHNICAL_GEOMETRY_FIELDS
 from ...utils.error_handling import auto_handle_errors
 from .encode_failure import EncodeFailureMapper
 from .filter_gate import SearchFilterGate
@@ -55,7 +56,7 @@ router = APIRouter(tags=["search"])
 @router.get(
     "/search/health",
     response_model=SearchHealthSummary,
-    dependencies=[Depends(require(Capability.READ))],
+    dependencies=[Depends(require(Capability.READ_TECHNICAL))],
 )
 @auto_handle_errors
 async def search_health() -> SearchHealthSummary:
@@ -82,10 +83,13 @@ async def search_health() -> SearchHealthSummary:
     # A return_fields projection leaves the unrequested hit fields UNSET so they are absent from the
     # wire (not null); the full (default) response sets every field explicitly, so it is unchanged.
     response_model_exclude_unset=True,
-    dependencies=[Depends(require(Capability.SEARCH))],
 )
 @auto_handle_errors
-async def search_collection(collection_id: uuid.UUID, request: SearchRequest) -> SearchResponse:
+async def search_collection(
+    collection_id: CollectionRef,
+    request: SearchRequest,
+    principal: AuthPrincipal = Depends(require(Capability.SEARCH)),
+) -> SearchResponse:
     """
     Run a hybrid search over a collection and return ranked, hydrated chunk hits.
 
@@ -109,6 +113,10 @@ async def search_collection(collection_id: uuid.UUID, request: SearchRequest) ->
             detail=f"Unknown return_fields {unknown_fields} — allowed: {allowed_fields} or "
             f"'metadata.<field>'.",
         )
+    # 0b. The drawing geometry (block ids, 0-based page, bboxes) is read_technical surface: withheld
+    #     from any other caller, requested or not (page_number — the citation — stays).
+    if not AuthzGuard.holds(principal, Capability.READ_TECHNICAL):
+        projection = HitProjection.without(projection, allowed_fields, TECHNICAL_GEOMETRY_FIELDS)
     tuning = SearchTuning(
         min_score=request.min_score,
         rerank=request.rerank,

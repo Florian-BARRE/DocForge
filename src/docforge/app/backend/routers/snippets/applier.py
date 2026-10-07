@@ -11,6 +11,7 @@ from loggerplusplus import loggerplusplus
 
 # ====== Internal Project Imports ======
 from shared_libs.pipelines.blob_secrets import restore_blob_secrets
+from shared_libs.services.db.facades import ConfigAuthor
 from shared_libs.services.db.postgresql.tables import Collection
 
 # ====== Local Project Imports ======
@@ -31,7 +32,13 @@ class SnippetApplier:
         raise TypeError("SnippetApplier is a static-only class and cannot be instantiated.")
 
     @classmethod
-    async def apply(cls, collection: Collection, kind: SnippetKind, body: dict) -> bool:
+    async def apply(
+        cls,
+        collection: Collection,
+        kind: SnippetKind,
+        body: dict,
+        author: ConfigAuthor | None = None,
+    ) -> bool:
         """
         Apply an unwrapped snippet body to a collection, reusing the normal config-edit path.
 
@@ -39,6 +46,8 @@ class SnippetApplier:
             collection (Collection): The target collection row (the merge base for secret restore).
             kind (SnippetKind): The config slice being applied.
             body (dict): The snippet's unwrapped body (blob dict, or {'fields': [...]} for a schema).
+            author (ConfigAuthor | None): Who applied it, stamped on the config version written by a
+                pipeline / search snippet (a schema snippet writes no config version).
 
         Returns:
             bool: Whether the applied change flags a reindex requirement.
@@ -50,13 +59,15 @@ class SnippetApplier:
         """
         # 1. Route to the kind-specific applier — each mirrors the matching arm of the PATCH.
         if kind == "pipeline":
-            return await cls.__apply_pipeline(collection, body)
+            return await cls.__apply_pipeline(collection, body, author)
         if kind == "search":
-            return await cls.__apply_search(collection, body)
+            return await cls.__apply_search(collection, body, author)
         return await cls.__apply_schema(collection, body)
 
     @classmethod
-    async def __apply_pipeline(cls, collection: Collection, body: dict) -> bool:
+    async def __apply_pipeline(
+        cls, collection: Collection, body: dict, author: ConfigAuthor | None
+    ) -> bool:
         """Apply a pipeline snippet: restore secrets → canonicalize+validate → store (+reindex flag)."""
         # 1. Restore any masked/omitted provider secret from the CURRENT pipeline's same provider (same
         #    node id AND kind at the same endpoint — see restore_blob_secrets). A mask with no
@@ -75,10 +86,13 @@ class SnippetApplier:
             collection.id,
             pipeline=canonical,
             note="snippet import: pipeline",
+            author=author,
         )
 
     @classmethod
-    async def __apply_search(cls, collection: Collection, body: dict) -> bool:
+    async def __apply_search(
+        cls, collection: Collection, body: dict, author: ConfigAuthor | None
+    ) -> bool:
         """Apply a search snippet: restore secrets → validate (unless {}) → store. Never a reindex."""
         # 1. Restore masked secrets from the current search blob; {} stays the stock-default sentinel.
         healed = restore_blob_secrets(body, collection.search) or {}
@@ -94,6 +108,7 @@ class SnippetApplier:
             collection.id,
             search=healed,
             note="snippet import: search",
+            author=author,
         )
         return False
 

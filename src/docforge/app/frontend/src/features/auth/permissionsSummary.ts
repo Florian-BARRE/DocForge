@@ -29,11 +29,12 @@ function describeCollectionsScope(collections: string[], collectionNames: Map<st
  *
  * @param permissions - `null` means unrestricted full access.
  * @param collectionNames - Best-effort id→name map for the scoped-collections branch.
- * @returns e.g. "full access", or "read, search · DemoCollection, Invoices".
+ * @returns e.g. "full access", or "agent_reader (read_text, search) · DemoCollection, Invoices".
  */
 export function describeScope(permissions: KeyPermissions | null, collectionNames: Map<string, string>): string {
   if (!permissions) return "full access";
 
   const capabilities = permissions.capabilities.length > 0 ? permissions.capabilities.join(", ") : "no capability";
-  return `${capabilities} · ${describeCollectionsScope(permissions.collections, collectionNames)}`;
+  const grant = permissions.profile ? `${permissions.profile} (${capabilities})` : capabilities;
+  return `${grant} · ${describeCollectionsScope(permissions.collections, collectionNames)}`;
 }

@@ -33,6 +33,9 @@ export function CollectionPipelinePage({ collectionId }: CollectionPipelinePageP
 
   if (error) return <ErrorState message={error} />;
   if (!collection) return <LoadingState label="loading collection…" />;
+  if (collection.pipeline === null) {
+    return <ErrorState message="This API key lacks the read_technical capability — the ingestion pipeline blob is withheld." />;
+  }
 
   return (
     <div style={{ height: "100%", background: theme.color.bg }}>

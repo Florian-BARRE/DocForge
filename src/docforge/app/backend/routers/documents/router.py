@@ -40,6 +40,7 @@ from shared_libs.services.db.s3 import S3Object
 # ====== Local Project Imports ======
 from ...context import CONTEXT
 from ...libs.auth import AuthPrincipal, AuthzGuard, Capability, require
+from ...libs.collection_ref import CollectionRefResolver
 from ...libs.index_rebuild import IndexRebuildGuards
 from ...libs.logsafe import LogSafeHelpers
 from ...utils.error_handling import auto_handle_errors
@@ -71,7 +72,11 @@ def _pipeline_version(pipeline_blob: dict) -> str:
 async def upload_document(
     request: Request,
     file: UploadFile = File(..., description="The document to ingest."),
-    collection_id: uuid.UUID = Form(..., description="Target collection."),
+    collection_ref: str = Form(
+        ...,
+        alias="collection_id",
+        description="Target collection: its UUID or the name of a collection alias pointing at it.",
+    ),
     metadata: str = Form("{}", description="Declared metadata, JSON object {field: value}."),
     principal: AuthPrincipal = Depends(require(Capability.WRITE)),
 ) -> UploadAccepted:
@@ -81,7 +86,8 @@ async def upload_document(
     Returns:
         UploadAccepted: document + job ids (202), or the existing document when duplicate.
     """
-    # 1. The collection must exist — everything else derives from it.
+    # 1. The collection must exist — everything else derives from it (an alias resolves to its target).
+    collection_id = await CollectionRefResolver.resolve(request, collection_ref)
     collection = await CONTEXT.database.collections.get(collection_id)
     if collection is None:
         raise HTTPException(status_code=404, detail=f"Collection {collection_id} not found.")

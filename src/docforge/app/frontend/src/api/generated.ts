@@ -43,7 +43,8 @@ export interface paths {
          * @description List root's API keys, newest first — metadata only, never the hash or plaintext.
          *
          *     Returns:
-         *         list[KeyInfo]: Every key of the root account with its revocation state.
+         *         list[KeyInfo]: Every key of the root account the caller may manage (a scoped admin sees only
+         *         keys whose scope is a subset of its own), with its revocation state.
          */
         get: operations["list_keys_api_v1_auth_keys_get"];
         put?: never;
@@ -80,6 +81,9 @@ export interface paths {
          *
          *     Args:
          *         key_id (uuid.UUID): The key to revoke.
+         *
+         *     Raises:
+         *         HTTPException: 403 when a scoped admin targets a key beyond its own scope.
          */
         delete: operations["revoke_key_api_v1_auth_keys__key_id__delete"];
         options?: never;
@@ -111,7 +115,8 @@ export interface paths {
          *         CreatedKey: The replacement key metadata plus its one-time plaintext.
          *
          *     Raises:
-         *         HTTPException: 404 when the key is unknown or owned by another account; 409 when it is
+         *         HTTPException: 404 when the key is unknown or owned by another account; 403 when a scoped
+         *             admin targets a key beyond its scope or re-scopes it beyond its own; 409 when it is
          *             already revoked (a terminal state — rotate an active key).
          */
         post: operations["rotate_key_api_v1_auth_keys__key_id__rotate_post"];
@@ -246,6 +251,60 @@ export interface paths {
         patch: operations["set_chunks_enabled_api_v1_chunks_enabled_patch"];
         trace?: never;
     };
+    "/api/v1/collection-aliases": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Collection Aliases
+         * @description List the collection aliases whose target collection the caller may see, by name.
+         *
+         *     Returns:
+         *         list[CollectionAliasModel]: Each alias with its current target (id + name).
+         */
+        get: operations["list_collection_aliases_api_v1_collection_aliases_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/collection-aliases/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Collection Alias
+         * @description Create the alias, or atomically re-point it to another collection (the "switch").
+         *
+         *     Returns:
+         *         SetCollectionAliasResponse: The alias now (201 created, 200 re-pointed) + its previous
+         *         target; 422 bad name, 404 unknown collection, 409 name clash with a collection, 403 scope.
+         */
+        put: operations["set_collection_alias_api_v1_collection_aliases__name__put"];
+        post?: never;
+        /**
+         * Delete Collection Alias
+         * @description Delete a collection alias (keys scoped to ``alias:<name>`` then grant nothing through it).
+         *
+         *     Returns:
+         *         None: 204; 404 unknown alias, 403 when a scoped admin does not own its target.
+         */
+        delete: operations["delete_collection_alias_api_v1_collection_aliases__name__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/collections": {
         parameters: {
             query?: never;
@@ -296,17 +355,19 @@ export interface paths {
         };
         /**
          * Get Collection
-         * @description Return one collection's full contract.
+         * @description Return one collection's contract — the full one for a READ_TECHNICAL caller.
          *
          *     Returns:
-         *         CollectionModel: Identity, limits, schema and config blobs.
+         *         CollectionModel: Identity, limits, schema and config blobs (``pipeline``/``search`` null
+         *         when the caller lacks READ_TECHNICAL).
          */
         get: operations["get_collection_api_v1_collections__collection_id__get"];
         put?: never;
         post?: never;
         /**
          * Delete Collection
-         * @description Delete a collection (404 when unknown; 409 ``rebuild_index_active`` while an index rebuild runs).
+         * @description Delete a collection (404 when unknown; 409 ``rebuild_index_active`` while an index rebuild runs;
+         *     409 while collection aliases still target it — re-point or delete them first).
          */
         delete: operations["delete_collection_api_v1_collections__collection_id__delete"];
         options?: never;
@@ -342,6 +403,107 @@ export interface paths {
          *         a cursor this API did not issue.
          */
         post: operations["browse_chunks_api_v1_collections__collection_id__chunks_browse_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/collections/{collection_id}/config-versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Config Versions
+         * @description List a collection's config versions, newest first, with who wrote each and what it changed.
+         *
+         *     Returns:
+         *         ConfigVersionListResponse: The page + total; 404 unknown collection.
+         */
+        get: operations["list_config_versions_api_v1_collections__collection_id__config_versions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/collections/{collection_id}/config-versions/{version}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Config Version
+         * @description Read one config version — its {pipeline, search} snapshot with every provider secret masked.
+         *
+         *     Returns:
+         *         ConfigVersionDetail: The version metadata + masked snapshot; 404 unknown collection/version.
+         */
+        get: operations["get_config_version_api_v1_collections__collection_id__config_versions__version__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/collections/{collection_id}/config-versions/{version}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restore Config Version
+         * @description Restore a config version: its {pipeline, search} is re-applied through the PATCH write path as a
+         *     NEW version noted "restore of v{N}" (history is never rewritten; the metadata schema is not
+         *     versioned and is left as is).
+         *
+         *     Secrets: the stored snapshot holds real keys, but a provider that still exists at the SAME
+         *     endpoint keeps its CURRENT key (a key rotated since is never rolled back); a provider whose current
+         *     key lives at a DIFFERENT endpoint is refused with a 422 (re-enter it with a PATCH); a provider with
+         *     no current key gets the snapshot's own key back (same endpoint it was stored with).
+         *
+         *     Returns:
+         *         ConfigVersionRestoreResponse: The new version + derived reindex flag; 404 unknown
+         *         collection/version, 422 secret re-entry or an invalid/unmigratable snapshot, 409 concurrent write.
+         */
+        post: operations["restore_config_version_api_v1_collections__collection_id__config_versions__version__restore_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/collections/{collection_id}/config-versions/diff": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Diff Config Versions
+         * @description Diff two config versions path by path (graph nodes keyed by id); secrets are always masked, so
+         *     a rotated key shows as a change with both sides masked.
+         *
+         *     Returns:
+         *         ConfigVersionDiffResponse: The added / removed / changed paths; 404 unknown collection/version.
+         */
+        get: operations["diff_config_versions_api_v1_collections__collection_id__config_versions_diff_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -2407,8 +2569,7 @@ export interface components {
         Body_upload_document_api_v1_documents_post: {
             /**
              * Collection Id
-             * Format: uuid
-             * @description Target collection.
+             * @description Target collection: its UUID or the name of a collection alias pointing at it.
              */
             collection_id: string;
             /**
@@ -3121,6 +3282,39 @@ export interface components {
             token_count: number;
         };
         /**
+         * CollectionAliasModel
+         * @description One collection alias and the collection it currently targets.
+         */
+        CollectionAliasModel: {
+            /**
+             * Collection Id
+             * @description The UUID of the collection it points at.
+             */
+            collection_id: string;
+            /**
+             * Collection Name
+             * @description The name of the collection it points at.
+             */
+            collection_name: string;
+            /**
+             * Created At
+             * Format: date-time
+             * @description When the alias was created.
+             */
+            created_at: string;
+            /**
+             * Name
+             * @description The alias name (a slug: lowercase, digits, '-', '_').
+             */
+            name: string;
+            /**
+             * Updated At
+             * Format: date-time
+             * @description When the alias was last (re-)pointed.
+             */
+            updated_at: string;
+        };
+        /**
          * CollectionContractSchemaResponse
          * @description The full DISCOVERABLE vocabulary of a collection contract — no value has to be guessed.
          *
@@ -3353,6 +3547,11 @@ export interface components {
          */
         CollectionListItem: {
             /**
+             * Aliases
+             * @description The collection aliases pointing at this collection (each usable in place of the UUID in every collection route and as an 'alias:<name>' key scope). Computed on the single-collection read (GET /collections/{id}); null on the other payloads.
+             */
+            aliases?: string[] | null;
+            /**
              * Created At
              * @description Creation timestamp.
              */
@@ -3398,18 +3597,18 @@ export interface components {
             needs_reindex: boolean;
             /**
              * Pipeline
-             * @description The ingestion pipeline blob (the graph).
+             * @description The ingestion pipeline blob (the graph); null when the calling key lacks the read_technical capability (withheld, not refused).
              */
             pipeline: {
                 [key: string]: unknown;
-            };
+            } | null;
             /**
              * Search
-             * @description The search pipeline graph blob ({} = use the stock default).
+             * @description The search pipeline graph blob ({} = use the stock default); null when the calling key lacks the read_technical capability (withheld, not refused).
              */
             search: {
                 [key: string]: unknown;
-            };
+            } | null;
             /**
              * Supported Formats
              * @description Accepted upload extensions (e.g. pdf).
@@ -3457,6 +3656,11 @@ export interface components {
          */
         CollectionModel: {
             /**
+             * Aliases
+             * @description The collection aliases pointing at this collection (each usable in place of the UUID in every collection route and as an 'alias:<name>' key scope). Computed on the single-collection read (GET /collections/{id}); null on the other payloads.
+             */
+            aliases?: string[] | null;
+            /**
              * Created At
              * @description Creation timestamp.
              */
@@ -3500,18 +3704,18 @@ export interface components {
             needs_reindex: boolean;
             /**
              * Pipeline
-             * @description The ingestion pipeline blob (the graph).
+             * @description The ingestion pipeline blob (the graph); null when the calling key lacks the read_technical capability (withheld, not refused).
              */
             pipeline: {
                 [key: string]: unknown;
-            };
+            } | null;
             /**
              * Search
-             * @description The search pipeline graph blob ({} = use the stock default).
+             * @description The search pipeline graph blob ({} = use the stock default); null when the calling key lacks the read_technical capability (withheld, not refused).
              */
             search: {
                 [key: string]: unknown;
-            };
+            } | null;
             /**
              * Supported Formats
              * @description Accepted upload extensions (e.g. pdf).
@@ -3682,6 +3886,169 @@ export interface components {
             trace_bytes: number;
         };
         Condition: components["schemas"]["Always"] | components["schemas"]["OnSuccess"] | components["schemas"]["OnFailure"] | components["schemas"]["ScoreBelow"] | components["schemas"]["WhenEquals"];
+        /**
+         * ConfigDiffEntry
+         * @description One changed path between two versions (values masked).
+         */
+        ConfigDiffEntry: {
+            /**
+             * After
+             * @description The masked value in `to` (absent → null).
+             */
+            after?: unknown;
+            /**
+             * Before
+             * @description The masked value in `from` (absent → null).
+             */
+            before?: unknown;
+            /**
+             * Op
+             * @enum {string}
+             */
+            op: ConfigDiffEntryOp;
+            /**
+             * Path
+             * @description JSON-pointer style path; graph nodes are keyed by id, e.g. "/pipeline/nodes/parse/config/max_pages".
+             */
+            path: string;
+        };
+        /**
+         * ConfigVersionDetail
+         * @description One config version with its {pipeline, search} snapshot — every provider secret masked.
+         */
+        ConfigVersionDetail: {
+            /**
+             * Author Key Id
+             * @description The authoring API key id (null once that key is deleted).
+             */
+            author_key_id?: string | null;
+            /**
+             * Author Label
+             * @description Who wrote it: "<key name> (<key prefix>)" (the root token reads "root (df_…)"), or "anonymous" (auth off); null = unknown (written before authorship was recorded, or a system write such as an import).
+             */
+            author_label?: string | null;
+            /**
+             * Changes
+             * @description What changed vs the previous version: "pipeline:<node id>", "pipeline:(graph)" (transitions/bindings), "search". Empty for version 1 or a no-op write.
+             */
+            changes?: string[];
+            /**
+             * Config
+             * @description The snapshot {pipeline, search}; secrets replaced by the mask marker.
+             */
+            config: {
+                [key: string]: unknown;
+            };
+            /**
+             * Created At
+             * Format: date-time
+             * @description When this version was written.
+             */
+            created_at: string;
+            /**
+             * Note
+             * @description The note stored with the version.
+             */
+            note?: string | null;
+            /**
+             * Version
+             * @description Per-collection version number (1 = creation).
+             */
+            version: number;
+        };
+        /**
+         * ConfigVersionDiffResponse
+         * @description The structured diff from one config version to another (secrets always masked).
+         */
+        ConfigVersionDiffResponse: {
+            /** Changes */
+            changes: components["schemas"]["ConfigDiffEntry"][];
+            /** Collection Id */
+            collection_id: string;
+            /** From Version */
+            from_version: number;
+            /** To Version */
+            to_version: number;
+        };
+        /**
+         * ConfigVersionListResponse
+         * @description One newest-first page of a collection's config history.
+         */
+        ConfigVersionListResponse: {
+            /** Collection Id */
+            collection_id: string;
+            /** Items */
+            items: components["schemas"]["ConfigVersionSummary"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /**
+             * Total
+             * @description Number of versions in the whole history.
+             */
+            total: number;
+        };
+        /**
+         * ConfigVersionRestoreResponse
+         * @description The outcome of restoring a config version (always a NEW version, never a history rewrite).
+         */
+        ConfigVersionRestoreResponse: {
+            /** Collection Id */
+            collection_id: string;
+            /**
+             * Needs Reindex
+             * @description The collection's derived reindex flag after the restore.
+             */
+            needs_reindex: boolean;
+            /**
+             * Restored From
+             * @description The version whose config was re-applied.
+             */
+            restored_from: number;
+            /**
+             * Version
+             * @description The new version written (note "restore of v{N}").
+             */
+            version: number;
+        };
+        /**
+         * ConfigVersionSummary
+         * @description One entry of a collection's config history (no config body).
+         */
+        ConfigVersionSummary: {
+            /**
+             * Author Key Id
+             * @description The authoring API key id (null once that key is deleted).
+             */
+            author_key_id?: string | null;
+            /**
+             * Author Label
+             * @description Who wrote it: "<key name> (<key prefix>)" (the root token reads "root (df_…)"), or "anonymous" (auth off); null = unknown (written before authorship was recorded, or a system write such as an import).
+             */
+            author_label?: string | null;
+            /**
+             * Changes
+             * @description What changed vs the previous version: "pipeline:<node id>", "pipeline:(graph)" (transitions/bindings), "search". Empty for version 1 or a no-op write.
+             */
+            changes?: string[];
+            /**
+             * Created At
+             * Format: date-time
+             * @description When this version was written.
+             */
+            created_at: string;
+            /**
+             * Note
+             * @description The note stored with the version.
+             */
+            note?: string | null;
+            /**
+             * Version
+             * @description Per-collection version number (1 = creation).
+             */
+            version: number;
+        };
         /**
          * ContextChunk
          * @description One chunk of a context window — lean: text and citation facts, no geometry or metadata.
@@ -3911,7 +4278,7 @@ export interface components {
              * @description Human-readable label for the key.
              */
             name: string;
-            /** @description Per-key capability + collection scope; null = full access (root). */
+            /** @description Per-key capability + collection scope; null = full access (root). Give 'profile' instead of 'capabilities' to apply a named preset. */
             permissions?: components["schemas"]["KeyPermissions"] | null;
         };
         /**
@@ -3979,7 +4346,7 @@ export interface components {
             enabled: boolean;
             /**
              * Failure Reason
-             * @description Why ingestion did not succeed (the failing job's error message), surfaced on a failed/cancelled document so the detail page can explain it; None when it did not fail.
+             * @description Why ingestion did not succeed (the failing job's error message), surfaced on a failed/cancelled document so the detail page can explain it; None when it did not fail. Its URLs/host:port/request paths are masked for a caller without read_technical.
              */
             failure_reason?: string | null;
             /**
@@ -5635,7 +6002,8 @@ export interface components {
          *         kind (str): ingest, metadata_sync (per-document metadata re-embed) or rebuild_index.
          *         progress (int): 0–100 (completed pipeline nodes over total).
          *         current_stage (str | None): The node currently (or last) executed.
-         *         error (str | None): The failure, verbatim — only set when status is failed.
+         *         error (str | None): The failure — only set when status is failed; verbatim for a
+         *             read_technical caller, its network locators (URLs, host:port, paths) masked otherwise.
          *         attempt (int): arq retry attempt (1 = first run).
          *         started_at (datetime | None): When the worker picked it up.
          *         finished_at (datetime | None): When it ended (done or failed).
@@ -5710,7 +6078,7 @@ export interface components {
             duration_seconds?: number | null;
             /**
              * Error
-             * @description Failure detail when status=failed.
+             * @description Failure detail when status=failed. Its URLs, host:port pairs and request paths are masked ('<redacted>') for a caller without read_technical; error_type and the failed node/stage are never masked.
              */
             error?: string | null;
             /**
@@ -5899,22 +6267,33 @@ export interface components {
          *
          *     Attributes:
          *         capabilities (list[Capability]): The action classes the key grants (an empty list = a key
-         *             that can authenticate but is authorized for nothing).
+         *             that can authenticate but is authorized for nothing). Always the explicit, normalized
+         *             list once parsed — never the legacy ``read`` alias.
          *         collections (list[str]): Either ``["*"]`` (every collection) or an explicit list of
-         *             collection UUID strings the key is scoped to.
+         *             collection UUID strings and/or ``alias:<name>`` collection-alias entries.
+         *         profile (KeyProfile | None): The named preset the key was created from (display only; the
+         *             capabilities above are authoritative).
          */
         KeyPermissions: {
             /**
              * Capabilities
-             * @description The action classes this key grants (READ / WRITE / SEARCH / ADMIN).
+             * @description The action classes this key grants (read_text / read_technical / write / search / create / admin; the legacy 'read' = read_text + read_technical). May be omitted when 'profile' is given.
              */
-            capabilities: components["schemas"]["Capability"][];
+            capabilities?: components["schemas"]["Capability"][];
             /**
              * Collections
-             * @description Collection scope: ['*'] for all, else explicit collection UUID strings.
+             * @description Collection scope: ['*'] for all, else explicit collection UUID strings and/or 'alias:<name>' collection-alias entries (an alias entry follows the alias's CURRENT target, so re-pointing the alias re-scopes the key with no key edit; a deleted alias grants nothing).
              */
             collections: string[];
+            /** @description Named capability preset (agent_reader / agent_searcher / operator / admin). Given instead of 'capabilities', it expands to the preset; stored for display only. */
+            profile?: components["schemas"]["KeyProfile"] | null;
         };
+        /**
+         * KeyProfile
+         * @description A named preset of capabilities offered at key creation.
+         * @enum {string}
+         */
+        KeyProfile: KeyProfile;
         /**
          * MechanicCard
          * @description UI-facing description of one graph-mechanic variant (a condition, a binding source, …).
@@ -7813,6 +8192,61 @@ export interface components {
             steps: components["schemas"]["ChainStep"][];
         };
         /**
+         * SetCollectionAliasRequest
+         * @description The body of PUT /collection-aliases/{name}: the collection the alias must point at.
+         */
+        SetCollectionAliasRequest: {
+            /**
+             * Collection Id
+             * Format: uuid
+             * @description The UUID of the target collection.
+             */
+            collection_id: string;
+        };
+        /**
+         * SetCollectionAliasResponse
+         * @description The alias after a create / re-point, plus where it pointed before.
+         */
+        SetCollectionAliasResponse: {
+            /**
+             * Collection Id
+             * @description The UUID of the collection it points at.
+             */
+            collection_id: string;
+            /**
+             * Collection Name
+             * @description The name of the collection it points at.
+             */
+            collection_name: string;
+            /**
+             * Created
+             * @description True when this call created the alias.
+             */
+            created: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             * @description When the alias was created.
+             */
+            created_at: string;
+            /**
+             * Name
+             * @description The alias name (a slug: lowercase, digits, '-', '_').
+             */
+            name: string;
+            /**
+             * Previous Collection Id
+             * @description The collection the alias pointed at before this call (null = it was created; equal to collection_id = a no-op re-point).
+             */
+            previous_collection_id?: string | null;
+            /**
+             * Updated At
+             * Format: date-time
+             * @description When the alias was last (re-)pointed.
+             */
+            updated_at: string;
+        };
+        /**
          * SetCondition
          * @description Replace the condition gating an existing transition between two nodes.
          */
@@ -8614,6 +9048,11 @@ export interface components {
          */
         UpdateCollectionResponse: {
             /**
+             * Aliases
+             * @description The collection aliases pointing at this collection (each usable in place of the UUID in every collection route and as an 'alias:<name>' key scope). Computed on the single-collection read (GET /collections/{id}); null on the other payloads.
+             */
+            aliases?: string[] | null;
+            /**
              * Created At
              * @description Creation timestamp.
              */
@@ -8662,20 +9101,20 @@ export interface components {
             needs_reindex: boolean;
             /**
              * Pipeline
-             * @description The ingestion pipeline blob (the graph).
+             * @description The ingestion pipeline blob (the graph); null when the calling key lacks the read_technical capability (withheld, not refused).
              */
             pipeline: {
                 [key: string]: unknown;
-            };
+            } | null;
             /** @description The metadata-schema change applied (or previewed under dry_run); empty lists when the PATCH did not touch the schema. */
             schema_diff: components["schemas"]["SchemaDiff"];
             /**
              * Search
-             * @description The search pipeline graph blob ({} = use the stock default).
+             * @description The search pipeline graph blob ({} = use the stock default); null when the calling key lacks the read_technical capability (withheld, not refused).
              */
             search: {
                 [key: string]: unknown;
-            };
+            } | null;
             /**
              * Supported Formats
              * @description Accepted upload extensions (e.g. pdf).
@@ -8870,8 +9309,11 @@ export interface components {
          *     Attributes:
          *         authenticated (bool): Always true for a resolved principal.
          *         root (bool): Full, unscoped access — auth disabled, or a NULL-permissions (root) key.
-         *         capabilities (list[str]): Action classes granted (read / write / search / create / admin).
+         *         capabilities (list[str]): Action classes granted (read_text / read_technical / write /
+         *             search / create / admin) — normalized, so a legacy ``read`` key reports both read halves.
          *         collections (list[str]): Collection scope — ``["*"]`` for all, else explicit UUID strings.
+         *         profile (KeyProfile | None): The named preset the capabilities correspond to (stored at
+         *             creation, else matched from the capability set); null for root or a custom set.
          */
         WhoAmI: {
             /**
@@ -8881,7 +9323,7 @@ export interface components {
             authenticated: boolean;
             /**
              * Capabilities
-             * @description Action classes this token grants (read / write / search / create / admin).
+             * @description Action classes this token grants (read_text / read_technical / write / search / create / admin).
              */
             capabilities: string[];
             /**
@@ -8889,6 +9331,8 @@ export interface components {
              * @description Collection scope: ['*'] for all, else explicit collection UUID strings.
              */
             collections: string[];
+            /** @description Named preset matching the capabilities (agent_reader / agent_searcher / operator / admin); null for root or a custom capability set. */
+            profile?: components["schemas"]["KeyProfile"] | null;
             /**
              * Root
              * @description Full, unscoped access (auth off, or a NULL-permissions key).
@@ -9311,6 +9755,90 @@ export interface operations {
             };
         };
     };
+    list_collection_aliases_api_v1_collection_aliases_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CollectionAliasModel"][];
+                };
+            };
+        };
+    };
+    set_collection_alias_api_v1_collection_aliases__name__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetCollectionAliasRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SetCollectionAliasResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_collection_alias_api_v1_collection_aliases__name__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_collections_api_v1_collections_get: {
         parameters: {
             query?: never;
@@ -9369,6 +9897,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @description The collection UUID, or the name of a collection alias pointing at it. */
                 collection_id: string;
             };
             cookie?: never;
@@ -9400,6 +9929,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @description The collection UUID, or the name of a collection alias pointing at it. */
                 collection_id: string;
             };
             cookie?: never;
@@ -9429,6 +9959,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @description The collection UUID, or the name of a collection alias pointing at it. */
                 collection_id: string;
             };
             cookie?: never;
@@ -9464,6 +9995,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @description The collection UUID, or the name of a collection alias pointing at it. */
                 collection_id: string;
             };
             cookie?: never;
@@ -9494,11 +10026,152 @@ export interface operations {
             };
         };
     };
+    list_config_versions_api_v1_collections__collection_id__config_versions_get: {
+        parameters: {
+            query?: {
+                /** @description Page size. */
+                limit?: number;
+                /** @description Newer versions to skip (paging). */
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                /** @description The collection UUID, or the name of a collection alias pointing at it. */
+                collection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConfigVersionListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_config_version_api_v1_collections__collection_id__config_versions__version__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The collection UUID, or the name of a collection alias pointing at it. */
+                collection_id: string;
+                version: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConfigVersionDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    restore_config_version_api_v1_collections__collection_id__config_versions__version__restore_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The collection UUID, or the name of a collection alias pointing at it. */
+                collection_id: string;
+                version: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConfigVersionRestoreResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    diff_config_versions_api_v1_collections__collection_id__config_versions_diff_get: {
+        parameters: {
+            query: {
+                /** @description The base version. */
+                from: number;
+                /** @description The compared version. */
+                to: number;
+            };
+            header?: never;
+            path: {
+                /** @description The collection UUID, or the name of a collection alias pointing at it. */
+                collection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConfigVersionDiffResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     describe_collection_api_v1_collections__collection_id__describe_get: {
         parameters: {
             query?: never;
             header?: never;
             path: {
+                /** @description The collection UUID, or the name of a collection alias pointing at it. */
                 collection_id: string;
             };
             cookie?: never;
@@ -9535,6 +10208,7 @@ export interface operations {
             };
             header?: never;
             path: {
+                /** @description The collection UUID, or the name of a collection alias pointing at it. */
                 collection_id: string;
             };
             cookie?: never;
@@ -9566,6 +10240,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @description The collection UUID, or the name of a collection alias pointing at it. */
                 collection_id: string;
             };
             cookie?: never;
@@ -9601,6 +10276,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @description The collection UUID, or the name of a collection alias pointing at it. */
                 collection_id: string;
             };
             cookie?: never;
@@ -9639,6 +10315,7 @@ export interface operations {
             };
             header?: never;
             path: {
+                /** @description The collection UUID, or the name of a collection alias pointing at it. */
                 collection_id: string;
             };
             cookie?: never;
@@ -9676,6 +10353,7 @@ export interface operations {
             };
             header?: never;
             path: {
+                /** @description The collection UUID, or the name of a collection alias pointing at it. */
                 collection_id: string;
             };
             cookie?: never;
@@ -9711,6 +10389,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @description The collection UUID, or the name of a collection alias pointing at it. */
                 collection_id: string;
             };
             cookie?: never;
@@ -9746,6 +10425,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @description The collection UUID, or the name of a collection alias pointing at it. */
                 collection_id: string;
             };
             cookie?: never;
@@ -9777,6 +10457,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @description The collection UUID, or the name of a collection alias pointing at it. */
                 collection_id: string;
             };
             cookie?: never;
@@ -9808,6 +10489,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @description The collection UUID, or the name of a collection alias pointing at it. */
                 collection_id: string;
             };
             cookie?: never;
@@ -9843,6 +10525,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @description The collection UUID, or the name of a collection alias pointing at it. */
                 collection_id: string;
             };
             cookie?: never;
@@ -9878,6 +10561,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @description The collection UUID, or the name of a collection alias pointing at it. */
                 collection_id: string;
                 preview_id: string;
             };
@@ -9910,6 +10594,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @description The collection UUID, or the name of a collection alias pointing at it. */
                 collection_id: string;
             };
             cookie?: never;
@@ -9945,6 +10630,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @description The collection UUID, or the name of a collection alias pointing at it. */
                 collection_id: string;
             };
             cookie?: never;
@@ -9976,6 +10662,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @description The collection UUID, or the name of a collection alias pointing at it. */
                 collection_id: string;
             };
             cookie?: never;
@@ -10011,6 +10698,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @description The collection UUID, or the name of a collection alias pointing at it. */
                 collection_id: string;
             };
             cookie?: never;
@@ -10046,6 +10734,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @description The collection UUID, or the name of a collection alias pointing at it. */
                 collection_id: string;
                 kind: PathsApiV1CollectionsCollection_idSnippetsKindGetParametersPathKind;
             };
@@ -10078,6 +10767,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @description The collection UUID, or the name of a collection alias pointing at it. */
                 collection_id: string;
                 kind: PathsApiV1CollectionsCollection_idSnippetsKindPostParametersPathKind;
             };
@@ -10114,6 +10804,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @description The collection UUID, or the name of a collection alias pointing at it. */
                 collection_id: string;
             };
             cookie?: never;
@@ -10145,6 +10836,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @description The collection UUID, or the name of a collection alias pointing at it. */
                 collection_id: string;
             };
             cookie?: never;
@@ -10320,7 +11012,7 @@ export interface operations {
     get_document_chunks_api_v1_documents__document_id__chunks_get: {
         parameters: {
             query?: {
-                /** @description False drops block_ids and the 0-based 'page' (keeps the 1-based page_number) — the lean, agent-sized shape. */
+                /** @description False drops block_ids and the 0-based 'page' (keeps the 1-based page_number) — the lean, agent-sized shape. Always False for a key without read_technical. */
                 include_geometry?: boolean;
                 /** @description Max chunks to return (in chunk_index order); omit for every chunk. The total is returned in the X-Total-Count header. */
                 limit?: number | null;
@@ -10685,7 +11377,7 @@ export interface operations {
     list_jobs_api_v1_jobs_get: {
         parameters: {
             query?: {
-                /** @description Scope to one collection. Omit for a FLEET-WIDE listing (full-access keys only) — the 'All Jobs' management view. */
+                /** @description The collection UUID, or the name of a collection alias pointing at it. Omitted = fleet-wide. */
                 collection_id?: string | null;
                 /** @description Keep only jobs created at or after this instant (ISO-8601) — the date-range start. */
                 created_after?: string | null;
@@ -10899,6 +11591,7 @@ export interface operations {
     collection_cost_api_v1_jobs_cost_get: {
         parameters: {
             query: {
+                /** @description The collection UUID, or the name of a collection alias pointing at it. */
                 collection_id: string;
             };
             header?: never;
@@ -10930,7 +11623,7 @@ export interface operations {
     failure_breakdown_api_v1_jobs_failures_breakdown_get: {
         parameters: {
             query?: {
-                /** @description Scope the breakdown to one collection. Omit for a FLEET-WIDE breakdown (full-access keys only). */
+                /** @description The collection UUID, or the name of a collection alias pointing at it. Omitted = fleet-wide. */
                 collection_id?: string | null;
                 /** @description Look-back window in hours: failures of jobs created in the last N hours are aggregated (default 24h, max 30 days). */
                 window_hours?: number;
@@ -10964,7 +11657,7 @@ export interface operations {
     new_failures_api_v1_jobs_failures_new_get: {
         parameters: {
             query: {
-                /** @description Scope to one collection. Omit for a FLEET-WIDE signal (full-access keys only). */
+                /** @description The collection UUID, or the name of a collection alias pointing at it. Omitted = fleet-wide. */
                 collection_id?: string | null;
                 /** @description Also return the ids of the new failures (newest first, bounded) so the client can deep-link each; omit for just the count. */
                 include_ids?: boolean;
@@ -11002,6 +11695,7 @@ export interface operations {
     queue_depth_api_v1_jobs_queue_get: {
         parameters: {
             query?: {
+                /** @description The collection UUID, or the name of a collection alias pointing at it. Omitted = fleet-wide. */
                 collection_id?: string | null;
             };
             header?: never;
@@ -11033,6 +11727,7 @@ export interface operations {
     stage_durations_api_v1_jobs_stage_durations_get: {
         parameters: {
             query: {
+                /** @description The collection UUID, or the name of a collection alias pointing at it. */
                 collection_id: string;
             };
             header?: never;
@@ -11064,7 +11759,7 @@ export interface operations {
     job_timeseries_api_v1_jobs_timeseries_get: {
         parameters: {
             query?: {
-                /** @description Scope the series to one collection. Omit for a FLEET-WIDE series (full-access keys only). */
+                /** @description The collection UUID, or the name of a collection alias pointing at it. Omitted = fleet-wide. */
                 collection_id?: string | null;
                 /** @description How many hours of history to return as hourly buckets (default 24h, max 7 days). */
                 window_hours?: number;
@@ -11455,6 +12150,8 @@ export enum AlwaysKind {
 }
 export enum Capability {
     read = "read",
+    read_text = "read_text",
+    read_technical = "read_technical",
     write = "write",
     search = "search",
     create = "create",
@@ -11481,6 +12178,11 @@ export enum CollectionSnippetKind {
     pipeline = "pipeline",
     search = "search",
     schema = "schema"
+}
+export enum ConfigDiffEntryOp {
+    added = "added",
+    removed = "removed",
+    changed = "changed"
 }
 export enum CreateCollectionRequestPresetAnyOf0 {
     standard = "standard",
@@ -11579,6 +12281,12 @@ export enum HealthVerdict {
 }
 export enum InsertFragmentOp {
     insert_fragment = "insert_fragment"
+}
+export enum KeyProfile {
+    agent_reader = "agent_reader",
+    agent_searcher = "agent_searcher",
+    operator = "operator",
+    admin = "admin"
 }
 export enum MetadataFilterOp {
     eq = "eq",

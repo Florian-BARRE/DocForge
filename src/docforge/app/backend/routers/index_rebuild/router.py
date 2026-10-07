@@ -3,7 +3,6 @@
 # recreates the Qdrant store from the current schema (no content re-embed) and queues it (202).
 
 # ====== Standard Library Imports ======
-import uuid
 
 # ====== Third-Party Library Imports ======
 from fastapi import APIRouter, Depends, HTTPException
@@ -18,6 +17,7 @@ from shared_libs.services.db.facades import (
 # ====== Local Project Imports ======
 from ...context import CONTEXT
 from ...libs.auth import AuthPrincipal, AuthzGuard, Capability, require
+from ...libs.collection_ref import CollectionRef
 from ...libs.index_rebuild import IndexRebuildGuards, RebuildIndexAccepted
 from ...utils.error_handling import auto_handle_errors
 
@@ -31,7 +31,7 @@ router = APIRouter(tags=["collections"])
 )
 @auto_handle_errors
 async def rebuild_collection_index(
-    collection_id: uuid.UUID,
+    collection_id: CollectionRef,
     principal: AuthPrincipal = Depends(require(Capability.WRITE)),
 ) -> RebuildIndexAccepted:
     """

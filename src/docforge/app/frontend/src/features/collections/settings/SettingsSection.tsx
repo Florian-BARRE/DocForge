@@ -1,5 +1,5 @@
 // ====== Code Summary ======
-// A titled block used to visually separate the Settings page's three sections (Contract / Transfer
+// A titled block used to visually separate the Settings page's four sections (Contract / Transfer / History
 // / Danger zone) — just a heading + optional description above whatever the section renders, so
 // each section reads as a deliberate, named part of the page rather than an unlabeled stack of
 // unrelated cards.

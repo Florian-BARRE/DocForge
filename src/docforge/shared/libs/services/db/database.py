@@ -19,8 +19,10 @@ from .facades import (
     ArtifactCacheFacade,
     AuditFacade,
     AuthFacade,
+    CollectionAliasFacade,
     CollectionsFacade,
     CollectionTransferFacade,
+    ConfigHistoryFacade,
     DocumentsFacade,
     EnablementFacade,
     FilterSyncFacade,
@@ -47,6 +49,9 @@ class Database(LoggerClass):
 
     Attributes:
         collections (CollectionsFacade): Collection lifecycle (create fail-fast, config, delete).
+        collection_aliases (CollectionAliasFacade): Collection aliases (stable slug → collection):
+            ref/key-scope resolution, listing, atomic create/re-point, delete.
+        config_history (ConfigHistoryFacade): The versioned config history (list page, one version).
         ingestion (IngestionFacade): The worker's persistence path (admit, blobs, save, index).
         artifact_cache (ArtifactCacheFacade): The per-collection stage-artifact cache (hook I/O + GC).
         documents (DocumentsFacade): Reading, inspection (raw/enriched IR, chunks), deletion.
@@ -90,6 +95,8 @@ class Database(LoggerClass):
         self._s3 = s3
         # 2. Wire each domain façade with exactly the stores it needs.
         self.collections = CollectionsFacade(postgres, qdrant, s3)
+        self.collection_aliases = CollectionAliasFacade(postgres)
+        self.config_history = ConfigHistoryFacade(postgres)
         self.ingestion = IngestionFacade(postgres, qdrant, s3)
         self.artifact_cache = ArtifactCacheFacade(postgres, s3)
         self.documents = DocumentsFacade(postgres, qdrant, s3)

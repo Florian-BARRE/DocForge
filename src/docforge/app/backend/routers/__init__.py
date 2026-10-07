@@ -5,6 +5,8 @@ from .auth.whoami import router as auth_whoami_router
 # -------------------- Collections (contract CRUD) ------------------- #
 from .collections.router import router as collections_router
 from .collection_pipeline.router import router as collection_pipeline_router
+from .config_history.router import router as config_history_router
+from .collection_aliases.router import router as collection_aliases_router
 
 # -------------------- Documents (admission) ------------------- #
 from .documents.router import router as documents_router
@@ -57,6 +59,8 @@ __all__ = [
     "auth_whoami_router",
     "collections_router",
     "collection_pipeline_router",
+    "config_history_router",
+    "collection_aliases_router",
     "documents_router",
     "explorer_router",
     "reading_router",

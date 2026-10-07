@@ -50,8 +50,13 @@ def register(mcp: FastMCP, sdk: AsyncClient) -> None:
         the `key` value from the response immediately before discarding it.
 
         `permissions` scopes the key's capabilities and collections (null/omitted = full
-        access, the root shape). `expires_at` is an ISO-8601 datetime string; omit for a key
-        that never expires.
+        access, the root shape): `{"capabilities": [...], "collections": ["*"]}`, or a named
+        preset instead of the list — `{"profile": "agent_reader", "collections": [...]}`.
+        Profiles: agent_reader (read_text + search — a business chatbot), agent_searcher
+        (search only), operator (read_text + read_technical + write), admin (every capability).
+        read_text = documents, markdown/html, outline, lean chunks, describe, job status;
+        read_technical = IR, pages, provenance, pipeline blobs, traces, exports, ops, audit.
+        `expires_at` is an ISO-8601 datetime string; omit for a key that never expires.
         """
         scope = KeyPermissions.model_validate(permissions) if permissions is not None else None
         expiry = datetime.fromisoformat(expires_at) if expires_at is not None else None
@@ -102,5 +107,5 @@ def register(mcp: FastMCP, sdk: AsyncClient) -> None:
 
     @mcp.tool()
     async def whoami() -> Any:
-        """Report THIS token's capabilities + collection scope — what it is allowed to do."""
+        """Report THIS token's capabilities, collection scope and usage profile — what it may do."""
         return (await sdk.auth.whoami()).model_dump(mode="json")

@@ -19,6 +19,7 @@ from shared_libs.pipelines.ingest import BlobNormalizationError, BlobNormalizer
 from shared_libs.pipelines.ingest.estimate import CostEstimate
 from shared_libs.public_models import SourceDocument
 from shared_libs.services.db.facades import (
+    CollectionAliasedError,
     CollectionUpdateSpec,
     DuplicateCollectionNameError,
     IndexRebuildActiveError,
@@ -28,6 +29,8 @@ from shared_libs.services.db.postgresql.tables import Collection
 # ====== Local Project Imports ======
 from ...context import CONTEXT
 from ...libs.auth import AuthPrincipal, AuthzGuard, Capability, require
+from ...libs.collection_ref import CollectionRef
+from ...libs.config_history import ConfigAuthorResolver
 from ...libs.corpus import DocumentFilter, DocumentSelector, DocumentSelectorResolver
 from ...libs.describe import CollectionDescriber, CollectionDescription
 from ...libs.estimate import CollectionEstimateRequest, EstimateInputError
@@ -58,8 +61,10 @@ from .models import (
     UpdateCollectionRequest,
     UpdateCollectionResponse,
 )
+from .name_guard import CollectionNameGuard
 from .schema_patch import CollectionSchemaPatch
 from .store_sync import CollectionStoreSync
+from .technical_view import CollectionTechnicalView
 
 router = APIRouter(prefix="/collections", tags=["collections"])
 
@@ -70,7 +75,7 @@ router = APIRouter(prefix="/collections", tags=["collections"])
 )
 @auto_handle_errors
 async def list_collections(
-    principal: AuthPrincipal = Depends(require(Capability.READ)),
+    principal: AuthPrincipal = Depends(require(Capability.READ_TEXT)),
 ) -> list[CollectionListItem]:
     """
     Return every collection the caller may see, with its full schema AND a server-computed health
@@ -112,13 +117,16 @@ async def list_collections(
     #    list row DIRECTLY from the row + its schema + summary — no to_model()→model_dump() re-splat,
     #    and masking skips the deepcopy for the secret-free stock blobs (_mask_for_list).
     schemas = await CONTEXT.database.collections.get_schemas_by_collections(ids)
-    return [CollectionHelpers.to_list_item(c, schemas[c.id], summaries[c.id]) for c in collections]
+    items = [CollectionHelpers.to_list_item(c, schemas[c.id], summaries[c.id]) for c in collections]
+
+    # 5. A key without READ_TECHNICAL gets the lean contracts — pipeline/search blobs withheld.
+    return CollectionTechnicalView.shape(items, principal)
 
 
 @router.get(
     "/contract-schema",
     response_model=CollectionContractSchemaResponse,
-    dependencies=[Depends(require(Capability.READ))],
+    dependencies=[Depends(require(Capability.READ_TECHNICAL))],
 )
 @auto_handle_errors
 async def get_contract_schema() -> CollectionContractSchemaResponse:
@@ -142,33 +150,42 @@ async def get_contract_schema() -> CollectionContractSchemaResponse:
 @router.get(
     "/{collection_id}",
     response_model=CollectionModel,
-    dependencies=[Depends(require(Capability.READ))],
 )
 @auto_handle_errors
-async def get_collection(collection_id: uuid.UUID) -> CollectionModel:
+async def get_collection(
+    collection_id: CollectionRef,
+    principal: AuthPrincipal = Depends(require(Capability.READ_TEXT)),
+) -> CollectionModel:
     """
-    Return one collection's full contract.
+    Return one collection's contract — the full one for a READ_TECHNICAL caller.
 
     Returns:
-        CollectionModel: Identity, limits, schema and config blobs.
+        CollectionModel: Identity, limits, schema and config blobs (``pipeline``/``search`` null
+        when the caller lacks READ_TECHNICAL).
     """
+    # 1. Load the row (404 when unknown).
     collection = await CONTEXT.database.collections.get(collection_id)
     if collection is None:
         raise HTTPException(status_code=404, detail=f"Collection {collection_id} not found.")
-    return CollectionHelpers.to_model(
+
+    # 2. Build the contract (+ the aliases targeting it), then withhold the blobs from a
+    #    non-technical reader.
+    model = CollectionHelpers.to_model(
         collection,
         await CONTEXT.database.collections.get_schema(collection_id),
         [vector for _, vector in await CONTEXT.database.index_state.missing(collection_id)],
+        aliases=await CONTEXT.database.collection_aliases.names_for(collection_id),
     )
+    return CollectionTechnicalView.shape([model], principal)[0]
 
 
 @router.get(
     "/{collection_id}/health",
     response_model=CollectionHealthResponse,
-    dependencies=[Depends(require(Capability.READ))],
+    dependencies=[Depends(require(Capability.READ_TECHNICAL))],
 )
 @auto_handle_errors
-async def get_collection_health(collection_id: uuid.UUID) -> CollectionHealthResponse:
+async def get_collection_health(collection_id: CollectionRef) -> CollectionHealthResponse:
     """
     Probe a collection's operational health on demand — provider reachability across the ingest AND
     search graphs, index population and last successful ingest — WITHOUT enqueuing a job or spending.
@@ -188,10 +205,10 @@ async def get_collection_health(collection_id: uuid.UUID) -> CollectionHealthRes
 @router.get(
     "/{collection_id}/describe",
     response_model=CollectionDescription,
-    dependencies=[Depends(require(Capability.READ))],
+    dependencies=[Depends(require(Capability.READ_TEXT))],
 )
 @auto_handle_errors
-async def describe_collection(collection_id: uuid.UUID) -> CollectionDescription:
+async def describe_collection(collection_id: CollectionRef) -> CollectionDescription:
     """
     Return a LEAN, agent-oriented guide to querying one collection — call it before searching.
 
@@ -213,10 +230,10 @@ async def describe_collection(collection_id: uuid.UUID) -> CollectionDescription
 @router.get(
     "/{collection_id}/storage",
     response_model=CollectionStorageResponse,
-    dependencies=[Depends(require(Capability.READ))],
+    dependencies=[Depends(require(Capability.READ_TECHNICAL))],
 )
 @auto_handle_errors
-async def get_collection_storage(collection_id: uuid.UUID) -> CollectionStorageResponse:
+async def get_collection_storage(collection_id: CollectionRef) -> CollectionStorageResponse:
     """
     Measure a collection's material footprint per store — how much hardware it occupies.
 
@@ -240,11 +257,11 @@ async def get_collection_storage(collection_id: uuid.UUID) -> CollectionStorageR
 @router.post(
     "/{collection_id}/estimate",
     response_model=CostEstimate,
-    dependencies=[Depends(require(Capability.READ))],
+    dependencies=[Depends(require(Capability.READ_TECHNICAL))],
 )
 @auto_handle_errors
 async def estimate_collection(
-    collection_id: uuid.UUID,
+    collection_id: CollectionRef,
     request: CollectionEstimateRequest | None = None,
 ) -> CostEstimate:
     """
@@ -300,12 +317,12 @@ def _parse_preview_blob(blob: str | None) -> dict | None:
 @router.post(
     "/{collection_id}/pipeline/preview",
     response_model=PreviewResponse,
-    dependencies=[Depends(require(Capability.WRITE))],
+    dependencies=[Depends(require(Capability.WRITE)), Depends(require(Capability.READ_TECHNICAL))],
 )
 @auto_handle_errors
 async def preview_pipeline(
     request: Request,
-    collection_id: uuid.UUID,
+    collection_id: CollectionRef,
     principal: AuthPrincipal = Depends(require(Capability.WRITE)),
     file: UploadFile | None = File(
         None, description="The document to dry-run (omit to use document_id)."
@@ -427,12 +444,12 @@ async def _resolve_preview_source(
     "/{collection_id}/pipeline/preview/jobs",
     response_model=PreviewJobAccepted,
     status_code=202,
-    dependencies=[Depends(require(Capability.WRITE))],
+    dependencies=[Depends(require(Capability.WRITE)), Depends(require(Capability.READ_TECHNICAL))],
 )
 @auto_handle_errors
 async def submit_preview_job(
     request: Request,
-    collection_id: uuid.UUID,
+    collection_id: CollectionRef,
     principal: AuthPrincipal = Depends(require(Capability.WRITE)),
     file: UploadFile | None = File(
         None, description="The document to dry-run (omit to use document_id)."
@@ -502,11 +519,11 @@ async def submit_preview_job(
 @router.get(
     "/{collection_id}/pipeline/preview/jobs/{preview_id}",
     response_model=PreviewJobResult,
-    dependencies=[Depends(require(Capability.WRITE))],
+    dependencies=[Depends(require(Capability.WRITE)), Depends(require(Capability.READ_TECHNICAL))],
 )
 @auto_handle_errors
 async def get_preview_job(
-    collection_id: uuid.UUID,
+    collection_id: CollectionRef,
     preview_id: str,
     principal: AuthPrincipal = Depends(require(Capability.WRITE)),
 ) -> PreviewJobResult:
@@ -626,9 +643,8 @@ async def create_collection(
     if search_blob:
         CollectionHelpers.validate_search_blob(search_blob)
 
-    # 2. Name unicity — explicit 409, not a driver error.
-    if await CONTEXT.database.collections.get_by_name(request.name) is not None:
-        raise HTTPException(status_code=409, detail=f"Collection '{request.name}' already exists.")
+    # 2. Name unicity (among collections AND collection aliases) — explicit 409, not a driver error.
+    await CollectionNameGuard.assert_free(request.name)
 
     # 3. Create contract + schema in one transaction (slug collisions → explicit 422). A concurrent
     #    create can slip between the step-2 name pre-check and this insert; the façade turns that
@@ -649,6 +665,7 @@ async def create_collection(
                 title_field=request.title_field,
             ),
             rows,
+            author=ConfigAuthorResolver.from_principal(principal),
         )
     except DuplicateCollectionNameError:
         raise HTTPException(status_code=409, detail=f"Collection '{request.name}' already exists.")
@@ -662,19 +679,22 @@ async def create_collection(
     CONTEXT.logger.info(
         f"Collection '{LogSafeHelpers.sanitize(request.name)}' created ({len(rows)} fields)"
     )
-    return CollectionHelpers.to_model(
+    model = CollectionHelpers.to_model(
         created, await CONTEXT.database.collections.get_schema(created.id)
     )
+    # A creator without READ_TECHNICAL (e.g. a create+write key) gets the lean contract back.
+    return CollectionTechnicalView.shape([model], principal)[0]
 
 
 @router.patch(
     "/{collection_id}",
     response_model=UpdateCollectionResponse,
-    dependencies=[Depends(require(Capability.WRITE))],
 )
 @auto_handle_errors
 async def update_collection(
-    collection_id: uuid.UUID, request: UpdateCollectionRequest
+    collection_id: CollectionRef,
+    request: UpdateCollectionRequest,
+    principal: AuthPrincipal = Depends(require(Capability.WRITE)),
 ) -> UpdateCollectionResponse:
     """
     Patch identity/limits, the metadata schema (legacy ``fields`` list or explicit ``field_ops``),
@@ -689,12 +709,9 @@ async def update_collection(
     if current is None:
         raise HTTPException(status_code=404, detail=f"Collection {collection_id} not found.")
 
-    # 2. Renaming keeps names unique — explicit 409, not a driver error.
+    # 2. Renaming keeps names unique (collections + collection aliases) — explicit 409.
     if request.name is not None and request.name != current.name:
-        if await CONTEXT.database.collections.get_by_name(request.name) is not None:
-            raise HTTPException(
-                status_code=409, detail=f"Collection '{request.name}' already exists."
-            )
+        await CollectionNameGuard.assert_free(request.name)
 
     # 3. Restore any masked provider secret BEFORE validating/storing: a caller that read a collection
     #    (secrets masked) and PATCHed a blob back sends the mask verbatim — that means "keep the stored
@@ -745,13 +762,14 @@ async def update_collection(
 
     # 3e. dry_run stops here: everything validated, the diff computed, nothing written.
     if request.dry_run:
-        return CollectionHelpers.to_update_response(
+        preview = CollectionHelpers.to_update_response(
             current,
             await CONTEXT.database.collections.get_schema(collection_id),
             schema,
             True,
             await CollectionStoreSync.index_gaps(collection_id, schema, dry_run=True),
         )
+        return CollectionTechnicalView.shape([preview], principal)[0]
 
     # 4. Apply EVERY DB part in ONE transaction — a mid-sequence failure rolls the WHOLE patch back,
     #    so a collection is never left half-updated (e.g. contract changed but schema not). The
@@ -781,6 +799,7 @@ async def update_collection(
         pipeline=stored_pipeline,
         search=healed_search,
         note=request.note,
+        author=ConfigAuthorResolver.from_principal(principal),
         apply_overrides="estimate_overrides" in request.model_fields_set,
         estimate_overrides=request.estimate_overrides.model_dump(mode="json", exclude_none=True)
         if request.estimate_overrides is not None
@@ -809,13 +828,15 @@ async def update_collection(
         )
 
     updated = await CONTEXT.database.collections.get(collection_id)
-    return CollectionHelpers.to_update_response(
+    response = CollectionHelpers.to_update_response(
         updated,
         await CONTEXT.database.collections.get_schema(collection_id),
         schema,
         False,
         await CollectionStoreSync.index_gaps(collection_id, schema, dry_run=False),
     )
+    # A writer without READ_TECHNICAL gets the lean contract back (blobs nulled, never echoed).
+    return CollectionTechnicalView.shape([response], principal)[0]
 
 
 @router.post(
@@ -825,7 +846,7 @@ async def update_collection(
 )
 @auto_handle_errors
 async def reingest_collection(
-    collection_id: uuid.UUID,
+    collection_id: CollectionRef,
     request: BulkReingestRequest,
     principal: AuthPrincipal = Depends(require(Capability.WRITE)),
 ) -> BulkReingestAccepted:
@@ -908,7 +929,7 @@ async def reingest_collection(
 )
 @auto_handle_errors
 async def purge_collection_trace_payloads(
-    collection_id: uuid.UUID,
+    collection_id: CollectionRef,
     principal: AuthPrincipal = Depends(require(Capability.WRITE)),
 ) -> TracePurgeResult:
     """
@@ -953,14 +974,17 @@ async def purge_collection_trace_payloads(
     dependencies=[Depends(require(Capability.WRITE))],
 )
 @auto_handle_errors
-async def delete_collection(collection_id: uuid.UUID) -> None:
+async def delete_collection(collection_id: CollectionRef) -> None:
     """
-    Delete a collection (404 when unknown; 409 ``rebuild_index_active`` while an index rebuild runs).
+    Delete a collection (404 when unknown; 409 ``rebuild_index_active`` while an index rebuild runs;
+    409 while collection aliases still target it — re-point or delete them first).
     """
     try:
         deleted = await CONTEXT.database.collections.delete(collection_id)
     except IndexRebuildActiveError as exc:
         raise IndexRebuildGuards.active_conflict(exc)
+    except CollectionAliasedError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
     if not deleted:
         raise HTTPException(status_code=404, detail=f"Collection {collection_id} not found.")
     CONTEXT.logger.info(f"Collection {collection_id} deleted")

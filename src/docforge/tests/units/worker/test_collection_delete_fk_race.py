@@ -73,6 +73,7 @@ async def test_delete_cancels_active_jobs_before_the_cascade_without_raising(mon
         order.append("cascade")
 
     monkeypatch.setattr(cf_module.RebuildJobApi, "active_rebuild", AsyncMock(return_value=None))
+    monkeypatch.setattr(cf_module.CollectionAliasApi, "names_for", AsyncMock(return_value=[]))
     monkeypatch.setattr(JobApi, "list_active_for_collection", _list_active)
     monkeypatch.setattr(JobApi, "mark_terminal", _mark_terminal)
     monkeypatch.setattr(JobApi, "list_job_ids_for_collection", AsyncMock(return_value=[]))

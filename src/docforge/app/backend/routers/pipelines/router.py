@@ -81,7 +81,9 @@ def _require_stage_surface(key: str) -> PipelineSpec:
 
 
 @router.get(
-    "", response_model=PipelineIndexResponse, dependencies=[Depends(require(Capability.READ))]
+    "",
+    response_model=PipelineIndexResponse,
+    dependencies=[Depends(require(Capability.READ_TECHNICAL))],
 )
 @auto_handle_errors
 async def list_pipeline_surfaces() -> PipelineIndexResponse:
@@ -117,7 +119,7 @@ async def list_pipeline_surfaces() -> PipelineIndexResponse:
 @router.get(
     "/{key}",
     response_model=PipelineDesignResponse,
-    dependencies=[Depends(require(Capability.READ))],
+    dependencies=[Depends(require(Capability.READ_TECHNICAL))],
 )
 @auto_handle_errors
 async def get_pipeline_design(key: str, full: bool = False) -> PipelineDesignResponse:
@@ -159,7 +161,7 @@ async def get_pipeline_design(key: str, full: bool = False) -> PipelineDesignRes
 @router.post(
     "/{key}/inspect",
     response_model=InspectResponse,
-    dependencies=[Depends(require(Capability.READ))],
+    dependencies=[Depends(require(Capability.READ_TECHNICAL))],
 )
 @auto_handle_errors
 async def inspect_pipeline(key: str, request: InspectRequest) -> InspectResponse:
@@ -193,7 +195,9 @@ async def inspect_pipeline(key: str, request: InspectRequest) -> InspectResponse
 
 
 @router.post(
-    "/{key}/edit", response_model=EditResponse, dependencies=[Depends(require(Capability.READ))]
+    "/{key}/edit",
+    response_model=EditResponse,
+    dependencies=[Depends(require(Capability.READ_TECHNICAL))],
 )
 @auto_handle_errors
 async def edit_pipeline(key: str, request: EditRequest) -> EditResponse:
@@ -236,7 +240,7 @@ async def edit_pipeline(key: str, request: EditRequest) -> EditResponse:
 @router.post(
     "/{key}/stages/view",
     response_model=StageViewResponse,
-    dependencies=[Depends(require(Capability.READ))],
+    dependencies=[Depends(require(Capability.READ_TECHNICAL))],
 )
 @auto_handle_errors
 async def view_stages(key: str, request: StageViewRequest) -> StageViewResponse:
@@ -269,7 +273,7 @@ async def view_stages(key: str, request: StageViewRequest) -> StageViewResponse:
 @router.post(
     "/{key}/stages/apply",
     response_model=StageApplyResponse,
-    dependencies=[Depends(require(Capability.READ))],
+    dependencies=[Depends(require(Capability.READ_TECHNICAL))],
 )
 @auto_handle_errors
 async def apply_stage_action(key: str, request: StageApplyRequest) -> StageApplyResponse:

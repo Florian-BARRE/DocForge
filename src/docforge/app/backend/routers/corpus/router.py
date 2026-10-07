@@ -21,6 +21,7 @@ from shared_libs.services.db.postgresql.tables import Collection
 # ====== Local Project Imports ======
 from ...context import CONTEXT
 from ...libs.auth import AuthPrincipal, AuthzGuard, Capability, require
+from ...libs.collection_ref import CollectionRef
 from ...libs.corpus import (
     BulkDeleteResponse,
     BulkEnabledResponse,
@@ -77,9 +78,9 @@ async def _resolve_targets(
 @router.post("/{collection_id}/documents/query", response_model=DocumentQueryResponse)
 @auto_handle_errors
 async def query_documents(
-    collection_id: uuid.UUID,
+    collection_id: CollectionRef,
     request: DocumentQueryRequest,
-    principal: AuthPrincipal = Depends(require(Capability.READ)),
+    principal: AuthPrincipal = Depends(require(Capability.READ_TEXT)),
 ) -> DocumentQueryResponse:
     """
     Return one filtered, sorted, paginated page of a collection's documents + the total match count.
@@ -130,7 +131,7 @@ async def query_documents(
 @router.post("/{collection_id}/documents/delete", response_model=BulkDeleteResponse)
 @auto_handle_errors
 async def bulk_delete(
-    collection_id: uuid.UUID,
+    collection_id: CollectionRef,
     selector: DocumentSelector,
     principal: AuthPrincipal = Depends(require(Capability.WRITE)),
 ) -> BulkDeleteResponse:
@@ -169,7 +170,7 @@ async def bulk_delete(
 @router.post("/{collection_id}/documents/set-enabled", response_model=BulkEnabledResponse)
 @auto_handle_errors
 async def bulk_set_enabled(
-    collection_id: uuid.UUID,
+    collection_id: CollectionRef,
     selector: DocumentSelector,
     enabled: bool,
     principal: AuthPrincipal = Depends(require(Capability.WRITE)),
@@ -203,7 +204,7 @@ async def bulk_set_enabled(
 )
 @auto_handle_errors
 async def bulk_reingest(
-    collection_id: uuid.UUID,
+    collection_id: CollectionRef,
     selector: DocumentSelector,
     force: bool = Query(
         default=False,

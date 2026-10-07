@@ -13,7 +13,7 @@ def _mock_create_db(monkeypatch, echoed_tags_holder: dict) -> None:
     from backend.context import CONTEXT  # noqa: PLC0415
     from backend.routers.collections.store_sync import CollectionStoreSync  # noqa: PLC0415
 
-    async def _create(collection, _rows):
+    async def _create(collection, _rows, author=None):
         # Mirror the real façade: the DB assigns the id and applies the column defaults on flush
         # (needs_reindex → False here, since no real flush runs); tags survive verbatim.
         collection.id = uuid.uuid4()
@@ -22,6 +22,12 @@ def _mock_create_db(monkeypatch, echoed_tags_holder: dict) -> None:
         return collection
 
     monkeypatch.setattr(CONTEXT.database.collections, "get_by_name", AsyncMock(return_value=None))
+    monkeypatch.setattr(
+        CONTEXT.database.collection_aliases, "name_is_alias", AsyncMock(return_value=False)
+    )
+    monkeypatch.setattr(
+        CONTEXT.database.collection_aliases, "names_for", AsyncMock(return_value=[])
+    )
     monkeypatch.setattr(CONTEXT.database.collections, "create", AsyncMock(side_effect=_create))
     monkeypatch.setattr(CONTEXT.database.collections, "get_schema", AsyncMock(return_value=[]))
     monkeypatch.setattr(CollectionStoreSync, "grant_creator_scope", AsyncMock())

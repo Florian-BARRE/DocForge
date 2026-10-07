@@ -19,6 +19,8 @@ from shared_libs.services.db.postgresql.tables import Document, DocumentStatus
 # ====== Local Project Imports ======
 from ...context import CONTEXT
 from ...libs.auth import AuthPrincipal, AuthzGuard, Capability, require
+from ...libs.collection_ref import CollectionRef
+from ...libs.error_redaction import JobErrorRedactor
 from ...libs.reading import PageRangeError, PageRangeParser
 from ...utils.error_handling import auto_handle_errors
 from ..jobs.models import JobEvent
@@ -59,7 +61,7 @@ async def _require_document(document_id: uuid.UUID, principal: AuthPrincipal):
     return document
 
 
-async def _failure_reason(document: Document) -> str | None:
+async def _failure_reason(document: Document, principal: AuthPrincipal) -> str | None:
     """Return the failing job's error for a non-successful document, else None.
 
     The failure reason lives on the ingestion ``job.error``, never on the document row. Only a
@@ -70,9 +72,10 @@ async def _failure_reason(document: Document) -> str | None:
     if document.status not in (DocumentStatus.FAILED, DocumentStatus.CANCELLED):
         return None
 
-    # 2. The reason is the latest job's error message (may be absent for a bare cancel).
+    # 2. The reason is the latest job's error message (may be absent for a bare cancel), its
+    #    network locators masked for a caller without read_technical (same rule as GET /jobs/{id}).
     job = await CONTEXT.database.jobs.get_latest_for_document(document.id)
-    return job.error if job is not None else None
+    return JobErrorRedactor.for_principal(job.error, principal) if job is not None else None
 
 
 async def _assert_chunk_scope(chunk_ids: list[uuid.UUID], principal: AuthPrincipal) -> None:
@@ -115,11 +118,11 @@ _PAGES_QUERY_DESCRIPTION = (
 @router.get(
     "/collections/{collection_id}/documents",
     response_model=list[DocumentListItem],
-    dependencies=[Depends(require(Capability.READ))],
+    dependencies=[Depends(require(Capability.READ_TEXT))],
 )
 @auto_handle_errors
 async def list_documents(
-    collection_id: uuid.UUID,
+    collection_id: CollectionRef,
     limit: int = Query(
         default=RUNTIME_CONFIG.CORPUS_MAX_PAGE_SIZE,
         ge=1,
@@ -177,7 +180,7 @@ async def list_documents(
 @auto_handle_errors
 async def get_document(
     document_id: uuid.UUID,
-    principal: AuthPrincipal = Depends(require(Capability.READ)),
+    principal: AuthPrincipal = Depends(require(Capability.READ_TEXT)),
 ) -> DocumentDetail:
     """
     Return one document's full facts and its resolved document-level metadata.
@@ -196,7 +199,7 @@ async def get_document(
 
     # 3. For a non-successful document, surface WHY from its latest job (the reason lives on the job,
     #    not the document) so the detail page can explain the failure instead of a bare status.
-    failure_reason = await _failure_reason(document)
+    failure_reason = await _failure_reason(document, principal)
 
     # 4. The display title follows the collection's title_field (read-time, no re-ingest).
     collection = await CONTEXT.database.collections.get(document.collection_id)
@@ -213,7 +216,7 @@ async def get_document(
 @auto_handle_errors
 async def get_document_pages(
     document_id: uuid.UUID,
-    principal: AuthPrincipal = Depends(require(Capability.READ)),
+    principal: AuthPrincipal = Depends(require(Capability.READ_TECHNICAL)),
 ) -> list[PageInfo]:
     """
     Return a document's pages, in order — geometry, routing and the render blob reference.
@@ -231,7 +234,7 @@ async def get_document_pages(
 @auto_handle_errors
 async def get_document_ir(
     document_id: uuid.UUID,
-    principal: AuthPrincipal = Depends(require(Capability.READ)),
+    principal: AuthPrincipal = Depends(require(Capability.READ_TECHNICAL)),
 ) -> DocumentIRModel:
     """
     Return the document's FULL IR in one payload — blocks, tables, figures and enrichments.
@@ -249,7 +252,7 @@ async def get_document_ir(
 @auto_handle_errors
 async def get_document_provenance(
     document_id: uuid.UUID,
-    principal: AuthPrincipal = Depends(require(Capability.READ)),
+    principal: AuthPrincipal = Depends(require(Capability.READ_TECHNICAL)),
 ) -> DocumentProvenance:
     """
     Return a document's ingestion provenance — the parser/model pipeline that produced its IR + chunks.
@@ -293,7 +296,7 @@ async def get_document_markdown(
         False, description="When true, return an attachment download instead of an inline view."
     ),
     pages: str | None = Query(default=None, description=_PAGES_QUERY_DESCRIPTION),
-    principal: AuthPrincipal = Depends(require(Capability.READ)),
+    principal: AuthPrincipal = Depends(require(Capability.READ_TEXT)),
 ) -> Response:
     """
     Render the document as an on-the-fly markdown VIEW generated from the canonical IR.
@@ -325,7 +328,7 @@ async def get_document_html(
         False, description="When true, return an attachment download instead of an inline view."
     ),
     pages: str | None = Query(default=None, description=_PAGES_QUERY_DESCRIPTION),
-    principal: AuthPrincipal = Depends(require(Capability.READ)),
+    principal: AuthPrincipal = Depends(require(Capability.READ_TEXT)),
 ) -> Response:
     """
     Render the document as an on-the-fly HTML VIEW generated from the canonical IR.
@@ -370,9 +373,9 @@ async def get_document_chunks(
     include_geometry: bool = Query(
         default=True,
         description="False drops block_ids and the 0-based 'page' (keeps the 1-based page_number) — "
-        "the lean, agent-sized shape.",
+        "the lean, agent-sized shape. Always False for a key without read_technical.",
     ),
-    principal: AuthPrincipal = Depends(require(Capability.READ)),
+    principal: AuthPrincipal = Depends(require(Capability.READ_TEXT)),
 ) -> list[ChunkInfo]:
     """
     Return a document's chunks — enriched text, composition (block ids) and generated metadata.
@@ -382,7 +385,10 @@ async def get_document_chunks(
         = the document's chunk count); 404 when the document is unknown.
     """
     # 1. The document (404 guard + scope gate) — its collection scopes the field-name resolution.
+    #    Geometry (block ids + 0-based page) is IR internals: a key without READ_TECHNICAL always
+    #    gets the lean shape, whatever it asked for.
     document = await _require_document(document_id, principal)
+    include_geometry = include_geometry and AuthzGuard.holds(principal, Capability.READ_TECHNICAL)
     names = ExplorerHelpers.field_names(
         await CONTEXT.database.collections.get_schema(document.collection_id)
     )

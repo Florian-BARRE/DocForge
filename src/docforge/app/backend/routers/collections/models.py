@@ -70,10 +70,20 @@ class CollectionModel(BaseModel):
         "on the single-collection read and the PATCH response ([] = aligned or never ingested); "
         "null on the fleet list, which never reads the vector store.",
     )
+    aliases: list[str] | None = Field(
+        default=None,
+        description="The collection aliases pointing at this collection (each usable in place of the "
+        "UUID in every collection route and as an 'alias:<name>' key scope). Computed on the "
+        "single-collection read (GET /collections/{id}); null on the other payloads.",
+    )
     created_at: datetime | None = Field(default=None, description="Creation timestamp.")
-    pipeline: dict[str, Any] = Field(description="The ingestion pipeline blob (the graph).")
-    search: dict[str, Any] = Field(
-        description="The search pipeline graph blob ({} = use the stock default)."
+    pipeline: dict[str, Any] | None = Field(
+        description="The ingestion pipeline blob (the graph); null when the calling key lacks the "
+        "read_technical capability (withheld, not refused)."
+    )
+    search: dict[str, Any] | None = Field(
+        description="The search pipeline graph blob ({} = use the stock default); null when the "
+        "calling key lacks the read_technical capability (withheld, not refused)."
     )
     fields: list[FieldSpecModel] = Field(default_factory=list, description="The metadata schema.")
     title_field: str | None = Field(default=None, description=_TITLE_FIELD_DESCRIPTION)

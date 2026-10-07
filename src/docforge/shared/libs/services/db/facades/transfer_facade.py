@@ -21,6 +21,7 @@ from shared_libs.services.db.postgresql import PostgresClient
 from shared_libs.services.db.postgresql.apis import (
     BlobApi,
     ChunkApi,
+    CollectionAliasApi,
     CollectionApi,
     DocumentApi,
     IRApi,
@@ -245,8 +246,11 @@ class CollectionTransferFacade(LoggerClass):
 
     # ==================== IMPORT (writes) ====================
     async def name_taken(self, name: str) -> bool:
-        """Whether a collection already claims this (unique) name on the target server."""
-        return await self._collections.get_by_name(name) is not None
+        """Whether a collection OR a collection alias already claims this name on the target server."""
+        if await self._collections.get_by_name(name) is not None:
+            return True
+        async with self._postgres.session() as session:
+            return await CollectionAliasApi.alias_named(session, name) is not None
 
     async def create_collection(
         self, collection: Collection, fields: list[MetadataField]

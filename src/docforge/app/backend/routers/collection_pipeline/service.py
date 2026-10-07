@@ -22,7 +22,7 @@ from shared_libs.pipelines.build import BuildError, GroupNodeBlob, ValidationMes
 from shared_libs.pipelines.ingest import BlobNormalizationError, BlobNormalizer
 from shared_libs.pipelines.ingest.stages import StageAction, StageViewer, StateReader
 from shared_libs.pipelines.validation import ValidationIssue
-from shared_libs.services.db.facades import ConfigVersionConflictError
+from shared_libs.services.db.facades import ConfigAuthor, ConfigVersionConflictError
 from shared_libs.services.db.postgresql.tables import Collection
 
 # ====== Local Project Imports ======
@@ -79,7 +79,11 @@ class CollectionStageApplier:
 
     @classmethod
     async def _attempt(
-        cls, collection: Collection, version: int, request: CollectionStageApplyRequest
+        cls,
+        collection: Collection,
+        version: int,
+        request: CollectionStageApplyRequest,
+        author: ConfigAuthor | None,
     ) -> CollectionStageApplyResponse:
         """One compile → validate → CAS-persist pass on the head read at ``version``."""
         # 1. Compile the action on the stored pipeline (real secrets present — merge keeps them).
@@ -117,13 +121,17 @@ class CollectionStageApplier:
             pipeline=CollectionBlobHelpers.canonical_pipeline(candidate),
             note=request.note or cls.__summary(request.action),
             expected_version=version,
+            author=author,
         )
         response.persisted = True
         return response
 
     @classmethod
     async def apply(
-        cls, collection_id: uuid.UUID, request: CollectionStageApplyRequest
+        cls,
+        collection_id: uuid.UUID,
+        request: CollectionStageApplyRequest,
+        author: ConfigAuthor | None = None,
     ) -> CollectionStageApplyResponse:
         """
         Apply one stage action to a collection's stored pipeline and persist a valid change.
@@ -131,6 +139,7 @@ class CollectionStageApplier:
         Args:
             collection_id (uuid.UUID): The target collection (its stored pipeline is the base).
             request (CollectionStageApplyRequest): The action (+ optional snapshot note).
+            author (ConfigAuthor | None): Who made the change, stamped on the new config version.
 
         Returns:
             CollectionStageApplyResponse: The redacted stage view, validity, notices and whether
@@ -148,7 +157,7 @@ class CollectionStageApplier:
                     status_code=404, detail=f"Collection {collection_id} not found."
                 )
             try:
-                response = await cls._attempt(collection, version, request)
+                response = await cls._attempt(collection, version, request, author)
             except ConfigVersionConflictError as exc:
                 cls.logger.warning(f"Stage apply lost a concurrent config race, recomputing: {exc}")
                 continue

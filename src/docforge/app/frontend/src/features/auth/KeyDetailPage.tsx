@@ -138,6 +138,7 @@ export function KeyDetailPage({ keyId, onNavigate }: KeyDetailPageProps) {
 
       <div style={{ background: t.color.surface, border: `1px solid ${t.color.line}`, borderRadius: t.radius.l, boxShadow: t.shadow.sm, padding: t.space.l }}>
         <Field label="Prefix" value={<span style={{ fontFamily: t.font.mono }}>{apiKey.prefix}…</span>} />
+        {apiKey.permissions?.profile && <Field label="Profile" value={apiKey.permissions.profile} />}
         <Field
           label="Capabilities"
           value={

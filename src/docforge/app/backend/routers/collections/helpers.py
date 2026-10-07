@@ -120,17 +120,20 @@ class CollectionHelpers:
         collection: Collection,
         fields: list[MetadataField],
         missing_vectors: list[str] | None = None,
+        aliases: list[str] | None = None,
     ) -> CollectionModel:
         """Map the rows to the UI contract (shared by every single-collection read path).
 
         Provider secrets (api_key on every provider node of the pipeline AND search blobs) are masked
         here — the ONE serialisation boundary every read path funnels through — so a live key is never
         echoed to a client. The stored blobs keep the real keys; only this outbound copy is masked.
-        ``missing_vectors`` is the store-side gap the caller read (None = not computed).
+        ``missing_vectors`` is the store-side gap the caller read and ``aliases`` the collection
+        aliases targeting it (None = not computed on this path).
         """
         return CollectionModel(
             **cls.__base_payload(collection, fields, mask=redact_blob_secrets),
             missing_vectors=missing_vectors,
+            aliases=aliases,
         )
 
     @classmethod

@@ -8,6 +8,7 @@ from ._shared import (
     FieldScope,
     FieldType,
     KeyPermissions,
+    KeyProfile,
     SourceKind,
 )
 
@@ -22,6 +23,13 @@ from .blobs import BlobContent
 
 # ------------------- Capabilities models ------------------- #
 from .capabilities import CapabilitiesResponse, CapabilityMatrix, ServiceInfo
+
+# ------------------- Collection alias models ------------------- #
+from .collection_aliases import (
+    CollectionAliasModel,
+    SetCollectionAliasRequest,
+    SetCollectionAliasResponse,
+)
 
 # ------------------- Collections models ------------------- #
 from .collections import (
@@ -38,6 +46,16 @@ from .collections import (
     SearchTargetGuide,
     UpdateCollectionRequest,
     UpdateCollectionResponse,
+)
+
+# ------------------- Config history models ------------------- #
+from .config_versions import (
+    ConfigDiffEntry,
+    ConfigVersionDetail,
+    ConfigVersionDiffResponse,
+    ConfigVersionListResponse,
+    ConfigVersionRestoreResponse,
+    ConfigVersionSummary,
 )
 
 # ------------------- Corpus filter + grid models ------------------- #
@@ -225,6 +243,7 @@ __all__ = [
     # Shared vocabulary
     "Capability",
     "KeyPermissions",
+    "KeyProfile",
     "FieldType",
     "FieldOrigin",
     "FieldScope",
@@ -277,6 +296,16 @@ __all__ = [
     "MetadataValuesPatch",
     "MetadataUpdateResponse",
     "DocumentView",
+    # Config history
+    "ConfigDiffEntry",
+    "CollectionAliasModel",
+    "SetCollectionAliasRequest",
+    "SetCollectionAliasResponse",
+    "ConfigVersionDetail",
+    "ConfigVersionDiffResponse",
+    "ConfigVersionListResponse",
+    "ConfigVersionRestoreResponse",
+    "ConfigVersionSummary",
     # Snippets
     "SNIPPET_FILE_EXTENSION",
     "SnippetKind",

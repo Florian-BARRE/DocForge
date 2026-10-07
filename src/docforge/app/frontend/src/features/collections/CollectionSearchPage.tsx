@@ -40,12 +40,15 @@ export function CollectionSearchPage({ collectionId }: CollectionSearchPageProps
 
   if (error) return <ErrorState message={error} />;
   if (!collection) return <LoadingState label="loading collection…" />;
+  if (collection.search === null) {
+    return <ErrorState message="This API key lacks the read_technical capability — the search pipeline blob is withheld." />;
+  }
 
   return (
     <div style={{ height: "100%" }}>
       <SearchPipelineEditor
         key={resetVersion}
-        initialBlob={seedBlob(collection.search)}
+        initialBlob={seedBlob(collection.search ?? {})}
         onSave={async (blob) => {
           const updated = await updateCollection(collectionId, { search: blob as unknown as Record<string, unknown> });
           setCollection(updated);

@@ -31,6 +31,13 @@ class ConfigVersion(Base, UUIDPrimaryKey, CreatedAtMixin):
     version: Mapped[int] = mapped_column(Integer, nullable=False)
     config: Mapped[Any] = mapped_column(JSONB, nullable=False)
     note: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Who wrote this version. The key id is a live link (SET NULL when the key row is deleted); the
+    # label is a write-time snapshot (key name / "root" / "anonymous" when auth is off) so the history
+    # still names its author after the key is gone. Both NULL = a system write (creation by import).
+    author_key_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("api_key.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    author_label: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
 
 __all__ = ["ConfigVersion"]

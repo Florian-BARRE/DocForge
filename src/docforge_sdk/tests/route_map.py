@@ -70,6 +70,15 @@ ROUTES: set[tuple[str, str]] = {
     ("POST", "/api/v1/collections/{collection_id}/search"),
     ("POST", "/api/v1/collections/{collection_id}/chunks/browse"),
     ("GET", "/api/v1/search/health"),
+    # Collection aliases — resources/collection_aliases.py
+    ("GET", "/api/v1/collection-aliases"),
+    ("PUT", "/api/v1/collection-aliases/{name}"),
+    ("DELETE", "/api/v1/collection-aliases/{name}"),
+    # Config history — resources/config_versions.py
+    ("GET", "/api/v1/collections/{collection_id}/config-versions"),
+    ("GET", "/api/v1/collections/{collection_id}/config-versions/diff"),
+    ("GET", "/api/v1/collections/{collection_id}/config-versions/{version}"),
+    ("POST", "/api/v1/collections/{collection_id}/config-versions/{version}/restore"),
     # Snippets — resources/snippets.py
     ("GET", "/api/v1/collections/{collection_id}/snippets/{kind}"),
     ("POST", "/api/v1/collections/{collection_id}/snippets/{kind}"),

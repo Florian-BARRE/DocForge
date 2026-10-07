@@ -1,18 +1,27 @@
 // ====== Code Summary ======
-// The permissions half of the create-key form — "full access" vs a scoped grant (capabilities +
-// collection scope). Renders nothing scope-related while full access is on, mirroring how
+// The permissions half of the create-key form — "full access" vs a scoped grant (a named usage
+// profile OR a custom capability list, + collection scope: explicit collections and/or `alias:<name>`
+// entries). Renders nothing scope-related while full access is on, mirroring how
 // SearchTargetPicker only shows what the current selection can act on.
 
-import { API_CAPABILITIES, type ApiCapability } from "../../api/auth";
+import { API_CAPABILITIES, KEY_PROFILES, type ApiCapability, type KeyProfile } from "../../api/auth";
+import { ALIAS_SCOPE_PREFIX, type CollectionAlias } from "../../api/collectionAliases";
 import type { Collection } from "../../api/collections";
+import { inputStyle } from "../../components/inputStyle";
 import { theme } from "../../theme";
 
-/** `"all"` maps to the backend's `["*"]` sentinel; otherwise an explicit list of collection ids. */
+/**
+ * `"all"` maps to the backend's `["*"]` sentinel; otherwise an explicit list of collection ids and/or
+ * `alias:<name>` entries (an alias entry follows the alias's CURRENT target).
+ */
 export type CollectionsScope = "all" | string[];
 
 interface PermissionsBuilderProps {
   fullAccess: boolean;
   onFullAccessChange: (fullAccess: boolean) => void;
+  /** `null` = custom: the capability checkboxes define the grant. */
+  profile: KeyProfile | null;
+  onProfileChange: (profile: KeyProfile | null) => void;
   capabilities: ApiCapability[];
   onCapabilitiesChange: (capabilities: ApiCapability[]) => void;
   collectionsScope: CollectionsScope;
@@ -20,7 +29,12 @@ interface PermissionsBuilderProps {
   collections: Collection[] | null;
   /** Set when the collections fetch failed — shown instead of the (misleading) "No collections yet." */
   collectionsError?: string | null;
+  /** The aliases a key can be scoped to (`alias:<name>`); null while loading, omitted = none offered. */
+  aliases?: CollectionAlias[] | null;
 }
+
+// The <select> value standing for "no preset — pick the capabilities by hand".
+const CUSTOM_PROFILE = "custom";
 
 const sectionLabelStyle: React.CSSProperties = {
   fontSize: theme.font.size.xs, color: theme.color.dim, marginBottom: theme.space.xs,
@@ -33,10 +47,12 @@ const checkboxLabelStyle: React.CSSProperties = {
 
 export function PermissionsBuilder({
   fullAccess, onFullAccessChange,
+  profile, onProfileChange,
   capabilities, onCapabilitiesChange,
   collectionsScope, onCollectionsScopeChange,
   collections,
   collectionsError,
+  aliases = [],
 }: PermissionsBuilderProps) {
   const toggleCapability = (capability: ApiCapability, checked: boolean) => {
     onCapabilitiesChange(
@@ -74,6 +90,24 @@ export function PermissionsBuilder({
           }}
         >
           <div>
+            <div style={sectionLabelStyle}>Profile</div>
+            <select
+              aria-label="Profile"
+              style={inputStyle}
+              value={profile ?? CUSTOM_PROFILE}
+              onChange={(e) => onProfileChange(e.target.value === CUSTOM_PROFILE ? null : (e.target.value as KeyProfile))}
+            >
+              {KEY_PROFILES.map(({ value }) => <option key={value} value={value}>{value}</option>)}
+              <option value={CUSTOM_PROFILE}>custom — pick capabilities</option>
+            </select>
+            {profile && (
+              <div style={{ color: theme.color.dim, fontSize: theme.font.size.xs, marginTop: theme.space.xs }}>
+                {KEY_PROFILES.find((p) => p.value === profile)?.hint}
+              </div>
+            )}
+          </div>
+
+          {profile === null && <div>
             <div style={sectionLabelStyle}>Capabilities</div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: theme.space.m }}>
               {API_CAPABILITIES.map((capability) => (
@@ -87,7 +121,7 @@ export function PermissionsBuilder({
                 </label>
               ))}
             </div>
-          </div>
+          </div>}
 
           <div>
             <div style={sectionLabelStyle}>Collections</div>
@@ -122,6 +156,23 @@ export function PermissionsBuilder({
                     {collection.name}
                   </label>
                 ))}
+                {aliases && aliases.length > 0 && (
+                  <div style={{ ...sectionLabelStyle, marginTop: theme.space.s }}>Aliases — follow the current target</div>
+                )}
+                {aliases?.map((alias) => {
+                  const entry = `${ALIAS_SCOPE_PREFIX}${alias.name}`;
+                  return (
+                    <label key={entry} style={checkboxLabelStyle}>
+                      <input
+                        type="checkbox"
+                        checked={specificIds.includes(entry)}
+                        onChange={(e) => toggleCollection(entry, e.target.checked)}
+                      />
+                      <span style={{ fontFamily: theme.font.mono }}>{entry}</span>
+                      <span style={{ color: theme.color.dim }}>→ {alias.collection_name}</span>
+                    </label>
+                  );
+                })}
               </div>
             )}
           </div>

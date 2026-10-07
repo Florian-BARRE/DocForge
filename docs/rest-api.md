@@ -54,6 +54,8 @@ Everything is JSON in and JSON out, with two exceptions:
 | Blobs | `/api/v1/blobs/{hash}` | §8 |
 | Pipelines (design) | `/api/v1/pipelines` | §9 |
 | Config snippets (granular export/import) | `/api/v1/collections/{collection_id}/snippets/{kind}` | §10 |
+| Config history (versions, diff, restore) | `/api/v1/collections/{collection_id}/config-versions` | §10b |
+| Collection aliases (stable names, switch) | `/api/v1/collection-aliases` | §10c |
 | Cost estimate (dry-run) | `/api/v1/collections/{collection_id}/estimate` | §11 |
 | Pipeline preview (dry-run) | `/api/v1/collections/{collection_id}/pipeline/preview` | §11b |
 | Collection transfers (export/import bundles) | `/api/v1/collections/{id}/export`, `/api/v1/collections/import`, `/api/v1/transfers/{transfer_id}` | §12 |
@@ -94,26 +96,49 @@ hand those out.
 A key carries two orthogonal scopes, stored as a `permissions` blob:
 
 - **Capabilities** — the coarse action classes the key grants:
-  `read`, `write`, `search`, `create`, `admin`.
+  `read_text`, `read_technical`, `write`, `search`, `create`, `admin`.
   Endpoints demand one of these (e.g. search requires `search`, upload requires `write`,
   creating a collection requires `create`, key management requires `admin`).
 - **Collection scope** — either `["*"]` (every collection) or an explicit list of
-  collection UUID strings. A scoped key is rejected `403` on any collection it does not list —
-  including collections referenced in a form body, a query param, or via a document/chunk/blob.
+  collection UUID strings and/or **`alias:<name>`** entries (see §10c). A scoped key is rejected
+  `403` on any collection it does not list — including collections referenced in a form body, a
+  query param, or via a document/chunk/blob.
+
+**`alias:<name>` scope entries** follow the alias's **current** target: re-pointing the alias
+re-scopes every key bound to it with no key edit. The alias is resolved on **every request**,
+outside the authentication key cache (`AUTH_KEY_CACHE_TTL_SECONDS` caches the key row — hence the
+alias NAME — never its target), so a re-point or a delete is effective on the very next request
+(no TTL window). A deleted alias grants **nothing** (fail closed). At key create/rotate every
+named alias must exist (`422` otherwise). A collection-scoped admin grants only scope entries it
+**stores** itself — never an alias's current target as a pinned UUID (so a re-point cuts it off).
+Revoking a key also evicts it from the authentication cache of the process that served the revoke.
 
 Plus an optional **`expires_at`** (absolute instant; `null` = never expires).
 
 A `permissions` of `null` means **full access** (the root shape) — it bypasses every capability
 and scope check. `KeyPermissions` uses `extra="forbid"`; the `collections` wildcard `"*"` cannot
-be mixed with explicit ids, and every explicit id must be a valid UUID.
+be mixed with explicit ids, and every explicit entry must be a valid UUID or `alias:<slug>`.
 
 | Capability | Grants |
 |---|---|
-| `read` | List/get collections, browse documents, read pages/IR/chunks, read blobs, read jobs |
-| `write` | Patch/delete collections, upload documents, toggle enabled, delete documents/chunks |
+| `read_text` | The business read surface: list/get collections (the **lean** contract — `pipeline`/`search` blobs are `null` without `read_technical`), `describe`, document list/detail/query, markdown + html views, outline, chunks (always the lean shape — no `block_ids`/0-based `page` — without `read_technical`), chunk context, chunk browse, job list + job status. Without `read_technical`, the **search and chunk-browse hits never carry the drawing geometry** (`block_ids`, 0-based `page`, `bbox`, `block_locations`) — silently withheld even when `return_fields` names them; `page_number` (the citation) stays — and a job's `error` (job list/status) and a document's `failure_reason` have their URLs, `host:port` pairs and request paths replaced by `<redacted>` (`error_type`, `failed_node_id`/`failed_node_kind` and `current_stage` are never masked) |
+| `read_technical` | The internals: IR, pages, provenance, the collection pipeline/search blobs, job events/payloads/stream, ops aggregates (stage durations, cost, queue, workers, failures, timeseries), collection health/storage/estimate, `/search/health`, the contract schema, the pipeline design routes (`/pipelines/*`), raw blobs, snippet export, collection export/transfers, config history (versions, diff), audit |
+| `write` | Patch/delete collections, upload documents, toggle enabled, delete documents/chunks. A collection returned by `POST /collections` (`create`) or `PATCH /collections/{id}` (incl. `dry_run`) is the **lean** contract (`pipeline`/`search` `null`) unless the key also holds `read_technical`. The routes whose response is technical by nature — the collection-scoped stage apply (`…/pipeline/stages/apply`, a pipeline stage view) and the pipeline preview (`…/pipeline/preview`, `…/preview/jobs`, `…/preview/jobs/{id}`: IR summary + trace) — demand `write` **and** `read_technical` (`403` otherwise). Config-history restore needs only `write` (its response carries no blob) |
 | `search` | Run collection search |
 | `create` | Create collections. A **scoped** key that creates one is auto-granted ownership — the new collection id is appended to the key's own `collections` scope, so it can then manage what it created (per its other capabilities) without knowing ids in advance |
 | `admin` | Manage API keys (create/list/revoke/rotate) |
+| `read` *(legacy)* | The pre-split read capability. Still accepted on input and in stored keys: it is **normalized on load to `read_text` + `read_technical`**, so a key created before the split keeps its whole read surface with no data migration. Never returned by `whoami`; never demanded by a route |
+
+**Usage profiles.** Instead of an explicit `capabilities` list, `permissions` may carry a named
+`profile`; the server expands it and stores the explicit list (plus the `profile` label, for
+display). Sending both is allowed only when they agree (`422` otherwise); sending neither is `422`.
+
+| Profile | Capabilities | For |
+|---|---|---|
+| `agent_reader` | `read_text`, `search` | A business chatbot — reads documents as text and searches, sees no internals |
+| `agent_searcher` | `search` | The narrowest retrieval key (hits already carry chunk text). Deliberately distinct from `agent_reader` rather than an alias of it |
+| `operator` | `read_text`, `read_technical`, `write` | Operating collections and diagnosing ingestion |
+| `admin` | every capability | Full power, still bounded by the key's `collections` scope (unlike a `null`-permissions root key) |
 
 ### 401 vs 403 semantics
 
@@ -124,6 +149,15 @@ be mixed with explicit ids, and every explicit id must be a valid UUID.
   scoped to the target collection, or has a malformed permissions blob.
 
 ### Key-management endpoints
+
+**No escalation through key management.** Every key route needs `admin`. A full-access (root /
+`null`-permissions) caller manages every key. A **scoped** admin key is held to keys whose scope is a
+**subset of its own**: it may only grant capabilities it holds and collections it is scoped to, never
+`permissions: null` (root-equivalent) and never `collections: ["*"]` unless it holds `*` itself; an
+`alias:<name>` entry only when its own scope names that same alias (an alias follows re-points the
+caller does not control). A create/rotate beyond that → `403`. `GET /auth/keys` lists only the keys
+within the caller's scope; rotating or revoking a key beyond it → `403`. Key names `root` and
+`anonymous` are reserved (they are config-history author labels) → `422`.
 
 All require the `admin` capability. Keys are owned by the sole `root` account.
 
@@ -137,7 +171,7 @@ All require the `admin` capability. Keys are owned by the sole `root` account.
 > The plaintext key is returned **only** at creation and rotation, in the `key` field. It is
 > hashed at rest and can never be recovered — store it immediately.
 
-**Create a scoped key** (read + search, limited to one collection):
+**Create a scoped key** (the `agent_reader` profile, limited to one collection):
 
 ```bash
 curl -sX POST http://localhost:10040/api/v1/auth/keys \
@@ -146,7 +180,7 @@ curl -sX POST http://localhost:10040/api/v1/auth/keys \
   -d '{
         "name": "reporting-service",
         "permissions": {
-          "capabilities": ["read", "search"],
+          "profile": "agent_reader",
           "collections": ["7f1c9d2e-4b8a-4c2f-9e3a-1a2b3c4d5e6f"]
         },
         "expires_at": "2027-01-01T00:00:00Z"
@@ -160,7 +194,7 @@ Response (`201`):
   "id": "b1e2...",
   "name": "reporting-service",
   "prefix": "df_ab12cd34",
-  "permissions": { "capabilities": ["read", "search"], "collections": ["7f1c9d2e-..."] },
+  "permissions": { "capabilities": ["read_text", "search"], "collections": ["7f1c9d2e-..."], "profile": "agent_reader" },
   "created_at": "2026-07-30T09:00:00Z",
   "expires_at": "2027-01-01T00:00:00Z",
   "key": "df_ab12cd34ef56...FULL_PLAINTEXT..."
@@ -181,7 +215,7 @@ curl -sX POST http://localhost:10040/api/v1/auth/keys \
   -d '{
         "name": "myproject-owner",
         "permissions": {
-          "capabilities": ["read", "write", "search", "create"],
+          "capabilities": ["read_text", "read_technical", "write", "search", "create"],
           "collections": []
         }
       }'
@@ -224,15 +258,19 @@ Response is a `WhoAmI`:
 {
   "authenticated": true,
   "root": false,
-  "capabilities": ["read", "search"],
-  "collections": ["7f1c9d2e-4b8a-4c2f-9e3a-1a2b3c4d5e6f"]
+  "capabilities": ["read_text", "search"],
+  "collections": ["7f1c9d2e-4b8a-4c2f-9e3a-1a2b3c4d5e6f"],
+  "profile": "agent_reader"
 }
 ```
 
 - `authenticated` — always `true` (an unauthenticated request never reaches this route).
 - `root` — `true` for full, unscoped access: auth disabled, or a `null`-permissions key. Then
-  `capabilities` lists every capability and `collections` is `["*"]`.
-- `capabilities` / `collections` — exactly what the key was granted (§"The key model").
+  `capabilities` lists every capability, `collections` is `["*"]` and `profile` is `null`.
+- `capabilities` / `collections` — exactly what the key was granted (§"The key model"), normalized
+  (a legacy `read` key reports `read_text` + `read_technical`).
+- `profile` — the stored profile label, else the preset whose capability set matches exactly, else
+  `null` (a custom set).
 
 A key whose stored permissions blob is malformed is `403`, mirroring the authorization gate — never
 a `500`.
@@ -247,15 +285,15 @@ later), so declare the **full** schema up front.
 
 | Method | Path | Cap | Purpose |
 |---|---|---|---|
-| `GET` | `/api/v1/collections` | `read` | List all collections with their schema |
-| `GET` | `/api/v1/collections/contract-schema` | `read` | JSON Schema of the identity/limits contract (drives the create form) |
-| `GET` | `/api/v1/collections/{id}` | `read` | One collection's full contract |
+| `GET` | `/api/v1/collections` | `read_text` | List all collections with their schema |
+| `GET` | `/api/v1/collections/contract-schema` | `read_technical` | JSON Schema of the identity/limits contract (drives the create form) |
+| `GET` | `/api/v1/collections/{id}` | `read_text` | One collection's contract — the `pipeline`/`search` blobs are `null` for a key without `read_technical` |
 | `POST` | `/api/v1/collections` | `create` | Create a collection (`201`); a scoped creator is auto-granted ownership of it |
 | `PATCH` | `/api/v1/collections/{id}` | `write` | Patch identity/limits/schema/config |
 | `DELETE` | `/api/v1/collections/{id}` | `write` | Delete a collection (`204`) |
-| `GET` | `/api/v1/collections/{id}/describe` | `read` | Lean agent guide: fields (meaning, type, real example values), valid `search_in` targets, filter grammar, example requests (`CollectionDescription`) |
-| `GET` | `/api/v1/collections/{id}/health` | `read` | Zero-spend provider preflight sweep + an overall verdict |
-| `GET` | `/api/v1/collections/{id}/storage` | `read` | Material footprint across all three stores (exact S3, estimated PG/Qdrant) |
+| `GET` | `/api/v1/collections/{id}/describe` | `read_text` | Lean agent guide: fields (meaning, type, real example values), valid `search_in` targets, filter grammar, example requests (`CollectionDescription`) |
+| `GET` | `/api/v1/collections/{id}/health` | `read_technical` | Zero-spend provider preflight sweep + an overall verdict |
+| `GET` | `/api/v1/collections/{id}/storage` | `read_technical` | Material footprint across all three stores (exact S3, estimated PG/Qdrant) |
 | `POST` | `/api/v1/collections/{id}/reingest` | `write` | Re-run the full pipeline over the whole collection (`202`) |
 | `POST` | `/api/v1/collections/{collection_id}/rebuild-index` | `write` | Rebuild the vector index from the current schema, no content re-embed (`202`, `RebuildIndexAccepted`) |
 | `POST` | `/api/v1/collections/{id}/trace-payloads/purge` | `write` | Reclaim the collection's stored full execution-trace payloads (`TracePurgeResult`) |
@@ -409,7 +447,7 @@ the global default for that value.
 
 ### Discover the contract schema
 
-`GET /api/v1/collections/contract-schema` — capability `read`. Returns the **full discoverable
+`GET /api/v1/collections/contract-schema` — capability `read_technical`. Returns the **full discoverable
 vocabulary** of a collection contract, so a purely-HTTP client (e.g. the MCP) never has to guess a
 value and learn it was wrong at a `422`. Three parts, each serialized from the canonical server source
 (never a hand-copied literal):
@@ -599,7 +637,7 @@ which removes the alias too, plus any generation left over by an interrupted reb
 
 ### Collection health
 
-`GET /api/v1/collections/{collection_id}/health` — capability `read`. An on-demand operational probe
+`GET /api/v1/collections/{collection_id}/health` — capability `read_technical`. An on-demand operational probe
 of one collection: it builds **both** graphs (ingest + search), sweeps every provider-hosted node for
 reachability, and reads the index size. **Zero spend** — nothing is enqueued and no provider work is
 paid for (probes only).
@@ -634,7 +672,7 @@ curl -s http://localhost:10040/api/v1/collections/7f1c9d2e-.../health
 
 ### Storage footprint
 
-`GET /api/v1/collections/{collection_id}/storage` — capability `read`. Measures how much hardware a
+`GET /api/v1/collections/{collection_id}/storage` — capability `read_technical`. Measures how much hardware a
 collection occupies, per store, plus a per-document breakdown sorted heaviest-first (so it doubles as
 a top-N). Computed with grouped SQL aggregates and one Qdrant profile — no per-document N+1, no
 cache.
@@ -813,16 +851,16 @@ collection scope; an unknown id is `404`.
 
 | Method | Path | Cap | Returns |
 |---|---|---|---|
-| `GET` | `/api/v1/collections/{collection_id}/documents` | `read` | Document catalogue (newest first) |
-| `GET` | `/api/v1/documents/{document_id}` | `read` | Full facts + resolved doc-level metadata |
-| `GET` | `/api/v1/documents/{document_id}/pages` | `read` | Pages, in order (geometry + render blob ref) |
-| `GET` | `/api/v1/documents/{document_id}/ir` | `read` | The full canonical IR (large) |
-| `GET` | `/api/v1/documents/{document_id}/provenance` | `read` | Ingestion provenance — the parser/model pipeline (per-stage trace) that produced the IR + chunks |
-| `GET` | `/api/v1/documents/{document_id}/chunks` | `read` | Chunks (enriched text, block ids, metadata) — optionally paginated (`limit`/`offset`) and lean (`include_geometry=false`) |
-| `GET` | `/api/v1/documents/{document_id}/markdown` | `read` | Markdown view, generated on the fly from the IR (`?pages=` for a page range) |
-| `GET` | `/api/v1/documents/{document_id}/html` | `read` | HTML view, generated on the fly from the IR (`?pages=` for a page range) |
-| `GET` | `/api/v1/documents/{document_id}/outline` | `read` | Heading outline (`DocumentOutline`) — level, text, 1-based page, section-opening chunk |
-| `GET` | `/api/v1/chunks/{chunk_id}/context` | `read` | A chunk + its enabled neighbours by `chunk_index` (`ChunkContext`) |
+| `GET` | `/api/v1/collections/{collection_id}/documents` | `read_text` | Document catalogue (newest first) |
+| `GET` | `/api/v1/documents/{document_id}` | `read_text` | Full facts + resolved doc-level metadata |
+| `GET` | `/api/v1/documents/{document_id}/pages` | `read_technical` | Pages, in order (geometry + render blob ref) |
+| `GET` | `/api/v1/documents/{document_id}/ir` | `read_technical` | The full canonical IR (large) |
+| `GET` | `/api/v1/documents/{document_id}/provenance` | `read_technical` | Ingestion provenance — the parser/model pipeline (per-stage trace) that produced the IR + chunks |
+| `GET` | `/api/v1/documents/{document_id}/chunks` | `read_text` | Chunks (enriched text, block ids, metadata) — optionally paginated (`limit`/`offset`) and lean (`include_geometry=false`; forced lean for a key without `read_technical`) |
+| `GET` | `/api/v1/documents/{document_id}/markdown` | `read_text` | Markdown view, generated on the fly from the IR (`?pages=` for a page range) |
+| `GET` | `/api/v1/documents/{document_id}/html` | `read_text` | HTML view, generated on the fly from the IR (`?pages=` for a page range) |
+| `GET` | `/api/v1/documents/{document_id}/outline` | `read_text` | Heading outline (`DocumentOutline`) — level, text, 1-based page, section-opening chunk |
+| `GET` | `/api/v1/chunks/{chunk_id}/context` | `read_text` | A chunk + its enabled neighbours by `chunk_index` (`ChunkContext`) |
 | `DELETE` | `/api/v1/documents/{document_id}` | `write` | Delete everywhere (`204`) |
 | `POST` | `/api/v1/documents/{document_id}/trace-payloads/purge` | `write` | Reclaim a single document's stored full execution-trace payloads (`TracePurgeResult`) |
 
@@ -844,7 +882,8 @@ when none). A `0`-chunk run resolves to `done`-with-`warning_reason`, never `fai
 `pdf_blob_hash`, `simhash`, `pipeline_version`, and a `metadata` array of resolved
 `{field_name, value, origin}` values (it also carries the same `chunk_count` and
 `warning_reason`). It further carries `failure_reason` (the failing job's error message on a
-`failed`/`cancelled` document — why it did not ingest; `null` when it did not fail) and
+`failed`/`cancelled` document — why it did not ingest; `null` when it did not fail; its URLs,
+`host:port` pairs and request paths are masked as `<redacted>` for a key without `read_technical`) and
 `searchable` (a computed boolean — `true` only when the document is `enabled` AND fully ingested
 AND not known-empty; a `failed` or `0`-chunk document is never `searchable`, regardless of the
 `enabled` toggle, which reflects only the user's intent).
@@ -869,7 +908,7 @@ browser client can read it, like `X-Request-ID`, `Idempotency-Replayed`, `Retry-
 
 ### Reading a document piecemeal (outline + chunk context)
 
-`GET /api/v1/documents/{document_id}/outline` — capability `read`, scoped by the document's
+`GET /api/v1/documents/{document_id}/outline` — capability `read_text`, scoped by the document's
 collection; `404` unknown. Returns `DocumentOutline{document_id, display_title, page_count,
 headings[]}`, built from the IR heading blocks in reading order. Each heading is
 `{level, text, page_number, chunk_id}`: `page_number` is 1-based (`null` on a page-less document);
@@ -878,7 +917,7 @@ whose last block sits at or after the heading in reading order. Linking is struc
 heading text, so a title repeated under two chapters links to its own section; `null` for a heading
 after the last chunk. No body text — cheap even on a very large document.
 
-`GET /api/v1/chunks/{chunk_id}/context?before=1&after=1` — capability `read`, scoped by the chunk's
+`GET /api/v1/chunks/{chunk_id}/context?before=1&after=1` — capability `read_text`, scoped by the chunk's
 collection; `404` unknown chunk; `before`/`after` are `0..5` (default `1`, `422` outside).
 Returns `ChunkContext{document_id, display_title, chunks[]}`: the target plus up to `before`
 preceding and `after` following chunks of the same document, in `chunk_index` order. Disabled
@@ -907,7 +946,7 @@ Cite the 1-based value. **Titles**: `DocumentListItem`, grid rows and `DocumentD
 ### Document views (markdown / HTML)
 
 `GET /api/v1/documents/{document_id}/markdown` and `GET /api/v1/documents/{document_id}/html` —
-capability `read`. Both render the document's **canonical IR** into a view format on the fly (the
+capability `read_text`. Both render the document's **canonical IR** into a view format on the fly (the
 IR is canonical; markdown/HTML are always generated, never stored sources — §"Non-negotiables").
 
 | Query param | Type | Default | Meaning |
@@ -938,7 +977,7 @@ The catalogue route above is the simple newest-first listing. At 10k–100k+ doc
 
 | Method | Path | Cap | Returns |
 |---|---|---|---|
-| `POST` | `/api/v1/collections/{collection_id}/documents/query` | `read` | `DocumentQueryResponse` — one page + the total match count |
+| `POST` | `/api/v1/collections/{collection_id}/documents/query` | `read_text` | `DocumentQueryResponse` — one page + the total match count |
 | `POST` | `/api/v1/collections/{collection_id}/documents/delete` | `write` | `BulkDeleteResponse` — delete everywhere (Postgres + Qdrant + orphan blobs) |
 | `POST` | `/api/v1/collections/{collection_id}/documents/set-enabled` | `write` | `BulkEnabledResponse` — bulk searchability toggle |
 | `POST` | `/api/v1/collections/{collection_id}/documents/reingest` | `write` | `BulkReingestResponse` — bulk full re-run (`202`) |
@@ -1171,7 +1210,7 @@ curl -sX POST http://localhost:10040/api/v1/collections/7f1c9d2e-.../search \
 
 ### Browse chunks (no query)
 
-`POST /api/v1/collections/{collection_id}/chunks/browse` — capability `read`, collection-scoped. Lists
+`POST /api/v1/collections/{collection_id}/chunks/browse` — capability `read_text`, collection-scoped. Lists
 a collection's **enabled** chunks matching filters, with no query text: read a whole document ("all
 passages of P0153") or a business process page by page. Ordered by document then `chunk_index`.
 
@@ -1188,7 +1227,7 @@ points here.
 
 ### Search health
 
-`GET /api/v1/search/health` — capability `read`.
+`GET /api/v1/search/health` — capability `read_technical`.
 
 A compact, tile-friendly roll-up of search-runtime health for the deployment **Overview** cockpit.
 Because search runs **inline** (no job/fleet surface of its own), this mirrors the operational tiles
@@ -1226,18 +1265,18 @@ request a cancellation).
 
 | Method | Path | Cap | Returns |
 |---|---|---|---|
-| `GET` | `/api/v1/jobs` | `read` | Jobs — a collection's (`?collection_id=`) or fleet-wide, filterable — a paginated `JobPage` |
-| `GET` | `/api/v1/jobs/{job_id}` | `read` | One job's live state (poll this) |
-| `GET` | `/api/v1/jobs/{job_id}/events` | `read` | Per-node execution trace, in order (each event carries its score + shape summaries + `has_full_*` flags) |
-| `GET` | `/api/v1/jobs/{job_id}/events/{event_id}/payload?slot=input\|output` | `read` | One node's FULL raw input/output payload (opt-in `full` trace tier), fetched on demand (`JobEventPayload`); `404` when only a shape summary exists |
-| `GET` | `/api/v1/jobs/{job_id}/stream` | `read` | Live progress as Server-Sent Events (see below) |
-| `GET` | `/api/v1/jobs/workers/live` | `read` | What every worker is doing right now |
-| `GET` | `/api/v1/jobs/queue` | `read` | Backlog depth — `{pending, running}` |
-| `GET` | `/api/v1/jobs/cost?collection_id={id}` | `read` | A collection's paid text-gen roll-up (`CollectionCost`) |
-| `GET` | `/api/v1/jobs/stage-durations?collection_id={id}` | `read` | Average per-stage wall-clock — the ETA basis (`StageDurations`) |
-| `GET` | `/api/v1/jobs/failures/breakdown` | `read` | Failure aggregation over a window — top causes / by stage / by collection (`FailureBreakdown`) |
-| `GET` | `/api/v1/jobs/failures/new?since={ts}` | `read` | "X new failures since a cursor" signal — count + optional ids (`NewFailures`) |
-| `GET` | `/api/v1/jobs/timeseries` | `read` | Lightweight hourly job trends — done/failed/arrivals/backlog sparklines (`JobTimeseries`) |
+| `GET` | `/api/v1/jobs` | `read_text` | Jobs — a collection's (`?collection_id=`) or fleet-wide, filterable — a paginated `JobPage` |
+| `GET` | `/api/v1/jobs/{job_id}` | `read_text` | One job's live state (poll this) |
+| `GET` | `/api/v1/jobs/{job_id}/events` | `read_technical` | Per-node execution trace, in order (each event carries its score + shape summaries + `has_full_*` flags) |
+| `GET` | `/api/v1/jobs/{job_id}/events/{event_id}/payload?slot=input\|output` | `read_technical` | One node's FULL raw input/output payload (opt-in `full` trace tier), fetched on demand (`JobEventPayload`); `404` when only a shape summary exists |
+| `GET` | `/api/v1/jobs/{job_id}/stream` | `read_technical` | Live progress as Server-Sent Events (see below) |
+| `GET` | `/api/v1/jobs/workers/live` | `read_technical` | What every worker is doing right now |
+| `GET` | `/api/v1/jobs/queue` | `read_technical` | Backlog depth — `{pending, running}` |
+| `GET` | `/api/v1/jobs/cost?collection_id={id}` | `read_technical` | A collection's paid text-gen roll-up (`CollectionCost`) |
+| `GET` | `/api/v1/jobs/stage-durations?collection_id={id}` | `read_technical` | Average per-stage wall-clock — the ETA basis (`StageDurations`) |
+| `GET` | `/api/v1/jobs/failures/breakdown` | `read_technical` | Failure aggregation over a window — top causes / by stage / by collection (`FailureBreakdown`) |
+| `GET` | `/api/v1/jobs/failures/new?since={ts}` | `read_technical` | "X new failures since a cursor" signal — count + optional ids (`NewFailures`) |
+| `GET` | `/api/v1/jobs/timeseries` | `read_technical` | Lightweight hourly job trends — done/failed/arrivals/backlog sparklines (`JobTimeseries`) |
 | `POST` | `/api/v1/jobs/{job_id}/cancel` | `write` | Request cancellation of a queued/running job (`CancelResult`) |
 
 > `document_id` is `null` on a collection-level job (`kind: rebuild_index`, see "Rebuild the index"
@@ -1275,7 +1314,7 @@ order (newest first by default).
 A `JobStatus` carries `job_id, document_id, collection_id, status` (`queued`/`running`/`done`/
 `failed`/`cancelled`), `kind` (`ingest` — a full pipeline run — or `metadata_sync` — a lightweight
 per-document metadata re-embed following an in-place value edit), `progress` (0–100), `current_stage`,
-`error` (verbatim, only when failed),
+`error` (only when failed — verbatim for a `read_technical` key, its URLs/`host:port`/paths masked as `<redacted>` otherwise),
 `attempt`, `started_at`, `finished_at`, and `updated_at` (last progress write — freezes on a wedge).
 It also joins display labels (`document_filename`, `document_title`, `collection_name`, each `null`
 if the row is gone) plus `display_title` — the document's display title resolved exactly like the
@@ -1322,7 +1361,7 @@ the first (unprimed) tick, or a psutil error — and a UI must render them as "u
 
 ### Live progress (Server-Sent Events)
 
-`GET /api/v1/jobs/{job_id}/stream` — capability `read`. Prefer this over polling `GET /jobs/{id}` for
+`GET /api/v1/jobs/{job_id}/stream` — capability `read_technical`. Prefer this over polling `GET /jobs/{id}` for
 a live UI. The job is resolved and scope-checked **before** the stream opens, so an unknown id is a
 normal `404` and never an error buried mid-stream.
 
@@ -1392,7 +1431,7 @@ Returns a `JobTimeseries`: `{ collection_id, window_hours, bucket_seconds, bucke
 
 ## 8. Blobs
 
-`GET /api/v1/blobs/{content_hash}` — capability `read`. Streams a content-addressed blob's raw
+`GET /api/v1/blobs/{content_hash}` — capability `read_technical`. Streams a content-addressed blob's raw
 bytes with its **registered** media type (never a guessed one): page renders and figure crops
 (load as `<img src>`), the canonical PDF, or the original upload.
 
@@ -1410,7 +1449,7 @@ check. When auth is on, send the bearer as with any `/api/v1` route.
 
 The pipeline endpoints power the graph/stage design UI. The blob shapes are large and opaque
 (a serialized node graph); treat them as produced by these endpoints, round-tripped, and stored
-on a collection's `pipeline`/`search`. All require `read`.
+on a collection's `pipeline`/`search`. All require `read_technical`.
 
 | Method | Path | Purpose |
 |---|---|---|
@@ -1420,7 +1459,7 @@ on a collection's `pipeline`/`search`. All require `read`.
 | `POST` | `/api/v1/pipelines/{key}/edit` | Apply graph operations server-side, then inspect the result |
 | `POST` | `/api/v1/pipelines/{key}/stages/view` | Stage view of a blob + validity (ingest-only) |
 | `POST` | `/api/v1/pipelines/{key}/stages/apply` | Compile a stage action into the blob + view (ingest-only) |
-| `POST` | `/api/v1/collections/{collection_id}/pipeline/stages/apply` | Apply ONE stage action to a collection's STORED pipeline and persist it (`write`, collection-scoped) |
+| `POST` | `/api/v1/collections/{collection_id}/pipeline/stages/apply` | Apply ONE stage action to a collection's STORED pipeline and persist it (`write` + `read_technical`, collection-scoped) |
 
 `{key}` is `ingest` or `search`. An unknown key is `404`. The stage endpoints are **ingest-only**
 today — an unknown OR non-stage pipeline key `404`s, and the discovery index omits the stage URLs
@@ -1510,7 +1549,7 @@ independently of the data it describes.
 
 | Method | Path | Cap | Purpose |
 |---|---|---|---|
-| `GET` | `/api/v1/collections/{collection_id}/snippets/{kind}` | `read` | Export one config facet as a `CollectionSnippet` |
+| `GET` | `/api/v1/collections/{collection_id}/snippets/{kind}` | `read_technical` | Export one config facet as a `CollectionSnippet` |
 | `POST` | `/api/v1/collections/{collection_id}/snippets/{kind}` | `write` | Apply a `CollectionSnippet` onto this collection |
 
 `{kind}` is one of `pipeline`, `search`, `schema`.
@@ -1568,6 +1607,82 @@ graph/schema body (the same structural checks as a direct `PATCH` to the collect
 
 ---
 
+
+## 10b. Config history (versions, diff, restore)
+
+Every pipeline/search config write — collection creation (v1), a `PATCH` carrying `pipeline`/`search`,
+a collection-scoped stage apply, a pipeline/search snippet apply, and a restore — appends an
+immutable **config version** stamped with its **author**: `<key name> (<key prefix>)` (e.g.
+`root (df_3f9a…)` for the root token — the prefix makes the label unforgeable; key names `root` and
+`anonymous` are reserved and refused at key create/rotate with `422`), `anonymous` when auth is disabled, or `null` for history written before authorship was
+recorded / system writes (import). The metadata schema is not versioned here.
+
+| Method | Path | Cap | Purpose |
+|---|---|---|---|
+| `GET` | `/api/v1/collections/{collection_id}/config-versions` | `read_technical` | Newest-first page (`limit` 1–200, default 50; `offset`) |
+| `GET` | `/api/v1/collections/{collection_id}/config-versions/diff?from=&to=` | `read_technical` | Structured diff between two versions |
+| `GET` | `/api/v1/collections/{collection_id}/config-versions/{version}` | `read_technical` | One version's `{pipeline, search}` snapshot |
+| `POST` | `/api/v1/collections/{collection_id}/config-versions/{version}/restore` | `write` | Re-apply a version as a NEW version |
+
+- **List** → `ConfigVersionListResponse` `{collection_id, total, limit, offset, items[]}`; each item
+  `{version, created_at, note, author_label, author_key_id, changes}` where `changes` names what
+  differs from the previous version: `pipeline:<node id>`, `pipeline:(graph)` (transitions/bindings)
+  or `search` (empty for v1).
+- **Get** → `ConfigVersionDetail` (the summary + `config`); every provider secret is **masked**.
+- **Diff** → `ConfigVersionDiffResponse` `{from_version, to_version, changes[]}`; each change is
+  `{path, op: added|removed|changed, before, after}` with JSON-pointer paths where graph nodes are
+  keyed by id (`/pipeline/nodes/parse/config/max_pages`). Values are always masked: a rotated key
+  shows as a `changed` entry with both sides masked.
+- **Restore** → `ConfigVersionRestoreResponse` `{restored_from, version, needs_reindex}`; writes a new
+  version noted `restore of v{N}` through the same locked write as a `PATCH` (fail-fast structural
+  validation → `422`; a concurrent config write → `409`). **Secret rule:** the stored snapshot holds
+  real keys, but a provider still present at the **same endpoint** keeps its **current** key (a key
+  rotated since is never rolled back); a provider whose current key lives at a **different endpoint**
+  is refused with `422` (re-enter the key with a `PATCH`); a provider with no current key gets the
+  snapshot's **own** key back (same endpoint it was stored with — nothing is carried to a new host).
+
+Unknown collection or version → `404`.
+
+## 10c. Collection aliases
+
+A **collection alias** is a stable, deployment-level name (`chatmop`) pointing at ONE collection.
+Rebuild a collection alongside (`chatmop-v2`), then switch the alias in one atomic call: every client
+addressing the alias and every key scoped `alias:chatmop` follow it, with no key or app edit.
+(Unrelated to the vector-store aliases of §3 "Rebuild the index".)
+
+| Method | Path | Cap | Purpose |
+|---|---|---|---|
+| `GET` | `/api/v1/collection-aliases` | `read_text` | Every alias whose target the caller may see, by name |
+| `PUT` | `/api/v1/collection-aliases/{name}` | `admin`, full-access key | Create (`201`), or atomically re-point (`200`) — the "switch" |
+| `DELETE` | `/api/v1/collection-aliases/{name}` | `admin`, full-access key | Delete the alias (`204`); the collection is untouched |
+
+- **Name** — a slug `^[a-z0-9][a-z0-9_-]{0,62}$`, not UUID-shaped, not `contract-schema`/`import`
+  (`422` otherwise).
+- **PUT body** `{"collection_id": "<uuid>"}` → `SetCollectionAliasResponse`
+  `{name, collection_id, collection_name, created_at, updated_at, previous_collection_id, created}`.
+  Unknown target → `404`.
+- **Alias writes need a full-access (unscoped) admin key** (`403` for a collection-scoped key):
+  re-pointing or re-creating an alias re-scopes every key bound to `alias:<name>`, including keys a
+  scoped admin could never manage, so it is a root-grade act.
+- **DELETE is refused (`409`) while live keys still name `alias:<name>`** — a freed name would
+  silently re-bind those keys to whoever re-creates it. Re-scope or revoke them first, or re-point
+  the alias instead.
+- **Every collection-scoped route accepts the alias in place of the UUID**: the `{collection_id}`
+  path param (`GET /api/v1/collections/chatmop/search`…), the `collection_id` query param of the
+  `/jobs` routes, and the `collection_id` form field of `POST /api/v1/documents`. An unknown alias
+  (or a ref that is neither a UUID nor a valid slug) → `404`. For a collection-scoped key an alias
+  OUTSIDE its scope answers the same `404` (never a `403` naming the target id), and a key lacking
+  the route's capability gets the same `403` whether the alias exists or not. `GET /collections/{id}` lists the
+  `aliases` pointing at it.
+- **Namespace collision → `409` both ways**: an alias may not equal a collection name, and a
+  collection may not be created/renamed to an alias name (case-insensitive).
+- **Deleting a collection an alias targets → `409`** — re-point or delete the alias first (the
+  `ON DELETE RESTRICT` foreign key is the backstop).
+- Every create / re-point / delete is recorded in the audit trail (§13) with target type
+  `collection_alias` and the alias name as id.
+- Aliases are **not** exported or imported (§12): they are a deployment-level naming concern, so a
+  bundle imported elsewhere gets no alias.
+
 ## 11. Cost estimate (dry-run)
 
 Before spending anything on ingestion, project the cost and volume of running a collection's
@@ -1578,7 +1693,7 @@ dollar cost against the same rate model the post-hoc job meter uses.
 
 | Method | Path | Cap | Returns |
 |---|---|---|---|
-| `POST` | `/api/v1/collections/{collection_id}/estimate` | `read` | A `CostEstimate` — per-stage breakdown + totals |
+| `POST` | `/api/v1/collections/{collection_id}/estimate` | `read_technical` | A `CostEstimate` — per-stage breakdown + totals |
 
 The body is optional; when omitted, `scope` defaults to `pending`.
 
@@ -1642,7 +1757,7 @@ before applying it to a whole collection.
 
 | Method | Path | Cap | Returns |
 |---|---|---|---|
-| `POST` | `/api/v1/collections/{collection_id}/pipeline/preview` | `write` | A `PreviewResponse` — IR summary + first N chunks + cost + trace |
+| `POST` | `/api/v1/collections/{collection_id}/pipeline/preview` | `write` + `read_technical` | A `PreviewResponse` — IR summary + first N chunks + cost + trace |
 
 The request is **`multipart/form-data`** (or form-urlencoded for the `document_id` path). Provide
 **exactly one** source:
@@ -1699,8 +1814,8 @@ result (kept in Redis with a TTL), never written to a table. Submit, then poll b
 
 | Method | Path | Cap | Returns |
 |---|---|---|---|
-| `POST` | `/api/v1/collections/{collection_id}/pipeline/preview/jobs` | `write` | `PreviewJobAccepted` — `{preview_id, status}` (202) |
-| `GET` | `/api/v1/collections/{collection_id}/pipeline/preview/jobs/{preview_id}` | `write` | `PreviewJobResult` — `{preview_id, status, result, error}` |
+| `POST` | `/api/v1/collections/{collection_id}/pipeline/preview/jobs` | `write` + `read_technical` | `PreviewJobAccepted` — `{preview_id, status}` (202) |
+| `GET` | `/api/v1/collections/{collection_id}/pipeline/preview/jobs/{preview_id}` | `write` + `read_technical` | `PreviewJobResult` — `{preview_id, status, result, error}` |
 
 The submit body is the **same `multipart/form-data`** as the inline preview (`file` XOR
 `document_id`, optional `blob` / `metadata` / `max_chunks`). Uploaded bytes ride through the queue;
@@ -1729,10 +1844,10 @@ run **asynchronously**: the route returns `202` with a transfer handle you poll.
 
 | Method | Path | Cap | Purpose |
 |---|---|---|---|
-| `POST` | `/api/v1/collections/{collection_id}/export` | `read` | Start packaging a collection into a bundle (`202`) |
+| `POST` | `/api/v1/collections/{collection_id}/export` | `read_technical` | Start packaging a collection into a bundle (`202`) |
 | `POST` | `/api/v1/collections/import` | `create` | Import an uploaded bundle as a **new** collection (`202`) |
-| `GET` | `/api/v1/transfers/{transfer_id}` | `read` | Poll one transfer's live status |
-| `GET` | `/api/v1/transfers/{transfer_id}/download` | `read` | Stream a finished export's bundle bytes |
+| `GET` | `/api/v1/transfers/{transfer_id}` | `read_technical` | Poll one transfer's live status |
+| `GET` | `/api/v1/transfers/{transfer_id}/download` | `read_technical` | Stream a finished export's bundle bytes |
 
 Export and import both return a `TransferAccepted` — `{transfer_id, kind, status}` where `kind` is
 `export`/`import` and `status` is `pending`. The tracking row is created **before** the worker task is
@@ -1795,7 +1910,7 @@ client IP, and the request's correlation id (see §15).
 
 | Method | Path | Cap | Returns |
 |---|---|---|---|
-| `GET` | `/api/v1/audit` | `read` + **full-access** | One newest-first, keyset-paginated page of the trail |
+| `GET` | `/api/v1/audit` | `read_technical` + **full-access** | One newest-first, keyset-paginated page of the trail |
 
 The trail spans **every tenant**, so it is restricted to a **full-access (root / unscoped) key** — a
 collection-scoped key is rejected `403`, mirroring the fleet-wide job counts. Query params (all

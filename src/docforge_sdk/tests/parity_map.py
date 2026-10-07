@@ -17,6 +17,11 @@ from docforge_sdk.models.capabilities import (
     CapabilityMatrix,
     ServiceInfo,
 )
+from docforge_sdk.models.collection_aliases import (
+    CollectionAliasModel,
+    SetCollectionAliasRequest,
+    SetCollectionAliasResponse,
+)
 from docforge_sdk.models.collections import (
     BulkReingestAccepted,
     BulkReingestRequest,
@@ -31,6 +36,14 @@ from docforge_sdk.models.collections import (
     SearchTargetGuide,
     UpdateCollectionRequest,
     UpdateCollectionResponse,
+)
+from docforge_sdk.models.config_versions import (
+    ConfigDiffEntry,
+    ConfigVersionDetail,
+    ConfigVersionDiffResponse,
+    ConfigVersionListResponse,
+    ConfigVersionRestoreResponse,
+    ConfigVersionSummary,
 )
 from docforge_sdk.models.corpus import (
     BulkDeleteResponse,
@@ -336,6 +349,17 @@ MODELS: dict[str, type[BaseModel]] = {
     "TracePurgeResult": TracePurgeResult,
     # Index rebuild (POST /collections/{id}/rebuild-index).
     "RebuildIndexAccepted": RebuildIndexAccepted,
+    # Collection aliases (list / create-or-re-point / delete).
+    "CollectionAliasModel": CollectionAliasModel,
+    "SetCollectionAliasRequest": SetCollectionAliasRequest,
+    "SetCollectionAliasResponse": SetCollectionAliasResponse,
+    # Collection config history (list / masked get / diff / restore).
+    "ConfigVersionSummary": ConfigVersionSummary,
+    "ConfigVersionListResponse": ConfigVersionListResponse,
+    "ConfigVersionDetail": ConfigVersionDetail,
+    "ConfigDiffEntry": ConfigDiffEntry,
+    "ConfigVersionDiffResponse": ConfigVersionDiffResponse,
+    "ConfigVersionRestoreResponse": ConfigVersionRestoreResponse,
     # Collection config snippets (granular pipeline/search/schema export-import).
     "CollectionSnippet": CollectionSnippet,
     "SnippetImportResult": SnippetImportResult,
@@ -444,6 +468,8 @@ SKIPPED: dict[str, str] = {
     # Pure StrEnum leaves of now-tracked composite models — same gotcha as the health enums above.
     "Capability": "pure StrEnum, not a BaseModel — no model_json_schema() of its own; its values are "
     "exercised indirectly via KeyPermissions.capabilities.",
+    "KeyProfile": "pure StrEnum, not a BaseModel — no model_json_schema() of its own; its values are "
+    "exercised indirectly via KeyPermissions.profile / WhoAmI.profile.",
     "FieldType": "pure StrEnum, not a BaseModel — no model_json_schema() of its own; its values are "
     "exercised indirectly via FieldSpecModel.field_type.",
     "FieldOrigin": "pure StrEnum, not a BaseModel — no model_json_schema() of its own; its values are "

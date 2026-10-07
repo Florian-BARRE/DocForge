@@ -11,8 +11,12 @@ from .dependency import authenticate, evict_cached_key
 from .middleware import AuthMiddleware
 
 # ---------------------- AuthZ vocabulary + gate ---------------------- #
-from .permissions import Capability, KeyPermissions
+from .capability import CANONICAL_CAPABILITIES, Capability
+from .profiles import KeyProfile, KeyProfiles
+from .permissions import KeyPermissions
 from .authz import require, AuthzGuard
+from .scope_aliases import KeyScopeAliases
+from .grant_guard import KeyGrantGuard
 
 # ---------------------- Startup root provisioning ---------------------- #
 from .bootstrap import AuthBootstrap
@@ -25,8 +29,13 @@ __all__ = [
     "evict_cached_key",
     "AuthMiddleware",
     "Capability",
+    "CANONICAL_CAPABILITIES",
+    "KeyProfile",
+    "KeyProfiles",
     "KeyPermissions",
     "require",
     "AuthzGuard",
+    "KeyScopeAliases",
+    "KeyGrantGuard",
     "AuthBootstrap",
 ]

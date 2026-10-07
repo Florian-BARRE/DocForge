@@ -33,6 +33,7 @@ class CollectionModel(BaseModel):
         needs_reindex (bool): True when a config change requires reindexing.
         missing_vectors (list[str] | None): Named vectors the schema's semantic/lexical fields need
             but the vector store does not declare (an index rebuild is required); None on list rows.
+        aliases (list[str] | None): The collection aliases targeting it (single read only).
         created_at (datetime | None): Creation timestamp.
         title_field (str | None): Document-scope field used as the display title (None = parsed).
         pipeline (dict[str, Any]): The ingestion pipeline blob (the graph).
@@ -76,15 +77,25 @@ class CollectionModel(BaseModel):
         "on the single-collection read and the PATCH response ([] = aligned or never ingested); "
         "null on the fleet list, which never reads the vector store.",
     )
+    aliases: list[str] | None = Field(
+        default=None,
+        description="The collection aliases pointing at this collection (each usable in place of the "
+        "UUID in every collection route and as an 'alias:<name>' key scope). Computed on the "
+        "single-collection read (GET /collections/{id}); null on the other payloads.",
+    )
     created_at: datetime | None = Field(default=None, description="Creation timestamp.")
     title_field: str | None = Field(
         default=None,
         description="Document-scope field whose value is each document's display title (None = the "
         "parser-derived title).",
     )
-    pipeline: dict[str, Any] = Field(description="The ingestion pipeline blob (the graph).")
-    search: dict[str, Any] = Field(
-        description="The search pipeline graph blob ({} = use the stock default)."
+    pipeline: dict[str, Any] | None = Field(
+        description="The ingestion pipeline blob (the graph); null when the calling key lacks the "
+        "read_technical capability (withheld, not refused)."
+    )
+    search: dict[str, Any] | None = Field(
+        description="The search pipeline graph blob ({} = use the stock default); null when the "
+        "calling key lacks the read_technical capability (withheld, not refused)."
     )
     fields: list[FieldSpec] = Field(default_factory=list, description="The metadata schema.")
     estimate_overrides: EstimateOverrides | None = Field(

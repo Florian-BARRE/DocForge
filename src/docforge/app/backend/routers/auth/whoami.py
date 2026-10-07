@@ -1,7 +1,7 @@
 # ====== Code Summary ======
 # The self-introspection route — GET /auth/whoami reports the CALLING token's own access (its coarse
-# capabilities + collection scope) so a client, an MCP agent especially, can discover what it may do
-# without probing endpoints and collecting 403s. It authenticates like every route but requires NO
+# capabilities + collection scope + usage profile) so a client, an MCP agent especially, can discover
+# what it may do without probing endpoints and collecting 403s. It authenticates like every route but requires NO
 # specific capability (even a search-only key must be able to ask "what am I"). A NULL-permissions or
 # auth-disabled principal reports full, unscoped access.
 
@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import ValidationError
 
 # ====== Internal Project Imports ======
-from ...libs.auth import AuthPrincipal, Capability
+from ...libs.auth import CANONICAL_CAPABILITIES, AuthPrincipal, KeyProfiles
 from ...libs.auth.dependency import authenticate
 from ...libs.auth.permissions import KeyPermissions
 from ...utils.error_handling import auto_handle_errors
@@ -34,10 +34,11 @@ async def whoami(principal: AuthPrincipal = Depends(authenticate)) -> WhoAmI:
         return WhoAmI(
             authenticated=True,
             root=True,
-            capabilities=[capability.value for capability in Capability],
+            capabilities=[capability.value for capability in CANONICAL_CAPABILITIES],
             collections=["*"],
         )
-    # 2. A scoped key: report exactly the capabilities + collections it was granted. A malformed
+    # 2. A scoped key: report exactly the (normalized) capabilities + collections it was granted, and
+    #    its profile — the stored label, else the preset its capability set matches. A malformed
     #    (corrupt/legacy) permissions blob must DEGRADE like the authz gate — a clean 403 "grants
     #    nothing", never a 500 from an unhandled ValidationError.
     try:
@@ -49,6 +50,7 @@ async def whoami(principal: AuthPrincipal = Depends(authenticate)) -> WhoAmI:
         root=False,
         capabilities=[capability.value for capability in permissions.capabilities],
         collections=list(permissions.collections),
+        profile=permissions.profile or KeyProfiles.match(permissions.capabilities),
     )
 
 

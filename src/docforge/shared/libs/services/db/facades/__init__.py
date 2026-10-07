@@ -24,7 +24,18 @@ from .storage_footprint_payloads import (
 )
 
 # ---------------------- Domain façades ---------------------- #
+from .collection_alias_facade import AliasAuthorizer, CollectionAliasFacade
+from .collection_alias_payloads import (
+    CollectionAliasConflictError,
+    CollectionAliasInUseError,
+    CollectionAliasedError,
+    CollectionAliasNameClashError,
+    CollectionAliasTargetMissingError,
+    CollectionAliasWrite,
+)
 from .collection_config_writer import CollectionConfigWriter, ConfigVersionConflictError
+from .config_history_facade import ConfigHistoryFacade
+from .config_history_payloads import ConfigAuthor, ConfigVersionPage
 from .collections_facade import CollectionsFacade, DuplicateCollectionNameError
 from .documents_facade import DocumentsFacade
 from .enablement_facade import EnablementFacade
@@ -65,6 +76,17 @@ from .metadata_value_resolver import MetadataValueResolver
 
 # ------------------- Public API ------------------- #
 __all__ = [
+    "AliasAuthorizer",
+    "CollectionAliasFacade",
+    "CollectionAliasConflictError",
+    "CollectionAliasInUseError",
+    "CollectionAliasedError",
+    "CollectionAliasNameClashError",
+    "CollectionAliasTargetMissingError",
+    "CollectionAliasWrite",
+    "ConfigHistoryFacade",
+    "ConfigAuthor",
+    "ConfigVersionPage",
     "IndexRebuildFacade",
     "AbortProbe",
     "CollectionBusyError",

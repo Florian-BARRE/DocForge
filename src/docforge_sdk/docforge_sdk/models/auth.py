@@ -11,7 +11,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 # ====== Local Project Imports ======
-from ._shared import KeyPermissions
+from ._shared import KeyPermissions, KeyProfile
 
 
 class CreateKeyRequest(BaseModel):
@@ -28,7 +28,8 @@ class CreateKeyRequest(BaseModel):
     name: str = Field(min_length=1, description="Human-readable label for the key.")
     permissions: KeyPermissions | None = Field(
         default=None,
-        description="Per-key capability + collection scope; null = full access (root).",
+        description="Per-key capability + collection scope; null = full access (root). Give "
+        "'profile' instead of 'capabilities' to apply a named preset.",
     )
     expires_at: datetime | None = Field(
         default=None,
@@ -128,15 +129,21 @@ class KeyInfo(BaseModel):
 
 
 class WhoAmI(BaseModel):
-    """The calling token's own access — capabilities + collection scope, for self-introspection."""
+    """The calling token's own access — capabilities, collection scope and usage profile."""
 
     authenticated: bool = Field(description="Always true for a resolved principal.")
     root: bool = Field(description="Full, unscoped access (auth off, or a NULL-permissions key).")
     capabilities: list[str] = Field(
-        description="Action classes this token grants (read / write / search / create / admin)."
+        description="Action classes this token grants (read_text / read_technical / write / search "
+        "/ create / admin)."
     )
     collections: list[str] = Field(
         description="Collection scope: ['*'] for all, else explicit collection UUID strings."
+    )
+    profile: KeyProfile | None = Field(
+        default=None,
+        description="Named preset matching the capabilities (agent_reader / agent_searcher / "
+        "operator / admin); null for root or a custom capability set.",
     )
 
 

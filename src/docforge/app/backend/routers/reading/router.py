@@ -27,7 +27,7 @@ _MAX_CONTEXT_NEIGHBOURS = 5
 @auto_handle_errors
 async def get_document_outline(
     document_id: uuid.UUID,
-    principal: AuthPrincipal = Depends(require(Capability.READ)),
+    principal: AuthPrincipal = Depends(require(Capability.READ_TEXT)),
 ) -> DocumentOutline:
     """
     Return a document's heading outline — level, text, 1-based page and section-opening chunk.
@@ -62,7 +62,7 @@ async def get_chunk_context(
         le=_MAX_CONTEXT_NEIGHBOURS,
         description="Searchable chunks to include after the target (0-5).",
     ),
-    principal: AuthPrincipal = Depends(require(Capability.READ)),
+    principal: AuthPrincipal = Depends(require(Capability.READ_TEXT)),
 ) -> ChunkContext:
     """
     Return a chunk with its neighbours by chunk_index in the same document (disabled ones skipped).

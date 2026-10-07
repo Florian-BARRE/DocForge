@@ -6,7 +6,7 @@ from .base import NAMING_CONVENTION, Base, CreatedAtMixin, TimestampedMixin, UUI
 # there are no cross-table imports to resolve.
 
 # ---------------------- Collections ---------------------- #
-from .collections import Collection, MetadataField
+from .collections import COLLECTION_ALIAS_PATTERN, Collection, CollectionAlias, MetadataField
 
 # ---------------------- Documents ---------------------- #
 from .documents import Document, DocumentMetadata, DocumentStatus, Page, SourceKind
@@ -56,6 +56,8 @@ __all__ = [
     "NAMING_CONVENTION",
     # collections
     "Collection",
+    "CollectionAlias",
+    "COLLECTION_ALIAS_PATTERN",
     "MetadataField",
     # documents
     "Document",

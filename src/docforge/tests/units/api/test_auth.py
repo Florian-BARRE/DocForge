@@ -687,7 +687,12 @@ def test_key_permissions_valid_parse(fastapi_app) -> None:
         {"capabilities": ["read", "write"], "collections": ["*"]}
     )
 
-    assert permissions.capabilities == [Capability.READ, Capability.WRITE]
+    # The legacy `read` is normalized to both read halves on load (no data migration needed).
+    assert permissions.capabilities == [
+        Capability.READ_TEXT,
+        Capability.READ_TECHNICAL,
+        Capability.WRITE,
+    ]
     assert permissions.collections == ["*"]
 
 
@@ -865,7 +870,8 @@ async def test_whoami_reports_full_access_for_a_root_principal(fastapi_app) -> N
     result = await whoami(principal=_principal(permissions=None))
     assert result.root is True
     assert result.collections == ["*"]
-    assert set(result.capabilities) == {c.value for c in Capability}
+    assert set(result.capabilities) == {c.value for c in Capability} - {"read"}
+    assert result.profile is None
 
 
 async def test_whoami_reports_a_scoped_keys_grants(fastapi_app) -> None:
@@ -876,8 +882,10 @@ async def test_whoami_reports_a_scoped_keys_grants(fastapi_app) -> None:
         principal=_principal(permissions={"capabilities": ["read"], "collections": [collection_id]})
     )
     assert result.root is False
-    assert result.capabilities == ["read"]
+    # A legacy `read` key reports the normalized halves; that set matches no preset → no profile.
+    assert result.capabilities == ["read_text", "read_technical"]
     assert result.collections == [collection_id]
+    assert result.profile is None
 
 
 async def test_whoami_degrades_to_403_on_a_malformed_permissions_blob(fastapi_app) -> None:

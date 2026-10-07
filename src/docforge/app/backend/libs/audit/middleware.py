@@ -34,6 +34,7 @@ from shared_libs.observability import CorrelationContext
 
 # ====== Local Project Imports ======
 from ...context import CONTEXT
+from ..collection_ref import RESOLVED_STATE_KEY
 from ..ratelimit import RateLimitKeyResolver
 from .helpers import AuditHelpers
 from .target_parser import AuditTargetParser
@@ -117,6 +118,9 @@ class AuditMiddleware:
 
             # 3. The target (type + real UUID) is parsed from the concrete path, not the template.
             target_type, target_id = AuditTargetParser.parse(scope["path"])
+            if target_type == "collection" and target_id is None:
+                # An alias-addressed collection route: attribute it to the id the ref resolved to.
+                target_id = scope.get("state", {}).get(RESOLVED_STATE_KEY)
 
             # 4. Client ip via the SAME resolver + trust flag the rate limiter keys on (consistency).
             client_ip = RateLimitKeyResolver.client_ip(

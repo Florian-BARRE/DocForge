@@ -1,16 +1,28 @@
 # ====== Code Summary ======
 # Pydantic models for the keys-management router. The plaintext key appears in exactly one place —
-# CreatedKey.key, returned once on creation. No model ever exposes the stored hash.
+# CreatedKey.key, returned once on creation. No model ever exposes the stored hash. A key name may not be
+# one of the labels the config history reserves for non-key authors ("root", "anonymous").
 
 # ====== Standard Library Imports ======
 from datetime import datetime
 from typing import Any
 
 # ====== Third-Party Library Imports ======
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 # ====== Local Project Imports ======
-from ...libs.auth import KeyPermissions
+from ...libs.auth import KeyPermissions, KeyProfile
+
+# Author labels the config history gives non-key writers (the bootstrap root key, auth off): an API
+# key named like them would impersonate those authors, so key creation/rotation refuses them.
+RESERVED_KEY_NAMES: frozenset[str] = frozenset({"root", "anonymous"})
+
+
+def _refuse_reserved_name(name: str | None) -> str | None:
+    """Reject a reserved key name (case-insensitive, surrounding blanks ignored)."""
+    if name is not None and name.strip().lower() in RESERVED_KEY_NAMES:
+        raise ValueError(f"key name '{name}' is reserved.")
+    return name
 
 
 class CreateKeyRequest(BaseModel):
@@ -21,12 +33,20 @@ class CreateKeyRequest(BaseModel):
     name: str = Field(min_length=1, description="Human-readable label for the key.")
     permissions: KeyPermissions | None = Field(
         default=None,
-        description="Per-key capability + collection scope; null = full access (root).",
+        description="Per-key capability + collection scope; null = full access (root). Give "
+        "'profile' instead of 'capabilities' to apply a named preset.",
     )
     expires_at: datetime | None = Field(
         default=None,
         description="Absolute expiry instant; null = never expires.",
     )
+
+    @field_validator("name")
+    @classmethod
+    def _name_not_reserved(cls, value: str) -> str:
+        """Refuse the reserved author labels ("root", "anonymous") as a key name."""
+        _refuse_reserved_name(value)
+        return value
 
 
 class RotateKeyRequest(BaseModel):
@@ -58,6 +78,12 @@ class RotateKeyRequest(BaseModel):
         default=None,
         description="New expiry instant; absent = keep the source expiry, null = never expires.",
     )
+
+    @field_validator("name")
+    @classmethod
+    def _name_not_reserved(cls, value: str | None) -> str | None:
+        """Refuse the reserved author labels ("root", "anonymous") as a new key name."""
+        return _refuse_reserved_name(value)
 
 
 class CreatedKey(BaseModel):
@@ -119,17 +145,26 @@ class WhoAmI(BaseModel):
     Attributes:
         authenticated (bool): Always true for a resolved principal.
         root (bool): Full, unscoped access — auth disabled, or a NULL-permissions (root) key.
-        capabilities (list[str]): Action classes granted (read / write / search / create / admin).
+        capabilities (list[str]): Action classes granted (read_text / read_technical / write /
+            search / create / admin) — normalized, so a legacy ``read`` key reports both read halves.
         collections (list[str]): Collection scope — ``["*"]`` for all, else explicit UUID strings.
+        profile (KeyProfile | None): The named preset the capabilities correspond to (stored at
+            creation, else matched from the capability set); null for root or a custom set.
     """
 
     authenticated: bool = Field(description="Always true for a resolved principal.")
     root: bool = Field(description="Full, unscoped access (auth off, or a NULL-permissions key).")
     capabilities: list[str] = Field(
-        description="Action classes this token grants (read / write / search / create / admin)."
+        description="Action classes this token grants (read_text / read_technical / write / search "
+        "/ create / admin)."
     )
     collections: list[str] = Field(
         description="Collection scope: ['*'] for all, else explicit collection UUID strings."
+    )
+    profile: KeyProfile | None = Field(
+        default=None,
+        description="Named preset matching the capabilities (agent_reader / agent_searcher / "
+        "operator / admin); null for root or a custom capability set.",
     )
 
 

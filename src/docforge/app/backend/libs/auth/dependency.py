@@ -23,6 +23,7 @@ from ...context import CONTEXT
 from .key_cache import AuthKeyCache
 from .keys import AuthKeys
 from .principal import AuthPrincipal
+from .scope_aliases import KeyScopeAliases
 
 # The bearer scheme prefix expected on the Authorization header.
 _BEARER_PREFIX = "Bearer "
@@ -223,8 +224,10 @@ async def authenticate(request: Request) -> AuthPrincipal:
     # 5. Record the successful use (throttled, best-effort — never blocks/fails the request).
     await _touch_last_used(key, now)
 
-    # 6. Authenticated — carry the key + user; full-access derives from NULL permissions.
-    return AuthPrincipal.from_key(key, user)
+    # 6. Authenticated — carry the key + user; full-access derives from NULL permissions. The key's
+    #    `alias:<name>` scope entries are resolved HERE, per request and never cached: the key cache
+    #    above holds only the alias names, so re-pointing an alias takes effect on the next request.
+    return AuthPrincipal.from_key(key, user, await KeyScopeAliases.targets_for(key.permissions))
 
 
 __all__ = ["authenticate", "evict_cached_key"]

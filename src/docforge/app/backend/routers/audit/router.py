@@ -55,7 +55,7 @@ async def list_audit(
     created_to: datetime | None = Query(
         default=None, description="Upper bound (exclusive) on created_at."
     ),
-    principal: AuthPrincipal = Depends(require(Capability.READ)),
+    principal: AuthPrincipal = Depends(require(Capability.READ_TECHNICAL)),
 ) -> AuditPage:
     """
     Return one newest-first, keyset-paginated page of the audit trail (ROOT/full-access only).

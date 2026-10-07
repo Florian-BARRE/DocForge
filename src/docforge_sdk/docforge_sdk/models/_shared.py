@@ -12,12 +12,28 @@ from pydantic import BaseModel, Field
 
 
 class Capability(StrEnum):
-    """A coarse action class an endpoint requires of the calling key."""
+    """
+    A coarse action class an endpoint requires of the calling key.
+
+    ``READ`` is the legacy pre-split alias: the server normalizes it to ``READ_TEXT`` +
+    ``READ_TECHNICAL`` and never returns it.
+    """
 
     READ = "read"
+    READ_TEXT = "read_text"
+    READ_TECHNICAL = "read_technical"
     WRITE = "write"
     SEARCH = "search"
     CREATE = "create"
+    ADMIN = "admin"
+
+
+class KeyProfile(StrEnum):
+    """A named capability preset offered at key creation."""
+
+    AGENT_READER = "agent_reader"
+    AGENT_SEARCHER = "agent_searcher"
+    OPERATOR = "operator"
     ADMIN = "admin"
 
 
@@ -99,18 +115,29 @@ class KeyPermissions(BaseModel):
             that can authenticate but is authorized for nothing).
         collections (list[str]): Either ``["*"]`` (every collection) or an explicit list of
             collection UUID strings the key is scoped to.
+        profile (KeyProfile | None): A named preset — give it INSTEAD of ``capabilities`` and the
+            server expands it to the preset's explicit list (stored for display).
     """
 
     capabilities: list[Capability] = Field(
-        description="The action classes this key grants (READ / WRITE / SEARCH / ADMIN)."
+        default_factory=list,
+        description="The action classes this key grants (read_text / read_technical / write / "
+        "search / create / admin; the legacy 'read' = read_text + read_technical). May be omitted "
+        "when 'profile' is given.",
     )
     collections: list[str] = Field(
         description="Collection scope: ['*'] for all, else explicit collection UUID strings."
+    )
+    profile: KeyProfile | None = Field(
+        default=None,
+        description="Named capability preset (agent_reader / agent_searcher / operator / admin). "
+        "Given instead of 'capabilities', it expands to the preset; stored for display only.",
     )
 
 
 __all__ = [
     "Capability",
+    "KeyProfile",
     "FieldType",
     "FieldOrigin",
     "FieldScope",

@@ -8,7 +8,6 @@
 # in SnippetApplier.
 
 # ====== Standard Library Imports ======
-import uuid
 
 # ====== Third-Party Library Imports ======
 from fastapi import APIRouter, Depends, HTTPException
@@ -19,6 +18,8 @@ from config import RUNTIME_CONFIG
 # ====== Local Project Imports ======
 from ...context import CONTEXT
 from ...libs.auth import AuthPrincipal, AuthzGuard, Capability, require
+from ...libs.collection_ref import CollectionRef
+from ...libs.config_history import ConfigAuthorResolver
 from ...utils.error_handling import auto_handle_errors
 from .applier import SnippetApplier
 from .helpers import SnippetHelpers
@@ -30,10 +31,10 @@ router = APIRouter(tags=["snippets"])
 @router.get(
     "/collections/{collection_id}/snippets/{kind}",
     response_model=CollectionSnippet,
-    dependencies=[Depends(require(Capability.READ))],
+    dependencies=[Depends(require(Capability.READ_TECHNICAL))],
 )
 @auto_handle_errors
-async def export_snippet(collection_id: uuid.UUID, kind: SnippetKind) -> CollectionSnippet:
+async def export_snippet(collection_id: CollectionRef, kind: SnippetKind) -> CollectionSnippet:
     """
     Export ONE slice of a collection's configuration as a portable, secret-masked, versioned snippet.
 
@@ -62,7 +63,7 @@ async def export_snippet(collection_id: uuid.UUID, kind: SnippetKind) -> Collect
 )
 @auto_handle_errors
 async def apply_snippet(
-    collection_id: uuid.UUID,
+    collection_id: CollectionRef,
     kind: SnippetKind,
     snippet: CollectionSnippet,
     principal: AuthPrincipal = Depends(require(Capability.WRITE)),
@@ -94,7 +95,9 @@ async def apply_snippet(
 
     # 4. Apply through the shared config-write machinery; a vector-slug collision is a 422 (mirrors PATCH).
     try:
-        needs_reindex = await SnippetApplier.apply(collection, kind, body)
+        needs_reindex = await SnippetApplier.apply(
+            collection, kind, body, ConfigAuthorResolver.from_principal(principal)
+        )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=f"Collection {collection_id}: {exc}")
 

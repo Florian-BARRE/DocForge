@@ -1,5 +1,7 @@
 # ---------------------- Per-domain data-access APIs ---------------------- #
 from .collection_api import CollectionApi
+from .collection_alias_api import CollectionAliasApi
+from .config_version_api import ConfigVersionApi
 from .document_api import DocumentApi
 from .document_query import DocumentQueryApi
 from .blob_api import BlobApi
@@ -29,6 +31,8 @@ from .document_query_spec import (
 __all__ = [
     "RebuildJobApi",
     "CollectionApi",
+    "CollectionAliasApi",
+    "ConfigVersionApi",
     "DocumentApi",
     "DocumentQueryApi",
     "BlobApi",

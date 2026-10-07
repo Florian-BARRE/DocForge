@@ -25,8 +25,10 @@ from .routers import (
     blobs_router,
     capabilities_router,
     chunk_browse_router,
+    collection_aliases_router,
     collection_pipeline_router,
     collections_router,
+    config_history_router,
     corpus_router,
     documents_router,
     explorer_router,
@@ -132,6 +134,10 @@ def create_app(
     app.include_router(router=collections_router, prefix="/api/v1")
     # API v1 — the collection-scoped stage edit (apply one action to the stored pipeline + persist).
     app.include_router(router=collection_pipeline_router, prefix="/api/v1")
+    # API v1 — the versioned config history (list, masked read, diff, restore as a new version).
+    app.include_router(router=config_history_router, prefix="/api/v1")
+    # API v1 — collection aliases (stable slug → collection; keys/apps bind to it, switched by re-point).
+    app.include_router(router=collection_aliases_router, prefix="/api/v1")
 
     # API v1 — admission (upload → enqueue) and live ingestion status.
     app.include_router(router=documents_router, prefix="/api/v1")

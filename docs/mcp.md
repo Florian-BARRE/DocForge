@@ -31,6 +31,8 @@ The server surfaces a short instruction string to the connected model so it know
 > DocForge is a document intelligence platform. Use these tools to manage collections of documents,
 > upload files, inspect their parsed pages/chunks/IR, and run hybrid semantic + keyword search over
 > indexed content. Start with `list_collections`; only documents with status `done` are searchable.
+> Every `collection_id` argument also accepts a collection ALIAS name (see `list_collection_aliases`)
+> — a stable name that keeps working when the collection behind it is rebuilt and switched.
 
 ---
 
@@ -54,7 +56,7 @@ Root-owned key management. DocForge auth is **keys-only** — there is no login/
 
 | Tool | Purpose |
 |---|---|
-| `create_api_key` | Create a new root-owned key. Plaintext key is returned **exactly once**; only its hash is stored. Optional `permissions` scope + ISO-8601 `expires_at`. |
+| `create_api_key` | Create a new root-owned key. Plaintext key is returned **exactly once**; only its hash is stored. Optional `permissions` scope — an explicit `capabilities` list or a named `profile` (`agent_reader` · `agent_searcher` · `operator` · `admin`) — + ISO-8601 `expires_at`. |
 | `list_api_keys` | List every key (active + revoked) with prefixes and metadata — never the plaintext or hash. |
 | `revoke_api_key` | Soft-revoke a key (idempotent; record kept for audit). |
 | `rotate_api_key` | Issue a fresh secret (optionally re-scoped) and revoke the old one; new plaintext returned once. |
@@ -79,6 +81,13 @@ vector space is fixed at creation), plus optional ingestion/search pipeline blob
 | `get_preview_job` | Poll an asynchronous dry-run preview by its id (`collection_id`, `preview_id`). The bounded report appears in `result` once `status` is `done` (a failed node is data there — `result.ok=false`); `status` `failed` means the worker job itself crashed/timed out; an unknown/expired id is a 404. |
 | `export_collection_snippet` | Export one granular config facet (`collection_id`, `kind` ∈ `pipeline`\|`search`\|`schema`) as a portable `.dfsnippet` — secret-masked, config-only, synchronous (contrast with the async whole-collection `.dcexport`). |
 | `apply_collection_snippet` | Apply a `.dfsnippet` (`collection_id`, `kind`, `snippet`) onto this collection. Secrets from a different collection arrive masked and must be re-entered before the graph can run. |
+| `list_config_versions` | List a collection's config versions newest first (`collection_id`, `limit=20`, `offset=0`): version, date, note, author, and which pipeline nodes / search changed. |
+| `get_config_version` | Read one config version's `{pipeline, search}` snapshot, secrets masked (`collection_id`, `version`). |
+| `diff_config_versions` | Structured masked diff between two versions (`collection_id`, `from_version`, `to_version`). |
+| `restore_config_version` | Restore a version as a NEW version (`collection_id`, `version`, `confirm=false`). Without `confirm=true` nothing is written — it returns the diff from the current head to that version. Same-endpoint keys are kept; a moved endpoint is a 422 (re-enter the key). |
+| `list_collection_aliases` | List collection aliases (stable names → one collection): name, target id + name, last re-point. **An alias name works wherever a tool takes `collection_id`.** |
+| `set_collection_alias` | Create an alias or re-point ("switch") it (`name`, `collection_id`, `confirm=false`). Creating writes at once; re-pointing an existing alias without `confirm=true` writes nothing and returns the old → new target. Full-access admin key only. |
+| `delete_collection_alias` | Delete an alias (`name`); the collection is untouched. Full-access admin key only; refused (409) while live keys are scoped `alias:<name>`. |
 | `collection_health` | Zero-spend, on-demand provider-reachability sweep across the ingest AND search graphs, plus index/doc stats and a rolled-up verdict. No job enqueued, nothing billed. |
 | `reingest_collection` | Re-run the full pipeline over a collection's corpus (`collection_id`, optional `document_ids` subset, `force`) — the collection-scoped bulk reingest. Capped fan-out, one job handle per enqueued run. Answers `409 rebuild_index_required` while the index lacks a named vector: run `rebuild_collection_index` first. |
 | `rebuild_collection_index` | Rebuild a collection's vector index from its current schema, without re-embedding content (`collection_id`). Use it after a field was made semantic/lexical post-ingest (search `422` / reingest `409 rebuild_index_required`). Returns a `job_id` to follow with `wait_for_job`; the job's `document_id` is null. Uploads/reingests get `409 rebuild_index_active` while it runs. |
@@ -189,7 +198,7 @@ multi-GB) — `get_export_download_ref` instead points the caller at the REST do
 | `get_stage_durations` | Average per-stage wall-clock for a collection (a running job's ETA basis). |
 | `reingest_document` | Re-run the full ingestion of a single document (`force`). |
 | `get_collection_contract_schema` | JSON Schema of the collection identity/limits contract (build a valid create/update). |
-| `whoami` | The calling token's own capabilities + collection scope — what it may do. |
+| `whoami` | The calling token's own capabilities, collection scope and usage `profile` — what it may do. |
 
 ### Audit
 
@@ -198,7 +207,7 @@ multi-GB) — `get_export_download_ref` instead points the caller at the REST do
 | `list_audit` | One keyset-paginated page of the audit trail, newest first — one row per mutating API action (who/what/target/outcome). Filter by actor (`actor_user_id`/`actor_key_id`), target (`target_type`+`target_id`), `correlation_id`, and an ISO-8601 time window (`created_from`/`created_to`); walk it with `cursor`. **ROOT / full-access keys only** (a collection-scoped key is rejected `403`). |
 
 
-**Total: 78 tools** across 13 sections.
+**Total: 85 tools** across 13 sections.
 
 ---
 
@@ -224,11 +233,12 @@ The server dispatches on `MCP_TRANSPORT` (`src/mcp/entrypoint.py`).
 > on the REST API and via the MCP — see [Access control](#access-control).
 
 > **Scoping the LLM's power.** The MCP can do exactly what the bearer it was given allows. Rather
-> than a root key, prefer a dedicated **owner key** with capabilities `["read","write","search","create"]`
+> than a root key, prefer a dedicated **owner key** with capabilities `["read_text","read_technical","write","search","create"]`
 > and an empty collection scope: it may create collections and is auto-granted ownership of each one
 > it creates (the new id is appended to its scope), so the agent can set up collections but can't
-> touch anything it didn't make. For an app's runtime, mint a separate `search`-only key scoped to
-> the one collection it uses.
+> touch anything it didn't make. For an app's runtime, mint a separate key scoped to the one
+> collection it uses with the `agent_reader` profile (`read_text` + `search` — documents as text,
+> no IR/traces/blobs/exports/ops) or `agent_searcher` (`search` only).
 
 ### Access control
 

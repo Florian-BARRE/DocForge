@@ -29,7 +29,8 @@ class JobStatus(BaseModel):
         kind (str): ingest, metadata_sync (per-document metadata re-embed) or rebuild_index.
         progress (int): 0–100 (completed pipeline nodes over total).
         current_stage (str | None): The node currently (or last) executed.
-        error (str | None): The failure, verbatim — only set when status is failed.
+        error (str | None): The failure — only set when status is failed; verbatim for a
+            read_technical caller, its network locators (URLs, host:port, paths) masked otherwise.
         attempt (int): arq retry attempt (1 = first run).
         started_at (datetime | None): When the worker picked it up.
         finished_at (datetime | None): When it ended (done or failed).
@@ -87,7 +88,12 @@ class JobStatus(BaseModel):
     )
     progress: int = Field(description="0-100, completed pipeline nodes over total.")
     current_stage: str | None = Field(default=None, description="Node currently/last executed.")
-    error: str | None = Field(default=None, description="Failure detail when status=failed.")
+    error: str | None = Field(
+        default=None,
+        description="Failure detail when status=failed. Its URLs, host:port pairs and request paths "
+        "are masked ('<redacted>') for a caller without read_technical; error_type and the failed "
+        "node/stage are never masked.",
+    )
     attempt: int = Field(description="arq retry attempt (1 = first run).")
     started_at: datetime | None = Field(default=None, description="Picked up by the worker at.")
     finished_at: datetime | None = Field(default=None, description="Ended (done or failed) at.")

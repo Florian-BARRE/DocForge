@@ -16,7 +16,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared_libs.public_models import FieldScope
 from shared_libs.services.db.postgresql import PostgresClient
-from shared_libs.services.db.postgresql.apis import BlobApi, CollectionApi, JobApi, RebuildJobApi
+from shared_libs.services.db.postgresql.apis import (
+    BlobApi,
+    CollectionAliasApi,
+    CollectionApi,
+    JobApi,
+    RebuildJobApi,
+)
 from shared_libs.services.db.postgresql.tables import (
     Collection,
     ConfigVersion,
@@ -27,7 +33,9 @@ from shared_libs.services.db.qdrant import QdrantAliasApi, QdrantClient, QdrantC
 from shared_libs.services.db.s3 import S3Client, S3ObjectApi
 
 # ====== Local Project Imports ======
+from .collection_alias_payloads import CollectionAliasedError
 from .collection_config_writer import CollectionConfigWriter
+from .config_history_payloads import ConfigAuthor
 from .helpers import DatabaseHelpers
 from .index_rebuild_payloads import IndexRebuildActiveError
 from .payloads import CollectionUpdateResult, CollectionUpdateSpec
@@ -80,7 +88,12 @@ class CollectionsFacade(LoggerClass):
             for candidate in candidates
         )
 
-    async def create(self, collection: Collection, fields: list[MetadataField]) -> Collection:
+    async def create(
+        self,
+        collection: Collection,
+        fields: list[MetadataField],
+        author: ConfigAuthor | None = None,
+    ) -> Collection:
         """
         Create a collection with its FULL metadata schema (including generated/chunk fields).
 
@@ -88,6 +101,8 @@ class CollectionsFacade(LoggerClass):
             collection (Collection): The contract row.
             fields (list[MetadataField]): The whole schema — declared up front so the Qdrant
                 vector space is complete at first indexing (named vectors can't be added later).
+            author (ConfigAuthor | None): Who created it, stamped on the version-1 snapshot (None =
+                a system creation, e.g. an import).
 
         Returns:
             Collection: The created row (id populated).
@@ -119,6 +134,8 @@ class CollectionsFacade(LoggerClass):
                     version=1,
                     config={"pipeline": created.pipeline, "search": created.search},
                     note="creation",
+                    author_key_id=author.key_id if author is not None else None,
+                    author_label=author.label if author is not None else None,
                 ),
             )
         self.logger.info(f"Collection '{collection.name}' created with {len(fields)} fields")
@@ -423,12 +440,14 @@ class CollectionsFacade(LoggerClass):
         search: dict | None = None,
         note: str | None = None,
         expected_version: int | None = None,
+        author: ConfigAuthor | None = None,
     ) -> bool:
         """Patch the collection's config blobs, append the snapshot, and derive needs_reindex.
 
         Args:
             expected_version (int | None): Compare-and-swap token (see ``config_head``); None =
                 unconditional write.
+            author (ConfigAuthor | None): Who made the change, stamped on the new config version.
 
         Returns:
             bool: The DERIVED needs_reindex after the write (baseline-relative, never sticky).
@@ -444,6 +463,7 @@ class CollectionsFacade(LoggerClass):
                 search=search,
                 note=note,
                 expected_version=expected_version,
+                author=author,
             )
             return await CollectionConfigWriter.sync_needs_reindex(session, collection_id)
 
@@ -522,6 +542,7 @@ class CollectionsFacade(LoggerClass):
                         pipeline=spec.pipeline,
                         search=spec.search,
                         note=spec.note,
+                        author=spec.author,
                     )
 
                 # 5. Cost-estimate overrides (apply=True writes even a clearing None).
@@ -609,14 +630,20 @@ class CollectionsFacade(LoggerClass):
 
         Raises:
             IndexRebuildActiveError: A rebuild_index job is RUNNING on the collection.
+            CollectionAliasedError: Collection aliases still target it (checked BEFORE any destructive
+                step; the RESTRICT FK on collection_alias is only the backstop).
 
         Returns:
             bool: Whether the collection existed.
         """
         # -1. A RUNNING rebuild owns the store mid-copy/swap: refuse rather than force-cancel it under
-        #     its feet (a queued one is safely cancelled below — the worker skips it at dequeue).
+        #     its feet (a queued one is safely cancelled below — the worker skips it at dequeue). An
+        #     aliased collection is refused too: deleting it would break every key/app bound to the alias.
         async with self._postgres.session() as session:
+            aliases = await CollectionAliasApi.names_for(session, collection_id)
             rebuild = await RebuildJobApi.active_rebuild(session, collection_id)
+        if aliases:
+            raise CollectionAliasedError(collection_id, aliases)
         if rebuild is not None and rebuild.status == JobStatus.RUNNING:
             raise IndexRebuildActiveError(collection_id, rebuild.id)
         # 0. Stop in-flight work FIRST so a live worker aborts before the cascade deletes the rows its

@@ -6,6 +6,9 @@
 # the following path segment as the id when it parses as a real UUID. That single rule cleanly rejects
 # sub-action words ("import", "reingest", "enabled", "rotate") and the bulk endpoints (no id), leaving
 # target_id NULL there rather than storing a bogus value. Anything unrecognised yields (None, None).
+# Collection aliases are the one slug-keyed resource: /collection-aliases/{name} → ("collection_alias",
+# name). A collection route addressed by an ALIAS ref has no UUID segment; the middleware then falls back
+# to the id the ref resolver stashed on the request state.
 
 # ====== Standard Library Imports ======
 from __future__ import annotations
@@ -56,7 +59,11 @@ class AuditTargetParser:
         if segments[0] == "auth" and len(segments) >= 2 and segments[1] == "keys":
             return "key", AuditTargetParser._uuid_or_none(segments, 2)
 
-        # 3. A recognised leading resource keyword; its id (when present) is the next segment.
+        # 3. Collection aliases are keyed by their (slug) name, not a UUID.
+        if segments[0] == "collection-aliases":
+            return "collection_alias", segments[1] if len(segments) >= 2 else None
+
+        # 4. A recognised leading resource keyword; its id (when present) is the next segment.
         target_type = _RESOURCE_TYPES.get(segments[0])
         if target_type is None:
             return None, None

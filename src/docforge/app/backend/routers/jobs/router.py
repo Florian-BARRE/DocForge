@@ -18,6 +18,8 @@ from shared_libs.services.db.postgresql.tables import JobStatus as JobStatusEnum
 # ====== Local Project Imports ======
 from ...context import CONTEXT
 from ...libs.auth import AuthPrincipal, AuthzGuard, Capability, require
+from ...libs.collection_ref import CollectionRefQuery, OptionalCollectionRefQuery
+from ...libs.error_redaction import JobErrorRedactor
 from ...libs.index_rebuild import IndexRebuildGuards
 from ...utils.error_handling import auto_handle_errors
 from .helpers import (
@@ -51,11 +53,7 @@ router = APIRouter(prefix="/jobs", tags=["jobs"])
 @router.get("", response_model=JobPage)
 @auto_handle_errors
 async def list_jobs(
-    collection_id: uuid.UUID | None = Query(
-        default=None,
-        description="Scope to one collection. Omit for a FLEET-WIDE listing (full-access keys only) — "
-        "the 'All Jobs' management view.",
-    ),
+    collection_id: OptionalCollectionRefQuery,
     status: list[Literal["pending", "running", "done", "failed", "cancelled"]] | None = Query(
         default=None,
         description="Filter to these job statuses (repeat the param to pass several). Omit for all.",
@@ -100,7 +98,7 @@ async def list_jobs(
         description="Page size, clamped down to JOBS_MAX_PAGE_SIZE. Defaults to that ceiling.",
     ),
     offset: int = Query(default=0, ge=0, description="Rows to skip for paging."),
-    principal: AuthPrincipal = Depends(require(Capability.READ)),
+    principal: AuthPrincipal = Depends(require(Capability.READ_TEXT)),
 ) -> JobPage:
     """
     Return one page of jobs — a collection's, or (with no ``collection_id``) the whole fleet's.
@@ -161,12 +159,15 @@ async def list_jobs(
         limit=page_size,
         offset=offset,
         jobs=[
-            JobStatus.from_row(
-                entry.job,
-                entry.document_filename,
-                entry.collection_name,
-                document_title=entry.document_title,
-                display_title=entry.document_display_title,
+            JobErrorRedactor.shape(
+                JobStatus.from_row(
+                    entry.job,
+                    entry.document_filename,
+                    entry.collection_name,
+                    document_title=entry.document_title,
+                    display_title=entry.document_display_title,
+                ),
+                principal,
             )
             for entry in jobs
         ],
@@ -176,8 +177,8 @@ async def list_jobs(
 @router.get("/stage-durations", response_model=StageDurations)
 @auto_handle_errors
 async def stage_durations(
-    collection_id: uuid.UUID,
-    principal: AuthPrincipal = Depends(require(Capability.READ)),
+    collection_id: CollectionRefQuery,
+    principal: AuthPrincipal = Depends(require(Capability.READ_TECHNICAL)),
 ) -> StageDurations:
     """
     Return a collection's average per-stage duration — the basis for a running job's ETA.
@@ -199,8 +200,8 @@ async def stage_durations(
 @router.get("/cost", response_model=CollectionCost)
 @auto_handle_errors
 async def collection_cost(
-    collection_id: uuid.UUID,
-    principal: AuthPrincipal = Depends(require(Capability.READ)),
+    collection_id: CollectionRefQuery,
+    principal: AuthPrincipal = Depends(require(Capability.READ_TECHNICAL)),
 ) -> CollectionCost:
     """
     Return a collection's paid text-gen roll-up — tokens and USD summed over its documents' jobs.
@@ -225,7 +226,7 @@ async def collection_cost(
 @router.get("/workers/live", response_model=WorkersLive)
 @auto_handle_errors
 async def live_workers(
-    principal: AuthPrincipal = Depends(require(Capability.READ)),
+    principal: AuthPrincipal = Depends(require(Capability.READ_TECHNICAL)),
 ) -> WorkersLive:
     """
     Return every known worker's liveness + running jobs — the live fleet view.
@@ -259,8 +260,8 @@ async def live_workers(
 @router.get("/queue", response_model=QueueDepth)
 @auto_handle_errors
 async def queue_depth(
-    collection_id: uuid.UUID | None = None,
-    principal: AuthPrincipal = Depends(require(Capability.READ)),
+    collection_id: OptionalCollectionRefQuery,
+    principal: AuthPrincipal = Depends(require(Capability.READ_TECHNICAL)),
 ) -> QueueDepth:
     """
     Return the backlog depth — pending (queued, unclaimed) and running job counts.
@@ -292,11 +293,7 @@ async def queue_depth(
 @router.get("/failures/breakdown", response_model=FailureBreakdown)
 @auto_handle_errors
 async def failure_breakdown(
-    collection_id: uuid.UUID | None = Query(
-        default=None,
-        description="Scope the breakdown to one collection. Omit for a FLEET-WIDE breakdown "
-        "(full-access keys only).",
-    ),
+    collection_id: OptionalCollectionRefQuery,
     window_hours: int = Query(
         default=24,
         ge=1,
@@ -304,7 +301,7 @@ async def failure_breakdown(
         description="Look-back window in hours: failures of jobs created in the last N hours are "
         "aggregated (default 24h, max 30 days).",
     ),
-    principal: AuthPrincipal = Depends(require(Capability.READ)),
+    principal: AuthPrincipal = Depends(require(Capability.READ_TECHNICAL)),
 ) -> FailureBreakdown:
     """
     Aggregate recent failures into top causes, by stage and by collection — the "why it breaks" panel.
@@ -332,13 +329,10 @@ async def failure_breakdown(
 @router.get("/failures/new", response_model=NewFailures)
 @auto_handle_errors
 async def new_failures(
+    collection_id: OptionalCollectionRefQuery,
     since: datetime = Query(
         description="The client's last-seen cursor (ISO-8601): only jobs that FAILED strictly after "
         "this are counted."
-    ),
-    collection_id: uuid.UUID | None = Query(
-        default=None,
-        description="Scope to one collection. Omit for a FLEET-WIDE signal (full-access keys only).",
     ),
     include_ids: bool = Query(
         default=False,
@@ -351,7 +345,7 @@ async def new_failures(
         le=500,
         description="Maximum failure ids returned when include_ids is set.",
     ),
-    principal: AuthPrincipal = Depends(require(Capability.READ)),
+    principal: AuthPrincipal = Depends(require(Capability.READ_TECHNICAL)),
 ) -> NewFailures:
     """
     Report how many jobs have failed since a cursor — the "X new failures since you last looked" badge.
@@ -381,18 +375,14 @@ async def new_failures(
 @router.get("/timeseries", response_model=JobTimeseries)
 @auto_handle_errors
 async def job_timeseries(
-    collection_id: uuid.UUID | None = Query(
-        default=None,
-        description="Scope the series to one collection. Omit for a FLEET-WIDE series (full-access "
-        "keys only).",
-    ),
+    collection_id: OptionalCollectionRefQuery,
     window_hours: int = Query(
         default=24,
         ge=1,
         le=168,
         description="How many hours of history to return as hourly buckets (default 24h, max 7 days).",
     ),
-    principal: AuthPrincipal = Depends(require(Capability.READ)),
+    principal: AuthPrincipal = Depends(require(Capability.READ_TECHNICAL)),
 ) -> JobTimeseries:
     """
     Return lightweight hourly job trends — done/h, failed/h, arrivals and backlog — from the job table.
@@ -420,7 +410,7 @@ async def job_timeseries(
 @auto_handle_errors
 async def get_job_trace(
     job_id: uuid.UUID,
-    principal: AuthPrincipal = Depends(require(Capability.READ)),
+    principal: AuthPrincipal = Depends(require(Capability.READ_TECHNICAL)),
 ) -> JobTrace:
     """
     Return the job's per-node execution trace (one entry per stage, in order).
@@ -450,7 +440,7 @@ async def get_event_payload(
         description="Which side of the node to fetch: 'input' (its resolved input) or 'output' "
         "(its produced output)."
     ),
-    principal: AuthPrincipal = Depends(require(Capability.READ)),
+    principal: AuthPrincipal = Depends(require(Capability.READ_TECHNICAL)),
 ) -> JobEventPayload:
     """
     Return ONE trace node's FULL raw payload for a slot — the on-demand deep-dive of the trace.
@@ -506,7 +496,7 @@ async def get_event_payload(
 @auto_handle_errors
 async def stream_job(
     job_id: uuid.UUID,
-    principal: AuthPrincipal = Depends(require(Capability.READ)),
+    principal: AuthPrincipal = Depends(require(Capability.READ_TECHNICAL)),
 ) -> StreamingResponse:
     """
     Live Server-Sent Events feed of an ingestion job — pushed as progress lands, closes at terminal.
@@ -543,7 +533,7 @@ async def stream_job(
 @auto_handle_errors
 async def get_job(
     job_id: uuid.UUID,
-    principal: AuthPrincipal = Depends(require(Capability.READ)),
+    principal: AuthPrincipal = Depends(require(Capability.READ_TEXT)),
 ) -> JobStatus:
     """
     Return one ingestion job's live state (poll this after an upload).
@@ -559,14 +549,16 @@ async def get_job(
     # 2. No collection in the path — scope the read by the job's own collection.
     AuthzGuard.assert_collection_scope(principal, str(entry.job.collection_id))
 
-    # 3. Serve it as the UI's polling model, carrying the joined names.
-    return JobStatus.from_row(
+    # 3. Serve it as the UI's polling model, carrying the joined names (the error's network
+    #    locators masked for a caller without read_technical).
+    status = JobStatus.from_row(
         entry.job,
         entry.document_filename,
         entry.collection_name,
         document_title=entry.document_title,
         display_title=entry.document_display_title,
     )
+    return JobErrorRedactor.shape(status, principal)
 
 
 @router.post("/{job_id}/cancel", response_model=CancelResult)

@@ -26,6 +26,9 @@ from shared_libs.services.db.postgresql.tables import (
     SourceKind,
 )
 
+# ====== Local Project Imports ======
+from .config_history_payloads import ConfigAuthor
+
 
 @dataclass(slots=True)
 class IngestionPayload:
@@ -85,6 +88,7 @@ class CollectionUpdateSpec:
         config_touched (bool): Apply the pipeline/search blobs below and append a version snapshot.
         pipeline / search (dict | None): The stamped config blobs (None = leave that blob unchanged).
         note (str | None): The snapshot note stored with the config version.
+        author (ConfigAuthor | None): Who made the change, stamped on the config version.
         apply_overrides (bool): Write the cost-estimate overrides below (True even to CLEAR to None).
         estimate_overrides (dict | None): The overrides to store (None clears back to the defaults).
         apply_title_field (bool): Write the display-title field below (True even to CLEAR to None).
@@ -108,6 +112,7 @@ class CollectionUpdateSpec:
     pipeline: dict | None = None
     search: dict | None = None
     note: str | None = None
+    author: ConfigAuthor | None = None
     # cost-estimate overrides (apply=True writes even a clearing None)
     apply_overrides: bool = False
     estimate_overrides: dict | None = None

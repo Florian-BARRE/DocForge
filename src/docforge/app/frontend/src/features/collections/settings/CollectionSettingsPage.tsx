@@ -1,9 +1,11 @@
 // ====== Code Summary ======
-// The consolidated in-shell Settings page (replaces the old standalone edit route) — three clearly
+// The consolidated in-shell Settings page (replaces the old standalone edit route) — five clearly
 // labeled sections stacked on one scrollable page: Contract (the existing identity/schema/review
-// edit wizard, embedded — see CollectionWizard's `mode === "edit"` branch), Transfer (export the
+// edit wizard, embedded — see CollectionWizard's `mode === "edit"` branch), Aliases (the aliases
+// pointing here + a confirmed "Switch alias here" — see AliasesPanel), Transfer (export the
 // whole collection or a config snippet, and apply an inbound snippet — ExportPanel already covers
-// both), and Danger zone (delete + full reingest). Fetches the collection once and hands it to
+// both), History (the versioned config history — compare + restore, see history/ConfigHistoryPanel),
+// and Danger zone (delete + full reingest). Fetches the collection once and hands it to
 // both the wizard (as `initial`) and the two other sections (name only) — a page remount (e.g.
 // returning from a save) always refetches it.
 
@@ -13,7 +15,9 @@ import { ErrorState } from "../../../components/ErrorState";
 import { LoadingState } from "../../../components/LoadingState";
 import type { Navigate } from "../../../shell/view";
 import { theme } from "../../../theme";
+import { ConfigHistoryPanel } from "../history/ConfigHistoryPanel";
 import { ExportPanel } from "../transfer/ExportPanel";
+import { AliasesPanel } from "./AliasesPanel";
 import { CollectionWizard } from "../wizard/CollectionWizard";
 import { DangerZone } from "./DangerZone";
 import { SettingsSection } from "./SettingsSection";
@@ -55,10 +59,24 @@ export function CollectionSettingsPage({ collectionId, onNavigate }: CollectionS
       </SettingsSection>
 
       <SettingsSection
+        title="Aliases"
+        description="Stable names usable in place of this collection's id (and as an alias:<name> key scope). Switching an alias here moves every client and alias-scoped key to this collection."
+      >
+        <AliasesPanel collectionId={collectionId} collectionName={collection.name} />
+      </SettingsSection>
+
+      <SettingsSection
         title="Transfer"
         description="Export this collection (or a single config slice) for reuse elsewhere, or apply an inbound config snippet."
       >
         <ExportPanel collectionId={collectionId} collectionName={collection.name} />
+      </SettingsSection>
+
+      <SettingsSection
+        title="History"
+        description="Every pipeline/search config change, who made it and what it changed — compare two versions or restore one (a restore writes a new version)."
+      >
+        <ConfigHistoryPanel collectionId={collectionId} />
       </SettingsSection>
 
       <SettingsSection title="Danger zone">

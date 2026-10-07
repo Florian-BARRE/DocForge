@@ -21,6 +21,7 @@ from shared_libs.services.db.postgresql.tables import TransferStatus as Transfer
 # ====== Local Project Imports ======
 from ...context import CONTEXT
 from ...libs.auth import AuthPrincipal, AuthzGuard, Capability, require
+from ...libs.collection_ref import CollectionRef
 from ...utils.error_handling import auto_handle_errors
 from .helpers import TransferHelpers
 from .models import TransferAccepted, TransferStatus
@@ -40,8 +41,8 @@ _BUNDLE_MEDIA_TYPE = "application/zstd"
 )
 @auto_handle_errors
 async def export_collection(
-    collection_id: uuid.UUID,
-    principal: AuthPrincipal = Depends(require(Capability.READ)),
+    collection_id: CollectionRef,
+    principal: AuthPrincipal = Depends(require(Capability.READ_TECHNICAL)),
 ) -> TransferAccepted:
     """
     Open an asynchronous export of a whole collection into a portable `.dcexport` bundle.
@@ -137,7 +138,7 @@ async def import_collection(
 @auto_handle_errors
 async def get_transfer(
     transfer_id: uuid.UUID,
-    principal: AuthPrincipal = Depends(require(Capability.READ)),
+    principal: AuthPrincipal = Depends(require(Capability.READ_TECHNICAL)),
 ) -> TransferStatus:
     """
     Poll one transfer's live status — progress, stage, counts, error, and (done export) the artifact.
@@ -166,7 +167,7 @@ async def get_transfer(
 @auto_handle_errors
 async def download_transfer(
     transfer_id: uuid.UUID,
-    principal: AuthPrincipal = Depends(require(Capability.READ)),
+    principal: AuthPrincipal = Depends(require(Capability.READ_TECHNICAL)),
 ) -> StreamingResponse:
     """
     Stream a completed EXPORT bundle from S3 to the client, behind auth, as an attachment.

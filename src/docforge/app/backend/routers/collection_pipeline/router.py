@@ -2,11 +2,11 @@
 # The collection-scoped stage edit — POST /collections/{id}/pipeline/stages/apply. The convenience twin
 # of the stateless /pipelines/ingest/stages/apply: instead of the caller compiling an action on a blob
 # it holds and PATCHing the whole blob back (secrets masked, easy to wipe), the server applies the ONE
-# action to the collection's stored pipeline and persists it through the PATCH's write path. WRITE
-# capability, collection-scoped by the path param; the orchestration lives in CollectionStageApplier.
+# action to the collection's stored pipeline and persists it through the PATCH's write path. WRITE +
+# READ_TECHNICAL (the response is a stage view of the pipeline), collection-scoped by the path param;
+# the orchestration lives in CollectionStageApplier.
 
 # ====== Standard Library Imports ======
-import uuid
 
 # ====== Third-Party Library Imports ======
 from fastapi import APIRouter, Depends, HTTPException
@@ -16,6 +16,8 @@ from shared_libs.pipelines.blob_secrets import SecretReentryRequired
 
 # ====== Local Project Imports ======
 from ...libs.auth import AuthPrincipal, AuthzGuard, Capability, require
+from ...libs.collection_ref import CollectionRef
+from ...libs.config_history import ConfigAuthorResolver
 from ...utils.error_handling import auto_handle_errors
 from .models import CollectionStageApplyRequest, CollectionStageApplyResponse
 from .service import CollectionStageApplier
@@ -26,10 +28,12 @@ router = APIRouter(prefix="/collections", tags=["collections"])
 @router.post(
     "/{collection_id}/pipeline/stages/apply",
     response_model=CollectionStageApplyResponse,
+    # The response IS the stage view of the pipeline (technical by nature) — demand READ_TECHNICAL.
+    dependencies=[Depends(require(Capability.READ_TECHNICAL))],
 )
 @auto_handle_errors
 async def apply_collection_stage(
-    collection_id: uuid.UUID,
+    collection_id: CollectionRef,
     request: CollectionStageApplyRequest,
     principal: AuthPrincipal = Depends(require(Capability.WRITE)),
 ) -> CollectionStageApplyResponse:
@@ -54,7 +58,9 @@ async def apply_collection_stage(
 
     # 2. Read head → apply → validate → CAS-persist (only a valid change is written; 404 if absent).
     try:
-        return await CollectionStageApplier.apply(collection_id, request)
+        return await CollectionStageApplier.apply(
+            collection_id, request, ConfigAuthorResolver.from_principal(principal)
+        )
     except SecretReentryRequired as exc:
         raise HTTPException(status_code=422, detail=f"Collection {collection_id}: {exc}")
 

@@ -100,7 +100,8 @@ class DocumentDetail(BaseModel):
     failure_reason: str | None = Field(
         default=None,
         description="Why ingestion did not succeed (the failing job's error message), surfaced on a "
-        "failed/cancelled document so the detail page can explain it; None when it did not fail.",
+        "failed/cancelled document so the detail page can explain it; None when it did not fail. "
+        "Its URLs/host:port/request paths are masked for a caller without read_technical.",
     )
     searchable: bool = Field(
         description="Whether the document is actually retrievable RIGHT NOW — enabled AND fully "

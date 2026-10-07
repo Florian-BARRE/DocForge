@@ -107,8 +107,10 @@ a narrow `SEARCH`-only key scoped to the resulting collection for your app.
 
 ## 4. Resource reference
 
-The client wires thirteen resource groups onto itself: `auth`, `health`, `collections`, `documents`,
-`explorer`, `search`, `jobs`, `blobs`, `pipelines`, `transfers`, `corpus`, `snippets`, `audit`.
+The client wires fifteen resource groups onto itself: `auth`, `health`, `collections`, `documents`,
+`explorer`, `search`, `jobs`, `blobs`, `pipelines`, `transfers`, `corpus`, `snippets`,
+`config_versions`, `collection_aliases`, `audit`. Every `collection_id` argument also accepts a
+collection alias name (see `collection_aliases`).
 Import any typed model straight from the package root
 (`from docforge_sdk import SearchRequest, FieldSpec, ...`).
 
@@ -503,6 +505,28 @@ Export or apply a single config slice (`pipeline`, `search` or `schema`) as a po
 |---|---|---|
 | `snippets.export(collection_id, kind)` | `CollectionSnippet` | Export one config slice (`SnippetKind`: `pipeline` / `search` / `schema`). |
 | `snippets.apply(collection_id, kind, snippet)` | `SnippetImportResult` | Apply a snippet (kind must match the body); reports whether a reindex is now required. |
+
+### `config_versions` — versioned config history
+
+Who changed a collection's pipeline/search config, when and what — and restore an older version.
+
+| Method | Returns | Description |
+|---|---|---|
+| `config_versions.list(collection_id, *, limit=50, offset=0)` | `ConfigVersionListResponse` | Newest-first page: version, date, note, author, change summary. |
+| `config_versions.get(collection_id, version)` | `ConfigVersionDetail` | One `{pipeline, search}` snapshot, secrets masked. |
+| `config_versions.diff(collection_id, from_version, to_version)` | `ConfigVersionDiffResponse` | Added/removed/changed paths with masked before/after values. |
+| `config_versions.restore(collection_id, version)` | `ConfigVersionRestoreResponse` | Re-apply a version as a NEW version (same-endpoint keys kept; a moved endpoint is a 422). |
+
+### `collection_aliases` — stable collection names
+
+A stable name (`chatmop`) pointing at one collection; re-point it to switch every client and every key
+scoped `alias:chatmop` to a rebuilt collection. Usable wherever a `collection_id` is taken.
+
+| Method | Returns | Description |
+|---|---|---|
+| `collection_aliases.list()` | `list[CollectionAliasModel]` | Every alias the caller may see, with its current target. |
+| `collection_aliases.set(name, collection_id)` | `SetCollectionAliasResponse` | Create, or atomically re-point (`previous_collection_id` = the old target). Admin. |
+| `collection_aliases.delete(name)` | `None` | Delete the alias (the collection is untouched). Admin. |
 
 ### `transfers` — collection export/import
 

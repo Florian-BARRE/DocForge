@@ -52,9 +52,16 @@ export interface Collection {
    * Set on the single-collection read and the PATCH response; `null` on fleet-list rows.
    */
   missing_vectors?: string[] | null;
+  /**
+   * Aliases pointing at this collection (each usable in place of the UUID and as an `alias:<name>`
+   * key scope). Set on the single-collection read only; `null`/absent on every other payload.
+   */
+  aliases?: string[] | null;
   created_at: string | null;
-  pipeline: Record<string, unknown>;
-  search: Record<string, unknown>;
+  /** `null` when the calling key lacks `read_technical` (the blob is withheld, not refused). */
+  pipeline: Record<string, unknown> | null;
+  /** `null` when the calling key lacks `read_technical` (the blob is withheld, not refused). */
+  search: Record<string, unknown> | null;
   fields: FieldSpec[];
   /** Per-collection PARTIAL cost-estimate overrides (rates/assumptions); `null` = use the global defaults. */
   estimate_overrides: EstimateOverrides | null;

@@ -39,7 +39,7 @@ _INLINE_SAFE_MIME = frozenset(
 @auto_handle_errors
 async def get_blob(
     content_hash: str,
-    principal: AuthPrincipal = Depends(require(Capability.READ)),
+    principal: AuthPrincipal = Depends(require(Capability.READ_TECHNICAL)),
 ) -> StreamingResponse:
     """
     Stream a blob's bytes with its registered mime type (page render, figure crop, PDF, original).

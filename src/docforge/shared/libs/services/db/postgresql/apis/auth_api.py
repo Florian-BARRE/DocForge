@@ -9,7 +9,7 @@ from datetime import datetime
 from typing import Any
 
 # ====== Third-Party Library Imports ======
-from sqlalchemy import select, update
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # ====== Internal Project Imports ======
@@ -102,6 +102,29 @@ class AuthApi:
         key = await session.get(ApiKey, key_id)
         if key is not None:
             key.revoked_at = at
+
+    @staticmethod
+    async def count_live_keys_naming(session: AsyncSession, scope_entry: str) -> int:
+        """
+        Count the non-revoked, non-expired keys whose collection scope names ``scope_entry``.
+
+        Args:
+            session (AsyncSession): The unit of work.
+            scope_entry (str): A literal scope entry, e.g. ``alias:prod``.
+
+        Returns:
+            int: How many live keys carry that entry in ``permissions.collections``.
+        """
+        result = await session.execute(
+            select(func.count())
+            .select_from(ApiKey)
+            .where(
+                ApiKey.revoked_at.is_(None),
+                or_(ApiKey.expires_at.is_(None), ApiKey.expires_at > func.now()),
+                ApiKey.permissions["collections"].contains([scope_entry]),
+            )
+        )
+        return int(result.scalar_one())
 
     @staticmethod
     async def update_key_permissions(

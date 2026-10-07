@@ -16,6 +16,9 @@ from shared_libs.services.db.index_signature import CollectionIndexSignature
 from shared_libs.services.db.postgresql.apis import CollectionApi
 from shared_libs.services.db.postgresql.tables import ConfigVersion
 
+# ====== Local Project Imports ======
+from .config_history_payloads import ConfigAuthor
+
 
 class ConfigVersionConflictError(Exception):
     """Raised when a compare-and-swap config write finds the version moved since the caller read it."""
@@ -50,7 +53,8 @@ class CollectionConfigWriter:
         search: dict | None = None,
         note: str | None = None,
         expected_version: int | None = None,
-    ) -> None:
+        author: ConfigAuthor | None = None,
+    ) -> int | None:
         """
         Patch the config blobs + append the snapshot INSIDE a caller-supplied session.
 
@@ -65,6 +69,10 @@ class CollectionConfigWriter:
             note (str | None): The snapshot note.
             expected_version (int | None): Compare-and-swap token — the config version the caller's
                 change was computed from. None = unconditional write.
+            author (ConfigAuthor | None): Who made the change (None = a system write, no author).
+
+        Returns:
+            int | None: The minted version number (None when the collection does not exist).
 
         Raises:
             ConfigVersionConflictError: When ``expected_version`` no longer matches under the lock.
@@ -75,7 +83,7 @@ class CollectionConfigWriter:
         #    ends; uq_config_version_collection_id is the DB backstop behind it.
         collection = await CollectionApi.get_for_update(session, collection_id)
         if collection is None:
-            return
+            return None
 
         # 2. Under the lock, the head version is authoritative: a caller that computed its change on
         #    an older head would silently overwrite a concurrent write (lost update) — refuse instead.
@@ -92,8 +100,11 @@ class CollectionConfigWriter:
                 version=head + 1,
                 config={"pipeline": collection.pipeline, "search": collection.search},
                 note=note,
+                author_key_id=author.key_id if author is not None else None,
+                author_label=author.label if author is not None else None,
             ),
         )
+        return head + 1
 
     @staticmethod
     async def sync_needs_reindex(session: AsyncSession, collection_id: uuid.UUID) -> bool:

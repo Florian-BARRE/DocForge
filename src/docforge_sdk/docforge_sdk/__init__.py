@@ -24,6 +24,7 @@ from .models._shared import (
     FieldScope,
     FieldType,
     KeyPermissions,
+    KeyProfile,
     SourceKind,
 )
 
@@ -38,6 +39,13 @@ from .models.blobs import BlobContent
 
 # ------------------- Capabilities models ------------------- #
 from .models.capabilities import CapabilitiesResponse, CapabilityMatrix, ServiceInfo
+
+# ------------------- Collection alias models ------------------- #
+from .models.collection_aliases import (
+    CollectionAliasModel,
+    SetCollectionAliasRequest,
+    SetCollectionAliasResponse,
+)
 
 # ------------------- Collections models ------------------- #
 from .models.collections import (
@@ -189,6 +197,7 @@ __all__ = [
     # Shared vocabulary
     "Capability",
     "KeyPermissions",
+    "KeyProfile",
     "FieldType",
     "FieldOrigin",
     "FieldScope",
@@ -206,6 +215,10 @@ __all__ = [
     "KeyInfo",
     # Health
     "HealthStatus",
+    # Collection aliases
+    "CollectionAliasModel",
+    "SetCollectionAliasRequest",
+    "SetCollectionAliasResponse",
     # Collections
     "FieldSpec",
     "CollectionModel",

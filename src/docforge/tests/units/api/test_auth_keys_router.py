@@ -11,6 +11,8 @@ from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
+import pytest
+
 ROOT_ID = uuid.uuid4()
 
 
@@ -428,7 +430,11 @@ def test_rotate_key_scoped_permissions_override_replaces_full_access(client, mon
     )
 
     assert response.status_code == 201, response.text
-    assert captured["key"].permissions == new_scope
+    # A submitted legacy `read` is stored normalized (explicit read halves), never as the alias.
+    assert captured["key"].permissions == {
+        "capabilities": ["read_text", "read_technical"],
+        "collections": ["*"],
+    }
 
 
 def test_rotate_key_evicts_old_key_from_cache(client, monkeypatch) -> None:
@@ -511,3 +517,92 @@ def test_rotate_key_already_revoked_is_409(client, monkeypatch) -> None:
     response = client.post(f"/api/v1/auth/keys/{revoked.id}/rotate", json={}, headers=_headers())
 
     assert response.status_code == 409, response.text
+
+
+# ── usage profiles (G2) ──────────────────────────────────────────────────────────────────────
+
+
+def _capture_create(monkeypatch, captured: dict) -> None:
+    from backend.context import CONTEXT
+
+    monkeypatch.setattr(
+        CONTEXT.database.auth,
+        "get_user_by_username",
+        AsyncMock(return_value=SimpleNamespace(id=ROOT_ID)),
+    )
+
+    async def _create_key(key):
+        captured["key"] = key
+        return SimpleNamespace(
+            id=uuid.uuid4(),
+            name=key.name,
+            prefix=key.prefix,
+            permissions=key.permissions,
+            created_at=datetime.now(UTC),
+            expires_at=key.expires_at,
+        )
+
+    monkeypatch.setattr(CONTEXT.database.auth, "create_key", _create_key)
+
+
+def test_create_key_with_profile_stores_the_explicit_capability_list(client, monkeypatch) -> None:
+    _auth_on(monkeypatch)
+    _root_principal_resolves(monkeypatch)
+    captured: dict = {}
+    _capture_create(monkeypatch, captured)
+
+    response = client.post(
+        "/api/v1/auth/keys",
+        json={"name": "bot", "permissions": {"profile": "agent_reader", "collections": ["*"]}},
+        headers=_headers(),
+    )
+
+    assert response.status_code == 201, response.text
+    assert captured["key"].permissions == {
+        "capabilities": ["read_text", "search"],
+        "collections": ["*"],
+        "profile": "agent_reader",
+    }
+
+
+@pytest.mark.parametrize(
+    "permissions",
+    [
+        {"collections": ["*"]},
+        {"profile": "agent_reader", "capabilities": ["write"], "collections": ["*"]},
+        {"profile": "superuser", "collections": ["*"]},
+    ],
+)
+def test_create_key_rejects_missing_contradictory_or_unknown_profile(
+    client, monkeypatch, permissions
+) -> None:
+    _auth_on(monkeypatch)
+    _root_principal_resolves(monkeypatch)
+    _capture_create(monkeypatch, {})
+
+    response = client.post(
+        "/api/v1/auth/keys", json={"name": "bot", "permissions": permissions}, headers=_headers()
+    )
+
+    assert response.status_code == 422
+
+
+@pytest.mark.parametrize(
+    ("permissions", "profile"),
+    [
+        ({"profile": "operator", "collections": ["*"]}, "operator"),
+        ({"capabilities": ["search", "read_text"], "collections": ["*"]}, "agent_reader"),
+        ({"capabilities": ["search"], "collections": ["*"]}, "agent_searcher"),
+        ({"capabilities": ["read", "search"], "collections": ["*"]}, None),
+    ],
+)
+async def test_whoami_reports_the_profile(fastapi_app, permissions, profile) -> None:
+    from backend.libs.auth.principal import AuthPrincipal
+    from backend.routers.auth.whoami import whoami
+
+    key = SimpleNamespace(permissions=permissions, revoked_at=None, user_id="u")
+    principal = AuthPrincipal(user=SimpleNamespace(is_active=True), key=key, is_full_access=False)
+
+    result = await whoami(principal=principal)
+
+    assert result.profile == profile

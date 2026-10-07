@@ -42,6 +42,7 @@ import type {
   AssumptionOverrides, Collection, EstimateOverrides, FieldSpec, ModelRateOverride, RateOverrides,
   SchemaDiff, SchemaDiffModifiedField, SchemaDiffRename, UpdateCollectionResponse,
 } from "./collections";
+import type { CollectionAlias, SetCollectionAliasResponse } from "./collectionAliases";
 import type { CapabilitiesResponse, CapabilityMatrix, CapabilityService } from "./capabilities";
 import type { DocumentGridRow } from "./corpus";
 import type { MetadataUpdateResponse, MetadataValuesPatch } from "./documents";
@@ -263,3 +264,10 @@ export type _PreviewJobResultParity = Expect<Equal<Normalize<PreviewJobResult>, 
 
 export type _MetadataValuesPatchParity = Expect<Equal<Normalize<MetadataValuesPatch>, Normalize<Schemas["MetadataValuesPatch"]>>>;
 export type _MetadataUpdateResponseParity = Expect<Equal<Normalize<MetadataUpdateResponse>, Normalize<Schemas["MetadataUpdateResponse"]>>>;
+
+// ---------- collectionAliases.ts — the alias list + the create/re-point (PUT) response ----------
+
+export type _CollectionAliasParity = Expect<Equal<Normalize<CollectionAlias>, Normalize<Schemas["CollectionAliasModel"]>>>;
+export type _SetCollectionAliasResponseParity = Expect<
+  Equal<Normalize<SetCollectionAliasResponse>, Normalize<Schemas["SetCollectionAliasResponse"]>>
+>;
