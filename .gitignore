@@ -95,6 +95,9 @@ src/docforge/app/frontend/scripts/node_modules/
 # UI-screenshot dev tooling — internal, kept private like .claude/ (Playwright-via-Docker recipe).
 src/docforge/app/frontend/scripts/ui-shot.mjs
 src/docforge/app/frontend/scripts/*.png
+src/docforge/app/frontend/scripts/*.mjs
+src/docforge/app/frontend/scripts/*.log
+!src/docforge/app/frontend/scripts/check-generated-types.mjs
 src/docforge/app/frontend/UI-SCREENSHOT.md
 
 # Retired AI agent-memory snapshots — internal, not part of the public docs.
