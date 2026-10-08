@@ -5,10 +5,13 @@
 # value is uniform, so the SAME meta vector rides on all the document's chunk points. Mirrors
 # FilterSyncFacade but writes VECTORS (update_vectors) instead of payload scalars: it rebuilds the
 # collection's OWN embedder from its ingestion blob and embeds only the short metadata VALUES — never
-# the content. The values are embedded in ONE batched pass per axis (dense / sparse) and written in a
+# the content. Lexical values go through the collection's configured SPARSE provider (the same one
+# that encodes the content — bge_server or bm25_local), semantic values through its DENSE provider;
+# an axis the embedder lacks is skipped. The values are embedded in ONE batched pass per axis and written in a
 # SINGLE batched update_vectors call, so the sync is a bounded handful of round-trips regardless of
 # field or chunk count. Idempotent, non-destructive (content vectors untouched), a clean no-op when
-# the document has no indexed chunk or no semantic/lexical value. The backfill also DROPS the meta
+# the document has no indexed chunk or no semantic/lexical value. A declared sparse vector whose IDF
+# modifier disagrees with the configured sparse provider is never written (another encoder's space). The backfill also DROPS the meta
 # vectors of schema fields a document holds no value for, so a reused (swapped/renamed-into) field name
 # never keeps its previous owner's vector. The write-side hook and the
 # collection-wide backfill both go through the SAME per-document sync; the backfill pages through the
@@ -24,7 +27,7 @@ from loggerplusplus import LoggerClass
 
 # ====== Internal Project Imports ======
 from shared_libs.pipelines.nodes.embed.base import BaseEmbedderNode
-from shared_libs.pipelines.nodes.embed.lexical import MetaLexicalEncoder
+from shared_libs.pipelines.nodes.embed.blob import EmbedBlobResolver
 from shared_libs.public_models import FieldScope
 from shared_libs.services.db.postgresql import PostgresClient
 from shared_libs.services.db.postgresql.apis import ChunkApi, CollectionApi, DocumentApi
@@ -32,7 +35,6 @@ from shared_libs.services.db.qdrant import (
     QdrantClient,
     QdrantCollectionApi,
     QdrantIndexApi,
-    QdrantLexicalEncodingApi,
     QdrantPoint,
     SparseVec,
     VectorNames,
@@ -66,7 +68,6 @@ class MetaVectorSyncFacade(LoggerClass):
         rows: list[tuple[str, Any, bool, bool]],
         declared_dense: set[str],
         declared_sparse: set[str],
-        bm25_vectors: set[str],
     ) -> tuple[dict[str, list[float]], dict[str, SparseVec]]:
         """Embed the document's metadata values into their named vectors — ONE batched pass per axis.
 
@@ -81,7 +82,7 @@ class MetaVectorSyncFacade(LoggerClass):
         )
         # 2. One batched forward pass per axis, mapped back to its named vectors.
         dense = await self.__embed_dense_axis(embedder, dense_fields)
-        sparse = await self.__embed_sparse_axis(embedder, sparse_fields, bm25_vectors)
+        sparse = await self.__embed_sparse_axis(embedder, sparse_fields)
         return dense, sparse
 
     async def __embed_dense_axis(
@@ -90,56 +91,46 @@ class MetaVectorSyncFacade(LoggerClass):
         """Embed every semantic value into its dense meta vector in ONE batched forward pass."""
         if not fields or embedder is None:
             return {}
+        if not embedder.has_dense():
+            self.logger.warning(f"Embedder has no dense slot — {len(fields)} semantic meta skipped")
+            return {}
         names = [name for name, _ in fields]
         vectors = await embedder._embed_dense([text for _, text in fields])
         return dict(zip(names, vectors, strict=True))
 
     async def __embed_sparse_axis(
-        self,
-        embedder: BaseEmbedderNode | None,
-        fields: list[tuple[str, str]],
-        bm25_vectors: set[str],
+        self, embedder: BaseEmbedderNode | None, fields: list[tuple[str, str]]
     ) -> dict[str, SparseVec]:
-        """Encode every lexical value into its sparse meta vector, in the vector's OWN encoding.
+        """Encode every lexical value with the collection's SPARSE provider in ONE batched pass.
 
-        A vector declared BM25 (``modifier=IDF``) gets the local MetaLexicalEncoder value vector — no
-        provider call. A legacy vector (collection created before the switch) keeps the embedder's
-        sparse weights in ONE batched pass, so a stored space never mixes encoders. A dense-only
-        embedder has no sparse axis: its legacy vectors are skipped loudly (best-effort hook).
+        The same provider as the content sparse vectors (index and query alike), so a stored space
+        never mixes encoders. An embedder with no sparse slot skips its lexical vectors loudly; a value
+        a term-based provider maps to no term (stopwords only) gets no vector.
         """
-        # 1. BM25-declared vectors: the pure local encoder.
-        out = {
-            name: SparseVec(indices=vec.indices, values=vec.values)
-            for name, text in fields
-            if name in bm25_vectors
-            for vec in [MetaLexicalEncoder.encode_value(text)]
-            if vec.indices
-        }
-        fields = [(name, text) for name, text in fields if name not in bm25_vectors]
         if not fields or embedder is None:
-            return out
-        # 2. Legacy vectors: the embedder's sparse axis, batched.
-        names = [name for name, _ in fields]
-        vectors = await embedder._embed_sparse([text for _, text in fields])
+            return {}
+        vectors = (
+            await embedder._embed_sparse_fields([text for _, text in fields])
+            if embedder.has_sparse()
+            else None
+        )
         if not vectors:
             self.logger.warning(
-                f"Embedder has no sparse axis — {len(fields)} lexical meta vector(s) skipped"
+                f"Embedder has no sparse slot — {len(fields)} lexical meta vector(s) skipped"
             )
-            return out
-        out.update(
-            {
-                name: SparseVec(indices=vector.indices, values=vector.values)
-                for name, vector in zip(names, vectors, strict=True)
-            }
-        )
-        return out
+            return {}
+        return {
+            name: SparseVec(indices=vector.indices, values=vector.values)
+            for (name, _), vector in zip(fields, vectors, strict=True)
+            if vector.indices
+        }
 
     async def sync_document_meta_vectors(
         self,
         document_id: uuid.UUID,
         *,
         clear_absent: Collection[str] = (),
-        bm25_only: bool = False,
+        lexical_only: bool = False,
     ) -> int:
         """
         Populate a document's semantic/lexical document-scope metadata vectors on all its points.
@@ -155,9 +146,9 @@ class MetaVectorSyncFacade(LoggerClass):
             clear_absent (Collection[str]): Semantic/lexical field names whose meta vectors are DROPPED
                 from the document's points when it holds no value for them — the backfill passes the
                 schema's names so a reused field name never keeps its previous owner's vector.
-            bm25_only (bool): Re-encode ONLY the BM25-declared lexical vectors (local encoder, no
-                provider call, no embedder rebuild); dense and legacy sparse vectors are left as
-                they are. The import path uses it after dropping a bundle's meta BM25 vectors.
+            lexical_only (bool): Re-encode ONLY the lexical (sparse) meta vectors through the
+                collection's sparse provider; the semantic (dense) meta vectors are left as they
+                are. The import path uses it after dropping a bundle's meta sparse vectors.
 
         Returns:
             int: The number of chunk points patched (0 when there is nothing to embed or to carry).
@@ -181,7 +172,7 @@ class MetaVectorSyncFacade(LoggerClass):
         absent = set(clear_absent) - {row[0] for row in rows}
         axes = (
             (VectorNames.field_sparse,)
-            if bm25_only
+            if lexical_only
             else (VectorNames.field_dense, VectorNames.field_sparse)
         )
         stale = sorted(axis(field) for field in absent for axis in axes)
@@ -193,33 +184,36 @@ class MetaVectorSyncFacade(LoggerClass):
             await QdrantIndexApi.delete_vectors(
                 self._qdrant.raw, name, [v for v in stale if v in declared], document_id
             )
-        if bm25_only:
+        if lexical_only:
             rows = [(field, value, False, lexical) for field, value, _, lexical in rows if lexical]
         if not rows:
             return 0
 
         # 3. Rebuild the embedder from the collection's ingestion blob (drifted blob fails loudly) —
-        #    a BM25-only pass needs none (the local encoder is the whole sparse axis).
-        embedder: BaseEmbedderNode | None = None
-        if not bm25_only:
-            embed_node = MetaVectorSyncHelpers.find_embed_node(collection.pipeline)
-            if embed_node is None:
-                self.logger.warning(
-                    f"Collection {document.collection_id} has no embed node — meta vectors skipped"
-                )
-                return 0
-            embedder, _config = MetaVectorSyncHelpers.rebuild_embedder(embed_node)
+        #    its sparse slot encodes the lexical values, its dense slot the semantic ones.
+        embed_node = MetaVectorSyncHelpers.find_embed_node(collection.pipeline)
+        if embed_node is None:
+            self.logger.warning(
+                f"Collection {document.collection_id} has no embed node — meta vectors skipped"
+            )
+            return 0
+        embedder, _config = MetaVectorSyncHelpers.rebuild_embedder(embed_node)
 
-        # 4. Embed each value into its DECLARED named meta vector (guarded against undeclared names);
-        #    a BM25-only pass targets only the BM25-declared sparse vectors.
-        declared_dense, declared_sparse = await QdrantCollectionApi.declared_vectors(
-            self._qdrant.raw, name
-        )
-        bm25_vectors = await QdrantLexicalEncodingApi.bm25_meta_vectors(self._qdrant.raw, name)
-        if bm25_only:
-            declared_dense, declared_sparse = set(), set(declared_sparse) & bm25_vectors
+        # 4. Embed each value into its DECLARED named meta vector (guarded against undeclared names).
+        #    A sparse vector the store declares under the OTHER IDF modifier belongs to another
+        #    encoder: never written (it reads as missing until rebuild_index re-creates it).
+        declared = await QdrantCollectionApi.declared(self._qdrant.raw, name)
+        mismatched = declared.mismatched(EmbedBlobResolver.layout(collection.pipeline))
+        declared_dense, declared_sparse = set(declared.dense), set(declared.sparse) - mismatched
+        if mismatched & {VectorNames.field_sparse(row[0]) for row in rows}:
+            self.logger.warning(
+                f"Document {document_id}: lexical meta vector(s) {sorted(mismatched)} were encoded "
+                f"by another sparse provider — skipped (run rebuild_index)"
+            )
+        if lexical_only:
+            declared_dense = set()
         dense, sparse = await self.__build_meta_vectors(
-            embedder, rows, declared_dense, declared_sparse, bm25_vectors
+            embedder, rows, declared_dense, declared_sparse
         )
         if not dense and not sparse:
             return 0
@@ -237,7 +231,7 @@ class MetaVectorSyncFacade(LoggerClass):
         return len(chunk_ids)
 
     async def backfill_collection_meta_vectors(
-        self, collection_id: uuid.UUID, *, bm25_only: bool = False
+        self, collection_id: uuid.UUID, *, lexical_only: bool = False
     ) -> tuple[int, int]:
         """
         Run the per-document meta-vector sync across every document of a collection (one-off backfill).
@@ -253,8 +247,8 @@ class MetaVectorSyncFacade(LoggerClass):
 
         Args:
             collection_id (uuid.UUID): The collection whose documents are backfilled.
-            bm25_only (bool): Re-encode only the BM25-declared lexical vectors, locally (see
-                ``sync_document_meta_vectors``) — no provider call; dense vectors untouched.
+            lexical_only (bool): Re-encode only the lexical meta vectors through the sparse provider
+                (see ``sync_document_meta_vectors``); dense meta vectors untouched.
 
         Returns:
             tuple[int, int]: (documents that received meta vectors, total points patched).
@@ -272,7 +266,7 @@ class MetaVectorSyncFacade(LoggerClass):
             field.field_name
             for field in schema
             if field.scope == FieldScope.DOCUMENT
-            and (field.lexical if bm25_only else (field.semantic or field.lexical))
+            and (field.lexical if lexical_only else (field.semantic or field.lexical))
         ]
         while True:
             async with self._postgres.session() as session:
@@ -282,7 +276,7 @@ class MetaVectorSyncFacade(LoggerClass):
             # 2. Accumulate what was actually patched (documents with values AND indexed chunks).
             for document in page:
                 patched = await self.sync_document_meta_vectors(
-                    document.id, clear_absent=searchable, bm25_only=bm25_only
+                    document.id, clear_absent=searchable, lexical_only=lexical_only
                 )
                 if patched:
                     documents_synced += 1

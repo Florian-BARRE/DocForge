@@ -11,6 +11,7 @@ import type { GroupBlob } from "../../api/types";
 import { ErrorState } from "../../components/ErrorState";
 import { LoadingState } from "../../components/LoadingState";
 import { StageRailPage } from "../stage-rail/StageRailPage";
+import { ReindexBanner, reindexNeeded } from "./ReindexBanner";
 import type { Navigate } from "../../shell/view";
 import { theme } from "../../theme";
 
@@ -38,7 +39,16 @@ export function CollectionPipelinePage({ collectionId }: CollectionPipelinePageP
   }
 
   return (
-    <div style={{ height: "100%", background: theme.color.bg }}>
+    <div style={{ height: "100%", background: theme.color.bg, display: "flex", flexDirection: "column" }}>
+      {reindexNeeded(collection) && (
+        <div style={{ padding: `${theme.space.m}px ${theme.space.l}px 0` }}>
+          <ReindexBanner
+            collection={collection}
+            onStarted={() => { getCollection(collectionId).then(setCollection).catch(() => undefined); }}
+          />
+        </div>
+      )}
+      <div style={{ flex: 1, minHeight: 0 }}>
       <StageRailPage
         collectionId={collectionId}
         initialBlob={collection.pipeline as unknown as GroupBlob}
@@ -47,6 +57,7 @@ export function CollectionPipelinePage({ collectionId }: CollectionPipelinePageP
           setCollection(updated);
         }}
       />
+      </div>
     </div>
   );
 }

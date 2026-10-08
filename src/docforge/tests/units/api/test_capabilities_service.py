@@ -118,19 +118,34 @@ def test_unreachable_sidecar_is_still_listed_in_services() -> None:
 
 
 def test_ocr_embed_rerank_gating_follows_their_sidecars() -> None:
-    """paddle → ocr:paddle available; bge → embed:bge_server + rerank:cross_encoder available; else not."""
+    """paddle → ocr:paddle available; bge → rerank:cross_encoder available; else not.
+
+    embed:bge_server is no longer a selectable node (it is a provider slot of embed:dense_sparse),
+    so the embed list carries the always-offerable slot container instead.
+    """
     with_both = _describe({"paddle_server": True, "bge_server": True})
     assert "paddle" in with_both.capabilities.ocr
-    assert "bge_server" in with_both.capabilities.embed
+    assert "dense_sparse" in with_both.capabilities.embed
     assert "cross_encoder" in with_both.capabilities.rerank
     # In-worker OCR is always there; the sidecar OCR is gated on paddle_server.
     assert "rapidocr" in with_both.capabilities.ocr and "tesseract" in with_both.capabilities.ocr
 
     without = _describe({})  # no sidecar reachable
     assert "paddle" not in without.capabilities.ocr
-    assert "bge_server" not in without.capabilities.embed
+    assert "dense_sparse" in without.capabilities.embed
     assert without.capabilities.rerank == []  # cross_encoder needs bge_server
     assert "rapidocr" in without.capabilities.ocr  # in-worker survives
+
+
+def test_embed_slot_provider_lists_follow_their_requirements() -> None:
+    """bge_server is gated on its sidecar per slot; bm25_local (in-process) and openai_compatible
+    (per-collection endpoint) are always offerable."""
+    with_bge = _describe({"bge_server": True}).capabilities
+    assert with_bge.embed_dense == ["bge_server", "openai_compatible"]
+    assert with_bge.embed_sparse == ["bge_server", "bm25_local"]
+    without = _describe({}).capabilities
+    assert without.embed_dense == ["openai_compatible"]
+    assert without.embed_sparse == ["bm25_local"]
 
 
 def test_gpu_present_false_when_reachable_sidecars_are_cpu_only() -> None:

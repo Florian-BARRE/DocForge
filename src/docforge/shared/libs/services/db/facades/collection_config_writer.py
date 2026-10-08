@@ -133,8 +133,10 @@ class CollectionConfigWriter:
             return False
         schema = await CollectionApi.get_schema(session, collection_id)
         # 2. A never-indexed collection has no baseline to be stale against → never needs a reindex.
-        current = CollectionIndexSignature.compute(collection.pipeline, schema)
-        needs = collection.indexed_signature is not None and current != collection.indexed_signature
+        current = CollectionIndexSignature.candidates(collection.pipeline, schema)
+        needs = collection.indexed_signature is not None and (
+            collection.indexed_signature not in current
+        )
         # 3. Stage the derived flag on the row (never a sticky True).
         collection.needs_reindex = needs
         return needs

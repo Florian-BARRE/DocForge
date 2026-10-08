@@ -50,7 +50,11 @@ from .reader import StateReader
 # emits DocumentIR.language=""). The stock topology gained the ``language`` node + its IR-spine
 # bindings, so every v2-stamped blob must re-heal to add it (a v2 blob whose language node is absent
 # would otherwise leave DocumentIR.language empty). Blobs already carrying it round-trip identically.
-ENGINE_BLOB_VERSION = 3
+#
+# v4: the embedder became the ``(embed, dense_sparse)`` slot node (independent dense + sparse provider
+# slots). The reader migrates every legacy ``bge_server`` / ``openai_compatible`` embed step to it, so
+# every v3 blob must re-heal (dense = sparse = the same bge_server, or dense only).
+ENGINE_BLOB_VERSION = 4
 
 
 class BlobNormalizationError(Exception):

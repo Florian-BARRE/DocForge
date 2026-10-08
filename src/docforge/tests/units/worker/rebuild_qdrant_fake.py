@@ -137,6 +137,9 @@ def install(monkeypatch) -> FakeQdrant:
 
     monkeypatch.setattr(QdrantCollectionApi, "ensure", staticmethod(_ensure))
     monkeypatch.setattr(CollectionApi, "get_schema", staticmethod(AsyncMock(return_value=[])))
+    # No pipeline blob → the default (dense + sparse, no IDF) layout.
+    collection = SimpleNamespace(pipeline={})
+    monkeypatch.setattr(CollectionApi, "get", staticmethod(AsyncMock(return_value=collection)))
     return client
 
 

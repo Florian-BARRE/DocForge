@@ -13,6 +13,7 @@ from typing import Any
 from loggerplusplus import LoggerClass
 
 # ====== Internal Project Imports ======
+from shared_libs.pipelines.nodes.embed.providers import EmbedAxis, EmbedProviderRegistry
 from shared_libs.pipelines.registry import NodeRegistry
 
 # ====== Local Project Imports ======
@@ -89,6 +90,13 @@ class CapabilitiesService(LoggerClass):
                 card.kind
                 for card in NodeRegistry.catalog(family)
                 if CapabilityRequirements.is_available(f"{family}:{card.kind}", reachable_sidecars)
+            ]
+        # 2. The embed node's provider slots, per axis, gated like a node kind (``embed:<kind>``).
+        for field, axis in (("embed_dense", EmbedAxis.DENSE), ("embed_sparse", EmbedAxis.SPARSE)):
+            available[field] = [
+                kind
+                for kind in EmbedProviderRegistry.kinds(axis)
+                if CapabilityRequirements.is_available(f"embed:{kind}", reachable_sidecars)
             ]
         return CapabilityMatrix(**available)
 

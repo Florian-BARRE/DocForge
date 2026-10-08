@@ -61,7 +61,7 @@ from .endpoint import OpenAICompatConfig
 from .structgen import GeneratedValues, GenerationField, GenerationRequest
 
 # ---------------------- Embeddings (vectors, chunk-linked) ---------------------- #
-from .embed import ChunkEmbeddings, ChunkVectors, SparseVector
+from .embed import ChunkEmbeddings, ChunkVectors, SparseVector, VectorLayout
 
 # ---------------------- Run delivery (the pipeline's output contract) ---------------------- #
 from .bundle import RunBundle
@@ -114,6 +114,7 @@ __all__ = [
     "GenerationRequest",
     "GeneratedValues",
     "SparseVector",
+    "VectorLayout",
     "ChunkVectors",
     "ChunkEmbeddings",
     "RunBundle",

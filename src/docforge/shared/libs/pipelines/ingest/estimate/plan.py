@@ -35,6 +35,7 @@ class CostPlan:
     n_generated_document_fields: int
     enrich_vlm: ProviderRef | None
     enrich_ocr: ProviderRef | None
+    embed_dense: bool = True
 
 
 class CostPlanExtractor:
@@ -53,13 +54,32 @@ class CostPlanExtractor:
             return str(fallback["model"])
         return None
 
-    @classmethod
-    def __embed(cls, state: PipelineState) -> ProviderRef | None:
-        """The embed provider (its head step), or None when the embed stage is off/empty."""
+    @staticmethod
+    def __slots(state: PipelineState) -> tuple[dict | None, dict | None] | None:
+        """The head embedder's (dense, sparse) slot values; None when the embed stage is off/empty.
+
+        An omitted slot is the stock in-stack bge_server; an explicit null is the axis off.
+        """
         if not state.embed_on or not state.embed_chain.steps:
             return None
-        head = state.embed_chain.steps[0]
-        return ProviderRef("embed", head.kind, cls.__head_model(head.config))
+        config = state.embed_chain.steps[0].config
+        stock = {"kind": "bge_server"}
+        dense, sparse = config.get("dense", stock), config.get("sparse", stock)
+        return (
+            dense if isinstance(dense, dict) else None,
+            sparse if isinstance(sparse, dict) else None,
+        )
+
+    @classmethod
+    def __embed(cls, state: PipelineState) -> ProviderRef | None:
+        """The priced embed provider — the dense slot's, else the sparse slot's (sparse-only)."""
+        slots = cls.__slots(state)
+        if slots is None:
+            return None
+        provider = slots[0] or slots[1]
+        if provider is None:
+            return None
+        return ProviderRef("embed", str(provider.get("kind", "")), cls.__head_model(provider))
 
     @classmethod
     def __contextualize_llm(cls, state: PipelineState) -> ProviderRef | None:
@@ -93,7 +113,7 @@ class CostPlanExtractor:
                 head = spec.steps[0]
             for step in spec.steps:
                 # Skip LOCAL (free) providers to find the first genuinely paid step. Use the canonical
-                # LOCAL_FREE_KINDS (bge_server, rapidocr, paddle, tesseract) — a hardcoded subset that omitted
+                # LOCAL_FREE_KINDS (bge_server, bm25_local, rapidocr, paddle, tesseract) — a hardcoded subset that omitted
                 # paddle priced a [paddle -> mistral] OCR escalation at $0.00, hiding the Mistral cost.
                 if step.kind not in LOCAL_FREE_KINDS:
                     return ProviderRef(family, step.kind, cls.__head_model(step.config))
@@ -120,11 +140,8 @@ class CostPlanExtractor:
             CostPlan: The neutral description of every cost-incurring stage.
         """
         embed = cls.__embed(state)
-        embed_sparse = bool(
-            state.embed_on
-            and state.embed_chain.steps
-            and state.embed_chain.steps[0].config.get("embed_sparse", True)
-        )
+        slots = cls.__slots(state)
+        embed_sparse = slots is not None and slots[1] is not None
         return CostPlan(
             embed=embed,
             embed_sparse=embed_sparse,
@@ -139,6 +156,7 @@ class CostPlanExtractor:
             n_generated_document_fields=n_generated_document_fields,
             enrich_vlm=cls.__enrich(state, "vlm"),
             enrich_ocr=cls.__enrich(state, "ocr"),
+            embed_dense=slots is not None and slots[0] is not None,
         )
 
 

@@ -9,6 +9,10 @@ export interface StageRailActions {
   enableStage: (stageKey: string) => void;
   disableStage: (stageKey: string) => void;
   setProvider: (stageKey: string, kind: string) => void;
+  /** Pick (or, with `kind: null`, turn OFF) one independent provider slot of a stage (embed: dense / sparse). */
+  setSlotProvider: (stageKey: string, slot: string, kind: string | null) => void;
+  /** Typing a slot's own config field — debounced, sent as a `merge` so untouched keys (masked secrets) survive. */
+  setSlotConfig: (stageKey: string, slot: string, field: string, value: unknown) => void;
   /** Typing a stage's own config field (render, enrich, metagen chunk/document, parse, chunk, embed) — debounced. */
   setConfig: (stageKey: string, field: string, value: unknown) => void;
   /** Discrete stack edit (add/remove/reorder) — sent immediately, no debounce. */

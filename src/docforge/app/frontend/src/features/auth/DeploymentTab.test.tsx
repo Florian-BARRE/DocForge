@@ -18,7 +18,7 @@ function fixture(overrides: Partial<CapabilitiesResponse> = {}): CapabilitiesRes
   return {
     version: "1.2.3", auth_enabled: true, gpu_present: true,
     services: [{ name: "bge_server", role: "embed", reachable: true, device: "cuda", provides: ["embed"], detail: null }],
-    capabilities: { parsers: ["docling"], ocr: [], embed: ["bge_m3"], chunkers: [], vlm: [], llm: [], rerank: [], contextualize: [], metagen: [] },
+    capabilities: { parsers: ["docling"], ocr: [], embed: ["bge_m3"], chunkers: [], vlm: [], llm: [], rerank: [], contextualize: [], metagen: [], embed_dense: [], embed_sparse: [] },
     ...overrides,
   };
 }

@@ -16,11 +16,9 @@ from collections.abc import Sequence
 from loggerplusplus import loggerplusplus
 
 # ====== Internal Project Imports ======
+from .index_embed_baseline import EmbedBaseline
+from .index_signature_embed import EmbedVectorSpace
 from .postgresql.tables import MetadataField
-
-# The embed-node config keys that define the vector space (a change to any means already-stored
-# vectors were produced by a different/incompatible embedder → the collection must be reindexed).
-_EMBED_VECTOR_KEYS = ("base_url", "model", "embed_sparse", "embed_semantic_fields")
 
 
 class CollectionIndexSignature:
@@ -62,38 +60,24 @@ class CollectionIndexSignature:
 
     @staticmethod
     def embed_vector_space(blob: dict) -> list:
-        """A stable fingerprint of every embed node's vector-space-affecting config in a pipeline blob.
+        """The CANONICAL fingerprint of every embed node's vector space (see EmbedVectorSpace).
 
-        Two blobs with the same fingerprint produce vectors in the same space; a difference means a
-        reindex is required (e.g. a swapped embed model/provider, toggled sparse). Walks nested
-        ForEach/group bodies so an embed node anywhere in the graph is captured.
+        A legacy single-provider embed node and its migrated dense_sparse form fingerprint the same;
+        a swapped provider/model/endpoint on either slot, or an axis switched on/off, differs.
 
         Args:
             blob (dict): The collection's stored ingestion pipeline blob.
 
         Returns:
-            list: The sorted list of per-embed-node vector-space fingerprints.
+            list: The sorted per-embed-node fingerprints.
         """
-        fingerprint: list = []
+        return EmbedVectorSpace.canonical(blob or {})
 
-        def walk(nodes: list) -> None:
-            # 1. Record every embed node's vector-space config, then recurse into any nested body.
-            for node in nodes:
-                if node.get("family") == "embed":
-                    config = node.get("config") or {}
-                    fingerprint.append(
-                        (
-                            node.get("id"),
-                            node.get("kind"),
-                            tuple((key, config.get(key)) for key in _EMBED_VECTOR_KEYS),
-                        )
-                    )
-                body = node.get("body")
-                if isinstance(body, dict):
-                    walk(body.get("nodes") or [])
-
-        walk(blob.get("nodes") or [])
-        return sorted(fingerprint)
+    @staticmethod
+    def __digest(meta: list, embed: list) -> str:
+        """sha256 of the canonical JSON of (metadata surface, embed space)."""
+        canonical = json.dumps({"meta": meta, "embed": embed}, sort_keys=True, default=str)
+        return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
     @classmethod
     def compute(cls, pipeline_blob: dict, schema_rows: Sequence[MetadataField]) -> str:
@@ -108,27 +92,47 @@ class CollectionIndexSignature:
             configs that would index into the same vector space, different otherwise. A filterable-only
             change leaves it unchanged; a semantic/lexical/type or embed change moves it.
         """
-        # 1. The two reindex-relevant surfaces (metadata vectors + embed space); filterable excluded.
-        payload = {
-            "meta": cls._metadata_surface(schema_rows),
-            "embed": cls.embed_vector_space(pipeline_blob or {}),
-        }
-        # 2. Canonical JSON (sorted keys, stable tuple order) → a deterministic digest.
-        canonical = json.dumps(payload, sort_keys=True, default=str)
-        return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+        # The two reindex-relevant surfaces (metadata vectors + embed space); filterable excluded.
+        return cls.__digest(
+            cls._metadata_surface(schema_rows), cls.embed_vector_space(pipeline_blob or {})
+        )
 
     @classmethod
     def embed_signature(cls, pipeline_blob: dict) -> str:
-        """Hash ONLY the embed vector space of a pipeline blob (the content-vector baseline).
+        """The PER-AXIS embed-only baseline of a pipeline blob (the content-vector baseline).
 
         Args:
             pipeline_blob (dict): The collection's stored ingestion pipeline blob.
 
         Returns:
-            str: A hex sha256 over ``embed_vector_space`` — unchanged by any metadata-schema edit.
+            str: ``<dense digest>:<sparse digest>`` (see EmbedBaseline) — unchanged by any
+                metadata-schema edit, and comparable per axis by the rebuild.
         """
-        canonical = json.dumps(cls.embed_vector_space(pipeline_blob or {}), default=str)
-        return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+        return EmbedBaseline.signature(pipeline_blob or {})
+
+    @classmethod
+    def candidates(cls, pipeline_blob: dict, schema_rows: Sequence[MetadataField]) -> set[str]:
+        """Every signature equivalent to the current config: the canonical one + legacy spellings.
+
+        A collection indexed BEFORE the dense/sparse slots holds a baseline hashed over the legacy
+        embed fingerprint; its blob healed to the slot node hashes differently although the vectors
+        are the same. Comparing against the legacy-equivalent signatures too keeps it current.
+
+        Args:
+            pipeline_blob (dict): The collection's stored ingestion pipeline blob.
+            schema_rows (Sequence[MetadataField]): The collection's metadata schema rows.
+
+        Returns:
+            set[str]: The canonical signature plus every legacy-equivalent one.
+        """
+        meta = cls._metadata_surface(schema_rows)
+        legacy = EmbedVectorSpace.legacy_equivalents(pipeline_blob or {})
+        return {cls.compute(pipeline_blob, schema_rows)} | {cls.__digest(meta, e) for e in legacy}
+
+    @classmethod
+    def embed_candidates(cls, pipeline_blob: dict) -> set[str]:
+        """The embed-only counterpart of ``candidates``: the per-axis signature + whole-space ones."""
+        return EmbedBaseline.candidates(pipeline_blob or {})
 
 
 def collection_index_signature(pipeline_blob: dict, schema_rows: Sequence[MetadataField]) -> str:

@@ -4,7 +4,6 @@ rendering a document-scope value to embeddable text, locating the collection's e
 (extra="forbid" — a drifted blob fails loudly)."""
 
 import pytest
-from pydantic import ValidationError
 
 from shared_libs.services.db.facades.meta_vector_sync_helpers import MetaVectorSyncHelpers
 
@@ -77,12 +76,17 @@ def test_rebuild_embedder_builds_a_working_instance() -> None:
     assert config.model == "BAAI/bge-m3"
 
 
-def test_rebuild_embedder_drifted_config_raises_validation_error() -> None:
+def test_rebuild_embedder_drifted_config_raises_an_input_free_error() -> None:
     import shared_libs.pipelines.nodes.embed  # noqa: F401 — registers "embed" kinds
+    from shared_libs.pipelines.nodes.embed.blob import EmbedLayoutError
 
     embed_node = {
+        "id": "embed",
         "kind": "bge_server",
-        "config": {"model": "BAAI/bge-m3", "base_url": "http://x", "not_a_real_key": True},
+        "config": {"base_url": "http://x", "api_key": "REALSECRET", "not_a_real_key": True},
     }
-    with pytest.raises(ValidationError):
+    with pytest.raises(EmbedLayoutError) as caught:
         MetaVectorSyncHelpers.rebuild_embedder(embed_node)
+    assert "not_a_real_key" in str(caught.value) and "embed" in str(caught.value)
+    assert "REALSECRET" not in str(caught.value)
+    assert caught.value.__cause__ is None and caught.value.__suppress_context__

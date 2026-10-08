@@ -1,7 +1,8 @@
 # ====== Code Summary ======
 # IndexRebuildReconciler — the post-swap RECONCILIATION of a rebuild_index job: re-apply chunk enabled
 # overrides, purge points of documents deleted during the copy, then derive needs_reindex honestly — a
-# chunk-scope semantic vector no point carries keeps it raised: only a reingest can fill it.
+# chunk-scope semantic vector no point carries keeps it raised: only a reingest can fill it — as does a
+# changed DENSE embed space; a changed sparse space the copy re-encoded clears it.
 
 # ====== Standard Library Imports ======
 import uuid
@@ -10,7 +11,9 @@ import uuid
 from loggerplusplus import LoggerClass
 
 # ====== Internal Project Imports ======
+from shared_libs.pipelines.nodes.embed.blob import EmbedBlobResolver
 from shared_libs.public_models import FieldScope
+from shared_libs.services.db.index_embed_baseline import EmbedBaseline
 from shared_libs.services.db.index_signature import CollectionIndexSignature
 from shared_libs.services.db.postgresql import PostgresClient
 from shared_libs.services.db.postgresql.apis import CollectionApi, RebuildJobApi
@@ -83,34 +86,58 @@ class IndexRebuildReconciler(LoggerClass):
             await QdrantIndexApi.delete_by_documents(self._qdrant.raw, name, vanished)
         return len(vanished)
 
-    async def _derive_flag(self, collection_id: uuid.UUID, vectors_missing: bool) -> bool:
+    async def _derive_flag(
+        self, collection_id: uuid.UUID, vectors_missing: bool, sparse_reencoded: bool
+    ) -> tuple[bool, bool]:
         """
-        Clear ``needs_reindex`` only when nothing is missing or unfilled AND the content vectors'
-        embed space is the one they were indexed under (a rebuild copies content, never re-embeds it).
+        Derive ``needs_reindex`` per AXIS of the content vectors' embed space.
+
+        A rebuild copies dense vectors (never re-embeds them) but may have re-encoded the content
+        sparse vector through the configured provider. The flag clears — and the indexed baselines
+        advance to the current config — only when nothing is missing or unfilled, the dense half is
+        the one indexed (or the config has no dense slot), and the sparse half is too or was just
+        re-encoded (or the config has no sparse slot). A changed dense half raises it (reingest).
+        An unknown baseline (never stamped) keeps the stored flag.
 
         Args:
             collection_id (uuid.UUID): The rebuilt collection.
             vectors_missing (bool): A declared-but-missing vector, or a chunk-scope vector no point
                 carries (reingest required) — either keeps the flag raised.
+            sparse_reencoded (bool): The copy re-encoded the content sparse vector.
+
+        Returns:
+            tuple[bool, bool]: (the flag, whether the dense embed space changed since indexing).
         """
         async with self._postgres.session() as session:
             collection = await CollectionApi.get(session, collection_id)
             if collection is None:
-                return False
+                return False, False
             if vectors_missing:
                 await CollectionApi.update(session, collection_id, needs_reindex=True)
-                return True
-            embed = CollectionIndexSignature.embed_signature(collection.pipeline)
-            if collection.indexed_embed_signature != embed:
-                return bool(collection.needs_reindex)
+                return True, False
+            stored, pipeline = collection.indexed_embed_signature, collection.pipeline or {}
+            if not stored:
+                return bool(collection.needs_reindex), False
+            layout = EmbedBlobResolver.layout(pipeline)
+            if layout.dense and not EmbedBaseline.dense_matches(stored, pipeline):
+                await CollectionApi.update(session, collection_id, needs_reindex=True)
+                return True, True
+            sparse_ok = (
+                not layout.sparse
+                or sparse_reencoded
+                or EmbedBaseline.sparse_matches(stored, pipeline)
+            )
+            if not sparse_ok:
+                return bool(collection.needs_reindex), False
             schema = await CollectionApi.get_schema(session, collection_id)
             await CollectionApi.update(
                 session,
                 collection_id,
-                indexed_signature=CollectionIndexSignature.compute(collection.pipeline, schema),
+                indexed_signature=CollectionIndexSignature.compute(pipeline, schema),
+                indexed_embed_signature=CollectionIndexSignature.embed_signature(pipeline),
                 needs_reindex=False,
             )
-            return False
+            return False, False
 
     async def reconcile(
         self, collection_id: uuid.UUID, copy: StoreCopyResult
@@ -134,12 +161,14 @@ class IndexRebuildReconciler(LoggerClass):
             collection_id, name, copy.document_ids
         )
         # 3. Honest flag: missing vectors or unfillable chunk vectors keep it raised; otherwise clear
-        #    only on an unchanged embed space.
+        #    only on an unchanged dense space and a sparse space unchanged or just re-encoded.
         missing = await self._index_state.missing(collection_id)
         result.missing_vectors = [vector for _, vector in missing]
         result.reingest_required_fields = await self._unfilled_chunk_fields(collection_id, copy)
-        result.needs_reindex = await self._derive_flag(
-            collection_id, bool(missing) or bool(result.reingest_required_fields)
+        result.needs_reindex, result.dense_space_changed = await self._derive_flag(
+            collection_id,
+            bool(missing) or bool(result.reingest_required_fields),
+            copy.sparse_reencoded or copy.reencoded_sparse_points > 0,
         )
         return result
 

@@ -1,11 +1,9 @@
-"""Embed as a NON-scored, UNIQUE-capped fallback chain (bge_server → openai_compatible): a >1-step
-embed chain build/validates, wires OnFailure-only escalation (NO ScoreBelow) with a best-first join,
-and round-trips through the reader. Both embedders are UNIQUE_IN_GRAPH, so a chain may only mix the
-two DIFFERENT kinds — a duplicate is rejected. A score_below on an embed step is dropped (embed is
+"""Embed as a NON-scored fallback chain of ``dense_sparse`` slot nodes: a >1-step embed chain
+build/validates, wires OnFailure-only escalation (NO ScoreBelow) with a best-first join, and
+round-trips through the reader. A legacy single-provider kind (bge_server / openai_compatible)
+re-stated by a caller lands migrated as ``dense_sparse`` (dense_sparse is not single-use, so a
+migrated legacy bge → openai chain still builds). A score_below on an embed step is dropped (embed is
 failure-only). SetProvider(embed) stays 1-step sugar.
-
-Both kinds are real registered embedders — no fake node needed (unlike parse, whose only real kind
-is docling).
 """
 
 from shared_libs.pipelines.base import FromFirst, FromNode, OnFailure, OnSuccess, ScoreBelow
@@ -22,12 +20,17 @@ from shared_libs.pipelines.ingest.stages import (
 
 BGE = "bge_server"
 OAI = "openai_compatible"
+DS = "dense_sparse"
+_OAI_SLOT = {"kind": OAI, "base_url": "http://embed:8000/v1", "model": "m"}
 
 
 def _two_step_chain(compiler, steps=None):
     """Compile the default blob with a 2-step embed chain (bge_server → openai_compatible)."""
     default = IngestPipeline.default_blob()
-    steps = steps or [ChainStep(kind=BGE), ChainStep(kind=OAI)]
+    steps = steps or [
+        ChainStep(kind=DS),
+        ChainStep(kind=DS, config={"dense": dict(_OAI_SLOT), "sparse": None}),
+    ]
     return compiler.apply(default, SetChain(stage="embed", slot=None, steps=steps))
 
 
@@ -74,13 +77,14 @@ def test_reader_round_trips_the_embed_chain(compiler) -> None:
     chained, _ = _two_step_chain(compiler)
     state = StateReader.read(chained)
     assert state.embed_chain.family == "embed"
-    assert [s.kind for s in state.embed_chain.steps] == [BGE, OAI]
+    assert [s.kind for s in state.embed_chain.steps] == [DS, DS]
+    assert state.embed_chain.steps[1].config["dense"]["kind"] == OAI
     assert all(s.score_below is None for s in state.embed_chain.steps)
 
 
 def test_score_below_on_embed_step_is_dropped_with_a_notice(compiler) -> None:
     chained, notices = _two_step_chain(
-        compiler, steps=[ChainStep(kind=BGE, score_below=0.5), ChainStep(kind=OAI)]
+        compiler, steps=[ChainStep(kind=DS, score_below=0.5), ChainStep(kind=DS)]
     )
     assert any("failure-only" in n for n in notices)
     # The threshold is gone from the stored chain and no ScoreBelow edge was emitted.
@@ -89,22 +93,21 @@ def test_score_below_on_embed_step_is_dropped_with_a_notice(compiler) -> None:
     assert not any(isinstance(t.condition, ScoreBelow) for t in chained.transitions)
 
 
-def test_duplicate_unique_embedder_is_a_notice_and_the_build_rejects_it(
-    compiler, builder, validator
-) -> None:
-    chained, notices = _two_step_chain(compiler, steps=[ChainStep(kind=BGE), ChainStep(kind=BGE)])
-    assert any("only once" in n for n in notices)
-    # The blob is still assembled (data), but the validator rejects the duplicate unique node.
-    issues = validator.validate(builder.build(chained))
-    assert issues != []
+def test_legacy_kinds_restated_land_as_slot_nodes(compiler) -> None:
+    chained, _ = _two_step_chain(compiler, steps=[ChainStep(kind=BGE), ChainStep(kind=OAI)])
+    steps = StateReader.read(chained).embed_chain.steps
+    assert [s.kind for s in steps] == [DS, DS]
+    # bge_server → the same endpoint on both slots; openai_compatible → dense only.
+    assert steps[0].config["dense"]["kind"] == BGE and steps[0].config["sparse"]["kind"] == BGE
+    assert steps[1].config["dense"]["kind"] == OAI and steps[1].config["sparse"] is None
 
 
 def test_set_provider_embed_is_one_step_chain_sugar(compiler) -> None:
     default = IngestPipeline.default_blob()
-    swapped, _ = compiler.apply(default, SetProvider(stage="embed", kind=BGE))
+    swapped, _ = compiler.apply(default, SetProvider(stage="embed", kind=DS))
     state = StateReader.read(swapped)
     assert len(state.embed_chain.steps) == 1
-    assert state.embed_chain.steps[0].kind == BGE
+    assert state.embed_chain.steps[0].kind == DS
     # A single provider stays the stock lone 'embed' node with a plain FromNode anchor.
     assert any(n.id == "embed" for n in swapped.nodes)
     assert swapped.bindings["bundle"]["embeddings"] == FromNode(
@@ -123,14 +126,13 @@ def test_two_step_embed_chain_from_assembler_matches_wiring(builder, validator) 
     # Direct assembly (no compiler) — proves the SegmentBuilder emits the same failure-only chain.
     # Configs carry the required fields explicitly (the compiler fills these build-safe; here we set
     # them so the raw assembled blob builds without the compiler's config completion).
-    endpoint = {"base_url": "http://embed:8000/v1", "model": "m"}
     state = default_state().model_copy(
         update={
             "embed_chain": ChainSpec(
                 family="embed",
                 steps=[
-                    ChainStep(kind=BGE, config=dict(endpoint)),
-                    ChainStep(kind=OAI, config=dict(endpoint)),
+                    ChainStep(kind=DS, config={}),
+                    ChainStep(kind=DS, config={"dense": dict(_OAI_SLOT), "sparse": None}),
                 ],
             ),
         }

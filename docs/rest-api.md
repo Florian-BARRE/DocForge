@@ -560,10 +560,18 @@ with a `RebuildIndexAccepted` `{collection_id, job_id}`. Poll `GET /api/v1/jobs/
 to a document).
 
 Use it when `missing_vectors` is not empty, that is, when a field was made semantic or lexical after
-the first ingest. It is also the way to give an older collection's metadata BM25 vectors the IDF
-modifier. Content vectors are copied as they are and never re-embedded. The metadata vectors are
-refilled from Postgres: the lexical ones are encoded locally, but the dense metadata values go through
-the collection's embed provider (a small, but billed, provider call).
+the first ingest, or when a sparse vector was encoded by another sparse provider than the configured
+one (its IDF modifier disagrees with the embed config — e.g. IDF `meta_*_bm25` vectors written on
+0.28–0.30 under a `bge_server` sparse slot). The new store's schema follows the embed CONFIG: every
+sparse vector carries Qdrant's IDF modifier only when the sparse slot is `bm25_local`; no
+`content_dense` without a dense slot. Dense content vectors are copied as they are and never
+re-embedded. The content sparse vector is copied too, unless the old one came from another sparse
+provider (or is absent while the config has a sparse slot): it is then **re-encoded** from the stored
+chunk text through the configured sparse provider, in the same copy. The metadata vectors are refilled
+from Postgres through the collection's own providers: lexical values through the sparse slot, dense
+metadata values through the dense slot (a small, but billed, provider call for a remote provider). A
+config that gained a dense slot over a store that never had dense vectors cannot be rebuilt (the job
+fails with "re-ingest the documents").
 
 How it works:
 
@@ -590,8 +598,14 @@ How it works:
    `enabled_override`, and deletes the points of documents deleted during the copy.
 5. It recomputes `missing_vectors` and `needs_reindex`. If a vector is still missing (the schema
    changed during the rebuild), the job ends `failed` with `error_type: rebuild_incomplete`: run it
-   again. `needs_reindex` is cleared only when the embed space is unchanged since the last ingest. A
-   rebuild never re-embeds content, so an embed-model change still needs a reingest. **Chunk-scope
+   again. `needs_reindex` is judged per axis of the embed space indexed at the last ingest. The
+   content sparse vector is re-encoded from the chunk text through the configured sparse provider
+   whenever it came from another sparse provider (switched to `bm25_local`, switched on after ingest,
+   or moved to another `bge_server` endpoint/model), so a sparse-only change is cleared by the rebuild.
+   Dense vectors are copied, never re-embedded: a dense provider or model change keeps
+   `needs_reindex: true` (the job result carries `dense_space_changed: true` and the worker logs
+   "reingest required") — reingest the documents. A broken embed stage config fails the job with a
+   message naming the embed node (the store schema is never guessed). **Chunk-scope
    semantic fields:** a rebuild declares their vector but cannot fill it (content is copied as is and
    the backfill is document-scope). When no copied point carries such a field's vector, the job still
    ends `done` but `needs_reindex` stays `true` and the worker logs "reingest required for chunk-scope
@@ -1120,9 +1134,11 @@ Hybrid retrieval over one collection. Runs **inline** in the request (sub-second
 
 Each `search_in` entry is a **SearchTarget**: `{ "field": "content"|<metadata field>,
 "semantic": bool, "lexical": bool }`. `field` defaults to `"content"` (the chunk body).
-A **lexical metadata** target is real BM25 on collections created since 0.28 (accent-folded, French +
-English stopwords and stemming, IDF over the collection); an older collection keeps its previous
-sparse encoding until it is rebuilt. When the targets resolve to **one single vector** (e.g. one
+A **lexical** target (content or metadata) is encoded by the collection's ONE sparse provider (the
+embed node's sparse slot): `bm25_local` gives real BM25 (accent-folded, French + English stopwords and
+stemming, IDF over the collection); `bge_server` gives BGE-M3 learned sparse weights. A **semantic**
+target needs the dense slot. A sparse-only collection (dense slot off) answers lexical-only, with
+`score_kind` `raw_sparse` on a single-vector retrieval. When the targets resolve to **one single vector** (e.g. one
 metadata field, lexical only), no fusion runs: each hit's `score` is that vector's raw score (BM25 /
 sparse dot / cosine) rather than a rank-based fusion score, and `score_kind` says so (`raw_dense` /
 `raw_sparse`) — a `min_score` then cuts on that raw scale. When **every** target is a metadata field, the rerank stage is skipped
@@ -1142,7 +1158,12 @@ type, or two operators combined (other than range bounds); a `contains`/`prefix`
 500 stored values; a `search_in` target naming a vector
 the collection never indexed (or a selection with no modality). A field flagged semantic/lexical
 whose named vector the vector store has not declared yet is also rejected:
-`field 'X' has no indexed <semantic|lexical> vector — … rebuild_index …`. Before this gate, Qdrant
+`field 'X' has no indexed <semantic|lexical> vector — … rebuild_index …`. Embed-slot gates: a
+**semantic** target (content or metadata) on a collection whose embed node has no dense slot, or a
+**lexical** target on one without a sparse slot, is `422`; a lexical target whose sparse vector the
+store declares under the other IDF modifier (another sparse provider's vectors) is `422` with the
+same `rebuild_index` hint, as is a stored search graph that forces an axis the collection lacks
+(e.g. a `dense_only` preset on a sparse-only collection — rejected at write time too). Before this gate, Qdrant
 rejected the query and the route answered with the misleading "stored search graph is invalid". `404` when the collection is
 unknown; `409` when it has no embed node wired.
 
@@ -1216,6 +1237,11 @@ A **stopword-only query** (no searchable term after stopword/punctuation removal
 per such target — `field` = the target, `value` = the query, message `query has no searchable term for
 lexical target '<field>' (only stopwords or punctuation) … add a content word or use semantic`. It is
 emitted only for that cause.
+A **default search** (no `search_in`) never fails on a sparse provider mismatch: when the stored
+`content_bm25` was encoded by another sparse provider, the lexical axis is skipped (semantic only; no
+hits on a sparse-only collection) and the response carries the hint `lexical axis disabled: the stored
+sparse vectors were encoded with a different sparse provider — run rebuild_index` (the collection
+detail also reports it through `needs_reindex` / `missing_vectors`, label `content`).
 
 ### Example
 
@@ -1543,10 +1569,34 @@ The read → compile → write is a compare-and-swap on the config version: if a
 snippet import, another stage apply) lands in between, the action is recomputed once on the new stored
 pipeline; if it loses again the call is `409` and nothing is overwritten — re-read and retry.
 
+**Embed provider slots.** The embed stage is ONE node (`dense_sparse`) with two independent provider
+slots. Its `StageView` carries `slots` (`[]` on every other stage): a list of `ProviderSlotView`
+`{slot: "dense"|"sparse", title, description, provider: <kind>|null (null = axis off), available:
+[<kind>…] (dense: `bge_server`, `openai_compatible`; sparse: `bge_server`, `bm25_local`), config:
+{kind, …}|null (secrets masked), config_schemas: {<kind>: JSONSchema}}`, dense first. An omitted slot
+reads as the in-stack `bge_server`; the same `bge_server` on both slots is one combined call per batch.
+- `set_provider` `{stage: "embed", slot: "dense"|"sparse", kind: <kind>|null}` — `null` turns the axis off
+  (refused with a notice when the other axis is already off); the same kind is a no-op (endpoint and key
+  kept); a kind that does not serve that axis is a notice and no change; a newly picked `bge_server`
+  reuses the other slot's `bge_server` `base_url` so the combined call holds. `slot` omitted keeps the
+  former whole-stage behaviour.
+- `set_config` `{stage: "embed", slot, config, mode}` edits that slot's config (its `kind` is kept; the
+  secret rules above apply per slot — each slot's `api_key` is bound to its own `base_url`). Editing an
+  off slot is a notice.
+Changing the sparse provider (e.g. `bge_server` → `bm25_local`) changes the vector space: the response's
+`needs_reindex` turns `true`; run `rebuild-index` (content sparse is re-encoded, no dense re-embed).
+
 ```bash
 curl -s -X POST http://localhost:10040/api/v1/collections/$CID/pipeline/stages/apply \
   -H 'Content-Type: application/json' \
-  -d '{"action": {"action": "set_config", "stage": "embed", "mode": "merge", "config": {"timeout_seconds": 30}}}'
+  -d '{"action": {"action": "set_config", "stage": "embed", "slot": "dense", "mode": "merge", "config": {"timeout_seconds": 30}}}'
+# sparse-only collection: switch the sparse slot to local BM25, then turn dense off
+curl -s -X POST http://localhost:10040/api/v1/collections/$CID/pipeline/stages/apply \
+  -H 'Content-Type: application/json' \
+  -d '{"action": {"action": "set_provider", "stage": "embed", "slot": "sparse", "kind": "bm25_local"}}'
+curl -s -X POST http://localhost:10040/api/v1/collections/$CID/pipeline/stages/apply \
+  -H 'Content-Type: application/json' \
+  -d '{"action": {"action": "set_provider", "stage": "embed", "slot": "dense", "kind": null}}'
 ```
 
 `?full=true` fills the advanced `palette.mechanics` block, which is self-describing: alongside
@@ -2072,13 +2122,15 @@ GET /capabilities
   "capabilities": {
     "parsers": ["docling", "granite_docling"],
     "ocr": ["mistral", "rapidocr", "tesseract"],
-    "embed": ["bge_server", "openai_compatible"],
+    "embed": ["dense_sparse"],
     "chunkers": ["fixed_size", "semantic", "structure_aware"],
     "vlm": ["openai_compatible"],
     "llm": ["mistral", "openai_compatible"],
     "rerank": ["cross_encoder"],
     "contextualize": ["breadcrumb", "doc_meta", "llm", "sliding"],
-    "metagen": []
+    "metagen": [],
+    "embed_dense": ["bge_server", "openai_compatible"],
+    "embed_sparse": ["bge_server", "bm25_local"]
   }
 }
 ```
@@ -2096,6 +2148,9 @@ Field notes:
   per-collection-key kind is always listed; a sidecar-gated kind (e.g. `parser:mineru`) appears only
   while its sidecar is reachable. `metagen` has no provider kind of its own (it delegates to `llm`),
   so it is legitimately empty.
+- `capabilities.embed_dense` / `embed_sparse` — the provider kinds offerable in the embed node's dense /
+  sparse slot (`bge_server` only while its sidecar is reachable; `openai_compatible` and the in-process
+  `bm25_local` always).
 
 ---
 

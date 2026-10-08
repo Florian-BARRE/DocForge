@@ -58,6 +58,8 @@ class CapabilityMatrix(BaseModel):
         rerank (list[str]): Available ``rerank`` kinds.
         contextualize (list[str]): Available ``contextualize`` kinds.
         metagen (list[str]): Available ``metagen`` kinds (delegates to ``llm``; usually empty).
+        embed_dense (list[str]): Provider kinds available for the embedder's DENSE slot.
+        embed_sparse (list[str]): Provider kinds available for the embedder's SPARSE slot.
     """
 
     parsers: list[str] = Field(default_factory=list, description="Available parser kinds.")
@@ -71,6 +73,14 @@ class CapabilityMatrix(BaseModel):
         default_factory=list, description="Available contextualize kinds."
     )
     metagen: list[str] = Field(default_factory=list, description="Available metagen kinds.")
+    embed_dense: list[str] = Field(
+        default_factory=list,
+        description="Provider kinds available for the dense slot of the embed node (dense_sparse).",
+    )
+    embed_sparse: list[str] = Field(
+        default_factory=list,
+        description="Provider kinds available for the sparse slot of the embed node (dense_sparse).",
+    )
 
 
 class CapabilitiesResponse(BaseModel):

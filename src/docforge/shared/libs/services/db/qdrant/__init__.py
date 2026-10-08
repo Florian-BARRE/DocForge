@@ -23,6 +23,7 @@ from .vectors import (
     PayloadType,
     QdrantPoint,
     QdrantVectorSchema,
+    DeclaredVectors,
     Range,
     SparseVec,
     VectorNames,
@@ -40,7 +41,6 @@ from .apis import (
     QdrantCollectionApi,
     QdrantFieldPurgeApi,
     QdrantIndexApi,
-    QdrantLexicalEncodingApi,
     QdrantSearchApi,
 )
 
@@ -54,6 +54,7 @@ __all__ = [
     "SparseVec",
     "VectorNames",
     "QdrantVectorSchema",
+    "DeclaredVectors",
     "PayloadType",
     "Match",
     "MatchAny",
@@ -76,7 +77,6 @@ __all__ = [
     "QdrantBrowseApi",
     "BrowseKey",
     "QdrantIndexApi",
-    "QdrantLexicalEncodingApi",
     "QdrantSearchApi",
     "CHUNK_INDEX_KEY",
     "DOCUMENT_ID_KEY",

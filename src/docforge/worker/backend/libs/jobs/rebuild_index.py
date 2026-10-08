@@ -18,6 +18,7 @@ from typing import Any
 
 # ====== Internal Project Imports (worker) ======
 from backend.context import CONTEXT
+from shared_libs.pipelines.build.validation_message import ValidationMessage
 from shared_libs.services.db.facades import AbortProbe, RebuildCancelledError
 from shared_libs.services.db.postgresql.tables import JobStatus
 
@@ -70,6 +71,8 @@ async def _run(collection_uuid: uuid.UUID, job_uuid: uuid.UUID) -> dict[str, Any
         "first_rebuild": copy.first_rebuild,
         "missing_vectors": reconciled.missing_vectors,
         "reingest_required_fields": reconciled.reingest_required_fields,
+        "dense_space_changed": reconciled.dense_space_changed,
+        "reencoded_sparse_points": copy.reencoded_sparse_points,
         "needs_reindex": reconciled.needs_reindex,
     }
 
@@ -122,7 +125,10 @@ async def rebuild_collection_index(
     except Exception as exc:
         # 3b. Fail the job with the cause; a pre-swap failure left the old store live and untouched.
         await database.jobs.mark_failed(
-            job_uuid, error=str(exc), finished_at=datetime.now(UTC), error_type=type(exc).__name__
+            job_uuid,
+            error=ValidationMessage.describe(exc),
+            finished_at=datetime.now(UTC),
+            error_type=type(exc).__name__,
         )
         raise
     # 4. Vectors still missing after the rebuild = the schema changed meanwhile: say so, loudly.
@@ -142,6 +148,11 @@ async def rebuild_collection_index(
         CONTEXT.logger.warning(
             f"Rebuild {job_id}: reingest required for chunk-scope field(s) "
             f"{summary['reingest_required_fields']} (a rebuild cannot fill their vectors)"
+        )
+    if summary["dense_space_changed"]:
+        CONTEXT.logger.warning(
+            f"Rebuild {job_id}: reingest required — the dense embed provider/model changed since the "
+            f"last ingest; a rebuild copies dense vectors and cannot re-embed them"
         )
     await database.jobs.mark_done(job_uuid, finished_at=datetime.now(UTC))
     CONTEXT.logger.info(f"Rebuilt index of collection {collection_id} (job {job_id}): {summary}")

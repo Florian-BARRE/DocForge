@@ -77,12 +77,11 @@ class MetaVectorSyncHelpers:
                 embedding hooks are exercised — never wired in a graph) and its validated config.
 
         Raises:
-            pydantic.ValidationError: When the stored config drifted (extra="forbid" fails loudly).
+            EmbedLayoutError: When the stored config drifted (extra="forbid" fails loudly) — an
+                input-free message, never the config (its api_key) a ValidationError would echo.
         """
         # Delegate to the shared resolver, preserving this facade's throwaway-instance node id.
-        return EmbedBlobResolver.rebuild(
-            embed_node["kind"], embed_node.get("config", {}), node_id="meta_vector_embedder"
-        )
+        return EmbedBlobResolver.rebuild_or_raise(embed_node, node_id="meta_vector_embedder")
 
     @classmethod
     def plan_meta_axes(

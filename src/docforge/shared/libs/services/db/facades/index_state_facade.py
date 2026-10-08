@@ -1,9 +1,13 @@
 # ====== Code Summary ======
 # IndexStateFacade — the READ view of what a collection's Qdrant store actually declares, versus what
-# its metadata schema asks for. Qdrant cannot add a named vector to a live collection, so a field made
-# semantic/lexical after first ingest stays without its vector until the index is rebuilt: Postgres
-# flags alone are NOT the truth of what is searchable. The search target gate, the collection detail
-# (``missing_vectors``) and the PATCH response (``reindex_required_fields``) all read this one view.
+# its metadata schema AND its embed config ask for. Qdrant cannot add a named vector to a live
+# collection, so a field made semantic/lexical after first ingest stays without its vector until the
+# index is rebuilt: Postgres flags alone are NOT the truth of what is searchable. The embed config
+# adds two more requirements: the content vector of each configured axis (dense / sparse) and the
+# sparse IDF modifier (a store whose sparse vectors were declared for another sparse provider holds
+# another encoder's vectors — reported missing, rebuild required). The search target gate, the
+# collection detail (``missing_vectors``) and the PATCH response (``reindex_required_fields``) all
+# read this one view.
 
 # ====== Standard Library Imports ======
 import uuid
@@ -14,9 +18,16 @@ from loggerplusplus import LoggerClass
 from qdrant_client.http.exceptions import UnexpectedResponse
 
 # ====== Internal Project Imports ======
+from shared_libs.pipelines.nodes.embed.blob import EmbedBlobResolver
+from shared_libs.public_models import VectorLayout
 from shared_libs.services.db.postgresql import PostgresClient
 from shared_libs.services.db.postgresql.apis import CollectionApi
-from shared_libs.services.db.qdrant import QdrantClient, QdrantCollectionApi
+from shared_libs.services.db.qdrant import (
+    DeclaredVectors,
+    QdrantAliasApi,
+    QdrantClient,
+    QdrantCollectionApi,
+)
 
 # ====== Local Project Imports ======
 from .helpers import DatabaseHelpers
@@ -26,50 +37,76 @@ _NOT_FOUND = 404
 
 
 class IndexStateFacade(LoggerClass):
-    """Read the vectors a collection's Qdrant store declares and what its schema is missing."""
+    """Read the vectors a collection's Qdrant store declares and what its schema/config is missing."""
 
     def __init__(self, postgres: PostgresClient, qdrant: QdrantClient) -> None:
         """
         Args:
-            postgres (PostgresClient): The schema truth (semantic/lexical flags).
+            postgres (PostgresClient): The schema + embed config truth.
             qdrant (QdrantClient): The vector store whose declared named vectors are read.
         """
         LoggerClass.__init__(self)
         self._postgres = postgres
         self._qdrant = qdrant
 
-    async def declared_vectors(self, collection_id: uuid.UUID) -> tuple[set[str], set[str]] | None:
+    async def declared(self, collection_id: uuid.UUID) -> DeclaredVectors | None:
         """
-        Return the (dense, sparse) named vectors the collection's Qdrant store declares.
+        Return what the collection's Qdrant store declares (named vectors + IDF-declared sparse).
 
-        ONE Qdrant round-trip (a 404 means "no space yet") — cheap enough to run per search request.
+        ONE Qdrant round-trip once the name resolves — cheap enough to run per search request. The
+        alias read is the healing one: a stranded complete rebuild generation is adopted.
 
         Args:
             collection_id (uuid.UUID): The collection whose store is inspected.
 
         Returns:
-            tuple[set[str], set[str]] | None: The declared (dense, sparse) names, or None when the
-                collection has no Qdrant space yet (never ingested — nothing is declared nor missing).
+            DeclaredVectors | None: The declarations, or None when the collection has no Qdrant
+                space yet (never ingested — nothing is declared nor missing).
         """
-        # 1. A missing collection is a 404 — report "no space" instead of raising.
         name = DatabaseHelpers.qdrant_collection_name(collection_id)
+        if not await QdrantAliasApi.resolve_or_adopt(self._qdrant.raw, name):
+            return None
         try:
             info = await self._qdrant.raw.get_collection(name)
-        except UnexpectedResponse as error:
+        except UnexpectedResponse as error:  # dropped between the two calls
             if error.status_code == _NOT_FOUND:
                 return None
             raise
-        # 2. DocForge always uses NAMED vectors, so params.vectors is a name → params mapping.
-        params = info.config.params
-        dense = set(params.vectors.keys()) if isinstance(params.vectors, dict) else set()
-        sparse = set(params.sparse_vectors.keys()) if params.sparse_vectors else set()
-        return dense, sparse
+        return DeclaredVectors.from_params(info.config.params)
+
+    async def declared_vectors(self, collection_id: uuid.UUID) -> tuple[set[str], set[str]] | None:
+        """
+        Return the (dense, sparse) named vectors the collection's Qdrant store declares.
+
+        Args:
+            collection_id (uuid.UUID): The collection whose store is inspected.
+
+        Returns:
+            tuple[set[str], set[str]] | None: The declared names, or None when no space exists yet.
+        """
+        declared = await self.declared(collection_id)
+        return declared.pair() if declared is not None else None
+
+    async def layout(self, collection_id: uuid.UUID) -> VectorLayout:
+        """
+        The vector layout the collection's STORED embed config dictates (default when unknown).
+
+        Args:
+            collection_id (uuid.UUID): The collection whose pipeline blob is read.
+
+        Returns:
+            VectorLayout: The config-derived layout (never read from the live store).
+        """
+        async with self._postgres.session() as session:
+            collection = await CollectionApi.get(session, collection_id)
+        return EmbedBlobResolver.layout(getattr(collection, "pipeline", None))
 
     async def missing_for(
         self,
         collection_id: uuid.UUID,
         semantic_fields: Sequence[str],
         lexical_fields: Sequence[str],
+        layout: VectorLayout | None = None,
     ) -> list[tuple[str, str]]:
         """
         Return the ``(field, vector)`` pairs a given searchable surface needs but the store lacks.
@@ -80,23 +117,31 @@ class IndexStateFacade(LoggerClass):
             collection_id (uuid.UUID): The collection whose store is inspected.
             semantic_fields (Sequence[str]): Fields expected to carry a named dense vector.
             lexical_fields (Sequence[str]): Fields expected to carry a named sparse vector.
+            layout (VectorLayout | None): The embed layout (None → read from the stored config).
 
         Returns:
-            list[tuple[str, str]]: Sorted missing pairs; empty when the collection has no space yet
-                (its first ingest creates the full schema).
+            list[tuple[str, str]]: Sorted missing pairs (``content`` labels a content vector, a
+                modifier-mismatched sparse vector counts as missing); empty when the collection has
+                no space yet (its first ingest creates the full schema).
         """
-        # 1. No space yet → the first ingest declares everything from the then-current schema.
-        declared = await self.declared_vectors(collection_id)
+        # 1. No space yet → the first ingest declares everything from the then-current config.
+        declared = await self.declared(collection_id)
         if declared is None:
             return []
-        # 2. The shared pure rule (also used by reconcile).
+        # 2. The shared pure rule (also used by reconcile), against the config-derived layout.
+        layout = layout or await self.layout(collection_id)
         return QdrantCollectionApi.missing_vectors(
-            semantic_fields, lexical_fields, declared[0], declared[1]
+            semantic_fields,
+            lexical_fields,
+            set(declared.dense),
+            set(declared.sparse),
+            layout=layout,
+            mismatched=declared.mismatched(layout),
         )
 
     async def missing(self, collection_id: uuid.UUID) -> list[tuple[str, str]]:
         """
-        Return the ``(field, vector)`` pairs the STORED schema needs but the Qdrant store lacks.
+        Return the ``(field, vector)`` pairs the STORED schema + embed config need but the store lacks.
 
         Args:
             collection_id (uuid.UUID): The collection whose store is compared to its schema.

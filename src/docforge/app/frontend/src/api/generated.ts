@@ -2950,6 +2950,8 @@ export interface components {
          *         rerank (list[str]): Available ``rerank`` kinds.
          *         contextualize (list[str]): Available ``contextualize`` kinds.
          *         metagen (list[str]): Available ``metagen`` kinds (delegates to ``llm``; usually empty).
+         *         embed_dense (list[str]): Provider kinds available for the embedder's DENSE slot.
+         *         embed_sparse (list[str]): Provider kinds available for the embedder's SPARSE slot.
          */
         CapabilityMatrix: {
             /**
@@ -2967,6 +2969,16 @@ export interface components {
              * @description Available embed kinds.
              */
             embed?: string[];
+            /**
+             * Embed Dense
+             * @description Provider kinds available for the dense slot of the embed node (dense_sparse).
+             */
+            embed_dense?: string[];
+            /**
+             * Embed Sparse
+             * @description Provider kinds available for the sparse slot of the embed node (dense_sparse).
+             */
+            embed_sparse?: string[];
             /**
              * Llm
              * @description Available llm kinds.
@@ -7300,6 +7312,65 @@ export interface components {
             status: components["schemas"]["ProbeStatus"];
         };
         /**
+         * ProviderSlotView
+         * @description One provider SLOT of a stage node — e.g. the embed node's dense and sparse providers.
+         *
+         *     A slot is chosen independently of its siblings (SetProvider with ``slot``), configured on its own
+         *     (SetStageConfig with ``slot``) and may be OFF (``provider`` null) — e.g. a sparse-only embedder.
+         *
+         *     Attributes:
+         *         slot (str): Stable slot key (``dense`` / ``sparse``).
+         *         title (str): Human label of the slot.
+         *         description (str): What the slot's provider produces.
+         *         provider (str | None): The selected provider kind, or null when the slot is off.
+         *         available (list[str]): The provider kinds that can fill this slot.
+         *         config (dict | None): The slot's current provider config (``kind`` included), null when off.
+         *         config_schemas (dict[str, dict]): The JSON schema of each available kind's slot config.
+         */
+        ProviderSlotView: {
+            /**
+             * Available
+             * @description The provider kinds that can fill this slot.
+             */
+            available?: string[];
+            /**
+             * Config
+             * @description The slot's current provider config (null when off).
+             */
+            config?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Config Schemas
+             * @description JSON schema of each available kind's slot config.
+             */
+            config_schemas?: {
+                [key: string]: {
+                    [key: string]: unknown;
+                };
+            };
+            /**
+             * Description
+             * @description What the slot's provider produces.
+             */
+            description: string;
+            /**
+             * Provider
+             * @description The selected provider kind; null when the slot is off.
+             */
+            provider?: string | null;
+            /**
+             * Slot
+             * @description Stable slot key (dense / sparse).
+             */
+            slot: string;
+            /**
+             * Title
+             * @description Human label of the slot.
+             */
+            title: string;
+        };
+        /**
          * QdrantFootprintModel
          * @description ESTIMATED vector-store bytes (points × declared shape — excludes HNSW index overhead).
          */
@@ -8377,7 +8448,9 @@ export interface components {
          * @description Pick the provider of an exclusive stage — swap the kind, reset its config to defaults.
          *
          *     On a chain stage (parse / embed) re-picking the SAME kind keeps its stored secret (an omitted
-         *     secret is inherited from the same provider; a different kind never inherits one).
+         *     secret is inherited from the same provider; a different kind never inherits one). With a
+         *     ``slot`` (embed: ``dense`` / ``sparse``) it picks that slot's provider instead — ``kind`` null
+         *     turns the slot OFF (at least one embed slot must stay on).
          */
         SetProvider: {
             /**
@@ -8387,9 +8460,14 @@ export interface components {
             action: SetProviderAction;
             /**
              * Kind
-             * @description The registry kind to select within the stage's family.
+             * @description The kind to select — a registry kind of the stage's family, or (with a slot) a slot provider kind; null with a slot turns that slot off.
              */
-            kind: string;
+            kind: string | null;
+            /**
+             * Slot
+             * @description Provider slot of the stage node (embed: dense / sparse); null = the stage's own provider.
+             */
+            slot?: string | null;
             /**
              * Stage
              * @description Key of the provider stage.
@@ -8446,6 +8524,11 @@ export interface components {
              * @description Id of the target node inside a multi-node stage; null = the stage's primary node (e.g. metagen's chunk/document node, intake's convert node).
              */
             node?: string | null;
+            /**
+             * Slot
+             * @description Provider slot whose config is edited (embed: dense / sparse) — the slot's provider kind is kept; null = the node config itself.
+             */
+            slot?: string | null;
             /**
              * Stage
              * @description Key of the stage whose config is edited.
@@ -8658,6 +8741,8 @@ export interface components {
          *             scope), the enrich per-figure-site chains, and one per contextualize llm method; empty
          *             for a stage with no model-call site.
          *         stack (list[StackMethod]): The ordered methods (contextualize; empty elsewhere).
+         *         slots (list[ProviderSlotView]): The independent provider slots of the stage node (embed:
+         *             dense + sparse); empty for a stage without slots.
          *         requires (list[str]): Keys of the stages this one depends on.
          *         notes (str | None): A caveat shown to the user (e.g. a required config to fill).
          */
@@ -8721,6 +8806,11 @@ export interface components {
              * @description Keys of the stages this one depends on.
              */
             requires?: string[];
+            /**
+             * Slots
+             * @description The independent provider slots of the stage node (embed: dense + sparse).
+             */
+            slots?: components["schemas"]["ProviderSlotView"][];
             /**
              * Stack
              * @description The ordered methods (contextualize; empty elsewhere).

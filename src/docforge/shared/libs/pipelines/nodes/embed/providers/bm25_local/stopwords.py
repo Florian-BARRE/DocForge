@@ -1,5 +1,5 @@
 # ====== Code Summary ======
-# The French + English stopword set of the local metadata BM25 encoder. Words are stored ALREADY
+# The French + English stopword set of the local BM25 sparse provider (bm25_local). Words are stored ALREADY
 # accent-folded and lowercased, because the analyzer folds before it filters (so "été" is "ete",
 # "à" is "a"). Kept deliberately short — function words only — so a domain term is never dropped.
 # Changing this set changes the encoding: it is part of the versioned ``bm25_v1`` contract.
@@ -21,6 +21,6 @@ ENGLISH_STOPWORDS: frozenset[str] = frozenset(
     """.split()
 )
 
-META_LEXICAL_STOPWORDS: frozenset[str] = FRENCH_STOPWORDS | ENGLISH_STOPWORDS
+BM25_STOPWORDS: frozenset[str] = FRENCH_STOPWORDS | ENGLISH_STOPWORDS
 
-__all__ = ["FRENCH_STOPWORDS", "ENGLISH_STOPWORDS", "META_LEXICAL_STOPWORDS"]
+__all__ = ["FRENCH_STOPWORDS", "ENGLISH_STOPWORDS", "BM25_STOPWORDS"]

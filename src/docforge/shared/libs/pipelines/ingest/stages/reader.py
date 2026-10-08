@@ -20,6 +20,7 @@ from shared_libs.pipelines.build.blob import (
     NodeBlob,
 )
 from shared_libs.pipelines.edit.topology import BlobTopology
+from shared_libs.pipelines.nodes.embed.dense_sparse import DENSE_SPARSE_KIND, EmbedLegacyMigration
 
 # ====== Local Project Imports ======
 from .chain_walk import ChainWalker
@@ -84,7 +85,7 @@ class StateReader:
             metadoc_config=cls.__config_of(doc_prep),
             metadoc_chain=MetagenReader.chain(ordered, doc_prep),
             embed_on=cls.__by_family(ordered, "embed") is not None,
-            embed_chain=cls.__linear_chain(blob, ordered, "embed", "bge_server"),
+            embed_chain=cls.__embed_chain(blob, ordered),
         )
         # Enrich internals — the mode, the classifier config, the chains and the loop concurrency
         # (read straight off the ForEach, so a blob omitting it round-trips to the stock 4). The mode
@@ -278,6 +279,20 @@ class StateReader:
         return ChainSpec(
             family=family, steps=ChainWalker.walk(blob.transitions, nodes, head, {family})
         )
+
+    @classmethod
+    def __embed_chain(cls, blob: GroupNodeBlob, ordered: list[NodeBlob]) -> ChainSpec:
+        """The embed chain, every legacy single-provider step migrated to the dense/sparse slots.
+
+        A pre-slots ``bge_server`` / ``openai_compatible`` step becomes ``(embed, dense_sparse)``
+        with the equivalent slots (EmbedLegacyMigration), so a stored blob heals to the slot node.
+        """
+        chain = cls.__linear_chain(blob, ordered, "embed", DENSE_SPARSE_KIND)
+        steps = []
+        for step in chain.steps:
+            kind, config = EmbedLegacyMigration.step(step.kind, dict(step.config))
+            steps.append(step.model_copy(update={"kind": kind, "config": config}))
+        return ChainSpec(family=chain.family, steps=steps)
 
     @classmethod
     def __switch_target(cls, body: GroupNodeBlob, classify_id: str, figure_kind: str) -> str | None:

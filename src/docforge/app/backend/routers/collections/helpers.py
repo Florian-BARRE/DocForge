@@ -15,9 +15,10 @@ from loggerplusplus import loggerplusplus
 # ====== Internal Project Imports ======
 from shared_libs.pipelines.blob_secrets import has_blob_secrets, redact_blob_secrets
 from shared_libs.pipelines.ingest import BlobNormalizer, FormatProbeHelpers
+from shared_libs.pipelines.nodes.embed.blob import EmbedBlobResolver
 from shared_libs.public_models import FieldOrigin, FieldScope, FieldType, TextSanitizer
 from shared_libs.services.db.postgresql.tables import Collection, MetadataField
-from shared_libs.services.db.qdrant import RESERVED_PAYLOAD_KEYS
+from shared_libs.services.db.qdrant import RESERVED_PAYLOAD_KEYS, QdrantCollectionApi
 
 # ====== Local Project Imports ======
 from ...libs.estimate import EstimateOverrides
@@ -128,13 +129,13 @@ class CollectionHelpers:
         here — the ONE serialisation boundary every read path funnels through — so a live key is never
         echoed to a client. The stored blobs keep the real keys; only this outbound copy is masked.
         ``missing_vectors`` is the store-side gap the caller read and ``aliases`` the collection
-        aliases targeting it (None = not computed on this path).
+        aliases targeting it (None = not computed on this path). A store gap forces ``needs_reindex``
+        (stored flag OR missing): a vector the store lacks or declares for another sparse encoder is
+        only fixed by a rebuild, whatever the stored baseline says.
         """
-        return CollectionModel(
-            **cls.__base_payload(collection, fields, mask=redact_blob_secrets),
-            missing_vectors=missing_vectors,
-            aliases=aliases,
-        )
+        payload = cls.__base_payload(collection, fields, mask=redact_blob_secrets)
+        payload["needs_reindex"] = bool(payload["needs_reindex"] or missing_vectors)
+        return CollectionModel(**payload, missing_vectors=missing_vectors, aliases=aliases)
 
     @classmethod
     def to_list_item(
@@ -184,11 +185,15 @@ class CollectionHelpers:
         # 1. Union the planner's reindex verdict with the store truth (never under-reports).
         diff = (getattr(schema, "diff", None) or SchemaDiff()).model_copy(deep=True)
         gaps = missing or []
+        # A content-vector gap (``content`` label) is not a schema field — it only raises needs_reindex.
         diff.reindex_required_fields = sorted(
-            set(diff.reindex_required_fields) | {field for field, _ in gaps}
+            set(diff.reindex_required_fields)
+            | {field for field, _ in gaps if field != QdrantCollectionApi.CONTENT_LABEL}
         )
+        payload = cls.__base_payload(collection, fields, mask=redact_blob_secrets)
+        payload["needs_reindex"] = bool(payload["needs_reindex"] or gaps)
         return UpdateCollectionResponse(
-            **cls.__base_payload(collection, fields, mask=redact_blob_secrets),
+            **payload,
             missing_vectors=sorted(vector for _, vector in gaps),
             schema_diff=diff,
             dry_run=dry_run,
@@ -321,7 +326,7 @@ class CollectionHelpers:
             )
 
     @staticmethod
-    def validate_search_blob(search: dict) -> None:
+    def validate_search_blob(search: dict, pipeline: dict | None = None) -> None:
         """Guard a non-empty search blob's shape and validate it as a genuine SEARCH graph.
 
         A new search blob is a search GRAPH blob. Only two shapes are valid: {} (the sentinel
@@ -333,6 +338,8 @@ class CollectionHelpers:
 
         Args:
             search (dict): The healed, non-empty search blob to validate.
+            pipeline (dict | None): The collection's ingest blob (its embed layout gates the search
+                blob's default content modality — dense_only on a sparse-only collection is a 422).
 
         Raises:
             HTTPException: 422 when the blob has no "nodes" list; validator errors for a non-search graph.
@@ -343,7 +350,8 @@ class CollectionHelpers:
                 detail="collection.search must be empty ({} = stock default) or a search graph "
                 "blob with a 'nodes' list.",
             )
-        SearchBlobValidator.validate(search)
+        layout = EmbedBlobResolver.layout(pipeline) if pipeline is not None else None
+        SearchBlobValidator.validate(search, layout)
 
     # -------------------- schema rows --------------------
     @staticmethod

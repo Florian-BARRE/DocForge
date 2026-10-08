@@ -120,7 +120,7 @@ inside a node. A node may *read* through an injected read-only capability, but n
 | 4 | **CHUNK** | One chunker (family choice): `structure_aware`, `fixed_size`, or `semantic`. |
 | 5 | **CONTEXTUALIZE** | Stackable methods that enrich chunk text: `doc_meta`, `breadcrumb`, `sliding` window, `llm`. |
 | 6 | **METAGEN** | Contract-driven metadata generation for document and chunk, LLM + prompt per field, structured output. |
-| 7 | **EMBED** | One embed provider (family choice): `bge_server` (dense + sparse) or any OpenAI-compatible endpoint (dense), plus named vectors per semantic metadata field. |
+| 7 | **EMBED** | One embedder with two independent provider slots: **dense** (`bge_server` or any OpenAI-compatible endpoint) and **sparse** (`bge_server` learned weights or `bm25_local` in-process BM25), either one switchable off. The same `bge_server` on both slots is one combined call per batch. Plus named vectors per semantic/lexical metadata field. |
 
 ### Flow primitives
 
@@ -212,8 +212,10 @@ Overview UI renders it as a panel. It is also reachable through the typed SDK
 Search is **hybrid** and runs inline in the request as its own pure graph (`encode → retrieve → fuse
 → rerank → postprocess`):
 
-- **Dense + sparse fusion** — Qdrant stores named dense and sparse (BM25-style) vectors; both are
-  queried and their results fused.
+- **Dense + sparse fusion** — Qdrant stores named dense and sparse vectors; both are queried and
+  their results fused. A dense-only or sparse-only collection queries its single axis and returns raw
+  scores (`raw_dense` / `raw_sparse`). Sparse vectors carry Qdrant's IDF modifier only when the sparse
+  provider is `bm25_local` (derived from the embed config).
 - **Optional cross-encoder rerank** — a BGE-reranker (cross-encoder) re-scores the fused candidates
   when enabled, served by `bge_server`.
 - **Per-field metadata surfaces** — every metadata field carries three orthogonal flags that drive

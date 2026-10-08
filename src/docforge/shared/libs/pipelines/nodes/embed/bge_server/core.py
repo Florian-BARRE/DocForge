@@ -1,21 +1,20 @@
 # ====== Code Summary ======
-# The bge_server embedder — DocForge's own model host (BGE-M3): dense via /embed and sparse via
-# /embed_sparse (TEI-compatible routes). The product default: one local server, both vector
-# axes, no per-request model choice (the server hosts ONE model — the config's model field is
-# provenance).
+# LEGACY single-provider embed node ``(embed, bge_server)`` — the shape every blob stored before the
+# dense/sparse slots carried. Kept registered but NOT selectable so a stored, not-yet-healed blob still
+# builds and its search/meta-sync readers still rebuild it; the stage reader migrates it to the
+# ``(embed, dense_sparse)`` node (bge dense + bge sparse on the same endpoint when ``embed_sparse``).
+# Every wire call delegates to the shared BgeServerProvider — no duplicated HTTP code.
 
 # ====== Third-Party Library Imports ======
-import httpx
 from pydantic import Field, field_validator
 
 # ====== Internal Project Imports ======
-from shared_libs.pipelines.nodes.http_pool import HttpClientPool
-from shared_libs.pipelines.nodes.openai_compat import EndpointReachability
 from shared_libs.pipelines.registry import NodeRegistry
 from shared_libs.public_models import SparseVector
 
 # ====== Local Project Imports ======
 from ..base import BaseEmbedConfig, BaseEmbedderNode
+from ..providers import BgeServerProvider, BgeServerProviderConfig
 
 
 class EmbedBgeServerConfig(BaseEmbedConfig):
@@ -38,88 +37,49 @@ class EmbedBgeServerConfig(BaseEmbedConfig):
 
 @NodeRegistry.register("embed")
 class EmbedBgeServerNode(BaseEmbedderNode):
-    """Dense + sparse embedding through DocForge's bge_server (BGE-M3)."""
+    """LEGACY: dense + sparse through bge_server as one provider (superseded by dense_sparse)."""
 
     KIND = "bge_server"
-    NAME = "bge_server (BGE-M3)"
-    SUMMARY = "Dense + sparse vectors through DocForge's local BGE-M3 server."
+    NAME = "bge_server (legacy single-provider)"
+    SUMMARY = "Legacy shape — read and migrated to the dense/sparse slot embedder."
     HOW_IT_WORKS = (
-        "POSTs the text batches to the server's TEI-compatible routes: /embed_all for both axes in "
-        "one forward pass when the server exposes it (falling back to /embed + /embed_sparse on an "
-        "older server that answers 404). Both axes from one local server — the product default."
+        "Kept only so blobs stored before the dense/sparse slots still build; the stage reader "
+        "migrates it to (embed, dense_sparse) with bge_server in both slots."
     )
     Config = EmbedBgeServerConfig
     UNIQUE_IN_GRAPH = True
+    SELECTABLE = False
+
+    def __provider(self) -> BgeServerProvider:
+        """The shared provider over this node's endpoint (built per call — it is stateless)."""
+        config: EmbedBgeServerConfig = self.config
+        return BgeServerProvider(
+            BgeServerProviderConfig(
+                base_url=config.base_url,
+                api_key=config.api_key,
+                model=config.model,
+                timeout_seconds=config.timeout_seconds,
+                preflight_timeout_seconds=config.preflight_timeout_seconds,
+            )
+        )
 
     async def preflight(self) -> None:
-        """Verify the bge_server is reachable and its token accepted, before any spend.
-
-        Probes the TEI-compatible ``/health`` route — any answer (even non-200) proves the host
-        is up; a 401/403 surfaces a rejected bearer token.
-        """
-        config: EmbedBgeServerConfig = self.config
-        await EndpointReachability.check(
-            node_kind=self.KIND,
-            base_url=config.base_url,
-            api_key=config.api_key,
-            timeout_seconds=config.preflight_timeout_seconds,
-            path="/health",
-        )
-
-    async def __post(self, route: str, texts: list[str]) -> list:
-        """One batched call to the server."""
-        config: EmbedBgeServerConfig = self.config
-        headers = {"Authorization": f"Bearer {config.api_key}"} if config.api_key else {}
-
-        async def _post(client: httpx.AsyncClient) -> list:
-            """One batched POST against the server — replayed on a fresh client if the socket died."""
-            response = await client.post(route, json={"inputs": texts}, headers=headers)
-            response.raise_for_status()
-            return response.json()
-
-        # The pooled client keeps the connection alive across batches (bearer rides per-request) and
-        # self-heals a dead socket left by a bge_server restart.
-        return await HttpClientPool.run(
-            _post, base_url=config.base_url, timeout=config.timeout_seconds
-        )
-
-    @staticmethod
-    def __parse_sparse(entries_per_input: list) -> list[SparseVector]:
-        """Parse a TEI sparse payload — one {index, value} list per input — into SparseVectors."""
-        return [
-            SparseVector(
-                indices=[int(entry["index"]) for entry in entries],
-                values=[float(entry["value"]) for entry in entries],
-            )
-            for entries in entries_per_input
-        ]
+        """Probe the server's /health before any spend."""
+        await self.__provider().preflight()
 
     async def _embed_dense(self, texts: list[str]) -> list[list[float]]:
         """Dense vectors via /embed."""
-        return await self.__post("/embed", texts)
+        return await self.__provider().embed_dense(texts)
 
     async def _embed_sparse(self, texts: list[str]) -> list[SparseVector] | None:
-        """Sparse vectors via /embed_sparse (TEI shape: one {index, value} list per input)."""
-        return self.__parse_sparse(await self.__post("/embed_sparse", texts))
+        """Sparse vectors via /embed_sparse."""
+        return await self.__provider().embed_sparse(texts)
 
     async def _embed_dense_sparse(
         self, texts: list[str]
     ) -> tuple[list[list[float]], list[SparseVector]] | None:
-        """Dense + sparse in one forward pass via /embed_all — None when the server predates it.
-
-        The single-pass optimisation: /embed_all returns ``{"dense": [...], "sparse": [...]}`` from
-        one model call, halving the round-trips versus /embed + /embed_sparse. An older bge_server
-        has no such route and answers 404; that specific "route absent" case is mapped to None so the
-        caller falls back to the two separate routes. Genuine transient failures (timeouts, 5xx) are
-        deliberately NOT swallowed — they propagate for the resilient retry/split to handle.
-        """
-        try:
-            payload = await self.__post("/embed_all", texts)
-        except httpx.HTTPStatusError as error:
-            if error.response.status_code == 404:
-                return None
-            raise
-        return payload["dense"], self.__parse_sparse(payload["sparse"])
+        """Both axes via /embed_all — None on an older server (404)."""
+        return await self.__provider().embed_dense_sparse(texts)
 
 
 __all__ = ["EmbedBgeServerNode", "EmbedBgeServerConfig"]

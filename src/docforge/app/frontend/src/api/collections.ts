@@ -182,6 +182,17 @@ export function deleteCollection(id: string): Promise<void> {
   return apiFetch(`${BASE}/${id}`, { method: "DELETE" });
 }
 
+/** The tracked `rebuild_index` job started by `POST /collections/{id}/rebuild-index` (202). */
+export interface RebuildIndexAccepted {
+  collection_id: string;
+  job_id: string;
+}
+
+/** Rebuilds the vector index from the current schema/embedder — no content re-embed of documents. */
+export function rebuildCollectionIndex(id: string): Promise<RebuildIndexAccepted> {
+  return apiFetch(`${BASE}/${id}/rebuild-index`, { method: "POST" });
+}
+
 /** Mirrors a node card's `config_schema` face — see `GET /collections/contract-schema`. */
 interface CollectionContractSchemaResponse {
   config_schema: JsonSchema;

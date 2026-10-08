@@ -16,12 +16,17 @@
 # ====== Third-Party Library Imports ======
 from fastapi import APIRouter, Depends, HTTPException
 
+# ====== Internal Project Imports ======
+from shared_libs.pipelines.nodes.embed.blob import EmbedBlobResolver
+
 # ====== Local Project Imports ======
 from ...context import CONTEXT
 from ...libs.auth import AuthPrincipal, AuthzGuard, Capability, require
 from ...libs.collection_ref import CollectionRef
 from ...libs.metrics.search_health import SearchHealthReader
 from ...libs.search import (
+    DeclaredVectorsCache,
+    DefaultTargetCorrection,
     HitProjection,
     MinScoreHint,
     QueryEmbedderProbe,
@@ -51,6 +56,10 @@ from .models import (
 )
 
 router = APIRouter(tags=["search"])
+
+# The default (target-less) search's mismatched-sparse guard, over a short-TTL store read so a plain
+# query does not pay a Qdrant round-trip each time.
+_DEFAULT_TARGETS = DefaultTargetCorrection(DeclaredVectorsCache())
 
 
 @router.get(
@@ -145,17 +154,39 @@ async def search_collection(
 
     # 4. Gate the search targets the same way — a target naming a field/vector the collection never
     #    indexed (or a selection with no modality) is a caller error rejected 422 before any spend.
-    #    A flag set in Postgres is not enough: the vector must also be declared by the Qdrant store.
-    #    The store's declared vectors are read (one Qdrant call) only when a metadata field is targeted.
+    #    A flag set in Postgres is not enough: the vector must also be declared by the Qdrant store
+    #    (under the configured sparse modifier), and the embedder must have the axis at all (a
+    #    semantic target on a sparse-only collection is a 422). The store's declarations are read
+    #    (one Qdrant call) only when a metadata field or a lexical modality is targeted; the
+    #    target-less default path never reads the store.
     search_targets = SearchModelMapper.to_search_targets(request.search_in)
+    layout = EmbedBlobResolver.layout(collection.pipeline)
     declared = (
-        await CONTEXT.database.index_state.declared_vectors(collection_id)
+        await CONTEXT.database.index_state.declared(collection_id)
         if SearchTargetValidator.needs_store_check(search_targets)
         else None
     )
-    target_errors = SearchTargetValidator.validate_search_targets(search_targets, schema, declared)
+    target_errors = SearchTargetValidator.validate_search_targets(
+        search_targets, schema, declared, layout
+    )
     if target_errors:
         raise HTTPException(status_code=422, detail=f"Invalid search target(s): {target_errors}")
+    # 4a. The default (target-less) search never queries a content sparse vector another sparse
+    #     provider encoded (its IDF modifier disagrees with the config): the lexical axis is dropped
+    #     with a rebuild hint — dense-only, or an empty answer on a sparse-only collection. Never 422.
+    default_plan = await _DEFAULT_TARGETS.plan(
+        collection_id, search_targets, layout, CONTEXT.database.index_state.declared
+    )
+    search_targets = default_plan.targets
+    if default_plan.empty:
+        return SearchResponse(
+            query=request.query,
+            hits=[],
+            score_kind=ScoreKindClassifier.score_kind(collection.search),
+            cost=None,
+            debug_info=None,
+            hints=[SearchModelMapper.to_hint_model(hint) for hint in default_plan.hints],
+        )
     # 4b. A metadata-only search skips the (body-scoring) rerank — before the score_kind is derived.
     tuning = tuning.for_targets(search_targets)
 
@@ -227,7 +258,8 @@ async def search_collection(
     min_score_cut = (result.debug or {}).get("min_score") or {}
     pre_cut_count = len(result.hits) + int(min_score_cut.get("dropped") or 0)
     hints = (
-        resolution.hints
+        default_plan.hints
+        + resolution.hints
         + ZeroHitHintBuilder.build(resolution, pre_cut_count)
         + MinScoreHint.build(min_score_cut, len(result.hits))
         + TermlessQueryHint.build(probe, request.query)

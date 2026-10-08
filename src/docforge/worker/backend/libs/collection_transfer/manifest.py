@@ -103,6 +103,10 @@ class CollectionContractModel(BaseModel):
     # the baseline and the imported collection is not spuriously flagged needs_reindex. Defaulted so a
     # bundle exported before it existed imports cleanly (legacy bundle → NULL = never indexed).
     indexed_signature: str | None = None
+    # The embed-only (per-axis) baseline the exported vectors were indexed under — lets the import
+    # tell whether the bundle's content sparse vectors match the configured sparse provider.
+    # Defaulted so an older bundle imports cleanly (NULL = unknown → content sparse re-encoded).
+    indexed_embed_signature: str | None = None
     # The document-scope field shown as each document's display title. Defaulted so a bundle exported
     # before the setting existed imports cleanly (legacy bundle → NULL = parsed titles).
     title_field: str | None = None

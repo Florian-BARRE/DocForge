@@ -1,7 +1,7 @@
-"""A stopword-only query against a BM25 metadata lexical target resolves to no vector (axes=none, []).
-The read port records THAT cause on the probe, and the search response carries a hint naming the
-target — only for that cause (a query with a term, a legacy non-BM25 vector, or a degraded dense axis
-records nothing). The route-level wiring is covered in tests/units/api/test_search_termless_hint.py.
+"""A stopword-only query on a term-based sparse provider (bm25_local) leaves an EMPTY sparse query, so a
+lexical target resolves to no vector (axes=none, []). The read port records THAT cause on the probe,
+and the search response carries a hint naming the target — only for that cause (a query with a term,
+a collection with no sparse axis, or a degraded dense axis records nothing). The route-level wiring is covered in tests/units/api/test_search_termless_hint.py.
 """
 
 import asyncio
@@ -19,9 +19,9 @@ _NOM = SearchTarget(field="nom", semantic=False, lexical=True)
 _EMPTY = SparseVector(indices=[], values=[])
 
 
-def _port(bm25: set[str]) -> tuple[CollectionReadPortImpl, AsyncMock]:
+def _port() -> tuple[CollectionReadPortImpl, AsyncMock]:
     hybrid_ids = AsyncMock(return_value=[("c1", 0.5)])
-    search = SimpleNamespace(bm25_meta_vectors=AsyncMock(return_value=bm25), hybrid_ids=hybrid_ids)
+    search = SimpleNamespace(hybrid_ids=hybrid_ids)
     return CollectionReadPortImpl(SimpleNamespace(search=search), uuid.uuid4()), hybrid_ids
 
 
@@ -30,8 +30,8 @@ def _search(port: CollectionReadPortImpl, encoded: EncodedQuery, targets: list) 
 
 
 def test_stopword_query_records_the_termless_lexical_target() -> None:
-    port, hybrid_ids = _port({"meta_nom_bm25"})
-    encoded = EncodedQuery(dense=[], meta_sparse=_EMPTY, model="m")
+    port, hybrid_ids = _port()
+    encoded = EncodedQuery(dense=[], sparse=_EMPTY, model="m")
 
     assert _search(port, encoded, [_NOM]) == []
 
@@ -44,18 +44,18 @@ def test_stopword_query_records_the_termless_lexical_target() -> None:
 
 
 def test_query_with_a_term_records_nothing() -> None:
-    port, _ = _port({"meta_nom_bm25"})
-    encoded = EncodedQuery(dense=[], meta_sparse=SparseVector(indices=[7], values=[1.0]), model="m")
+    port, _ = _port()
+    encoded = EncodedQuery(dense=[], sparse=SparseVector(indices=[7], values=[1.0]), model="m")
 
     assert _search(port, encoded, [_NOM]) == [Candidate(chunk_id="c1", score=0.5, source="hybrid")]
     assert port.probe.termless_lexical_fields == []
 
 
 def test_other_axes_none_causes_record_nothing() -> None:
-    # A legacy (non-BM25) metadata vector with no embedder sparse axis, and a degraded dense axis.
-    port, _ = _port(set())
-    legacy = EncodedQuery(dense=[], meta_sparse=_EMPTY, model="m")
-    assert _search(port, legacy, [_NOM]) == []
+    # A collection with no sparse axis (sparse None), and a degraded dense axis.
+    port, _ = _port()
+    no_sparse = EncodedQuery(dense=[], sparse=None, model="m")
+    assert _search(port, no_sparse, [_NOM]) == []
     degraded = EncodedQuery(dense=[], model="m")
     assert _search(port, degraded, [SearchTarget(field="content", semantic=True)]) == []
 

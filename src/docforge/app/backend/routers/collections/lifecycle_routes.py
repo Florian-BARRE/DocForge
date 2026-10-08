@@ -67,7 +67,7 @@ async def create_collection(
     #     sentinel; a non-default preset is a real search graph, validated exactly as an explicit one.
     search_blob = CollectionBlobHelpers.search_preset_blob(request.search_preset)
     if search_blob:
-        CollectionHelpers.validate_search_blob(search_blob)
+        CollectionHelpers.validate_search_blob(search_blob, blob)
 
     # 2. Name unicity (among collections AND collection aliases) — explicit 409, not a driver error.
     await CollectionNameGuard.assert_free(request.name)

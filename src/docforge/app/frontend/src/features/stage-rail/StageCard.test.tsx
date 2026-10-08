@@ -51,7 +51,7 @@ const stage: StageView = {
   available: ["fixed_size"],
   config: { chunk_size: 512 },
   chains: [],
-  stack: [],
+  stack: [], slots: [],
   requires: [],
   notes: null,
 };
@@ -60,6 +60,8 @@ const actions: StageRailActions = {
   enableStage: vi.fn(),
   disableStage: vi.fn(),
   setProvider: vi.fn(),
+  setSlotProvider: vi.fn(),
+  setSlotConfig: vi.fn(),
   setConfig: vi.fn(),
   setStackSteps: vi.fn(),
   setStackMethodConfig: vi.fn(),

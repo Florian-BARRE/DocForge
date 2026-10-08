@@ -31,6 +31,7 @@ from shared_libs.public_models import (
     Provenance,
     RunBundle,
     SparseVector,
+    VectorLayout,
 )
 from shared_libs.services.db.postgresql.tables import BlobKind, MetadataField, SourceKind
 
@@ -214,6 +215,17 @@ def test_qdrant_point_has_named_vectors_and_lean_payload(translated) -> None:
         "keywords": ["cats"],
     }
     assert translated.dense_dim == 3
+    assert translated.layout == VectorLayout()
+
+
+def test_layout_carries_the_embedder_axes_and_sparse_idf() -> None:
+    """The store schema follows the embedder's config-derived flags (a sparse-only bm25_local run)."""
+    bundle = _bundle()
+    bundle.embeddings = bundle.embeddings.model_copy(
+        update={"dense_enabled": False, "sparse_idf": True, "dimension": 0}
+    )
+    out = RunTranslator.translate(DOC, bundle, _schema(), strategy="s", config_hash="c")
+    assert out.layout == VectorLayout(dense=False, sparse=True, sparse_idf=True)
 
 
 def test_disabled_by_role_chunk_persists_as_a_row_but_gets_no_qdrant_point() -> None:

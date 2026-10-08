@@ -5,6 +5,7 @@ from .spec import FigureBranch, StageKey, StageKind, StageMeta, StageSpecs
 from .models import (
     ChainStep,
     ChainView,
+    ProviderSlotView,
     DisableStage,
     EnableStage,
     SetChain,
@@ -45,6 +46,7 @@ __all__ = [
     # view + action models
     "ChainStep",
     "ChainView",
+    "ProviderSlotView",
     "StackMethod",
     "StageView",
     "StageCatalog",

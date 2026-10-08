@@ -5,8 +5,10 @@
 # cap, and projects the outcome onto a ProviderProbeResult (ok / unreachable / auth_failed / skipped)
 # with a latency and a human detail on failure. It is the single seam behind BOTH the worker's
 # fail-fast ingest preflight (which raises on any failure) and the app's on-demand collection-health
-# endpoint (which serialises the structured results). It runs OUTSIDE nodes — a node stays pure, the
-# sweep only calls node.preflight(), which reads self.config. No DB/S3, no engine execution.
+# endpoint (which serialises the structured results). EVERY endpoint a leaf reaches (its base_url, or
+# each one a multi-endpoint leaf lists via probe_endpoints()) is gated by the egress allowlist before
+# any probe. It runs OUTSIDE nodes — a node stays pure, the sweep only calls node.preflight() and the
+# config-derived probe_endpoints(). No DB/S3, no engine execution.
 
 # ====== Standard Library Imports ======
 import asyncio
@@ -65,12 +67,31 @@ class ReachabilitySweep(LoggerClass):
         """The outer wait_for for one node: above its own probe budget, under the absolute ceiling.
 
         Sized from the node's configured ``preflight_timeout_seconds`` so the probe's internal
-        retries always finish before this cap fires; a node without the knob falls back to the
-        probe's default budget. Clamped to the ceiling so a huge config cannot stall the sweep.
+        retries always finish before this cap fires; a node probing several endpoints declares its
+        whole budget (``preflight_budget_seconds``); a node without either falls back to the probe's
+        default budget. Clamped to the ceiling so a huge config cannot stall the sweep.
         """
-        timeout = getattr(node.config, "preflight_timeout_seconds", None)
-        budget = EndpointReachability.budget(timeout) if timeout else EndpointReachability.budget()
+        declared = getattr(node, "preflight_budget_seconds", None)
+        if callable(declared):
+            budget = declared()
+        else:
+            timeout = getattr(node.config, "preflight_timeout_seconds", None)
+            budget = (
+                EndpointReachability.budget(timeout) if timeout else EndpointReachability.budget()
+            )
         return min(budget + _PROBE_MARGIN_SECONDS, _PROBE_CEILING_SECONDS)
+
+    @staticmethod
+    def __endpoints(node: ActionNode) -> list[str | None]:
+        """EVERY endpoint the node's preflight (and run) reaches — the egress surface to gate.
+
+        A node calling several endpoints (the embed dense/sparse slots) lists them itself via
+        ``probe_endpoints()`` (empty = in-process only); any other node calls its ``base_url``.
+        """
+        declared = getattr(node, "probe_endpoints", None)
+        if callable(declared):
+            return list(declared())
+        return [getattr(node.config, "base_url", None)]
 
     async def __probe(
         self, node: ActionNode, side: str, policy: ProviderEgressPolicy | None
@@ -95,15 +116,17 @@ class ReachabilitySweep(LoggerClass):
             ProviderProbeResult: The structured outcome for this leaf.
         """
         family = NodeRegistry.family_of(type(node))
-        # The provider's base URL is normally secret-free (the api_key is a separate config field) —
-        # surface it so a health dashboard can name WHICH endpoint each stage points at. Still redact
-        # any ``scheme://user:pass@host`` userinfo an operator may have embedded in it, so a
+        # The provider's base URLs are normally secret-free (the api_key is a separate config field) —
+        # surface them so a health dashboard can name WHICH endpoint each stage points at. Still redact
+        # any ``scheme://user:pass@host`` userinfo an operator may have embedded in them, so a
         # credential-bearing base_url never leaks through the endpoint field or the blocked detail.
-        raw_endpoint = getattr(node.config, "base_url", None)
-        endpoint = ConfigDumpHelpers.redact_text(raw_endpoint) if raw_endpoint else raw_endpoint
+        raw_endpoints = self.__endpoints(node)
+        shown = [ConfigDumpHelpers.redact_text(url) for url in raw_endpoints if url]
+        endpoint = ", ".join(shown) if shown else None
 
-        # 1. A leaf with no preflight override has no endpoint to reach — nothing to probe.
-        if not self.probes_endpoint(node):
+        # 1. A leaf with no preflight override — or whose endpoints are all in-process — has no
+        #    endpoint to reach: nothing to probe.
+        if not self.probes_endpoint(node) or not raw_endpoints:
             return ProviderProbeResult(
                 node_id=node.id,
                 kind=node.KIND,
@@ -112,11 +135,18 @@ class ReachabilitySweep(LoggerClass):
                 status=ProbeStatus.SKIPPED,
             )
 
-        # 2. Egress gate: a provider whose host is not on the operator's allowlist is REFUSED here,
-        #    before the network probe — so this seam can never be turned into a host/port scanner. The
+        # 2. Egress gate: a provider with ANY endpoint whose host is not on the operator's allowlist
+        #    is REFUSED here, before the network probe — so this seam can never be turned into a
+        #    host/port scanner (a second slot endpoint cannot ride along an allowed first one). The
         #    allowlist matches on the RAW url (host parsing needs the intact authority); only the
-        #    surfaced ``endpoint`` is the redacted form.
-        if policy is not None and not policy.is_allowed(raw_endpoint):
+        #    surfaced endpoints are the redacted form.
+        refused = [
+            url for url in raw_endpoints if policy is not None and not policy.is_allowed(url)
+        ]
+        if refused:
+            shown_refused = ", ".join(
+                repr(ConfigDumpHelpers.redact_text(url)) if url else repr(url) for url in refused
+            )
             return ProviderProbeResult(
                 node_id=node.id,
                 kind=node.KIND,
@@ -126,7 +156,7 @@ class ReachabilitySweep(LoggerClass):
                 endpoint=endpoint,
                 detail=(
                     f"endpoint host is not on the provider egress allowlist "
-                    f"(base_url={endpoint!r}) — refused without probing"
+                    f"(base_url={shown_refused}) — refused without probing"
                 ),
             )
 

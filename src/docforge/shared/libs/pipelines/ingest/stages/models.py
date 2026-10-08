@@ -90,6 +90,40 @@ class ChainView(BaseModel):
     )
 
 
+class ProviderSlotView(BaseModel):
+    """
+    One provider SLOT of a stage node — e.g. the embed node's dense and sparse providers.
+
+    A slot is chosen independently of its siblings (SetProvider with ``slot``), configured on its own
+    (SetStageConfig with ``slot``) and may be OFF (``provider`` null) — e.g. a sparse-only embedder.
+
+    Attributes:
+        slot (str): Stable slot key (``dense`` / ``sparse``).
+        title (str): Human label of the slot.
+        description (str): What the slot's provider produces.
+        provider (str | None): The selected provider kind, or null when the slot is off.
+        available (list[str]): The provider kinds that can fill this slot.
+        config (dict | None): The slot's current provider config (``kind`` included), null when off.
+        config_schemas (dict[str, dict]): The JSON schema of each available kind's slot config.
+    """
+
+    slot: str = Field(description="Stable slot key (dense / sparse).")
+    title: str = Field(description="Human label of the slot.")
+    description: str = Field(description="What the slot's provider produces.")
+    provider: str | None = Field(
+        default=None, description="The selected provider kind; null when the slot is off."
+    )
+    available: list[str] = Field(
+        default_factory=list, description="The provider kinds that can fill this slot."
+    )
+    config: dict[str, Any] | None = Field(
+        default=None, description="The slot's current provider config (null when off)."
+    )
+    config_schemas: dict[str, dict[str, Any]] = Field(
+        default_factory=dict, description="JSON schema of each available kind's slot config."
+    )
+
+
 class StackMethod(BaseModel):
     """
     One method of a stackable stage — a node in the ordered composition.
@@ -135,6 +169,8 @@ class StageView(BaseModel):
             scope), the enrich per-figure-site chains, and one per contextualize llm method; empty
             for a stage with no model-call site.
         stack (list[StackMethod]): The ordered methods (contextualize; empty elsewhere).
+        slots (list[ProviderSlotView]): The independent provider slots of the stage node (embed:
+            dense + sparse); empty for a stage without slots.
         requires (list[str]): Keys of the stages this one depends on.
         notes (str | None): A caveat shown to the user (e.g. a required config to fill).
     """
@@ -162,6 +198,10 @@ class StageView(BaseModel):
     )
     stack: list[StackMethod] = Field(
         default_factory=list, description="The ordered methods (contextualize; empty elsewhere)."
+    )
+    slots: list[ProviderSlotView] = Field(
+        default_factory=list,
+        description="The independent provider slots of the stage node (embed: dense + sparse).",
     )
     requires: list[str] = Field(
         default_factory=list, description="Keys of the stages this one depends on."
@@ -204,14 +244,24 @@ class SetProvider(BaseModel):
     """Pick the provider of an exclusive stage — swap the kind, reset its config to defaults.
 
     On a chain stage (parse / embed) re-picking the SAME kind keeps its stored secret (an omitted
-    secret is inherited from the same provider; a different kind never inherits one).
+    secret is inherited from the same provider; a different kind never inherits one). With a
+    ``slot`` (embed: ``dense`` / ``sparse``) it picks that slot's provider instead — ``kind`` null
+    turns the slot OFF (at least one embed slot must stay on).
     """
 
     model_config = ConfigDict(extra="forbid")
 
     action: Literal["set_provider"] = "set_provider"
     stage: str = Field(description="Key of the provider stage.")
-    kind: str = Field(description="The registry kind to select within the stage's family.")
+    slot: str | None = Field(
+        default=None,
+        description="Provider slot of the stage node (embed: dense / sparse); null = the stage's "
+        "own provider.",
+    )
+    kind: str | None = Field(
+        description="The kind to select — a registry kind of the stage's family, or (with a slot) a "
+        "slot provider kind; null with a slot turns that slot off."
+    )
 
 
 class SetStageConfig(BaseModel):
@@ -225,6 +275,11 @@ class SetStageConfig(BaseModel):
         default=None,
         description="Id of the target node inside a multi-node stage; null = the stage's primary "
         "node (e.g. metagen's chunk/document node, intake's convert node).",
+    )
+    slot: str | None = Field(
+        default=None,
+        description="Provider slot whose config is edited (embed: dense / sparse) — the slot's "
+        "provider kind is kept; null = the node config itself.",
     )
     config: dict[str, Any] = Field(
         description="The config dict — the full new config (replace) or the keys to change (merge; "
@@ -285,6 +340,7 @@ __all__ = [
     "ChainStep",
     "ChainSpec",
     "ChainView",
+    "ProviderSlotView",
     "StackMethod",
     "StageView",
     "StageCatalog",

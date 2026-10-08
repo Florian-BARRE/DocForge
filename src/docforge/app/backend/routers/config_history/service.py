@@ -142,7 +142,7 @@ class ConfigHistoryService:
         # 3. Fail-fast structural validation exactly like a PATCH (422 before any write).
         stored_pipeline = CollectionBlobHelpers.canonical_pipeline(pipeline or {})
         if search:
-            CollectionHelpers.validate_search_blob(search)
+            CollectionHelpers.validate_search_blob(search, stored_pipeline)
 
         # 4. The locked config-version write, conditional on the head this restore was computed on.
         try:

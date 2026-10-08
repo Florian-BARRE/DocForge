@@ -21,6 +21,9 @@ export function summarizeStage(stage: StageView, palette: Palette): string {
     case "fixed":
       return "always on";
     case "provider": {
+      if (stage.slots.length > 0) {
+        return stage.slots.map((sl) => `${sl.slot}: ${sl.provider ?? "off"}`).join(" · ");
+      }
       const card = stage.provider ? findNodeCard(palette, stage.family ?? "", stage.provider) : undefined;
       const providerLabel = card?.name ?? stage.provider ?? "no provider selected";
       const steps = ownChainStepCount(stage);

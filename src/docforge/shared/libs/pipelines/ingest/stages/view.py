@@ -13,6 +13,7 @@ from loggerplusplus import loggerplusplus
 from shared_libs.pipelines.registry import NodeRegistry
 
 # ====== Local Project Imports ======
+from .embed_slots import EmbedSlots
 from .models import ChainView, StageCatalog, StageView
 from .spec import StageKey, StageSpecs
 from .state import ChainSpec, PipelineState
@@ -63,6 +64,7 @@ class StageViewer:
             config=cls.__config(meta.key, state),
             chains=cls.__chains(meta.key, state),
             stack=list(state.stack) if meta.key == StageKey.CONTEXTUALIZE else [],
+            slots=EmbedSlots.views(state) if meta.key == StageKey.EMBED else [],
             requires=list(meta.requires),
             notes=cls.__notes(meta, state, enabled),
         )
@@ -104,7 +106,12 @@ class StageViewer:
             selected: str | None = head.kind if head else None
         else:
             selected = {StageKey.CHUNK: state.chunker_kind}.get(meta.key)
-        return selected, NodeRegistry.kinds(meta.family) if meta.family else []
+        return selected, cls.__selectable(meta.family) if meta.family else []
+
+    @staticmethod
+    def __selectable(family: str) -> list[str]:
+        """The family's SELECTABLE kinds (internal / legacy kinds are never offered)."""
+        return sorted(card.kind for card in NodeRegistry.catalog(family))
 
     @classmethod
     def __config(cls, key: str, state: PipelineState) -> dict | None:
@@ -179,7 +186,7 @@ class StageViewer:
             title=meta.title,
             description=meta.description,
             family=family,
-            available=NodeRegistry.kinds(family),
+            available=cls.__selectable(family),
             steps=list(chain.steps),
         )
 

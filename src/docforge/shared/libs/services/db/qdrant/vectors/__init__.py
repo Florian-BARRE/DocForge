@@ -1,6 +1,7 @@
 # ---------------------- Vector naming & schema ---------------------- #
 from .names import VectorNames
 from .vector_schema import QdrantVectorSchema
+from .declared import DeclaredVectors
 
 # ---------------------- Point transfer types ---------------------- #
 from .point import QdrantPoint, SparseVec
@@ -41,6 +42,7 @@ from .payload_keys import (
 __all__ = [
     "VectorNames",
     "QdrantVectorSchema",
+    "DeclaredVectors",
     "QdrantPoint",
     "SparseVec",
     "PayloadType",

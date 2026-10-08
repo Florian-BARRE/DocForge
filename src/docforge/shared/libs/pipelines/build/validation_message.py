@@ -37,5 +37,18 @@ class ValidationMessage:
         ]
         return f"{len(errors)} validation error(s): " + "; ".join(clauses)
 
+    @classmethod
+    def describe(cls, exc: BaseException) -> str:
+        """
+        Render ANY exception for a log line / job error: input-free when it is a ValidationError.
+
+        Args:
+            exc (BaseException): The error caught around a config / blob rebuild or validation.
+
+        Returns:
+            str: ``str(exc)`` — or, for a ValidationError, ``format(exc)`` (no input value).
+        """
+        return cls.format(exc) if isinstance(exc, ValidationError) else str(exc)
+
 
 __all__ = ["ValidationMessage"]

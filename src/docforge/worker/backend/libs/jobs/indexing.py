@@ -31,14 +31,18 @@ class DocumentIndexer:
             database (Any): The worker's Database facade.
             collection_id (uuid.UUID): The owning collection.
             document_id (uuid.UUID): The document whose points these are.
-            translated (Any): The RunTranslator output (``points`` + ``dense_dim``).
+            translated (Any): The RunTranslator output (``points`` + ``dense_dim`` + ``layout``).
             logger (Any): The caller's logger (a sync hiccup is logged, never raised).
         """
         # 1. No embed stage → no points: Qdrant is skipped entirely.
         if not translated.points:
             return
         await database.ingestion.index(
-            collection_id, document_id, translated.dense_dim, translated.points
+            collection_id,
+            document_id,
+            translated.dense_dim,
+            translated.points,
+            layout=getattr(translated, "layout", None),
         )
         # 2. Denormalise the filterable doc-scope metadata onto the fresh points (best-effort).
         try:

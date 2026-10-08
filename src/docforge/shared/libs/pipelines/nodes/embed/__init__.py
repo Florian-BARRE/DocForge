@@ -7,7 +7,7 @@ NodeRegistry.register_family(
     "embed",
     title="Embedding",
     description=(
-        "Turns each chunk's enriched text into its Qdrant vectors (dense, and sparse when the provider supports it). Pick ONE embedder per pipeline."
+        "Turns each chunk's enriched text into its Qdrant vectors through two independent provider slots: a DENSE provider and a SPARSE provider (either may be off)."
     ),
     mode=FamilyMode.EXCLUSIVE,
 )

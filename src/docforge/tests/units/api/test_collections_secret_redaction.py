@@ -354,11 +354,11 @@ def test_patch_round_trip_of_masked_pipeline_keeps_the_stored_key(client, monkey
     from shared_libs.pipelines.blob_secrets import redact_blob_secrets
     from shared_libs.pipelines.ingest import BlobNormalizer, IngestPipeline
 
-    # A VALID stored pipeline (the stock default) carrying a real embed key.
+    # A VALID stored pipeline (the stock default) carrying a real key on the embed dense slot.
     stored_blob = IngestPipeline.default_blob().model_dump(mode="json")
     for node in stored_blob["nodes"]:
         if node.get("family") == "embed":
-            node["config"]["api_key"] = "sk-EMBEDSECRET-9999"
+            node["config"]["dense"]["api_key"] = "sk-EMBEDSECRET-9999"
     stored_blob = BlobNormalizer.normalize(stored_blob)
     fake = _fake_collection(stored_blob, {})
 
@@ -384,7 +384,7 @@ def test_patch_round_trip_of_masked_pipeline_keeps_the_stored_key(client, monkey
     apply_update.assert_awaited_once()
     persisted = apply_update.await_args.args[1].pipeline
     embed = next(n for n in persisted["nodes"] if n.get("family") == "embed")
-    assert embed["config"]["api_key"] == "sk-EMBEDSECRET-9999"
+    assert embed["config"]["dense"]["api_key"] == "sk-EMBEDSECRET-9999"
 
     # And the response the client gets back is masked again (never the raw key).
     assert "sk-EMBEDSECRET-9999" not in response.text
@@ -400,7 +400,7 @@ def _patch_wired(monkeypatch) -> tuple[SimpleNamespace, dict, AsyncMock]:
     stored_blob = IngestPipeline.default_blob().model_dump(mode="json")
     for node in stored_blob["nodes"]:
         if node.get("family") == "embed":
-            node["config"]["api_key"] = "sk-EMBEDSECRET-9999"
+            node["config"]["dense"]["api_key"] = "sk-EMBEDSECRET-9999"
     stored_blob = BlobNormalizer.normalize(stored_blob)
     fake = _fake_collection(stored_blob, {})
     apply_update = AsyncMock(
@@ -423,8 +423,8 @@ def test_patch_build_error_never_echoes_a_secret(client, monkeypatch, capfd) -> 
     fake, stored_blob, apply_update = _patch_wired(monkeypatch)
     broken = copy.deepcopy(stored_blob)
     embed = next(n for n in broken["nodes"] if n.get("family") == "embed")
-    embed["config"].pop("base_url")
-    embed["config"]["api_key"] = "sk-FRESHSECRET-1234"
+    embed["config"]["dense"].pop("base_url")
+    embed["config"]["dense"]["api_key"] = "sk-FRESHSECRET-1234"
     response = client.patch(f"/api/v1/collections/{fake.id}", json={"pipeline": broken})
     assert response.status_code == 422, response.text
     assert "base_url" in response.text
@@ -442,7 +442,7 @@ def test_patch_masked_key_onto_a_new_endpoint_is_refused(client, monkeypatch) ->
     fake, stored_blob, apply_update = _patch_wired(monkeypatch)
     moved = redact_blob_secrets(stored_blob)
     embed = next(n for n in moved["nodes"] if n.get("family") == "embed")
-    embed["config"]["base_url"] = "http://evil.example:9"
+    embed["config"]["dense"]["base_url"] = "http://evil.example:9"
     response = client.patch(f"/api/v1/collections/{fake.id}", json={"pipeline": moved})
     assert response.status_code == 422, response.text
     assert "must be re-entered" in response.text

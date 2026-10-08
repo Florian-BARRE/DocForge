@@ -11,7 +11,7 @@ import { applyStageAction, getDesign, listPipelineDesigns, viewStages } from "..
 import { useToast } from "../../../shell/toast";
 import type { StageRailActions } from "../actions";
 import {
-  buildSetChainAction, buildSetConfigAction, buildSetStackAction, buildSetStackMethodChainAction,
+  buildSetChainAction, buildSetConfigAction, buildSetSlotConfigAction, localSetSlotConfig, buildSetStackAction, buildSetStackMethodChainAction,
   localSetChainStepConfig, localSetChainStepScoreBelow, localSetStackMethodConfig, localSetStackMethodChainStepConfig,
   localSetStageConfig,
 } from "./stageOps";
@@ -157,12 +157,37 @@ export function useStageRailPage({ initialBlob, onBlobChange, onSave }: UseStage
     [applyAction],
   );
 
+  // 4b. Slot config edits are MERGES of the typed keys only, so keystrokes within one debounce
+  //     window accumulate in `slotPatchRef`. A different slot starting mid-window flushes the previous
+  //     slot's patch first — one `/apply` carries exactly one slot.
+  const slotPatchRef = useRef<{ stage: string; slot: string; patch: Record<string, unknown> } | null>(null);
+  const setSlotConfig = useCallback((stageKey: string, slot: string, field: string, value: unknown) => {
+    const pending = slotPatchRef.current;
+    if (pending && (pending.stage !== stageKey || pending.slot !== slot)) {
+      window.clearTimeout(debounceRef.current);
+      slotPatchRef.current = null;
+      applyAction(buildSetSlotConfigAction(pending.stage, pending.slot, pending.patch));
+    }
+    const base = slotPatchRef.current ?? { stage: stageKey, slot, patch: {} };
+    slotPatchRef.current = { ...base, patch: { ...base.patch, [field]: value } };
+    applyLocalThenDebounced(
+      (s) => localSetSlotConfig(s, stageKey, slot, field, value),
+      () => {
+        const settled = slotPatchRef.current;
+        slotPatchRef.current = null;
+        return buildSetSlotConfigAction(stageKey, slot, settled?.patch ?? { [field]: value });
+      },
+    );
+  }, [applyAction, applyLocalThenDebounced]);
+
   // 5. The action façade every card uses — thin adapters translating a gesture into ONE `/apply`
   //    action, discrete edits going straight through and typed edits going through the debounce.
   const actions = useMemo<StageRailActions>(() => ({
     enableStage: (stageKey) => applyAction({ action: "enable_stage", stage: stageKey }),
     disableStage: (stageKey) => applyAction({ action: "disable_stage", stage: stageKey }),
     setProvider: (stageKey, kind) => applyAction({ action: "set_provider", stage: stageKey, kind }),
+    setSlotProvider: (stageKey, slot, kind) => applyAction({ action: "set_provider", stage: stageKey, slot, kind }),
+    setSlotConfig,
     setConfig: (stageKey, field, value) => applyLocalThenDebounced(
       (s) => localSetStageConfig(s, stageKey, field, value),
       (s) => buildSetConfigAction(s, stageKey),
@@ -190,7 +215,7 @@ export function useStageRailPage({ initialBlob, onBlobChange, onSave }: UseStage
         s.find((st) => st.key === stageKey)?.stack[methodIndex]?.chain?.steps ?? [],
       ),
     ),
-  }), [applyAction, applyLocalThenDebounced]);
+  }), [applyAction, applyLocalThenDebounced, setSlotConfig]);
 
   // 6. Save: PATCH the current blob back. Only offered when the caller wants persistence here.
   const handleSave = useCallback(async () => {

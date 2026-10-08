@@ -37,7 +37,7 @@ flowchart LR
     end
 
     subgraph S7["Étape 7 — EMBED ✅"]
-        s7["famille embed (CHOIX) : bge_server (dense+sparse)<br/>/ openai_compatible (dense) + vecteurs par champ sémantique"]
+        s7["famille embed : dense_sparse — slot dense (bge_server / openai_compatible)<br/>+ slot sparse (bge_server / bm25_local), chacun coupable ; même bge = 1 appel /embed_all"]
     end
 
     RUN --> S1 -->|"IntakeResult"| S2 -->|"DocumentIR"| S3 -->|"IR enrichi"| S4 -->|"chunks"| S5 --> S6 --> S7
@@ -466,10 +466,62 @@ Le texte embeddé est l'**`enriched_text`** (toute la raison d'être du contextu
 
 | Kind | Protocole | Produit |
 |---|---|---|
-| **bge_server** ✅ | notre serveur custom (BGE-M3, TEI-compat) : `/embed_all` (dense+sparse en UNE passe) avec repli `/embed` + `/embed_sparse` sur un serveur plus ancien (404) | dense **+ sparse** — le défaut du produit · `UNIQUE_IN_GRAPH=True` |
-| **openai_compatible** ✅ | `/v1/embeddings` via la factory | dense seul (le protocole n'a pas de sparse — axe sauté proprement, loggé) |
+| **dense_sparse** ✅ | LE embedder (kind par défaut, seul sélectionnable) : deux **slots de provider indépendants** dans UN node — `dense` (`bge_server` · `openai_compatible`) et `sparse` (`bge_server` = poids appris BGE-M3 · `bm25_local` = BM25 local en process), chacun `{kind, …config du kind}` ou `null` (axe coupé ; les deux `null` = rejeté au build). Slot omis = `bge_server` in-stack (`http://bge_server:80`) | **dense seul** (`sparse: null`) · **sparse seul** (`dense: null` — pas de `content_dense`, recherche lexicale seule, score `raw_sparse`) · **dense + sparse** (deux providers, ou le MÊME `bge_server` → UN appel `/embed_all` par batch). `UNIQUE_IN_GRAPH=False` (une chaîne de repli legacy bge→openai migre en 2 étapes) |
+| **bge_server** (legacy, `SELECTABLE=False`) | ancien kind mono-provider : délègue ses appels au provider `bge_server` (`/embed_all` avec repli `/embed` + `/embed_sparse` sur 404) | dense **+ sparse** — conservé pour les vieux blobs / doubles de test ; le `BlobNormalizer` le migre en `dense_sparse` |
+| **openai_compatible** (legacy, `SELECTABLE=False`) | `/v1/embeddings` via la factory (provider `openai_compatible`) | dense seul — migré en `dense_sparse{dense: openai_compatible, sparse: null}` |
 
-**Config commune** : `model` (provenance, stocké avec les vecteurs) · `batch_size=32` · `embed_sparse=true` · `max_concurrency` (défaut null → `WORKER_EMBED_MAX_INFLIGHT_PER_ENDPOINT` ; plafond d'appels embed simultanés par endpoint, sémaphore Redis partagé injecté via `ProviderLimiterRegistry`, no-op hors worker — baux scorés par leur **expiration** sur l'horloge **serveur** Redis (`TIME`), admission FIFO ; bail = `timeout_seconds + 15` s, rendu au succès mais **conservé jusqu'à expiration** si l'appel timeout/casse en vol (le serveur calcule encore la requête abandonnée) ; au-delà de `WORKER_EMBED_SLOT_MAX_WAIT_SECONDS` l'appel lève `ProviderSlotTimeout` (transitoire : retry+backoff, **jamais de split**) — seule une panne Redis passe en fail-open) ·
+**Pourquoi des slots DANS un node, pas deux nodes + une jointure.** BGE-M3 produit dense ET sparse en UNE passe
+du modèle (`/embed_all`) : deux nodes séparés suivis d'un merge ne pourraient jamais émettre cet appel unique
+(chaque node appellerait sa route, le serveur calculerait deux fois). Le node `dense_sparse` voit les deux slots et
+décide lui-même : **combiné** ssi même `KIND`, provider `SUPPORTS_COMBINED`, et endpoint normalisé identique
+(`EndpointKey.normalize(url)` + chemin sans `/` final — `http://BGE:80/` = `http://bge:80`) → UN
+`_resilient(_embed_dense_sparse)` par batch sous la politique du slot dense et UN bail du limiteur (un appel
+combiné = un slot). **En mode combiné, seuls l'`api_key` et la politique retry/timeout/concurrence du slot
+DENSE servent** — ceux du slot sparse sont alors ignorés (dit dans la `description` du slot, visible dans l'UI).
+Sinon les deux axes partent en `asyncio.gather`, chacun sous la politique retry/backoff/
+`max_concurrency` de SON slot (`_call_policy(axis)`). Les providers vivent dans `nodes/embed/providers/`
+(`EmbedProvider` : `KIND` · `AXES` · `SUPPORTS_COMBINED` · `SPARSE_IDF` · `Config` ; `EmbedProviderRegistry.kinds(axis)`
+alimente les listes `available` du stage-rail et `GET /capabilities` `embed_dense`/`embed_sparse`). Un nouveau
+provider = une classe enregistrée, rien à changer au node. Le `preflight()` sonde chaque endpoint DISTINCT une fois
+(`probe_endpoints()` ; `bm25_local` n'a pas d'endpoint) et le sweep de joignabilité vérifie CHAQUE endpoint de
+slot contre la politique d'egress.
+
+**`bm25_local` (provider sparse explicite).** Code pur, zéro réseau, zéro modèle
+(`providers/bm25_local/` : `Bm25Analyzer` minuscules → pliage d'accents NFKD → tokens alphanumériques → stopwords
+FR+EN → union des stems Snowball FR+EN ; `Bm25Encoder` → TF saturée BM25 `k1=1.2`, `b=0.75` sur des ids
+`blake2b`→uint32). La longueur de référence dépend du RÔLE : `content_reference_length=256` (corps de chunk) /
+`field_reference_length=8` (valeur de métadonnée courte) ; la requête est le vecteur des termes uniques (poids 1).
+Ses vecteurs sont des fréquences : **l'IDF est calculée par Qdrant** (`Modifier.IDF`), d'où `SPARSE_IDF=True`.
+
+**IDF = dérivée de la CONFIG, tout-ou-rien, jamais du store.** `EmbedBlobResolver.layout(pipeline)` →
+`VectorLayout(dense, sparse, sparse_idf)` lu sur le node embed de la collection (défaut `VectorLayout()` = dense +
+sparse sans IDF). `QdrantVectorSchema.sparse_config(lexical, layout)` déclare `content_bm25` ET chaque
+`meta_<slug>_bm25` avec `modifier=IDF` ssi le provider sparse est `bm25_local` ; les poids appris de `bge_server`
+n'en portent jamais. UN provider sparse par collection encode le contenu, les valeurs de métadonnées lexicales
+(`EmbedRole.FIELD`) et les requêtes — plus d'encodeur méta caché ni de marqueur IDF lu sur le store vivant.
+Pas de `content_dense` sans slot dense ; un champ sémantique est ignoré sans slot dense, un lexical sans slot sparse.
+
+**Décalage store ↔ config (collections 0.28–0.30, changement de provider sparse).** Le store vivant est lu en
+`DeclaredVectors(dense, sparse, idf_sparse)` ; `declared.mismatched(layout)` = les vecteurs sparse dont le modifier
+contredit la config (ex. des `meta_*_bm25` IDF remplis par l'ancien BM25 local sous une config `bge_server`). Un
+vecteur sparse REQUIS qui est en décalage compte comme **manquant** : `missing_vectors` le liste et
+`needs_reindex = stored OR missing` (le label `content` n'est jamais un champ de schéma, donc absent de
+`reindex_required_fields`). Il n'est **jamais écrit** (`MetaVectorSyncFacade` le saute, loggé ; l'indexation lève
+`UndeclaredVectorError` avec l'indice `rebuild_index`) ni **interrogé** : une cible `search_in` qui le vise → 422
+avec l'indice rebuild ; la recherche PAR DÉFAUT (sans `search_in`), qui ne lit pas le store sur son chemin chaud,
+consulte un cache TTL 30 s de `declared` (`declared_cache.py`) et, si `content_bm25` est en décalage, cherche en
+sémantique seule (ou ne rend rien sur une collection sparse-only) avec le hint « lexical axis disabled … run
+rebuild_index » — jamais un 422.
+**Vieux blobs** : `EmbedLegacyMigration` (au read, `BlobNormalizer`, `ENGINE_BLOB_VERSION=4`) — `bge_server` +
+`embed_sparse` vrai/absent → `dense = sparse = {kind: bge_server, base_url, api_key, model, timeouts…}` (même
+endpoint ⇒ combiné) ; `embed_sparse=false` → `sparse: null` ; `openai_compatible` → dense seul ; `batch_size` /
+`embed_*_fields` restent au niveau du node. `index_signature` empreinte `dense_sparse` canoniquement ET accepte
+les équivalents legacy : une collection migrée ne bascule PAS en `needs_reindex`.
+**Secrets par slot** : le `api_key` de chaque slot est lié au `base_url` DE CE SLOT (`dense.api_key` /
+`sparse.api_key`, règle endpoint-scopée de `NestedSecrets`) — masqué à l'API, restauré seulement si l'endpoint ne
+change pas.
+
+**Config** : au niveau du node `batch_size=32` · `embed_semantic_fields` · `embed_lexical_fields` ; DANS chaque slot distant (`RemoteEmbedProviderConfig`) `base_url` · `api_key` · `model` (provenance, stocké avec les vecteurs) · `timeout_seconds` · `preflight_timeout_seconds` · `max_retries` · `retry_backoff_seconds` · `max_concurrency` (défaut null → `WORKER_EMBED_MAX_INFLIGHT_PER_ENDPOINT` ; plafond d'appels embed simultanés par endpoint, sémaphore Redis partagé injecté via `ProviderLimiterRegistry`, no-op hors worker — baux scorés par leur **expiration** sur l'horloge **serveur** Redis (`TIME`), admission FIFO ; bail = `timeout_seconds + 15` s, rendu au succès mais **conservé jusqu'à expiration** si l'appel timeout/casse en vol (le serveur calcule encore la requête abandonnée) ; au-delà de `WORKER_EMBED_SLOT_MAX_WAIT_SECONDS` l'appel lève `ProviderSlotTimeout` (transitoire : retry+backoff, **jamais de split**) — seule une panne Redis passe en fail-open) ·
 **`embed_semantic_fields=false`** (défaut) — quand activé, les champs chunk-scope `semantic=True` du contrat
 sont embeddés en **vecteurs nommés par champ** (dense `fields["keywords"]` — seulement les chunks qui portent une
 valeur ; une liste se rend en texte joint). Le **read-side EST câblé** : un `SearchTarget{field, semantic}` sur un
@@ -485,23 +537,15 @@ lexical}` → `meta_<slug>_bm25` via `TargetVectorResolver`). ⚠️ **OFF par d
 Doc-scope sémantique/lexical : écrit hors du node embed, par le hook best-effort `MetaVectorSyncFacade` après
 `index()` (les points Qdrant sont des chunks).
 
-**Lexical métadonnée = vrai BM25 local (encodage `bm25_v1`, A8).** Les vecteurs `meta_<slug>_bm25` doc-scope ne
-sont plus les poids sparse appris de BGE-M3 (sous-mots XLM-R, sans IDF — « Exécution des marchés » passait devant
-« Passation des marchés ») mais la sortie de `MetaLexicalEncoder` (`shared_libs/pipelines/nodes/embed/lexical/`,
-code pur, zéro provider, zéro modèle) : minuscules → pliage d'accents NFKD → tokens alphanumériques → stopwords
-FR+EN → union des stems Snowball FR+EN (`snowballstemmer`) → TF saturée BM25 (k1=1.2, b=0.75, longueur de
-référence 8) sur des ids `blake2b`→uint32. L'IDF est calculée par Qdrant : `QdrantVectorSchema.sparse_config`
-déclare chaque vecteur méta avec `modifier=IDF` (jamais `content_bm25`, qui reste BGE inchangé).
-**Versionnage = le modifier lui-même** (`QdrantVectorSchema.is_bm25_meta`, lu sur la collection VIVANTE par
-`QdrantLexicalEncodingApi`) : vecteur méta IDF ⇒ BM25 local à l'écriture (`MetaVectorSyncFacade`) ET à la requête
-(`(encode, collection)` produit `EncodedQuery.meta_sparse` dès qu'une cible lexicale méta est demandée ;
-`TargetVectorResolver` l'envoie aux vecteurs IDF, et la requête sparse de l'embedder aux autres). Une collection
-créée avant ne porte pas le modifier ⇒ elle garde le chemin BGE des deux côtés jusqu'à sa recréation
-(`rebuild_index`) — jamais d'encodeurs mélangés. Le chemin chunk-scope du node embed (`embed_lexical_fields`) reste
-BGE : le lexical chunk-scope est refusé au schéma, il ne sert que d'anciennes collections non-IDF.
-**Import `.dcexport`** : un point du bundle ne garde jamais sa copie d'un vecteur méta que la cible déclare IDF
-(il peut venir d'une ancienne collection BGE) — l'importeur la retire avant l'upsert puis ré-encode localement
-(`backfill_collection_meta_vectors(bm25_only=True)` : zéro provider, vecteurs denses intacts).
+**Lexical métadonnée = le provider sparse de la collection.** Les vecteurs `meta_<slug>_bm25` doc-scope sont
+encodés par le MÊME slot sparse que le contenu (`_embed_sparse_fields`, rôle FIELD) : `bm25_local` donne un vrai
+BM25 (« Passation des marchés » devant « Exécution des marchés » sur « passation des marchés ») ; `bge_server` donne
+ses poids appris (sous-mots XLM-R, sans IDF). La requête lexicale (contenu ou méta) est l'unique
+`EncodedQuery.sparse`, envoyée par `TargetVectorResolver` à chaque vecteur sparse ciblé ; un sparse vide
+(requête de stopwords sous `bm25_local`) est sauté et signalé (`termless_lexical_fields` → hint).
+**Import `.dcexport`** : l'importeur retire tout `meta_*_bm25` du bundle (encodeur source inconnu) puis ré-encode
+best-effort via le provider sparse de la collection cible (`backfill_collection_meta_vectors(lexical_only=True)` :
+vecteurs denses intacts ; un échec est toléré, `rebuild_index` répare).
 **Vecteur méta non déclaré à l'indexation** : un point portant un `meta_*` que le store Qdrant ne déclare pas
 (champ chunk-scope rendu sémantique après la création) échoue AVANT purge/upsert avec `UndeclaredVectorError`
 (« field 'X' has no indexed vector in this collection — run rebuild_index ») au lieu du 400 Qdrant opaque.
@@ -511,14 +555,35 @@ nommé à une collection vivante, donc un champ rendu sémantique/lexical après
 **collection-level** (`job.document_id` NULL, kind `rebuild_index`, un seul actif par collection — index partiel
 `uq_job_active_rebuild_per_collection` derrière un `FOR UPDATE` sur la ligne collection ; upload/reingest refusés
 en 409 pendant qu'il tourne). Le worker (`jobs/rebuild_index.py`) : attend les autres jobs vivants (borné) →
-`StoreRebuildFacade` crée un `col_<hex>_r<ts>` depuis le schéma COURANT (vecteurs méta BM25 avec `modifier=IDF`),
-copie chaque point par scroll/upsert **sans ré-embedding du contenu** en retirant tout `meta_*_bm25` (jamais
-d'encodeurs mélangés), puis bascule le nom stable `col_<hex>` en **alias** (1re fois : suppression puis création
+`StoreRebuildFacade` crée un `col_<hex>_r<ts>` depuis le schéma COURANT et le `VectorLayout` de la config (IDF
+selon le provider sparse ; taille dense = celle de l'ancien `content_dense`, aucune sans slot dense — un slot dense
+ajouté sur un store qui n'en a jamais eu lève « re-ingest the documents »), copie chaque point par scroll/upsert
+**sans ré-embedding dense** en retirant tout `meta_*_bm25` (encodeurs mélangés) ; quand l'ancien `content_bm25`
+vient d'un AUTRE provider sparse (modifier IDF en décalage, OU moitié sparse de la base `indexed_embed_signature`
+différente de la config — ex. `bge_server` A → B, même modifier, invisible au store) ou est absent alors que la
+config a un slot sparse, il
+est retiré (`QdrantStoreCopyApi` `dropped`) et **ré-encodé** depuis `chunk.text` Postgres (= le texte enrichi
+embeddé) par `ContentSparseReencoder` via le slot sparse, écrit dans le MÊME upsert ; puis bascule le nom stable `col_<hex>` en **alias** (1re fois : suppression puis création
 d'alias — courte fenêtre sans index ; ensuite : `update_collection_aliases` atomique puis suppression de
 l'ancienne) ; un échec avant bascule supprime la temp → backfills filtres + vecteurs méta depuis Postgres (le dense
 méta repasse par le provider embed) → `IndexRebuildFacade.reconcile` (ré-applique `enabled_override`, purge les
-points des documents supprimés pendant la copie, recalcule `needs_reindex` — effacé seulement si l'espace
-d'embedding est inchangé, `collection.indexed_embed_signature`). Le drop d'une collection résout alias → physique.
+points des documents supprimés pendant la copie, recalcule `needs_reindex` **par axe** de
+`collection.indexed_embed_signature`). Cette base est `<moitié dense>:<moitié sparse>` (`EmbedBaseline`, 31+1+32
+car.) ; une base d'avant ce découpage (un sha256 de tout l'espace) reste lue : identique = inchangé, et sa moitié
+dense est reconnue en re-hachant la config sous chaque slot sparse antérieur plausible (off, le `bge_server` du
+slot dense, le `bge_server` in-stack). Le flag est effacé — et `indexed_signature` + `indexed_embed_signature`
+avancées à la config courante — ssi rien ne manque, la moitié dense est inchangée (ou pas de slot dense) et la
+moitié sparse l'est aussi OU vient d'être ré-encodée (ou pas de slot sparse). Une moitié dense changée
+(provider/modèle dense) le **lève** (`dense_space_changed` dans le résumé du job, warning « reingest required ») :
+un rebuild copie le dense, il ne le ré-embedde jamais. Base inconnue (jamais stampée) → flag stocké conservé.
+Le schéma du store est dérivé en **strict** (`EmbedBlobResolver.layout_or_raise`) par tout chemin qui le CRÉE
+(rebuild, import) : un node embed qui ne se construit plus échoue net (`EmbedLayoutError` nommant le node, message
+sans entrée — jamais l'`api_key`) au lieu de créer le layout par défaut ; `layout()` (dégradé → défaut) reste réservé
+aux lectures (gates de recherche, `missing_vectors`, correction de la recherche par défaut).
+**Import** : le bundle porte `indexed_embed_signature` ; si la source était `needs_reindex` ou si sa moitié sparse
+est inconnue (vieux bundle) / différente de sa config, le `content_bm25` de chaque batch est ré-encodé depuis le
+`chunk.text` restauré via le provider sparse configuré (`ImportContentSparse`) — best-effort : un échec garde les
+vecteurs du bundle et lève `needs_reindex` (jamais un import en échec). Le drop d'une collection résout alias → physique.
 **Score d'une recherche mono-vecteur** : une seule branche ⇒ pas de fusion, score brut (`QdrantSearchApi.fuses`
 est l'unique règle) et `score_kind` = `raw_dense` / `raw_sparse` (le rerank, s'il a scoré, reste prioritaire).
 
@@ -543,7 +608,9 @@ splitté** : couper le batch doublerait les requêtes vers un serveur déjà sat
 **Trace compactée** (même doctrine que les bytes) : dans les records, une longue liste numérique devient
 `'<1024 numbers>'` — la donnée réelle circule intacte dans le graphe, seule la copie-souvenir est compactée.
 
-**Prouvé e2e** : batching (5 textes / batch 2 = 3 appels), texte enrichi vérifié en entrée, liaison chunk_id
+**Prouvé e2e** : les 3 modes du `dense_sparse` (HTTP mocké : même `bge_server` = exactement UN `/embed_all` par
+batch, deux serveurs = `/embed` + `/embed_sparse` séparés, dense seul, sparse seul `bm25_local` hors réseau + IDF),
+re-encodage sparse au rebuild, recherche sparse-only bout-en-bout (`raw_sparse`) · batching (5 textes / batch 2 = 3 appels), texte enrichi vérifié en entrée, liaison chunk_id
 ordonnée, sparse présent (bge fake) / sauté proprement (dense-only), vecteurs par champ sémantique uniquement où
 la valeur existe (non-sémantique et doc-scope ignorés), blob validé+exécuté, **records : vecteurs réels en sortie
 vive, `'<100 numbers>'` dans la trace**.
@@ -650,7 +717,7 @@ re-parse plus le PDF). `replay_from=<stage>` sur `POST /documents/{id}/reingest`
 | `PageRenders` | pages[] (png, dimensions) | figure_render → worker (blobs `page.render_blob_hash`) |
 | `FigureItem` | block_id · image (bytes) · page_coverage · kind · read_text | l'item du ForEach enrich — enrichi en copies au fil du corps (classify estampille `kind`, l'OCR remplit `read_text`) |
 | `EnrichmentEntry` | block_id · kind · ocr_text · description · data_table | le terminal UNIFORME de chaque branche enrich → collecté par le ForEach → enrich_apply |
-| `ChunkEmbeddings` | model · dimension · items[] (`ChunkVectors{chunk_id, dense, sparse, fields}`) | embed → worker (points Qdrant, zippé avec les chunks par chunk_id) |
+| `ChunkEmbeddings` | model · dimension · items[] (`ChunkVectors{chunk_id, dense, sparse, fields}`) · `dense_enabled` · `sparse_enabled` · `sparse_idf` (→ `VectorLayout` du store) | embed → worker (points Qdrant, zippé avec les chunks par chunk_id) |
 | `GeneratedDocumentMeta` | values (champ → valeur coercée) | metagen/document → worker (`document_metadata`) |
 | `Chunk` | chunk_id · ordinal · text (BRUT, jamais retouché) · block_ids (relation chunk↔IR → `chunk_block`) · token_count · heading_path · page_start/end · **context** (accumulé par contextualize) · **generated_meta** (rempli par metagen) · `enriched_text` = context + text | chunker → **contextualize, metagen, embed** |
 
@@ -667,7 +734,7 @@ re-parse plus le PDF). `replay_from=<stage>` sur `POST /documents/{id}/reingest`
   logique d'étape et structurel (les 4 nodes intake · gotenberg · les 4 parseurs docling · granite_docling ·
   pp_structure · paddleocr_vl · mineru · dots_ocr — chacun unique par kind, mais empilables en escalade car kinds DIFFÉRENTS · figure_render ·
   figure_extract · enrich_apply · les 3 chunkers · breadcrumb · doc_meta · sliding · deliver/bundle · les 2
-  embedders bge_server · openai_compatible). **False** (défaut) quand la répétition est
+  embedders legacy bge_server · openai_compatible ; `dense_sparse` est False — une chaîne de repli legacy migre en 2 étapes). **False** (défaut) quand la répétition est
   légitime : providers en escalade du MÊME kind avec configs différentes (ocr/vlm/llm), terminaux multi-branches
   (figure_entry ×2 dans le fail-soft), classify en escalade, contextualize/llm multi-passes.
 - **Validation à la création** (avant toute dépense) : entrée unique · pas de cycle · pas de fan-out ambigu · bindings amont + types compatibles · ScoreBelow ⇒ producteur scoré · unicité des nodes single-use.
@@ -760,6 +827,18 @@ chaîne parse/embed, stage à config unique) : `replace` (défaut, rétro-compat
 config ; `merge` = `{**courant, **patch}`, une valeur `null` supprime la clé (retour au défaut du schéma) —
 l'édition d'une seule clé garde toutes les autres, secrets compris (le MCP `apply_collection_stage` passe
 `merge` par défaut).
+
+**Slots de provider de l'étape embed** (`EmbedSlots`, `stages/embed_slots.py`) : la vue porte
+`StageView.slots` (embed seulement, `[]` ailleurs) = `[ProviderSlotView{slot: "dense"|"sparse", title,
+description, provider: kind|null (null = axe coupé), available (kinds SÉLECTIONNABLES de l'axe : dense =
+`bge_server`·`openai_compatible`, sparse = `bge_server`·`bm25_local`), config ({kind,…} masqué | null),
+config_schemas ({kind: JSONSchema})}]`, dense puis sparse ; un slot omis se lit `bge_server` in-stack ;
+`StageView.config` reste la config complète de la tête. **`set_provider{stage: "embed", slot, kind}`** : `kind:
+null` coupe l'axe (refusé avec notice si l'autre est déjà coupé) ; même kind = no-op (endpoint + clé gardés) ;
+kind incompatible avec l'axe = notice, rien ne change ; nouveau kind = slot neuf — un `bge_server` choisi reprend
+le `base_url` bge de l'autre slot pour que l'appel combiné tienne ; `slot` absent = ancien comportement (chaîne à
+1 étape). **`set_config{stage: "embed", slot, config, mode}`** édite `config[slot]` de la tête via
+`StageConfigMerge` (règles de secret endpoint-scopées) en gardant le `kind` du slot ; éditer un slot coupé = notice.
 
 **Secrets et identité de provider** (`SecretIdentity`, partagé compilateur ↔ écriture) : un secret
 (`api_key`/`password`) OMIS ou MASQUÉ garde la clé du MÊME provider AU MÊME ENDPOINT — même id, family ET

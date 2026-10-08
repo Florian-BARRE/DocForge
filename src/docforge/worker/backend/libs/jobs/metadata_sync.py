@@ -14,6 +14,7 @@ from typing import Any
 
 # ====== Internal Project Imports (worker) ======
 from backend.context import CONTEXT
+from shared_libs.pipelines.build.validation_message import ValidationMessage
 
 
 async def sync_document_metadata(
@@ -65,7 +66,7 @@ async def sync_document_metadata(
         #    re-raise so arq accounts the attempt — mirrors the ingest worker's terminal contract.
         await database.jobs.mark_failed(
             job_uuid,
-            error=str(exc),
+            error=ValidationMessage.describe(exc),
             finished_at=datetime.now(UTC),
             error_type=type(exc).__name__,
         )

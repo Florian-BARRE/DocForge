@@ -8,8 +8,9 @@ from shared_libs.pipelines.registry import NodeRegistry
 
 # ====== Local Project Imports ======
 from ..chain_rules import ChainRules
+from ..embed_slots import EmbedSlots
 from ..models import ChainStep, SetProvider
-from ..spec import StageSpecs
+from ..spec import StageKey, StageSpecs
 from ..state import PipelineState
 from .chain import StageChainHandler
 from .tables import CHAIN_STAGES, PROVIDERS
@@ -32,6 +33,16 @@ class StageProviderHandler:
             notices (list[str]): Collector for no-op / unknown-kind notices.
         """
         stage, kind = action.stage, action.kind
+        # 0. A provider SLOT of the stage node (embed dense / sparse) — kind null = slot off.
+        if action.slot is not None:
+            if stage != StageKey.EMBED or not EmbedSlots.is_slot(action.slot):
+                notices.append(f"stage '{stage}' has no provider slot '{action.slot}'")
+                return
+            EmbedSlots.set_provider(state, action.slot, kind, notices)
+            return
+        if kind is None:
+            notices.append(f"stage '{stage}' needs a provider kind (null only turns a slot off)")
+            return
         meta = StageSpecs.meta(stage) if stage in {*PROVIDERS, *CHAIN_STAGES} else None
         # 1. A chain-capable provider stage (parse): picking a provider is sugar for a 1-step chain.
         if stage in CHAIN_STAGES:

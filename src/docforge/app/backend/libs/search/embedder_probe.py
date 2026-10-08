@@ -11,6 +11,7 @@ from loggerplusplus import LoggerClass
 
 # ====== Internal Project Imports ======
 from config import RUNTIME_CONFIG
+from shared_libs.pipelines.build.validation_message import ValidationMessage
 from shared_libs.pipelines.nodes.embed.blob import EmbedBlobResolver
 from shared_libs.pipelines.reachability import (
     ProbeStatus,
@@ -68,7 +69,10 @@ class QueryEmbedderProbe(LoggerClass):
                 node_id=embed_node.get("id") or "encode",
             )
         except Exception as exc:  # noqa: BLE001 — a bad blob must classify, not 500 the search route.
-            self.logger.warning(f"Query embedder rebuild failed: {type(exc).__name__}: {exc}")
+            self.logger.warning(
+                f"Query embedder rebuild failed: {type(exc).__name__}: "
+                f"{ValidationMessage.describe(exc)}"
+            )
             return ProbeStatus.UNREACHABLE
 
         # 3. Probe the throwaway embedder under the sweep's bounded cap AND the egress allowlist (a

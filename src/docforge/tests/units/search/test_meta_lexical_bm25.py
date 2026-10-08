@@ -1,7 +1,7 @@
-"""The local metadata BM25 encoder (A8): analysis (fold/stopwords/stem), determinism, the
-"Passation before Exécution" ranking regression with an in-test IDF, the IDF-declared vector schema,
-the per-vector encoding routing of the target resolver (old collections keep the BGE query), and the
-rerank skip for metadata-only searches."""
+"""The bm25_local sparse encoder (A8): analysis (fold/stopwords/stem), determinism, the
+"Passation before Exécution" ranking regression with an in-test IDF, the config-derived IDF vector
+schema (all-or-none across the sparse vectors), the single-sparse-query routing of the target
+resolver, and the rerank skip for metadata-only searches."""
 
 import math
 
@@ -9,55 +9,57 @@ from qdrant_client import models
 
 from backend.libs.search.target_resolver import TargetVectorResolver
 from backend.libs.search.tuning import SearchTuning
-from shared_libs.pipelines.nodes.embed.lexical import MetaLexicalAnalyzer, MetaLexicalEncoder
-from shared_libs.public_models.embed import SparseVector
+from shared_libs.pipelines.nodes.embed.providers.bm25_local import Bm25Analyzer, Bm25Encoder
+from shared_libs.public_models.embed import SparseVector, VectorLayout
 from shared_libs.public_models.search import RERANK_FLAG, EncodedQuery, SearchTarget
 from shared_libs.services.db.qdrant import QdrantVectorSchema, VectorNames
 
 
+def _encode_value(text: str) -> SparseVector:
+    """A metadata value through the bm25_local FIELD parameters (k1 1.2, b 0.75, ref length 8)."""
+    return Bm25Encoder.encode_document(text, k1=1.2, b=0.75, reference_length=8)
+
+
 def test_fold_strips_accents_and_ligatures() -> None:
-    assert (
-        MetaLexicalAnalyzer.fold("Exécution des Marchés — Œuvre")
-        == "execution des marches — oeuvre"
-    )
+    assert Bm25Analyzer.fold("Exécution des Marchés — Œuvre") == "execution des marches — oeuvre"
 
 
 def test_stopwords_are_dropped_in_both_languages() -> None:
-    assert MetaLexicalAnalyzer.tokens("Passation des marchés de la ville") == [
+    assert Bm25Analyzer.tokens("Passation des marchés de la ville") == [
         "passation",
         "marches",
         "ville",
     ]
-    assert MetaLexicalAnalyzer.tokens("The state of the art") == ["state", "art"]
+    assert Bm25Analyzer.tokens("The state of the art") == ["state", "art"]
 
 
 def test_stemming_unites_inflections() -> None:
-    assert MetaLexicalEncoder.encode_query("marché").indices == (
-        MetaLexicalEncoder.encode_query("marchés").indices
+    assert Bm25Encoder.encode_query("marché").indices == (
+        Bm25Encoder.encode_query("marchés").indices
     )
-    assert MetaLexicalEncoder.encode_query("markets").indices == (
-        MetaLexicalEncoder.encode_query("market").indices
+    assert Bm25Encoder.encode_query("markets").indices == (
+        Bm25Encoder.encode_query("market").indices
     )
 
 
 def test_encoding_is_deterministic_and_sorted() -> None:
-    first = MetaLexicalEncoder.encode_value("Passation des marchés publics")
-    second = MetaLexicalEncoder.encode_value("Passation des marchés publics")
+    first = _encode_value("Passation des marchés publics")
+    second = _encode_value("Passation des marchés publics")
     assert first == second
     assert first.indices == sorted(first.indices)
     assert all(0 <= index < 2**32 for index in first.indices)
-    assert MetaLexicalEncoder.term_id("march") == MetaLexicalEncoder.term_id("march")
+    assert Bm25Encoder.term_id("march") == Bm25Encoder.term_id("march")
 
 
 def test_stopword_only_query_encodes_to_empty() -> None:
-    assert MetaLexicalEncoder.encode_query("des de la").indices == []
+    assert Bm25Encoder.encode_query("des de la").indices == []
 
 
 def _bm25_scores(query: str, values: dict[str, str]) -> dict[str, float]:
     """Qdrant's IDF-modifier scoring, computed in-test: Σ q·idf(t)·tf_bm25(t, value)."""
-    docs = {key: MetaLexicalEncoder.encode_value(text) for key, text in values.items()}
+    docs = {key: _encode_value(text) for key, text in values.items()}
     total = len(docs)
-    q = MetaLexicalEncoder.encode_query(query)
+    q = Bm25Encoder.encode_query(query)
     scores = {}
     for key, vec in docs.items():
         weights = dict(zip(vec.indices, vec.values, strict=True))
@@ -81,40 +83,46 @@ def test_passation_ranks_above_execution() -> None:
     assert scores["passation"] > scores["execution"]
 
 
-def test_meta_sparse_vectors_are_idf_declared_content_is_not() -> None:
-    config = QdrantVectorSchema.sparse_config(["nom"])
+def test_bm25_layout_declares_idf_on_every_sparse_vector() -> None:
+    layout = VectorLayout(sparse_idf=True)
+    config = QdrantVectorSchema.sparse_config(["nom"], layout)
     meta = VectorNames.field_sparse("nom")
     assert config[meta].modifier == models.Modifier.IDF
-    assert config[VectorNames.CONTENT_SPARSE].modifier is None
-    assert QdrantVectorSchema.is_bm25_meta(meta, config[meta])
-    assert not QdrantVectorSchema.is_bm25_meta(meta, models.SparseVectorParams())
-    assert not QdrantVectorSchema.is_bm25_meta(
-        VectorNames.CONTENT_SPARSE, models.SparseVectorParams(modifier=models.Modifier.IDF)
-    )
+    assert config[VectorNames.CONTENT_SPARSE].modifier == models.Modifier.IDF
+    assert not QdrantVectorSchema.modifier_mismatch(config[meta], layout)
+    assert QdrantVectorSchema.modifier_mismatch(models.SparseVectorParams(), layout)
 
 
-_BGE = SparseVector(indices=[1, 2], values=[0.3, 0.4])
-_BM25 = MetaLexicalEncoder.encode_query("passation des marchés")
-_ENCODED = EncodedQuery(dense=[0.1], sparse=_BGE, meta_sparse=_BM25)
+def test_learned_sparse_layout_declares_no_idf() -> None:
+    config = QdrantVectorSchema.sparse_config(["nom"], VectorLayout())
+    assert all(params.modifier is None for params in config.values())
+    idf = models.SparseVectorParams(modifier=models.Modifier.IDF)
+    assert QdrantVectorSchema.modifier_mismatch(idf, VectorLayout())
+
+
+def test_no_sparse_provider_declares_no_sparse_vector() -> None:
+    assert QdrantVectorSchema.sparse_config(["nom"], VectorLayout(sparse=False)) == {}
+    assert QdrantVectorSchema.dense_config(1024, ["nom"], VectorLayout(dense=False)) == {}
+
+
+_SPARSE = Bm25Encoder.encode_query("passation des marchés")
+_ENCODED = EncodedQuery(dense=[0.1], sparse=_SPARSE)
 _TARGET = [SearchTarget(field="nom", lexical=True)]
 
 
-def test_resolver_sends_bm25_query_to_a_bm25_vector() -> None:
-    name = VectorNames.field_sparse("nom")
-    _, sparse = TargetVectorResolver.resolve(_ENCODED, _TARGET, {name})
-    assert sparse[name].indices == _BM25.indices
+def test_resolver_sends_the_one_sparse_query_to_every_lexical_target() -> None:
+    targets = _TARGET + [SearchTarget(field="content", lexical=True)]
+    _, sparse = TargetVectorResolver.resolve(_ENCODED, targets)
+    assert sparse[VectorNames.field_sparse("nom")].indices == _SPARSE.indices
+    assert sparse[VectorNames.CONTENT_SPARSE].indices == _SPARSE.indices
 
 
-def test_resolver_keeps_the_bge_query_on_an_old_collection() -> None:
-    """A legacy (non-IDF) meta vector holds BGE weights → it is queried with the BGE sparse."""
-    _, sparse = TargetVectorResolver.resolve(_ENCODED, _TARGET, set())
-    assert sparse[VectorNames.field_sparse("nom")].indices == _BGE.indices
-
-
-def test_resolver_content_sparse_is_always_the_embedder_query() -> None:
-    targets = [SearchTarget(field="content", lexical=True)]
-    _, sparse = TargetVectorResolver.resolve(_ENCODED, targets, {VectorNames.field_sparse("nom")})
-    assert sparse[VectorNames.CONTENT_SPARSE].indices == _BGE.indices
+def test_resolver_skips_an_empty_sparse_query_and_reports_it_termless() -> None:
+    empty = EncodedQuery(dense=[0.1], sparse=SparseVector())
+    targets = _TARGET + [SearchTarget(field="content", semantic=True)]
+    dense, sparse = TargetVectorResolver.resolve(empty, targets)
+    assert sparse is None and VectorNames.CONTENT_DENSE in dense
+    assert TargetVectorResolver.termless_lexical_fields(empty, targets) == ["nom"]
 
 
 def test_rerank_skipped_for_metadata_only_targets() -> None:

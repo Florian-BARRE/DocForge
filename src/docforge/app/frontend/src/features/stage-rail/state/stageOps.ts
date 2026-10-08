@@ -28,6 +28,16 @@ export function localSetStageConfig(stages: StageView[], stageKey: string, field
   return mapStage(stages, stageKey, (s) => ({ ...s, config: { ...(s.config ?? {}), [field]: value } }));
 }
 
+/** Typing a provider slot's config field — mirrored on the slot's own `config`. */
+export function localSetSlotConfig(
+  stages: StageView[], stageKey: string, slot: string, field: string, value: unknown,
+): StageView[] {
+  return mapStage(stages, stageKey, (s) => ({
+    ...s,
+    slots: s.slots.map((sl) => (sl.slot === slot ? { ...sl, config: { ...(sl.config ?? {}), [field]: value } } : sl)),
+  }));
+}
+
 export function localSetStackMethodConfig(
   stages: StageView[], stageKey: string, index: number, field: string, value: unknown,
 ): StageView[] {
@@ -88,6 +98,15 @@ export function localSetStackMethodChainStepConfig(
 export function buildSetConfigAction(stages: StageView[], stageKey: string): StageAction {
   const stage = findStage(stages, stageKey);
   return { action: "set_config", stage: stageKey, node: null, config: stage?.config ?? {} };
+}
+
+/** A slot config edit is a MERGE of just the typed keys: every other key (masked secrets included)
+ *  stays server-side. A cleared field (`undefined`) is sent as `null`, which deletes the key. */
+export function buildSetSlotConfigAction(
+  stageKey: string, slot: string, patch: Record<string, unknown>,
+): StageAction {
+  const config = Object.fromEntries(Object.entries(patch).map(([k, v]) => [k, v === undefined ? null : v]));
+  return { action: "set_config", stage: stageKey, slot, config, mode: "merge" };
 }
 
 export function buildSetStackAction(stages: StageView[], stageKey: string, steps?: StackMethod[]): StageAction {

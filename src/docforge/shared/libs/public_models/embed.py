@@ -6,7 +6,7 @@
 # declared at collection creation).
 
 # ====== Third-Party Library Imports ======
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 # ====== Local Project Imports ======
 from .base import Artifact
@@ -49,11 +49,38 @@ class ChunkEmbeddings(Artifact):
         model (str): The embedding model (provenance — stored with the collection's vectors).
         dimension (int): Dense vector dimension (0 when nothing was embedded).
         items (list[ChunkVectors]): One entry per chunk, chunk_id-linked.
+        dense_enabled (bool): Whether the embedder has a dense axis (False = sparse-only — the
+            store declares no content_dense vector).
+        sparse_enabled (bool): Whether sparse vectors were produced.
+        sparse_idf (bool): Whether the sparse vectors are term frequencies the store must score with
+            its IDF modifier (a bm25_local sparse provider) — drives the vector schema.
     """
 
     model: str = ""
     dimension: int = 0
     items: list[ChunkVectors] = Field(default_factory=list)
+    dense_enabled: bool = True
+    sparse_enabled: bool = True
+    sparse_idf: bool = False
 
 
-__all__ = ["SparseVector", "ChunkVectors", "ChunkEmbeddings"]
+class VectorLayout(BaseModel):
+    """
+    The content vector layout a collection's embedder dictates to the store — derived from the embed
+    config (never guessed from the live store).
+
+    Attributes:
+        dense (bool): The embedder has a dense provider → ``content_dense`` (+ semantic meta vectors).
+        sparse (bool): The embedder has a sparse provider → ``content_bm25`` (+ lexical meta vectors).
+        sparse_idf (bool): The sparse provider emits term frequencies, so EVERY sparse vector of the
+            collection (content and metadata) is declared with the store's IDF modifier.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    dense: bool = True
+    sparse: bool = True
+    sparse_idf: bool = False
+
+
+__all__ = ["SparseVector", "ChunkVectors", "ChunkEmbeddings", "VectorLayout"]

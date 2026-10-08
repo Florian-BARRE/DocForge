@@ -259,10 +259,13 @@ class FakeExportFacade:
 class FakeImportFacade:
     """In-memory CollectionTransferFacade stand-in for the importer (records restore calls)."""
 
-    def __init__(self, *, existing_names=(), fail_on=None, bm25_vectors=()) -> None:
+    def __init__(self, *, existing_names=(), fail_on=None, content_reencoder=None) -> None:
         self._existing = set(existing_names)
-        self._bm25_vectors = set(bm25_vectors)  # target meta vectors declared modifier=IDF
         self.reencoded: list = []
+        # The content sparse re-encoder stand-in (None = the config has no sparse slot).
+        self.content_reencoder = content_reencoder
+        self.content_reencoder_built = 0
+        self.flagged: list = []
         self._fail_on = fail_on  # a table path whose restore_rows should raise
         self.created: Collection | None = None
         self.restored: dict[str, list] = {}
@@ -304,12 +307,16 @@ class FakeImportFacade:
     async def upsert_points(self, _collection_id, points):
         self.points.extend(points)
 
-    async def bm25_meta_vectors(self, _collection_id):
-        return set(self._bm25_vectors)
-
-    async def reencode_bm25_meta_vectors(self, collection_id):
+    async def reencode_meta_lexical_vectors(self, collection_id):
         self.reencoded.append(collection_id)
         return 1, len(self.points)
+
+    async def content_sparse_reencoder(self, _collection_id):
+        self.content_reencoder_built += 1
+        return self.content_reencoder
+
+    async def flag_needs_reindex(self, collection_id):
+        self.flagged.append(collection_id)
 
     async def rollback_collection(self, collection_id):
         self.rolled_back.append(collection_id)

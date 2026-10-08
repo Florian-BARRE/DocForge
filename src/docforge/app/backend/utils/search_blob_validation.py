@@ -7,6 +7,8 @@
 # deliver terminal) stored a 200, then made every subsequent query raise SearchRunError → HTTP 500.
 # The terminal contract itself lives in shared_libs (SearchResultContract), shared verbatim with the
 # worker's import-time validator; this class only maps a failure to the write boundary's HTTP 422.
+# Given the collection's embed layout it also rejects a default content modality the embedder cannot
+# serve (the dense_only preset on a sparse-only collection, a lexical-only default on a dense-only one).
 
 # ====== Third-Party Library Imports ======
 from fastapi import HTTPException
@@ -15,6 +17,7 @@ from loggerplusplus import loggerplusplus
 # ====== Internal Project Imports ======
 from shared_libs.pipelines.search import SearchPipeline
 from shared_libs.pipelines.validation import SearchResultContract
+from shared_libs.public_models import VectorLayout
 
 # ====== Local Project Imports ======
 from .pipeline_validation import PipelineBlobValidator
@@ -38,13 +41,59 @@ class SearchBlobValidator:
     def __new__(cls, *args: object, **kwargs: object) -> None:
         raise TypeError("SearchBlobValidator is a static-only class and cannot be instantiated.")
 
+    @staticmethod
+    def __content_modalities(blob: dict) -> set[str]:
+        """The ``content_modalities`` every normalize node of a (nested) search blob configures."""
+        found: set[str] = set()
+        stack = [blob]
+        while stack:
+            node = stack.pop()
+            if not isinstance(node, dict):
+                continue
+            modality = (node.get("config") or {}).get("content_modalities")
+            if isinstance(modality, str):
+                found.add(modality)
+            stack.extend(node.get("nodes") or [])
+            if isinstance(node.get("body"), dict):
+                stack.append(node["body"])
+        return found
+
     @classmethod
-    def validate(cls, blob: dict) -> None:
+    def check_layout(cls, blob: dict, layout: VectorLayout) -> None:
+        """
+        Reject a search blob whose default content modality the collection's embedder cannot serve.
+
+        Args:
+            blob (dict): The search graph blob.
+            layout (VectorLayout): The collection's config-derived embed layout.
+
+        Raises:
+            HTTPException: 422 for a semantic-only default on a sparse-only collection (e.g. the
+                ``dense_only`` preset) or a lexical-only default on a dense-only one.
+        """
+        modalities = cls.__content_modalities(blob)
+        if "semantic" in modalities and not layout.dense:
+            raise HTTPException(
+                status_code=422,
+                detail="This search pipeline searches the dense (semantic) vector only (e.g. the "
+                "'dense_only' preset) but the collection's embedder has no dense provider — use a "
+                "hybrid or lexical search pipeline.",
+            )
+        if "lexical" in modalities and not layout.sparse:
+            raise HTTPException(
+                status_code=422,
+                detail="This search pipeline searches the sparse (lexical) vector only but the "
+                "collection's embedder has no sparse provider — use a hybrid or semantic one.",
+            )
+
+    @classmethod
+    def validate(cls, blob: dict, layout: VectorLayout | None = None) -> None:
         """
         Structurally validate a search blob AND assert it is a genuine search pipeline.
 
         Args:
             blob (dict): The stored search graph configuration to check.
+            layout (VectorLayout | None): The collection's embed layout (None = not checked).
 
         Raises:
             HTTPException: 422 when the blob cannot be built or fails structural validation
@@ -69,6 +118,10 @@ class SearchBlobValidator:
                     "deliver/hits node producing a SearchResult."
                 ),
             )
+
+        # 4. The default content modality must be one the collection's embedder produces.
+        if layout is not None:
+            cls.check_layout(blob, layout)
 
 
 __all__ = ["SearchBlobValidator"]

@@ -626,6 +626,42 @@
                     }
                 }
             },
+            "delete": {
+                "tags": [
+                    "collections"
+                ],
+                "summary": "Delete Collection",
+                "description": "Delete a collection (404 when unknown; 409 ``rebuild_index_active`` while an index rebuild runs;\n409 while collection aliases still target it \u2014 re-point or delete them first).",
+                "operationId": "delete_collection_api_v1_collections__collection_id__delete",
+                "parameters": [
+                    {
+                        "name": "collection_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "description": "The collection UUID, or the name of a collection alias pointing at it.",
+                            "title": "Collection Id"
+                        },
+                        "description": "The collection UUID, or the name of a collection alias pointing at it."
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "Successful Response"
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
             "patch": {
                 "tags": [
                     "collections"
@@ -666,42 +702,6 @@
                                 }
                             }
                         }
-                    },
-                    "422": {
-                        "description": "Validation Error",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/HTTPValidationError"
-                                }
-                            }
-                        }
-                    }
-                }
-            },
-            "delete": {
-                "tags": [
-                    "collections"
-                ],
-                "summary": "Delete Collection",
-                "description": "Delete a collection (404 when unknown; 409 ``rebuild_index_active`` while an index rebuild runs;\n409 while collection aliases still target it \u2014 re-point or delete them first).",
-                "operationId": "delete_collection_api_v1_collections__collection_id__delete",
-                "parameters": [
-                    {
-                        "name": "collection_id",
-                        "in": "path",
-                        "required": true,
-                        "schema": {
-                            "type": "string",
-                            "description": "The collection UUID, or the name of a collection alias pointing at it.",
-                            "title": "Collection Id"
-                        },
-                        "description": "The collection UUID, or the name of a collection alias pointing at it."
-                    }
-                ],
-                "responses": {
-                    "204": {
-                        "description": "Successful Response"
                     },
                     "422": {
                         "description": "Validation Error",
@@ -5723,12 +5723,28 @@
                         "type": "array",
                         "title": "Metagen",
                         "description": "Available metagen kinds."
+                    },
+                    "embed_dense": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array",
+                        "title": "Embed Dense",
+                        "description": "Provider kinds available for the dense slot of the embed node (dense_sparse)."
+                    },
+                    "embed_sparse": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array",
+                        "title": "Embed Sparse",
+                        "description": "Provider kinds available for the sparse slot of the embed node (dense_sparse)."
                     }
                 },
                 "additionalProperties": false,
                 "type": "object",
                 "title": "CapabilityMatrix",
-                "description": "The available pipeline kinds per family \u2014 'what can this deployment do NOW'.\n\nEach list holds the SELECTABLE kinds of that family whose requirement is satisfied: in-worker or\nper-collection-key kinds are always listed; a sidecar-gated kind is listed only while its sidecar\nis reachable. ``metagen`` has no selectable provider kinds of its own (it delegates to the ``llm``\nfamily), so it is legitimately empty.\n\nAttributes:\n    parsers (list[str]): Available ``parser`` kinds.\n    ocr (list[str]): Available ``ocr`` kinds.\n    embed (list[str]): Available ``embed`` kinds.\n    chunkers (list[str]): Available ``chunker`` kinds.\n    vlm (list[str]): Available ``vlm`` kinds.\n    llm (list[str]): Available ``llm`` kinds.\n    rerank (list[str]): Available ``rerank`` kinds.\n    contextualize (list[str]): Available ``contextualize`` kinds.\n    metagen (list[str]): Available ``metagen`` kinds (delegates to ``llm``; usually empty)."
+                "description": "The available pipeline kinds per family \u2014 'what can this deployment do NOW'.\n\nEach list holds the SELECTABLE kinds of that family whose requirement is satisfied: in-worker or\nper-collection-key kinds are always listed; a sidecar-gated kind is listed only while its sidecar\nis reachable. ``metagen`` has no selectable provider kinds of its own (it delegates to the ``llm``\nfamily), so it is legitimately empty.\n\nAttributes:\n    parsers (list[str]): Available ``parser`` kinds.\n    ocr (list[str]): Available ``ocr`` kinds.\n    embed (list[str]): Available ``embed`` kinds.\n    chunkers (list[str]): Available ``chunker`` kinds.\n    vlm (list[str]): Available ``vlm`` kinds.\n    llm (list[str]): Available ``llm`` kinds.\n    rerank (list[str]): Available ``rerank`` kinds.\n    contextualize (list[str]): Available ``contextualize`` kinds.\n    metagen (list[str]): Available ``metagen`` kinds (delegates to ``llm``; usually empty).\n    embed_dense (list[str]): Provider kinds available for the embedder's DENSE slot.\n    embed_sparse (list[str]): Provider kinds available for the embedder's SPARSE slot."
             },
             "ChainSpec": {
                 "properties": {
@@ -12483,6 +12499,75 @@
                 "title": "ProviderProbeResult",
                 "description": "One provider-hosted node's reachability outcome within a sweep."
             },
+            "ProviderSlotView": {
+                "properties": {
+                    "slot": {
+                        "type": "string",
+                        "title": "Slot",
+                        "description": "Stable slot key (dense / sparse)."
+                    },
+                    "title": {
+                        "type": "string",
+                        "title": "Title",
+                        "description": "Human label of the slot."
+                    },
+                    "description": {
+                        "type": "string",
+                        "title": "Description",
+                        "description": "What the slot's provider produces."
+                    },
+                    "provider": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Provider",
+                        "description": "The selected provider kind; null when the slot is off."
+                    },
+                    "available": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array",
+                        "title": "Available",
+                        "description": "The provider kinds that can fill this slot."
+                    },
+                    "config": {
+                        "anyOf": [
+                            {
+                                "additionalProperties": true,
+                                "type": "object"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Config",
+                        "description": "The slot's current provider config (null when off)."
+                    },
+                    "config_schemas": {
+                        "additionalProperties": {
+                            "additionalProperties": true,
+                            "type": "object"
+                        },
+                        "type": "object",
+                        "title": "Config Schemas",
+                        "description": "JSON schema of each available kind's slot config."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "slot",
+                    "title",
+                    "description"
+                ],
+                "title": "ProviderSlotView",
+                "description": "One provider SLOT of a stage node \u2014 e.g. the embed node's dense and sparse providers.\n\nA slot is chosen independently of its siblings (SetProvider with ``slot``), configured on its own\n(SetStageConfig with ``slot``) and may be OFF (``provider`` null) \u2014 e.g. a sparse-only embedder.\n\nAttributes:\n    slot (str): Stable slot key (``dense`` / ``sparse``).\n    title (str): Human label of the slot.\n    description (str): What the slot's provider produces.\n    provider (str | None): The selected provider kind, or null when the slot is off.\n    available (list[str]): The provider kinds that can fill this slot.\n    config (dict | None): The slot's current provider config (``kind`` included), null when off.\n    config_schemas (dict[str, dict]): The JSON schema of each available kind's slot config."
+            },
             "QdrantFootprintModel": {
                 "properties": {
                     "points": {
@@ -13980,10 +14065,29 @@
                         "title": "Stage",
                         "description": "Key of the provider stage."
                     },
+                    "slot": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Slot",
+                        "description": "Provider slot of the stage node (embed: dense / sparse); null = the stage's own provider."
+                    },
                     "kind": {
-                        "type": "string",
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
                         "title": "Kind",
-                        "description": "The registry kind to select within the stage's family."
+                        "description": "The kind to select \u2014 a registry kind of the stage's family, or (with a slot) a slot provider kind; null with a slot turns that slot off."
                     }
                 },
                 "additionalProperties": false,
@@ -13993,7 +14097,7 @@
                     "kind"
                 ],
                 "title": "SetProvider",
-                "description": "Pick the provider of an exclusive stage \u2014 swap the kind, reset its config to defaults.\n\nOn a chain stage (parse / embed) re-picking the SAME kind keeps its stored secret (an omitted\nsecret is inherited from the same provider; a different kind never inherits one)."
+                "description": "Pick the provider of an exclusive stage \u2014 swap the kind, reset its config to defaults.\n\nOn a chain stage (parse / embed) re-picking the SAME kind keeps its stored secret (an omitted\nsecret is inherited from the same provider; a different kind never inherits one). With a\n``slot`` (embed: ``dense`` / ``sparse``) it picks that slot's provider instead \u2014 ``kind`` null\nturns the slot OFF (at least one embed slot must stay on)."
             },
             "SetStack": {
                 "properties": {
@@ -14050,6 +14154,18 @@
                         ],
                         "title": "Node",
                         "description": "Id of the target node inside a multi-node stage; null = the stage's primary node (e.g. metagen's chunk/document node, intake's convert node)."
+                    },
+                    "slot": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Slot",
+                        "description": "Provider slot whose config is edited (embed: dense / sparse) \u2014 the slot's provider kind is kept; null = the node config itself."
                     },
                     "config": {
                         "additionalProperties": true,
@@ -14469,6 +14585,14 @@
                         "title": "Stack",
                         "description": "The ordered methods (contextualize; empty elsewhere)."
                     },
+                    "slots": {
+                        "items": {
+                            "$ref": "#/components/schemas/ProviderSlotView"
+                        },
+                        "type": "array",
+                        "title": "Slots",
+                        "description": "The independent provider slots of the stage node (embed: dense + sparse)."
+                    },
                     "requires": {
                         "items": {
                             "type": "string"
@@ -14500,7 +14624,7 @@
                     "removable"
                 ],
                 "title": "StageView",
-                "description": "The product-level view of one pipeline stage \u2014 everything the UI renders for it.\n\nAttributes:\n    key (str): Stable stage key.\n    title (str): Human label.\n    description (str): What the stage does.\n    kind (StageKind): Interaction face (fixed / toggle / provider / stack).\n    enabled (bool): Whether the stage is currently part of the pipeline.\n    removable (bool): Whether the stage can be toggled off (fixed stages are False).\n    family (str | None): The registry family the stage draws its node(s) from.\n    provider (str | None): The currently selected kind (provider stages).\n    available (list[str]): The kinds offered by the family (provider stages).\n    config (dict | None): The current node config (single-config stages; None otherwise).\n    chains (list[ChainView]): The stage's fallback chains \u2014 parse/embed (one), metagen (one per\n        scope), the enrich per-figure-site chains, and one per contextualize llm method; empty\n        for a stage with no model-call site.\n    stack (list[StackMethod]): The ordered methods (contextualize; empty elsewhere).\n    requires (list[str]): Keys of the stages this one depends on.\n    notes (str | None): A caveat shown to the user (e.g. a required config to fill)."
+                "description": "The product-level view of one pipeline stage \u2014 everything the UI renders for it.\n\nAttributes:\n    key (str): Stable stage key.\n    title (str): Human label.\n    description (str): What the stage does.\n    kind (StageKind): Interaction face (fixed / toggle / provider / stack).\n    enabled (bool): Whether the stage is currently part of the pipeline.\n    removable (bool): Whether the stage can be toggled off (fixed stages are False).\n    family (str | None): The registry family the stage draws its node(s) from.\n    provider (str | None): The currently selected kind (provider stages).\n    available (list[str]): The kinds offered by the family (provider stages).\n    config (dict | None): The current node config (single-config stages; None otherwise).\n    chains (list[ChainView]): The stage's fallback chains \u2014 parse/embed (one), metagen (one per\n        scope), the enrich per-figure-site chains, and one per contextualize llm method; empty\n        for a stage with no model-call site.\n    stack (list[StackMethod]): The ordered methods (contextualize; empty elsewhere).\n    slots (list[ProviderSlotView]): The independent provider slots of the stage node (embed:\n        dense + sparse); empty for a stage without slots.\n    requires (list[str]): Keys of the stages this one depends on.\n    notes (str | None): A caveat shown to the user (e.g. a required config to fill)."
             },
             "StageViewRequest": {
                 "properties": {

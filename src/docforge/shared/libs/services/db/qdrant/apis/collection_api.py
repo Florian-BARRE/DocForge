@@ -6,7 +6,10 @@
 # type so that exact-match and range filters actually work (a number gets an INTEGER/FLOAT index,
 # not KEYWORD). Named vectors CANNOT be added to a live collection (a Qdrant limitation), so a field
 # that becomes semantic/lexical after first ingest is reported as missing (an index rebuild must
-# recreate the collection to declare it), never silently added.
+# recreate the collection to declare it), never silently added. The content axes and the sparse IDF
+# modifier follow the embedder's config-derived VectorLayout: a required content vector the store
+# lacks, or a sparse vector whose modifier disagrees with the configured sparse provider, is reported
+# missing the same way (index rebuild required).
 
 # ====== Standard Library Imports ======
 from collections.abc import Mapping, Sequence
@@ -15,13 +18,21 @@ from collections.abc import Mapping, Sequence
 from qdrant_client import AsyncQdrantClient, models
 from qdrant_client.http.exceptions import UnexpectedResponse
 
+# ====== Internal Project Imports ======
+from shared_libs.public_models import VectorLayout
+
 # ====== Local Project Imports ======
-from ..vectors import DOCUMENT_ID_KEY, PayloadType, QdrantVectorSchema, VectorNames
+from ..vectors import DOCUMENT_ID_KEY, DeclaredVectors, PayloadType, QdrantVectorSchema, VectorNames
 from .alias_api import QdrantAliasApi
+
+# The field label a missing CONTENT vector is reported under (the search target name of the body).
+CONTENT_LABEL = "content"
 
 
 class QdrantCollectionApi:
     """Static collection-lifecycle operations (ensure / drop) for the vector store."""
+
+    CONTENT_LABEL = CONTENT_LABEL
 
     # A filterable field's type → its Qdrant payload index schema.
     _PAYLOAD_SCHEMA: dict[PayloadType, models.PayloadSchemaType] = {
@@ -46,6 +57,7 @@ class QdrantCollectionApi:
         semantic_fields: Sequence[str] = (),
         lexical_fields: Sequence[str] = (),
         filterable_fields: Mapping[str, PayloadType] | None = None,
+        layout: VectorLayout | None = None,
     ) -> set[str]:
         """
         Create the Qdrant collection if it does not exist, else RECONCILE it with the schema.
@@ -61,10 +73,13 @@ class QdrantCollectionApi:
             semantic_fields (Sequence[str]): Fields that get a named dense vector.
             lexical_fields (Sequence[str]): Fields that get a named sparse (BM25) vector.
             filterable_fields (Mapping[str, PayloadType]): Filterable field → its index type.
+            layout (VectorLayout | None): The embedder's config-derived layout (which content axes,
+                and whether every sparse vector carries the IDF modifier). None = the legacy
+                dense + sparse, no-IDF layout with no content check on an existing collection.
 
         Returns:
-            set[str]: The semantic/lexical fields whose named vector is missing on an existing
-                collection (reindex-required); always empty for a fresh collection.
+            set[str]: The fields (``content`` for a content vector) whose named vector is missing or
+                mismatched on an existing collection (reindex-required); empty for a fresh one.
         """
         # 1. Already provisioned → reconcile additively (never re-create, never a destructive op).
         if await QdrantAliasApi.resolve_or_adopt(client, name):
@@ -74,14 +89,16 @@ class QdrantCollectionApi:
                 semantic_fields=semantic_fields,
                 lexical_fields=lexical_fields,
                 filterable_fields=filterable_fields,
+                layout=layout,
             )
-        # 2. The vector space mirrors the contract (content + per-field dense).
-        vectors_config = QdrantVectorSchema.dense_config(dense_dim, semantic_fields)
+        # 2. The vector space mirrors the contract AND the embedder's layout (no dense provider →
+        #    no dense vector; the IDF modifier on every sparse vector iff the provider needs it).
+        vectors_config = QdrantVectorSchema.dense_config(dense_dim, semantic_fields, layout)
         try:
             await client.create_collection(
                 collection_name=name,
                 vectors_config=vectors_config,
-                sparse_vectors_config=QdrantVectorSchema.sparse_config(lexical_fields),
+                sparse_vectors_config=QdrantVectorSchema.sparse_config(lexical_fields, layout),
             )
         except UnexpectedResponse as error:
             # collection_exists()→create is NOT atomic: when several documents ingest concurrently
@@ -115,6 +132,7 @@ class QdrantCollectionApi:
         semantic_fields: Sequence[str] = (),
         lexical_fields: Sequence[str] = (),
         filterable_fields: Mapping[str, PayloadType] | None = None,
+        layout: VectorLayout | None = None,
     ) -> set[str]:
         """
         Additively align an EXISTING collection with an evolved schema — no destructive op.
@@ -131,10 +149,11 @@ class QdrantCollectionApi:
             semantic_fields (Sequence[str]): Fields expected to carry a named dense vector.
             lexical_fields (Sequence[str]): Fields expected to carry a named sparse vector.
             filterable_fields (Mapping[str, PayloadType]): Filterable field → its index type.
+            layout (VectorLayout | None): The embedder's config-derived layout (see ``ensure``).
 
         Returns:
-            set[str]: Fields whose semantic/lexical named vector is missing and cannot be added live
-                (the collection must be reindexed to make them searchable).
+            set[str]: Fields (``content`` for a content vector) whose named vector is missing or
+                mismatched and cannot be fixed live (the collection must be reindexed).
         """
         # 1. The payload indexes already on the collection — only the missing ones are created.
         info = await client.get_collection(name)
@@ -154,9 +173,14 @@ class QdrantCollectionApi:
                 field_schema=models.PayloadSchemaType.KEYWORD,
             )
         # 3. Named vectors can't be added live — report the ones the schema wants but Qdrant lacks.
-        declared_dense, declared_sparse = await cls.declared_vectors(client, name)
+        declared = await cls.declared(client, name)
         missing = cls.missing_vectors(
-            semantic_fields, lexical_fields, declared_dense, declared_sparse
+            semantic_fields,
+            lexical_fields,
+            set(declared.dense),
+            set(declared.sparse),
+            layout=layout,
+            mismatched=declared.mismatched(layout) if layout is not None else frozenset(),
         )
         return {field_name for field_name, _ in missing}
 
@@ -166,6 +190,9 @@ class QdrantCollectionApi:
         lexical_fields: Sequence[str],
         declared_dense: set[str],
         declared_sparse: set[str],
+        *,
+        layout: VectorLayout | None = None,
+        mismatched: frozenset[str] | set[str] = frozenset(),
     ) -> list[tuple[str, str]]:
         """
         Pair every semantic/lexical field with the named vector it needs but Qdrant does not declare.
@@ -178,22 +205,55 @@ class QdrantCollectionApi:
             lexical_fields (Sequence[str]): Fields expected to carry a named sparse vector.
             declared_dense (set[str]): The dense vector names the collection declares.
             declared_sparse (set[str]): The sparse vector names the collection declares.
+            layout (VectorLayout | None): The embedder's config-derived layout. When given, the
+                content vectors of each configured axis are required too, a semantic field needs a
+                dense provider and a lexical field a sparse one (else it is not indexable at all and
+                not reported). None = the field-only legacy rule (both axes assumed).
+            mismatched (set[str]): Declared sparse vectors whose IDF modifier disagrees with the
+                layout — a REQUIRED one counts as missing (it holds another encoder's vectors).
 
         Returns:
-            list[tuple[str, str]]: ``(field_name, vector_name)`` per missing vector, sorted.
+            list[tuple[str, str]]: ``(field_name, vector_name)`` per missing vector, sorted
+                (``content`` labels a content vector).
         """
-        # 1. A field needs its dense vector when semantic and its sparse vector when lexical.
-        missing = [
-            (field_name, VectorNames.field_dense(field_name))
-            for field_name in semantic_fields
-            if VectorNames.field_dense(field_name) not in declared_dense
-        ]
+        # 1. Which axes the embedder produces (legacy: both).
+        dense_on = layout is None or layout.dense
+        sparse_on = layout is None or layout.sparse
+        required_dense = (
+            [(f, VectorNames.field_dense(f)) for f in semantic_fields] if dense_on else []
+        )
+        required_sparse = (
+            [(f, VectorNames.field_sparse(f)) for f in lexical_fields] if sparse_on else []
+        )
+        # 2. The content vectors are required only against an explicit layout.
+        if layout is not None and layout.dense:
+            required_dense.append((CONTENT_LABEL, VectorNames.CONTENT_DENSE))
+        if layout is not None and layout.sparse:
+            required_sparse.append((CONTENT_LABEL, VectorNames.CONTENT_SPARSE))
+        # 3. Missing = undeclared, or (sparse) declared under the wrong modifier.
+        missing = [pair for pair in required_dense if pair[1] not in declared_dense]
         missing += [
-            (field_name, VectorNames.field_sparse(field_name))
-            for field_name in lexical_fields
-            if VectorNames.field_sparse(field_name) not in declared_sparse
+            pair
+            for pair in required_sparse
+            if pair[1] not in declared_sparse or pair[1] in mismatched
         ]
         return sorted(missing)
+
+    @staticmethod
+    async def declared(client: AsyncQdrantClient, name: str) -> DeclaredVectors:
+        """
+        Return what an existing collection declares (named vectors + IDF-declared sparse ones).
+
+        Args:
+            client (AsyncQdrantClient): The connection from QdrantClient.raw.
+            name (str): The Qdrant collection name.
+
+        Returns:
+            DeclaredVectors: Empty when the collection does not exist.
+        """
+        if not await QdrantAliasApi.resolve_or_adopt(client, name):
+            return DeclaredVectors()
+        return DeclaredVectors.from_params((await client.get_collection(name)).config.params)
 
     @staticmethod
     async def declared_vectors(client: AsyncQdrantClient, name: str) -> tuple[set[str], set[str]]:
@@ -212,14 +272,8 @@ class QdrantCollectionApi:
             tuple[set[str], set[str]]: (declared dense vector names, declared sparse vector names).
                 Both empty when the collection does not exist.
         """
-        # 1. A missing collection declares nothing — never raise, just report emptiness.
-        if not await QdrantAliasApi.resolve_or_adopt(client, name):
-            return set(), set()
-        # 2. DocForge always uses NAMED vectors, so params.vectors is a name → params mapping.
-        params = (await client.get_collection(name)).config.params
-        dense = set(params.vectors.keys()) if isinstance(params.vectors, dict) else set()
-        sparse = set(params.sparse_vectors.keys()) if params.sparse_vectors else set()
-        return dense, sparse
+        # A missing collection declares nothing — never raise, just report emptiness.
+        return (await QdrantCollectionApi.declared(client, name)).pair()
 
     @staticmethod
     async def count(client: AsyncQdrantClient, name: str) -> int:

@@ -51,7 +51,7 @@ class BundleReader:
 
         Raises:
             BundleValidationError: On a missing/malformed manifest, an unsupported format version,
-                a missing dense_dim, or any per-file checksum mismatch.
+                a negative dense_dim, or any per-file checksum mismatch.
         """
         # 1. The manifest must exist, parse and be a version this build understands.
         manifest_path = self._root / BundlePaths.MANIFEST
@@ -65,10 +65,10 @@ class BundleReader:
             raise BundleValidationError(
                 f"unsupported bundle format_version {manifest.format_version}"
             )
-        if manifest.counts.points > 0 and manifest.dense_dim <= 0:
-            raise BundleValidationError(
-                "manifest carries points but no positive dense_dim to recreate the vector space"
-            )
+        # dense_dim 0 is legal: a sparse-only collection has no dense vector. Whether the imported
+        # embed config needs one is checked when the vector space is created.
+        if manifest.dense_dim < 0:
+            raise BundleValidationError("manifest carries a negative dense_dim")
 
         # 2. Every listed data file must be present and match its recorded checksum.
         for entry in manifest.files:

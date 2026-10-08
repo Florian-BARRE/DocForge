@@ -11,7 +11,7 @@ import { StageRailMinimap } from "./StageRailMinimap";
 function stageFixture(key: string, title: string): StageView {
   return {
     key, title, description: "", kind: "toggle", enabled: true, removable: true,
-    family: null, provider: null, available: [], config: {}, chains: [], stack: [], requires: [], notes: null,
+    family: null, provider: null, available: [], config: {}, chains: [], stack: [], slots: [], requires: [], notes: null,
   };
 }
 

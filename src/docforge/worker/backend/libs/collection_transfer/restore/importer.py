@@ -26,17 +26,19 @@ from typing import Any
 from loggerplusplus import loggerplusplus
 
 # ====== Internal Project Imports ======
+from shared_libs.pipelines.build.validation_message import ValidationMessage
 from shared_libs.pipelines.validation import BlobStructureValidator, BlobValidationError
 from shared_libs.public_models import FieldScope
 from shared_libs.services.db.facades import CollectionTransferFacade
 from shared_libs.services.db.postgresql.tables import Blob, Collection, MetadataField
-from shared_libs.services.db.qdrant import QdrantPoint, SparseVec
+from shared_libs.services.db.qdrant import QdrantPoint, SparseVec, VectorNames
 from shared_libs.services.db.s3 import S3Object
 
 # ====== Local Project Imports ======
 from ..bundle import BundleReader
 from ..manifest import CollectionContractModel, TransferCounts, is_supported_version
 from ..paths import BundlePaths
+from .content_sparse import ImportContentSparse
 from .remap import RemapBuilder, RemapContext
 from .rows import RowDeserializer
 
@@ -90,6 +92,8 @@ class CollectionImporterV1:
         self._point_batch = point_batch
         self._blob_batch_bytes = blob_batch_bytes
         self._blob_validator = blob_validator or BlobStructureValidator()
+        # Whether the bundle's content sparse vectors must be re-encoded (set from its contract).
+        self._content_sparse_needed = False
 
     async def run(self, target_name: str | None = None) -> ImportResult:
         """
@@ -104,6 +108,7 @@ class CollectionImporterV1:
         """
         manifest = self._reader.manifest
         contract = self._reader.read_collection()
+        self._content_sparse_needed = ImportContentSparse.needed(contract)
 
         # Fail-fast BEFORE any write: a malformed/hostile bundle's graph blobs must be rejected here,
         # exactly like every other write boundary, never stored verbatim to brick the new collection.
@@ -158,7 +163,9 @@ class CollectionImporterV1:
                     f"Import failed for new collection {created.id}; rolling back"
                 )
                 await self._facade.rollback_collection(created.id)
-            raise CollectionImportError(f"import failed and was rolled back: {exc}") from exc
+            raise CollectionImportError(
+                f"import failed and was rolled back: {ValidationMessage.describe(exc)}"
+            ) from exc
 
         self._progress("done", 100)
         self.logger.info(f"Imported bundle into new collection {created.id} ('{name}')")
@@ -224,6 +231,7 @@ class CollectionImporterV1:
             trace_verbosity=contract.trace_verbosity,
             needs_reindex=contract.needs_reindex,
             indexed_signature=contract.indexed_signature,
+            indexed_embed_signature=contract.indexed_embed_signature,
             title_field=title_field,
             pipeline=contract.pipeline,
             search=contract.search,
@@ -400,37 +408,61 @@ class CollectionImporterV1:
     ) -> int:
         """Ensure the vector space and upsert every point under its REMAPPED id; return the count.
 
-        The target's BM25-declared metadata vectors (``modifier=IDF``) are DROPPED from every bundle
-        point and re-encoded locally once all points are in: a bundle exported from an older
-        collection carries the embedder's (BGE-M3) sparse weights under the same names, and copying
-        them would mix two encoders in one IDF vector. Dense vectors travel as they are.
+        Every metadata sparse vector (``meta_*_bm25``) is DROPPED from the bundle points and
+        re-encoded through the imported collection's configured sparse provider once all points are
+        in: a bundle from an older engine may carry them in another encoding (e.g. local BM25 under a
+        bge_server sparse config), and copying them would mix encoders. Content and dense vectors
+        travel as they are — except the content sparse vector when the bundle cannot vouch for its
+        encoder (``ImportContentSparse``): it is re-encoded from the chunk text per batch. Both
+        re-encodes are best-effort (a down sparse provider leaves the meta vectors absent, repairable
+        with the meta-vector backfill, and keeps the bundle's content vectors with needs_reindex
+        raised) — they never fail an import already written.
         """
+        content_sparse = ImportContentSparse(self._facade, collection_id)
         batch: list[QdrantPoint] = []
-        bm25_vectors: set[str] | None = None
+        ensured = False
+        dropped = False
         restored = 0
         for record in self._reader.iter_rows(BundlePaths.POINTS):
             point = self._to_point(record, ctx)
             if point is None:
                 continue
-            if bm25_vectors is None:
+            if not ensured:
                 await self._facade.ensure_vector_space(collection_id, dense_dim)
-                bm25_vectors = await self._facade.bm25_meta_vectors(collection_id)
-            for vector in bm25_vectors:
-                point.sparse.pop(vector, None)
+                if self._content_sparse_needed:
+                    await content_sparse.prepare()
+                ensured = True
+            for vector in [name for name in point.sparse if VectorNames.is_field_sparse(name)]:
+                point.sparse.pop(vector)
+                dropped = True
             batch.append(point)
             restored += 1
             if len(batch) >= self._point_batch:
+                await content_sparse.apply(batch)
                 await self._facade.upsert_points(collection_id, batch)
                 batch = []
         if batch:
+            await content_sparse.apply(batch)
             await self._facade.upsert_points(collection_id, batch)
-        if bm25_vectors:
-            documents, points = await self._facade.reencode_bm25_meta_vectors(collection_id)
-            self.logger.info(
-                f"Re-encoded {len(bm25_vectors)} BM25 metadata vector(s) locally on {points} "
-                f"point(s) of {documents} document(s) (bundle copies dropped)"
-            )
+        await content_sparse.finish()
+        if dropped:
+            await self.__reencode_meta_lexical(collection_id)
         return restored
+
+    async def __reencode_meta_lexical(self, collection_id: uuid.UUID) -> None:
+        """Re-encode the metadata lexical vectors through the sparse provider (best-effort)."""
+        try:
+            documents, points = await self._facade.reencode_meta_lexical_vectors(collection_id)
+            self.logger.info(
+                f"Re-encoded the metadata lexical vectors on {points} point(s) of {documents} "
+                f"document(s) through the configured sparse provider (bundle copies dropped)"
+            )
+        except Exception as exc:  # noqa: BLE001 — the import is written; this is a repairable gap.
+            self.logger.warning(
+                f"Metadata lexical re-encode failed after import of {collection_id} "
+                f"({ValidationMessage.describe(exc)}) — run "
+                f"the meta-vector backfill once the sparse provider is reachable"
+            )
 
     @classmethod
     def _to_point(cls, record: dict[str, Any], ctx: RemapContext) -> QdrantPoint | None:

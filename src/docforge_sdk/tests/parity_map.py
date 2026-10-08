@@ -449,6 +449,7 @@ _PIPELINE_BLOB_SCHEMAS: list[str] = [
     "CollectionStageApplyRequest",
     "StageKind",
     "StageView",
+    "ProviderSlotView",
     "StageViewRequest",
     # Validation issues surfaced inside the opaque `issues: list[dict]` field.
     "ValidationCode",

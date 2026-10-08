@@ -70,6 +70,10 @@ class StoreCopyResult:
         first_rebuild (bool): True when the stable name was a physical collection (non-atomic swap).
         document_ids (set[str]): The ``document_id`` payloads seen while copying.
         carried_vectors (set[str]): Every vector name at least one copied point carried.
+        reencoded_sparse_points (int): Points whose content sparse vector was re-encoded from the
+            chunk text (the old one came from another sparse provider, or was absent).
+        sparse_reencoded (bool): The copy re-encoded the content sparse vector through the
+            configured sparse provider instead of copying it (its space is now the current one).
     """
 
     physical: str | None
@@ -77,6 +81,8 @@ class StoreCopyResult:
     first_rebuild: bool = False
     document_ids: set[str] = field(default_factory=set)
     carried_vectors: set[str] = field(default_factory=set)
+    reencoded_sparse_points: int = 0
+    sparse_reencoded: bool = False
 
 
 @dataclass(slots=True)
@@ -91,6 +97,9 @@ class RebuildReconcileResult:
         overrides_applied (int): Chunk enabled overrides re-applied onto the new store.
         reingest_required_fields (list[str]): Chunk-scope semantic fields whose vector no point
             carries — a rebuild cannot fill them (content is copied, the backfill is document-scope).
+        dense_space_changed (bool): The dense embed provider/model changed since the last ingest —
+            a rebuild copies the dense vectors and cannot re-embed them, so ``needs_reindex`` stays
+            raised until a reingest.
     """
 
     missing_vectors: list[str] = field(default_factory=list)
@@ -98,6 +107,7 @@ class RebuildReconcileResult:
     needs_reindex: bool = False
     removed_documents: int = 0
     overrides_applied: int = 0
+    dense_space_changed: bool = False
 
 
 __all__ = [

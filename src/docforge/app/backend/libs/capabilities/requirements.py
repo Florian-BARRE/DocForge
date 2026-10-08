@@ -134,6 +134,11 @@ IN_WORKER_OR_CLOUD: frozenset[str] = frozenset(
         "ocr:mistral",
         # embed / vlm / llm — the OpenAI-compatible + mistral providers are cloud/per-collection
         "embed:openai_compatible",
+        # embed:dense_sparse is the slot container — its availability is per slot provider (a
+        # bm25_local sparse slot needs no sidecar), so the node itself is always offerable.
+        "embed:dense_sparse",
+        # embed:bm25_local is an in-process sparse slot provider (no network, no model).
+        "embed:bm25_local",
         "vlm:openai_compatible",
         "llm:openai_compatible",
         "llm:mistral",

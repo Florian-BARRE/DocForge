@@ -1,31 +1,20 @@
 # ====== Code Summary ======
 # BaseEmbedderNode — the abstract base of every embedder. The shared frame: keep only the chunks
-# whose role is enabled by default (role_default_enabled is THE single policy: body embeds,
-# furniture like header/footer & toc does not — no vector spend on unsearchable chunks), batch
-# their ENRICHED texts through the provider hooks (dense required, sparse optional), embed the
-# SEMANTIC chunk-field values as named per-field vectors, and assemble the chunk-linked output.
-# Disabled chunks simply get NO vectors (they still flow to persistence via the chunk artefact,
-# inspectable + re-enablable). Embedding an enabled chunk is NOT optional: any provider failure
-# fails the node — no degradation here.
+# whose role is enabled by default (role_default_enabled is THE single policy: body embeds, furniture
+# like header/footer & toc does not), batch their ENRICHED texts through the provider hooks, embed the
+# SEMANTIC / LEXICAL chunk-field values as named per-field vectors, and assemble the chunk-linked
+# output. Which axes run, and how, is decided by small overridable hooks: a dense axis and/or a sparse
+# axis; the two in ONE combined call when the provider can; else the two axes concurrently (each under
+# its own endpoint policy) or sequentially. Every call goes through the ResilientEmbedCalls retry/split
+# + limiter frame. Disabled chunks simply get NO vectors. Any provider failure fails the node.
 
 # ====== Standard Library Imports ======
 import asyncio
 import re
 from abc import abstractmethod
-from collections.abc import Awaitable, Callable
-from typing import TypeVar
-
-# ====== Third-Party Library Imports ======
-import httpx
 
 # ====== Internal Project Imports ======
-from shared_libs.pipelines.base import (
-    ActionNode,
-    EndpointKey,
-    NodeUsage,
-    ProviderLimiterRegistry,
-    ProviderSlotTimeout,
-)
+from shared_libs.pipelines.base import ActionNode, NodeUsage
 from shared_libs.public_models import (
     Chunk,
     ChunkEmbeddings,
@@ -37,301 +26,44 @@ from shared_libs.public_models import (
 )
 
 # ====== Local Project Imports ======
-from .config import BaseEmbedConfig
 from .io import EmbedConsumes, EmbedProduces
+from .policy import EmbedCallPolicy
+from .resilience import ResilientEmbedCalls
 
-# A bare figure marker line — an "[Image: <kind>]" with NOTHING after the closing bracket (no
-# caption/OCR/description folded onto it). Such a line carries no searchable content of its own.
+# A bare figure marker line — an "[Image: <kind>]" with NOTHING after the closing bracket.
 _BARE_IMAGE_MARKER = re.compile(r"^\[Image:[^\]]*\]$")
 
-# The longest provider Retry-After honoured before a retry (a misbehaving header must never park a
-# job for minutes; the retry budget then decides).
-_RETRY_AFTER_CAP_SECONDS = 30.0
-
-# The shape a resilient wrapper carries through its retry/split skeleton (a dense list, or the
-# (dense, sparse) pair of the combined path). Bound so the skeleton stays provider-agnostic.
-_Batch = TypeVar("_Batch")
+_DENSE = "dense"
+_SPARSE = "sparse"
+_COMBINED = "combined"
 
 
-class BaseEmbedderNode(ActionNode):
+def _concat_pair(left: tuple, right: tuple) -> tuple:
+    """Concatenate two (dense, sparse) halves axis by axis, keeping each 1:1 with the input."""
+    return [*left[0], *right[0]], [*left[1], *right[1]]
+
+
+class BaseEmbedderNode(ResilientEmbedCalls, ActionNode):
     """Abstract embedder: chunks in, chunk-linked vectors out; children implement the hooks."""
 
     Consumes = EmbedConsumes
     Produces = EmbedProduces
 
-    # Running paid-call token usage for THIS run, stamped onto the output by ``run``. A hosted
-    # embedder folds each embeddings response's input tokens in via its provider hook; a local/free
-    # embedder (bge_server) never touches it, so it stays None and the output stays free. Reset at the
-    # top of every ``run`` so a prior run's total can never leak onto a later free/empty one.
+    # Running paid-call token usage for THIS run (a local/free embedder leaves it None).
     _last_usage: NodeUsage | None = None
 
     @staticmethod
     def _has_searchable_content(text: str) -> bool:
-        """Whether a chunk's enriched text carries anything worth embedding.
-
-        A chunk whose text is ONLY whitespace and/or bare ``[Image: <kind>]`` figure markers (a
-        cropped-but-unenriched figure with no caption/OCR/description) has no real content: embedding
-        it spends a vector on a placeholder that then surfaces as a top hit with a misleading
-        self-citation (the empty chunk still names a real filename). Conservative on purpose — a line
-        that is a marker WITH text folded in ("[Image: chart] Figure 2 …"), or any other non-blank
-        line, counts as content and keeps the chunk embedded.
-        """
+        """Whether an enriched text carries anything beyond whitespace / bare ``[Image: …]`` markers."""
         for line in text.splitlines():
             stripped = line.strip()
             if stripped and not _BARE_IMAGE_MARKER.match(stripped):
                 return True
         return False
 
-    async def _limited(
-        self, embed_fn: Callable[[list[str]], Awaitable[_Batch | None]], texts: list[str]
-    ) -> _Batch | None:
-        """Run ONE provider call while holding an in-flight slot on this embedder's endpoint.
-
-        The limiter is the shared-embedder guard: a massive reingest across N workers/collections
-        must not stack unbounded concurrent requests onto a CPU embedder that other products also use.
-        The slot wraps only the wire call — never the retry backoff sleep — so a backing-off job does
-        not hold capacity (except a call abandoned in flight: its slot stays held until the lease
-        expires, since the provider is still computing it). Unbound (tests, search) the registry
-        yields the no-op limiter. Raises ``ProviderSlotTimeout`` when no slot frees up in time.
-        """
-        config: BaseEmbedConfig = self.config
-        base_url = getattr(config, "base_url", "")
-        if not base_url:  # in-process encoder (lexical): no remote capacity to protect
-            return await embed_fn(texts)
-        # The lease outlives one request (timeout + margin): a crashed holder frees itself, and an
-        # abandoned (timed-out) request keeps its slot about as long as the provider may still run it.
-        lease_seconds = getattr(config, "timeout_seconds", 60.0) + 15.0
-        async with ProviderLimiterRegistry.current().slot(
-            EndpointKey.normalize(base_url),
-            max_inflight=config.max_concurrency,
-            lease_seconds=lease_seconds,
-        ):
-            return await embed_fn(texts)
-
-    @abstractmethod
-    async def _embed_dense(self, texts: list[str]) -> list[list[float]]:
-        """Embed one batch of texts into dense vectors (same order)."""
-        ...
-
-    async def _embed_sparse(self, texts: list[str]) -> list[SparseVector] | None:
-        """Embed one batch into sparse vectors — None when the provider has none (default)."""
-        _ = texts
-        return None
-
-    async def _embed_dense_sparse(
-        self, texts: list[str]
-    ) -> tuple[list[list[float]], list[SparseVector]] | None:
-        """Embed one batch into dense AND sparse vectors in a single forward pass.
-
-        Optional optimisation: a provider that can emit both axes from one model pass (a combined
-        endpoint) overrides this to halve the embed cost versus two separate round-trips. Returning
-        None — the default — means "this provider has no combined path", and the caller falls back to
-        ``_embed_dense`` + ``_embed_sparse``. A returned tuple is aligned 1:1 with ``texts`` on both
-        axes. An implementer maps only the "route absent / unsupported" signal to None; a genuine
-        transient failure must still be raised so the resilient wrapper can retry and split it.
-        """
-        _ = texts
-        return None
-
-    @staticmethod
-    def __is_overload(error: Exception) -> bool:
-        """The provider said "busy, come back later" (429 / 503): wait, never split the batch."""
-        return isinstance(error, httpx.HTTPStatusError) and error.response.status_code in (429, 503)
-
-    @staticmethod
-    def __retry_after(error: Exception) -> float | None:
-        """The provider's ``Retry-After`` delay in seconds (delta form only), capped; else None."""
-        if not isinstance(error, httpx.HTTPStatusError):
-            return None
-        try:
-            delay = float(error.response.headers.get("Retry-After", ""))
-        except ValueError:
-            return None
-        return min(max(delay, 0.0), _RETRY_AFTER_CAP_SECONDS)
-
-    @staticmethod
-    def __is_transient(error: Exception) -> bool:
-        """A provider error worth retrying: a timeout, a transport blip, a 429/5xx status, or no
-        limiter slot within the wait budget (the shared endpoint is saturated — back off like a
-        timeout)."""
-        if isinstance(error, httpx.TimeoutException | httpx.TransportError | ProviderSlotTimeout):
-            return True
-        return isinstance(error, httpx.HTTPStatusError) and error.response.status_code in (
-            429,
-            500,
-            502,
-            503,
-            504,
-        )
-
-    async def __resilient(
-        self,
-        embed_fn: Callable[[list[str]], Awaitable[_Batch | None]],
-        texts: list[str],
-        concat: Callable[[_Batch, _Batch], _Batch],
-    ) -> _Batch | None:
-        """
-        Call one provider embed hook with backoff-retry, then adaptive batch splitting.
-
-        A single slow or transiently-failing batch must not lose the whole document (the previous
-        behaviour: one timeout failed the embed node and discarded every vector already computed).
-        So a transient error is retried with exponential backoff; if it still fails, the batch is
-        halved and each half embedded independently — a smaller batch is lighter on a CPU-hosted
-        model and usually succeeds. A single-text batch that still fails is a genuine error and its
-        last transient failure is raised. Provider hooks return outputs aligned 1:1 with their input,
-        so ``concat`` on the halves preserves order; a None sub-result (no sparse / no combined route)
-        propagates as None. Shape-agnostic: the same skeleton serves the single-axis hook and the
-        combined (dense, sparse) one.
-
-        Retry contract: ``max_retries`` counts retries BEYOND the initial call, so the batch is tried
-        ``1 + max_retries`` times before the split — the documented ``TimeoutRetryConfig`` semantics
-        the vlm/llm loops also follow (``max_retries=0`` → a single one-shot attempt, no retry and no
-        split; ``max_retries=1`` → 2 attempts; ``max_retries=N`` → N+1). Every attempt is logged as
-        ``attempt/total``, the "current of total attempts" convention shared across the families.
-
-        Timeout-splits-sooner rule: a client-side TIMEOUT on a MULTI-text batch is the "batch too
-        heavy" signal — on a single-threaded CPU embedder a ``ReadTimeout`` means the batch simply
-        could not finish inside ``timeout_seconds``. Retrying the IDENTICAL oversized batch only
-        stacks another request onto the still-busy server (amplification) and almost never succeeds;
-        it just delays the split that WOULD. So a timeout with ``len(texts) > 1`` goes straight to the
-        adaptive split after ONE attempt, skipping the remaining same-batch retries. The backoff-retry
-        budget is still spent in full for a NON-timeout transient (a 429/5xx/transport blip, which a
-        retry genuinely resolves) and for a single-text timeout (nothing left to split — the retry
-        budget is its only recourse before the terminal raise).
-
-        Slot-wait rule: a ``ProviderSlotTimeout`` (no limiter slot within the wait budget) is retried
-        with backoff like a provider timeout but NEVER split — the halves would only queue behind the
-        same saturated endpoint — so once the budget is spent it is raised as is.
-
-        Overload rule: a 429 / 503 is the provider saying "busy, retry later", not "batch too heavy".
-        It is retried after the provider's ``Retry-After`` (when longer than the backoff) and NEVER
-        split — halving it would double the requests hitting an already-saturated server.
-        """
-        config: BaseEmbedConfig = self.config
-        if config.max_retries == 0:
-            return await self._limited(
-                embed_fn, texts
-            )  # one-shot opt-out: no retry, no adaptive split
-        total_attempts = 1 + config.max_retries
-        last_error: Exception | None = None
-        for attempt in range(1, total_attempts + 1):
-            try:
-                return await self._limited(embed_fn, texts)
-            except Exception as error:  # noqa: BLE001 — re-raised below unless transient
-                if not self.__is_transient(error):
-                    raise
-                last_error = error
-                # A timeout on a splittable batch means "too heavy" — split now rather than retry the
-                # same oversized batch (amplification); a one-text batch or a non-timeout transient
-                # keeps the full backoff-retry budget (see the timeout-splits-sooner rule above).
-                split_on_timeout = isinstance(error, httpx.TimeoutException) and len(texts) > 1
-                self.logger.warning(
-                    f"Embedder '{self.KIND}' transient error on a {len(texts)}-text batch "
-                    f"(attempt {attempt}/{total_attempts}"
-                    f"{'; splitting now — timeout on a multi-text batch' if split_on_timeout else ''})"
-                    f": {error!r}"
-                )
-                if split_on_timeout:
-                    break
-                if attempt < total_attempts:
-                    backoff = config.retry_backoff_seconds * attempt
-                    await asyncio.sleep(max(backoff, self.__retry_after(error) or 0.0))
-        # Retries exhausted — split and embed the halves independently, or surface the genuine error
-        # on a single text (nothing left to split). ``last_error`` is always set here: the loop only
-        # falls through after every attempt raised a transient (a success returns, a hard error raises).
-        if (
-            len(texts) <= 1
-            or isinstance(last_error, ProviderSlotTimeout)
-            or self.__is_overload(last_error)
-        ):
-            raise last_error  # type: ignore[misc]
-        mid = len(texts) // 2
-        self.logger.warning(
-            f"Embedder '{self.KIND}' still failing a {len(texts)}-text batch — splitting to "
-            f"{mid} + {len(texts) - mid} and retrying each half"
-        )
-        left = await self.__resilient(embed_fn, texts[:mid], concat)
-        right = await self.__resilient(embed_fn, texts[mid:], concat)
-        if left is None or right is None:
-            return None
-        return concat(left, right)
-
-    async def __resilient_batch(
-        self,
-        embed_fn: Callable[[list[str]], Awaitable[list]],
-        texts: list[str],
-    ) -> list | None:
-        """Resilient single-axis embed: retry + split around one dense/sparse hook (see __resilient)."""
-        return await self.__resilient(embed_fn, texts, lambda left, right: [*left, *right])
-
-    async def __resilient_combined(
-        self, texts: list[str]
-    ) -> tuple[list[list[float]], list[SparseVector]] | None:
-        """Resilient combined embed: the same retry + split skeleton around the single-pass hook.
-
-        A None from ``_embed_dense_sparse`` means "no combined route" (unsupported) and propagates up
-        so the batch loop can fall back to the two separate hooks — distinct from a raised transient
-        error, which is retried and split like any other. On a split the halves' dense and sparse
-        lists are concatenated independently, keeping each axis 1:1 with the input order.
-        """
-        return await self.__resilient(
-            self._embed_dense_sparse,
-            texts,
-            lambda left, right: ([*left[0], *right[0]], [*left[1], *right[1]]),
-        )
-
-    async def __embed_all(
-        self, texts: list[str], sparse: bool
-    ) -> tuple[list[list[float]], list[SparseVector] | None]:
-        """Run the batched dense (and optional sparse) embedding over every text.
-
-        When sparse is requested, each batch first tries the provider's single-forward-pass combined
-        hook; the first batch that reports it unsupported flips the run to the two separate hooks for
-        every remaining batch (no re-probing /embed_all once it is known absent).
-        """
-        config: BaseEmbedConfig = self.config
-        dense: list[list[float]] = []
-        sparse_vectors: list[SparseVector] | None = [] if sparse else None
-        combined_supported = sparse  # probe once; a None on the first sparse batch disables it
-        for start in range(0, len(texts), config.batch_size):
-            batch = texts[start : start + config.batch_size]
-            if sparse_vectors is not None and combined_supported:
-                combined = await self.__resilient_combined(batch)
-                if combined is not None:
-                    dense_batch, batch_sparse = combined
-                    dense.extend(dense_batch)
-                    sparse_vectors.extend(batch_sparse)
-                    continue
-                # Unsupported combined route — remember it and fall through to the separate hooks
-                # for this batch and every later one.
-                combined_supported = False
-            dense_batch = await self.__resilient_batch(self._embed_dense, batch)
-            dense.extend(dense_batch if dense_batch is not None else [])  # dense hook never None
-            if sparse_vectors is not None:
-                batch_sparse = await self.__resilient_batch(self._embed_sparse, batch)
-                if batch_sparse is None:
-                    if sparse_vectors:
-                        # Earlier batches DID return sparse vectors — a mid-stream None would
-                        # silently discard them and lose lexical vectors for part of the doc.
-                        # Sparse support is a provider constant, so this is a contract breach: fail loud.
-                        raise RuntimeError(
-                            f"Embedder '{self.KIND}' returned sparse vectors for earlier batches "
-                            f"but None for a later one — inconsistent sparse support"
-                        )
-                    # First batch: the provider has no sparse support — drop the whole axis, cleanly.
-                    self.logger.info(f"Embedder '{self.KIND}' has no sparse support — dense only")
-                    sparse_vectors = None
-                else:
-                    sparse_vectors.extend(batch_sparse)
-        return dense, sparse_vectors
-
     @staticmethod
     def __indexed_field_values(chunks: list[Chunk], field_name: str) -> list[tuple[int, str]]:
-        """The (chunk index, text) pairs for the chunks that carry a value for ``field_name``.
-
-        Lists render as comma-joined text; blank values are skipped — so a field with no value on
-        any chunk yields an empty list and gets no vectors at all.
-        """
+        """The (chunk index, text) pairs of the chunks carrying a non-blank value for a field."""
         indexed: list[tuple[int, str]] = []
         for index, chunk in enumerate(chunks):
             value = chunk.generated_meta.get(field_name)
@@ -342,120 +74,188 @@ class BaseEmbedderNode(ActionNode):
                 indexed.append((index, text))
         return indexed
 
-    async def __embed_sparse_batched(self, texts: list[str]) -> list[SparseVector] | None:
-        """Batch texts through the sparse hook → one SparseVector each, or None (no sparse axis).
+    # ---------------------------------------------------------------- provider hooks (override)
 
-        The sparse-only companion of ``__embed_all``: it walks ``batch_size`` slices through the
-        resilient retry/split wrapper around ``_embed_sparse`` and concatenates them in order. A
-        None on the first batch means the provider has no sparse support and propagates as None
-        (the caller then writes no lexical field vectors); a later-batch None after an earlier
-        non-None is a contract breach (inconsistent sparse support) and fails loud.
-        """
-        config: BaseEmbedConfig = self.config
-        out: list[SparseVector] = []
-        for start in range(0, len(texts), config.batch_size):
-            batch = texts[start : start + config.batch_size]
-            batch_sparse = await self.__resilient_batch(self._embed_sparse, batch)
-            if batch_sparse is None:
-                if out:
-                    raise RuntimeError(
-                        f"Embedder '{self.KIND}' returned sparse vectors for earlier batches but "
-                        f"None for a later one — inconsistent sparse support"
-                    )
-                return None
-            out.extend(batch_sparse)
-        return out
+    @abstractmethod
+    async def _embed_dense(self, texts: list[str]) -> list[list[float]]:
+        """Embed one batch into dense vectors (same order) — a sparse-only embedder raises."""
 
-    async def __embed_semantic_fields(
-        self, chunks: list[Chunk], contract: CollectionContract
-    ) -> dict[str, dict[int, list[float]]]:
-        """Per-field dense vectors of the SEMANTIC chunk fields → {field: {chunk index: vector}}."""
-        semantic_fields = [
-            spec.field_name
-            for spec in contract.fields
-            if spec.semantic and spec.scope == FieldScope.CHUNK
-        ]
-        vectors: dict[str, dict[int, list[float]]] = {}
-        for field_name in semantic_fields:
-            # 1. Only chunks that carry a value for the field.
-            indexed = self.__indexed_field_values(chunks, field_name)
-            if not indexed:
-                continue
-            # 2. One batched pass per field, mapped back to the chunk indexes.
-            dense, _ = await self.__embed_all([text for _, text in indexed], sparse=False)
-            vectors[field_name] = {
-                index: vector for (index, _), vector in zip(indexed, dense, strict=True)
-            }
-        return vectors
+    async def _embed_sparse(self, texts: list[str]) -> list[SparseVector] | None:
+        """Embed one batch of CONTENT into sparse vectors — None when the provider has none."""
+        _ = texts
+        return None
 
-    async def __embed_lexical_fields(
-        self, chunks: list[Chunk], contract: CollectionContract
-    ) -> dict[str, dict[int, SparseVector]]:
-        """Per-field sparse vectors of the LEXICAL chunk fields → {field: {chunk index: vector}}.
+    async def _embed_sparse_fields(self, texts: list[str]) -> list[SparseVector] | None:
+        """Sparse vectors of short METADATA values (same as content unless a provider tells apart)."""
+        return await self._embed_sparse(texts)
 
-        The lexical mirror of ``__embed_semantic_fields``: each LEXICAL chunk-scope contract field's
-        value is sparse-encoded into a named per-field vector (``meta_<slug>_bm25`` downstream). A
-        provider with no sparse axis yields nothing for every field (the batched hook returns None),
-        so the field is simply absent from the output rather than written empty.
-        """
-        lexical_fields = [
-            spec.field_name
-            for spec in contract.fields
-            if spec.lexical and spec.scope == FieldScope.CHUNK
-        ]
-        vectors: dict[str, dict[int, SparseVector]] = {}
-        for field_name in lexical_fields:
-            # 1. Only chunks that carry a value for the field.
-            indexed = self.__indexed_field_values(chunks, field_name)
-            if not indexed:
-                continue
-            # 2. One batched sparse pass per field; a provider with no sparse axis skips the field.
-            sparse = await self.__embed_sparse_batched([text for _, text in indexed])
-            if sparse is None:
-                continue
-            vectors[field_name] = {
-                index: vector for (index, _), vector in zip(indexed, sparse, strict=True)
-            }
-        return vectors
-
-    async def encode_query_dense(self, text: str) -> list[float]:
-        """Encode a single query string into its dense vector — the public query-encode entry point.
-
-        The search encode node calls this instead of reaching into the protected batch hook: it wraps
-        the one-text ``_embed_dense`` and returns the lone vector. Deliberately WITHOUT the resilient
-        retry/split wrapper (that serves large ingest batches); the caller bounds this single call with
-        its own per-axis timeout.
-
-        Args:
-            text (str): The query string to encode.
-
-        Returns:
-            list[float]: The query's dense vector.
-        """
-        return (await self._embed_dense([text]))[0]
-
-    async def encode_query_sparse(self, text: str) -> SparseVector | None:
-        """Encode a single query string into its sparse vector, or None when the provider has none.
-
-        The query-side companion of ``encode_query_dense``: it wraps the one-text ``_embed_sparse``
-        hook (whose default is None — no lexical axis) and returns the lone vector.
-
-        Args:
-            text (str): The query string to encode.
-
-        Returns:
-            SparseVector | None: The query's sparse vector, or None when the provider has no sparse axis.
-        """
+    async def _embed_query_sparse(self, text: str) -> SparseVector | None:
+        """The query-side sparse vector (same as the document side unless overridden)."""
         vectors = await self._embed_sparse([text])
         return vectors[0] if vectors else None
 
+    async def _embed_dense_sparse(
+        self, texts: list[str]
+    ) -> tuple[list[list[float]], list[SparseVector]] | None:
+        """Both axes in ONE call — None (default) means "no combined path", use two calls."""
+        _ = texts
+        return None
+
+    # ---------------------------------------------------------------- axis plan (override)
+
+    def has_dense(self) -> bool:
+        """Whether this embedder produces dense vectors."""
+        return True
+
+    def has_sparse(self) -> bool:
+        """Whether this embedder is asked for sparse vectors (a provider may still return None)."""
+        return bool(getattr(self.config, "embed_sparse", True))
+
+    def sparse_idf(self) -> bool:
+        """Whether the sparse vectors are term frequencies needing the store's IDF modifier."""
+        return False
+
+    def model_name(self) -> str:
+        """The model identity stamped on the produced embeddings (provenance)."""
+        return str(getattr(self.config, "model", ""))
+
+    def _call_policy(self, axis: str) -> EmbedCallPolicy:
+        """The retry/limiter policy of one call site (``dense`` / ``sparse`` / ``combined``)."""
+        _ = axis
+        return EmbedCallPolicy.from_config(self.config)
+
+    def _parallel_axes(self) -> bool:
+        """Whether two separate axis calls run concurrently (independent endpoints) — default no."""
+        return False
+
+    def _collect_usage(self) -> NodeUsage | None:
+        """The paid-call usage to stamp on the output (default: the running accumulator)."""
+        return self._last_usage
+
+    # ---------------------------------------------------------------- batching
+
+    async def __axis(self, axis: str, batch: list[str]) -> list | None:
+        """One resilient single-axis call (dense or sparse) under that axis's policy."""
+        hook = self._embed_dense if axis == _DENSE else self._embed_sparse
+        return await self._resilient(
+            hook, batch, lambda left, right: [*left, *right], self._call_policy(axis)
+        )
+
+    async def __two_axes(self, batch: list[str]) -> tuple[list | None, list | None]:
+        """Dense + sparse as two calls — concurrent on independent endpoints, else sequential."""
+        if self._parallel_axes():
+            dense, sparse = await asyncio.gather(
+                self.__axis(_DENSE, batch), self.__axis(_SPARSE, batch)
+            )
+            return dense, sparse
+        return await self.__axis(_DENSE, batch), await self.__axis(_SPARSE, batch)
+
+    def __accept_sparse(
+        self, collected: list[SparseVector] | None, batch_sparse: list | None
+    ) -> list[SparseVector] | None:
+        """Fold one batch's sparse output in; a first-batch None drops the axis cleanly."""
+        if collected is None:
+            return None
+        if batch_sparse is not None:
+            collected.extend(batch_sparse)
+            return collected
+        if collected:
+            # Sparse support is a provider constant — a mid-stream None would lose earlier vectors.
+            raise RuntimeError(
+                f"Embedder '{self.KIND}' returned sparse vectors for earlier batches but None for "
+                f"a later one — inconsistent sparse support"
+            )
+        self.logger.info(f"Embedder '{self.KIND}' has no sparse support — no sparse vectors")
+        return None
+
+    async def __embed_all(
+        self, texts: list[str], dense_on: bool, sparse_on: bool
+    ) -> tuple[list[list[float]], list[SparseVector] | None]:
+        """Batch every text through the planned axes (combined when possible, else per axis)."""
+        batch_size = int(getattr(self.config, "batch_size", 32))
+        dense: list[list[float]] = []
+        sparse: list[SparseVector] | None = [] if sparse_on else None
+        combined_ok = dense_on and sparse_on
+        for start in range(0, len(texts), batch_size):
+            batch = texts[start : start + batch_size]
+            # 1. Both axes from one server: ONE call per batch (one limiter slot); a None on the
+            #    first batch means the route is absent → separate calls for this and later batches.
+            if combined_ok and sparse is not None:
+                combined = await self._resilient(
+                    self._embed_dense_sparse, batch, _concat_pair, self._call_policy(_COMBINED)
+                )
+                if combined is not None:
+                    dense.extend(combined[0])
+                    sparse.extend(combined[1])
+                    continue
+                combined_ok = False
+            # 2. Separate axis calls.
+            if dense_on and sparse is not None:
+                batch_dense, batch_sparse = await self.__two_axes(batch)
+            else:
+                batch_dense = await self.__axis(_DENSE, batch) if dense_on else None
+                batch_sparse = await self.__axis(_SPARSE, batch) if sparse is not None else None
+            dense.extend(batch_dense or [])
+            sparse = self.__accept_sparse(sparse, batch_sparse)
+        return dense, sparse
+
+    async def __field_vectors(
+        self, chunks: list[Chunk], contract: CollectionContract, lexical: bool
+    ) -> dict[str, dict[int, object]]:
+        """Per-field vectors of the chunk-scope SEMANTIC (dense) or LEXICAL (sparse) fields."""
+        names = [
+            spec.field_name
+            for spec in contract.fields
+            if (spec.lexical if lexical else spec.semantic) and spec.scope == FieldScope.CHUNK
+        ]
+        vectors: dict[str, dict[int, object]] = {}
+        policy = self._call_policy(_SPARSE if lexical else _DENSE)
+        hook = self._embed_sparse_fields if lexical else self._embed_dense
+        batch_size = int(getattr(self.config, "batch_size", 32))
+        for field_name in names:
+            indexed = self.__indexed_field_values(chunks, field_name)
+            if not indexed:
+                continue
+            texts = [text for _, text in indexed]
+            out: list = []
+            for start in range(0, len(texts), batch_size):
+                part = await self._resilient(
+                    hook, texts[start : start + batch_size], lambda a, b: [*a, *b], policy
+                )
+                if part is None:  # no sparse axis on this provider — the field gets no vector
+                    out = []
+                    break
+                out.extend(part)
+            if out:
+                vectors[field_name] = {i: v for (i, _), v in zip(indexed, out, strict=True)}
+        return vectors
+
+    def __embeddings(
+        self, dimension: int, items: list[ChunkVectors], sparse: bool
+    ) -> ChunkEmbeddings:
+        """The output artefact, carrying the vector layout the store must declare."""
+        return ChunkEmbeddings(
+            model=self.model_name(),
+            dimension=dimension,
+            items=items,
+            dense_enabled=self.has_dense(),
+            sparse_enabled=sparse,
+            sparse_idf=sparse and self.sparse_idf(),
+        )
+
+    # ---------------------------------------------------------------- public entry points
+
+    async def encode_query_dense(self, text: str) -> list[float]:
+        """Encode one query into its dense vector (no retry/split — the caller bounds the call)."""
+        return (await self._embed_dense([text]))[0]
+
+    async def encode_query_sparse(self, text: str) -> SparseVector | None:
+        """Encode one query into its sparse vector, or None when the embedder has no sparse axis."""
+        return await self._embed_query_sparse(text)
+
     async def run(self, data: EmbedConsumes) -> EmbedProduces:
         """
-        Embed every ENABLED chunk (enriched text) + the semantic field values.
-
-        Only chunks whose role is enabled by default are embedded — furniture (header/footer, toc)
-        gets no vectors and no spend. Disabled chunks keep flowing to persistence via the chunk
-        artefact; they are simply absent from the chunk_id-linked vectors here.
+        Embed every ENABLED chunk (enriched text) + the chunk-scope semantic/lexical field values.
 
         Args:
             data (EmbedConsumes): The final chunks + the contract.
@@ -463,14 +263,10 @@ class BaseEmbedderNode(ActionNode):
         Returns:
             EmbedProduces: One ChunkVectors per ENABLED chunk, chunk_id-linked, in chunk order.
         """
-        config: BaseEmbedConfig = self.config
-        # 0. Reset the per-run usage accumulator: a paid provider hook folds its input tokens into it
-        #    below, and the final output is stamped with it — a local/free embedder leaves it None.
+        # 0. Reset the per-run usage accumulator (a paid hook folds its tokens in below).
         self._last_usage = None
-        # 1. THE single policy: embed only role-default-enabled chunks (body); skip the furniture.
-        #    Then drop content-free chunks (bare figure placeholders): like the role-disabled ones
-        #    they still flow to persistence via the chunk artefact, but they get NO vector — so a
-        #    placeholder can never surface as a search hit with a misleading self-citation.
+        dense_on, sparse_on = self.has_dense(), self.has_sparse()
+        # 1. THE single policy: embed only role-default-enabled chunks with real content.
         enabled = [
             chunk
             for chunk in data.chunks
@@ -478,58 +274,40 @@ class BaseEmbedderNode(ActionNode):
             and self._has_searchable_content(chunk.enriched_text)
         ]
         if not enabled:
-            empty = EmbedProduces(embeddings=ChunkEmbeddings(model=config.model))
-            empty._usage = self._last_usage  # None here — no provider hook ran
+            empty = EmbedProduces(embeddings=self.__embeddings(0, [], sparse_on))
+            empty._usage = self._collect_usage()
             return empty
 
-        # 2. The main pair: the ENRICHED text of every enabled chunk, batched.
+        # 2. The content vectors of every enabled chunk, batched through the planned axes.
         texts = [chunk.enriched_text for chunk in enabled]
-        dense, sparse_vectors = await self.__embed_all(texts, sparse=config.embed_sparse)
+        dense, sparse = await self.__embed_all(texts, dense_on, sparse_on)
 
-        # 3. The named per-field vectors of the semantic (dense) and lexical (sparse) chunk fields
-        #    (enabled chunks only) — each gated by its own config switch.
-        field_vectors = (
-            await self.__embed_semantic_fields(enabled, data.contract)
-            if config.embed_semantic_fields
-            else {}
-        )
-        field_sparse_vectors = (
-            await self.__embed_lexical_fields(enabled, data.contract)
-            if config.embed_lexical_fields
-            else {}
-        )
+        # 3. Per-field vectors, each gated by its switch AND by the axis it needs.
+        semantic = bool(getattr(self.config, "embed_semantic_fields", False)) and dense_on
+        lexical = bool(getattr(self.config, "embed_lexical_fields", False)) and sparse is not None
+        fields = await self.__field_vectors(enabled, data.contract, False) if semantic else {}
+        field_sparse = await self.__field_vectors(enabled, data.contract, True) if lexical else {}
 
         # 4. Assemble, chunk_id-linked, in enabled-chunk order.
         items = [
             ChunkVectors(
                 chunk_id=chunk.chunk_id,
-                dense=dense[index],
-                sparse=sparse_vectors[index] if sparse_vectors is not None else None,
-                fields={
-                    field_name: per_chunk[index]
-                    for field_name, per_chunk in field_vectors.items()
-                    if index in per_chunk
-                },
-                field_sparse={
-                    field_name: per_chunk[index]
-                    for field_name, per_chunk in field_sparse_vectors.items()
-                    if index in per_chunk
-                },
+                dense=dense[index] if dense else None,
+                sparse=sparse[index] if sparse is not None else None,
+                fields={n: per[index] for n, per in fields.items() if index in per},
+                field_sparse={n: per[index] for n, per in field_sparse.items() if index in per},
             )
             for index, chunk in enumerate(enabled)
         ]
+        dimension = len(dense[0]) if dense else 0
         self.logger.info(
             f"Embedded {len(items)}/{len(data.chunks)} chunk(s) "
             f"({len(data.chunks) - len(enabled)} skipped by role or empty content) "
-            f"(dense dim {len(dense[0])}, sparse: {sparse_vectors is not None}, "
-            f"semantic fields: {sorted(field_vectors)}, lexical fields: {sorted(field_sparse_vectors)})"
+            f"(dense dim {dimension}, sparse: {sparse is not None}, "
+            f"semantic fields: {sorted(fields)}, lexical fields: {sorted(field_sparse)})"
         )
-        output = EmbedProduces(
-            embeddings=ChunkEmbeddings(model=config.model, dimension=len(dense[0]), items=items)
-        )
-        # The paid-call token usage the provider hook folded in rides on the output for the engine to
-        # lift onto the record (None for a local/free embedder — it never touched the accumulator).
-        output._usage = self._last_usage
+        output = EmbedProduces(embeddings=self.__embeddings(dimension, items, sparse is not None))
+        output._usage = self._collect_usage()
         return output
 
 

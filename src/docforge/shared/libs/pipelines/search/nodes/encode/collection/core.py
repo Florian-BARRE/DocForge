@@ -2,7 +2,9 @@
 # The query-encode node — encodes the query into the SAME vector shapes the collection's chunks were
 # indexed with, by rebuilding the collection's OWN embedder from the run-input SearchContract
 # (registry class + extra="forbid" config, so a drifted blob fails loudly) and driving its embedding
-# hooks on the single-element query batch. Dense always; sparse when the embedder carries the axis.
+# hooks on the single-element query batch: dense when the embedder has a dense slot, sparse when it has
+# a sparse slot — the SAME sparse provider encodes content and metadata lexical queries (bm25_local's
+# query-side term vector, or bge_server's learned weights). A sparse-only collection skips dense.
 # This mirrors the app-side QueryEmbedder, expressed as a graph node. The provider HTTP call happens
 # in-node — the same stateless read the ingest embed node makes; no store write, no hidden state.
 
@@ -15,15 +17,9 @@ from pydantic import Field
 # ====== Internal Project Imports ======
 from shared_libs.pipelines.base import ActionNode, NodeConfig, NodeInput, NodeOutput
 from shared_libs.pipelines.nodes.embed.blob import EmbedBlobResolver
-from shared_libs.pipelines.nodes.embed.lexical import MetaLexicalEncoder
 from shared_libs.pipelines.registry import NodeRegistry
 from shared_libs.pipelines.search.nodes.query.base import QUERY_DEGRADED_FLAG
-from shared_libs.public_models.search import (
-    CONTENT_FIELD,
-    EncodedQuery,
-    QuerySpec,
-    SearchContract,
-)
+from shared_libs.public_models.search import EncodedQuery, QuerySpec, SearchContract
 
 # The notes stamped on a degraded EncodedQuery — one per unavailable axis. They ride into
 # SearchResult.debug so a caller sees WHY the result is partial (the embedder was saturated).
@@ -72,16 +68,16 @@ class EncodeCollectionProduces(NodeOutput):
 
 @NodeRegistry.register("encode")
 class EncodeCollectionNode(ActionNode):
-    """Encode the query with the collection's OWN embedder (dense always, sparse per config)."""
+    """Encode the query with the collection's OWN embedder (each configured axis)."""
 
     KIND = "collection"
     NAME = "Collection embedder"
     SUMMARY = "Encode the query into the collection's vector space using its own embedder."
     HOW_IT_WORKS = (
         "Rebuilds the collection's embedder from the run-input contract (registry class + validated "
-        "config), then drives its embedding hooks on the single query: /embed for the dense vector "
-        "and /embed_sparse when the axis exists. Locked to one method — the query must share the "
-        "chunks' space."
+        "config), then encodes the single query with its dense slot and its sparse slot (whichever "
+        "are set — the sparse slot also serves metadata lexical targets). Locked to one method — "
+        "the query must share the chunks' space."
     )
     Config = EncodeCollectionConfig
     Consumes = EncodeCollectionConsumes
@@ -109,7 +105,7 @@ class EncodeCollectionNode(ActionNode):
         Raises:
             QueryEncodeError: When no axis could be encoded (the embedder is unavailable).
         """
-        embedder, config = EmbedBlobResolver.rebuild(
+        embedder, _ = EmbedBlobResolver.rebuild(
             data.contract.embed_kind,
             data.contract.embed_config,
             node_id=f"{self.id}_embedder",
@@ -125,54 +121,45 @@ class EncodeCollectionNode(ActionNode):
         if query_degraded:
             notes.append(str(query_degraded))
 
-        # 1. Dense — always attempted (a query without a dense vector loses its semantic axis). The
-        #    embed call is bounded by a PER-AXIS timeout (asyncio.wait_for) well below the run's
-        #    wall-clock cap: a saturated embedder makes it raise here (a catchable TimeoutError) long
-        #    before the run cancels, so a surviving sparse axis can still answer rather than the whole
-        #    run sinking to a 504. CancelledError (the run's wall-clock cap) is NOT an Exception, so
-        #    it still propagates through wait_for and becomes the runner's timeout path.
+        # 1. Dense — when the collection's embedder has a dense slot. The call is bounded by a
+        #    PER-AXIS timeout (asyncio.wait_for) well below the run's wall-clock cap, so a saturated
+        #    embedder raises a catchable TimeoutError and a surviving sparse axis can still answer.
+        #    CancelledError (the run cap) is not an Exception and still propagates.
         dense: list[float] = []
-        try:
-            dense = await asyncio.wait_for(embedder.encode_query_dense(text), timeout=timeout)
-        except Exception as exc:
-            self.logger.warning(f"Dense query encode failed ({type(exc).__name__}: {exc})")
-            notes.append(_DENSE_UNAVAILABLE)
+        if embedder.has_dense():
+            try:
+                dense = await asyncio.wait_for(embedder.encode_query_dense(text), timeout=timeout)
+            except Exception as exc:
+                self.logger.warning(f"Dense query encode failed ({type(exc).__name__}: {exc})")
+                notes.append(_DENSE_UNAVAILABLE)
 
-        # 2. Sparse — only when the collection's embedder carries the lexical axis; fault-isolated and
-        #    per-axis-bounded the same way so a dense-only survivor can still answer.
+        # 2. Sparse — when the embedder has a sparse slot. It serves BOTH the content and the
+        #    metadata lexical targets (one sparse provider per collection, index and query alike).
         sparse = None
-        if config.embed_sparse:
+        if embedder.has_sparse():
             try:
                 sparse = await asyncio.wait_for(embedder.encode_query_sparse(text), timeout=timeout)
             except Exception as exc:
                 self.logger.warning(f"Sparse query encode failed ({type(exc).__name__}: {exc})")
                 notes.append(_SPARSE_UNAVAILABLE)
 
-        # 2b. Metadata lexical targets also get the LOCAL BM25 query (pure, no provider call): the
-        #     read side sends it to the BM25-encoded metadata vectors and the embedder's sparse query
-        #     to the legacy ones, so each vector is queried in the encoding it was indexed with.
-        meta_sparse = None
-        if any(t.lexical and t.field != CONTENT_FIELD for t in data.spec.search_targets):
-            meta_sparse = MetaLexicalEncoder.encode_query(text)
-
         # 3. Neither axis survived — there is nothing to search. Fail loud so the runner can map it
         #    to a retryable 503 (the embedder is unavailable), not a misleading invalid-graph 422.
-        if not dense and sparse is None and meta_sparse is None:
+        if not dense and sparse is None:
             raise QueryEncodeError(
                 "query encode produced no vector on any axis — the embedder is unavailable"
             )
 
         degraded = "; ".join(notes) or None
         self.logger.debug(
-            f"Encoded query (model '{config.model}', sparse={sparse is not None}, "
+            f"Encoded query (model '{embedder.model_name()}', sparse={sparse is not None}, "
             f"degraded={degraded is not None})"
         )
         return EncodeCollectionProduces(
             encoded=EncodedQuery(
                 dense=dense,
                 sparse=sparse,
-                meta_sparse=meta_sparse,
-                model=config.model,
+                model=embedder.model_name(),
                 degraded=degraded,
             )
         )

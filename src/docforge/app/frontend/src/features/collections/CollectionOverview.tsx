@@ -20,7 +20,7 @@ import { healthFixTarget, probeVerdict } from "./collectionHealth";
 import { CostEstimatePanel } from "./estimate/CostEstimatePanel";
 import { OverviewStatStrip } from "./OverviewStatStrip";
 import { ProviderHealthBoard } from "./ProviderHealthBoard";
-import { ReindexBanner } from "./ReindexBanner";
+import { ReindexBanner, reindexNeeded } from "./ReindexBanner";
 import { StorageFootprintPanel } from "./storage/StorageFootprintPanel";
 import { UploadPanel } from "./UploadPanel";
 
@@ -74,7 +74,7 @@ export function CollectionOverview({ collectionId, onNavigate }: Props) {
 
   return (
     <div className="df-rise" style={{ padding: t.space.xl, overflowY: "auto", height: "100%", maxWidth: 1100, margin: "0 auto", width: "100%" }}>
-      {collection.needs_reindex && <div style={{ marginBottom: t.space.l }}><ReindexBanner /></div>}
+      {reindexNeeded(collection) && <div style={{ marginBottom: t.space.l }}><ReindexBanner collection={collection} onStarted={load} /></div>}
 
       {docs && docs.length === 0 ? (
         <>

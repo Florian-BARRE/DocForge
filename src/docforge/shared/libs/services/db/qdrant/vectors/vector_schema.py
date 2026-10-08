@@ -1,19 +1,20 @@
 # ====== Code Summary ======
 # QdrantVectorSchema — derives a Qdrant collection's named-vector layout from the collection's
-# metadata schema. Always: one dense (content_dense) + one sparse (content_bm25) for the chunk body.
-# Then one dense vector per SEMANTIC field and one sparse vector per LEXICAL field. This is what
-# `ensure_collection` builds the Qdrant collection from, so the vector space mirrors the contract.
-# The per-field lexical vectors carry ``modifier=IDF``: they hold the local BM25 term frequencies
-# (MetaLexicalEncoder, encoding ``bm25_v1``) and Qdrant supplies the IDF. That modifier is ALSO the
-# encoding marker — a collection created before it holds BGE-M3 sparse weights in those vectors, and
-# every writer/reader tests ``is_bm25_meta`` on the LIVE declared params so index and query never mix
-# encoders. A collection switches only by being recreated from this schema (rebuild_index).
+# metadata schema AND its embedder's VectorLayout (read off the embed config, never guessed): a dense
+# provider → content_dense + one dense vector per SEMANTIC field; a sparse provider → content_bm25 +
+# one sparse vector per LEXICAL field. Every sparse vector carries ``modifier=IDF`` iff the sparse
+# provider emits term frequencies (bm25_local); learned sparse weights (bge_server) carry none. A live
+# sparse vector whose modifier differs from what the config requires holds another encoder's vectors
+# (``modifier_mismatch``) and is reported for an index rebuild — never queried or written as is.
 
 # ====== Standard Library Imports ======
 from collections.abc import Sequence
 
 # ====== Third-Party Library Imports ======
 from qdrant_client import models
+
+# ====== Internal Project Imports ======
+from shared_libs.public_models import VectorLayout
 
 # ====== Local Project Imports ======
 from .names import VectorNames
@@ -27,7 +28,7 @@ class QdrantVectorSchema:
 
     @staticmethod
     def dense_config(
-        dense_dim: int, semantic_fields: Sequence[str]
+        dense_dim: int, semantic_fields: Sequence[str], layout: VectorLayout | None = None
     ) -> dict[str, models.VectorParams]:
         """
         Named dense vectors: the chunk body plus one per semantic metadata field.
@@ -39,8 +40,11 @@ class QdrantVectorSchema:
             copy in RAM for the HNSW traversal, and Qdrant rescores the top candidates from the
             on-disk float32 — so recall is largely recovered despite the lossy quantization.
         Net ~4× less dense-vector RAM. Applies to newly created collections; an existing collection
-        picks it up via an online ``update_collection`` reindex (no drop).
+        picks it up via an online ``update_collection`` reindex (no drop). No dense provider (a
+        sparse-only layout) → no dense vector at all.
         """
+        if layout is not None and not layout.dense:
+            return {}
         params = models.VectorParams(
             size=dense_dim,
             distance=models.Distance.COSINE,
@@ -55,44 +59,39 @@ class QdrantVectorSchema:
         return config
 
     @staticmethod
-    def sparse_config(lexical_fields: Sequence[str]) -> dict[str, models.SparseVectorParams]:
+    def sparse_config(
+        lexical_fields: Sequence[str], layout: VectorLayout | None = None
+    ) -> dict[str, models.SparseVectorParams]:
         """
-        Named sparse vectors: the chunk body and one per lexical metadata field.
-
-        The body vector (``content_bm25``) holds the embedder's learned sparse weights as-is (no
-        modifier). Each metadata vector holds local BM25 term frequencies, so it is declared with
-        ``modifier=IDF`` — Qdrant computes the inverse document frequency over the collection.
-        """
-        config = {
-            VectorNames.CONTENT_SPARSE: models.SparseVectorParams(),
-        }
-        for field_name in lexical_fields:
-            config[VectorNames.field_sparse(field_name)] = models.SparseVectorParams(
-                modifier=models.Modifier.IDF
-            )
-        return config
-
-    @staticmethod
-    def is_bm25_meta(name: str, params: models.SparseVectorParams | None) -> bool:
-        """
-        Whether a DECLARED sparse vector is a metadata vector in the local BM25 encoding.
-
-        The single encoding test: a ``meta_<slug>_bm25`` vector declared with ``modifier=IDF`` was
-        created by the current schema and holds MetaLexicalEncoder output; one without it predates
-        the switch and holds the embedder's (BGE-M3) sparse weights until the collection is rebuilt.
+        Named sparse vectors: the chunk body and one per lexical metadata field (none without a
+        sparse provider), every one declared with ``modifier=IDF`` iff the layout says so.
 
         Args:
-            name (str): The declared sparse vector name.
-            params (SparseVectorParams | None): Its declared params, as Qdrant reports them.
+            lexical_fields (Sequence[str]): Fields that get a named sparse vector.
+            layout (VectorLayout | None): The embedder's layout (None → the legacy dense+sparse,
+                no-IDF layout).
 
         Returns:
-            bool: True for a BM25-encoded metadata vector.
+            dict[str, SparseVectorParams]: Vector name → params.
         """
-        return (
-            VectorNames.is_field_sparse(name)
-            and params is not None
-            and params.modifier == models.Modifier.IDF
-        )
+        layout = layout or VectorLayout()
+        if not layout.sparse:
+            return {}
+        names = [VectorNames.CONTENT_SPARSE, *(VectorNames.field_sparse(f) for f in lexical_fields)]
+        modifier = models.Modifier.IDF if layout.sparse_idf else None
+        return {name: models.SparseVectorParams(modifier=modifier) for name in names}
+
+    @staticmethod
+    def is_idf(params: models.SparseVectorParams | None) -> bool:
+        """Whether a DECLARED sparse vector carries the IDF modifier."""
+        return getattr(params, "modifier", None) == models.Modifier.IDF
+
+    @classmethod
+    def modifier_mismatch(
+        cls, params: models.SparseVectorParams | None, layout: VectorLayout
+    ) -> bool:
+        """Whether a declared sparse vector's IDF modifier differs from what the layout requires."""
+        return cls.is_idf(params) != layout.sparse_idf
 
 
 __all__ = ["QdrantVectorSchema"]

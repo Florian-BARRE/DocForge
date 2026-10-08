@@ -128,3 +128,24 @@ def _bulk_admission_idle(fastapi_app, monkeypatch):
 
     monkeypatch.setattr(CONTEXT.queue, "queue_depth", AsyncMock(return_value=0))
     monkeypatch.setattr(CONTEXT.database.jobs, "list_active", AsyncMock(return_value=[]))
+
+
+@pytest.fixture(autouse=True)
+def _declared_vectors_hermetic(fastapi_app, monkeypatch, request):
+    """Keep search's store reads hermetic: the declared-vectors read answers "unknown" (None).
+
+    A target-less search consults the live Qdrant declaration (DefaultTargetCorrection, behind a
+    process-wide TTL cache) — with the dev stack up that silently read the real store. A test that
+    exercises declared vectors patches ``index_state.declared`` itself (its override runs after this).
+    """
+    import importlib  # noqa: PLC0415
+    from unittest.mock import AsyncMock  # noqa: PLC0415
+
+    from backend.context import CONTEXT  # noqa: PLC0415
+
+    # The package re-exports the APIRouter as `router`, shadowing the module: import it by path.
+    search_router = importlib.import_module("backend.routers.search.router")
+    index_state = getattr(CONTEXT.database, "index_state", None)
+    if index_state is not None:
+        monkeypatch.setattr(index_state, "declared", AsyncMock(return_value=None))
+    search_router._DEFAULT_TARGETS._cache._entries.clear()

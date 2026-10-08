@@ -26,7 +26,6 @@ from shared_libs.services.db.qdrant import (
     QdrantAliasApi,
     QdrantBrowseApi,
     QdrantClient,
-    QdrantLexicalEncodingApi,
     QdrantSearchApi,
     SparseVec,
 )
@@ -106,25 +105,6 @@ class SearchFacade(LoggerClass):
             prefetch_limit=prefetch_limit,
             fusion=fusion,
         )
-
-    async def bm25_meta_vectors(self, collection_id: uuid.UUID) -> set[str]:
-        """
-        The collection's metadata sparse vectors stored in the local BM25 encoding.
-
-        The read side encodes a metadata lexical query with the encoder its vector was INDEXED with:
-        these names take the local BM25 query, any other ``meta_<slug>_bm25`` the embedder's sparse
-        query (a collection created before the switch, until rebuilt). Empty when no space exists.
-
-        Args:
-            collection_id (uuid.UUID): The collection being searched.
-
-        Returns:
-            set[str]: The BM25-encoded (``modifier=IDF``) metadata sparse vector names.
-        """
-        name = DatabaseHelpers.qdrant_collection_name(collection_id)
-        if not await QdrantAliasApi.resolve_or_adopt(self._qdrant.raw, name):
-            return set()
-        return await QdrantLexicalEncodingApi.bm25_meta_vectors(self._qdrant.raw, name)
 
     async def __guarded_filter(
         self,

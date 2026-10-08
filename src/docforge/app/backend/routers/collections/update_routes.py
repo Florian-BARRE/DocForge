@@ -84,7 +84,13 @@ async def update_collection(
     # 3b. A new search blob is a search GRAPH blob: {} (stock default) is always allowed; a non-empty
     #     one is shape-guarded and validated as a genuine SEARCH pipeline before it can be stored.
     if healed_search is not None and healed_search != {}:
-        CollectionHelpers.validate_search_blob(healed_search)
+        CollectionHelpers.validate_search_blob(
+            healed_search, stored_pipeline if stored_pipeline is not None else current.pipeline
+        )
+    elif stored_pipeline is not None and current.search:
+        # A pipeline-only PATCH must not strand the stored search blob on an axis the new embedder
+        # lacks (e.g. a dense_only search blob kept while the embedder becomes sparse-only).
+        CollectionHelpers.validate_search_blob(current.search, stored_pipeline)
 
     # 3c. Resolve + validate the schema change (fields OR field_ops) and its diff BEFORE any write —
     #     a bad op/field 422s without touching the store; dry_run and apply share this exact path.

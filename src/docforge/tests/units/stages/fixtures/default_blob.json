@@ -243,11 +243,18 @@
     },
     {
       "config": {
-        "base_url": "http://bge_server:80"
+        "dense": {
+          "base_url": "http://bge_server:80",
+          "kind": "bge_server"
+        },
+        "sparse": {
+          "base_url": "http://bge_server:80",
+          "kind": "bge_server"
+        }
       },
       "family": "embed",
       "id": "embed",
-      "kind": "bge_server",
+      "kind": "dense_sparse",
       "node_type": "action"
     },
     {

@@ -57,7 +57,8 @@ class PipelineState(BaseModel):
         metadoc_chain (ChainSpec): The document-metagen structgen fallback chain (as above).
         embed_on (bool): Whether the embed stage is enabled.
         embed_chain (ChainSpec): The embedder as a fallback chain — a single provider is a 1-step
-            chain (its head is the selected embedder). Non-scored: escalation is failure-only.
+            chain of ``dense_sparse`` steps (each carries a dense and a sparse provider slot). Non-scored:
+            escalation is failure-only.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -95,13 +96,14 @@ class PipelineState(BaseModel):
     )
     embed_on: bool = True
     embed_chain: ChainSpec = Field(
-        default_factory=lambda: ChainSpec(family="embed", steps=[ChainStep(kind="bge_server")])
+        default_factory=lambda: ChainSpec(family="embed", steps=[ChainStep(kind="dense_sparse")])
     )
 
 
 # The default endpoints of the stock pipeline — compose-internal services, overridden per collection
 # in the studio. Kept here (not scattered) so the default topology has one description.
 _VLM_ENDPOINT = {"base_url": "http://vlm:8000/v1", "model": "qwen2.5-vl"}
+_BGE_SLOT = {"kind": "bge_server", "base_url": "http://bge_server:80"}
 
 
 def default_state() -> PipelineState:
@@ -183,9 +185,18 @@ def default_state() -> PipelineState:
         ],
         metachunk_config={"base_url": "http://llm:8000/v1", "model": "llm-default"},
         metadoc_config={"base_url": "http://llm:8000/v1", "model": "llm-default"},
+        # Explicit dense + sparse slots on the SAME in-stack bge_server → one combined call/batch.
         embed_chain=ChainSpec(
             family="embed",
-            steps=[ChainStep(kind="bge_server", config={"base_url": "http://bge_server:80"})],
+            steps=[
+                ChainStep(
+                    kind="dense_sparse",
+                    config={
+                        "dense": dict(_BGE_SLOT),
+                        "sparse": dict(_BGE_SLOT),
+                    },
+                )
+            ],
         ),
     )
 

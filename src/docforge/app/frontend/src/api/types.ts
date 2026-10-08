@@ -292,6 +292,19 @@ export interface StackMethod {
   chain?: ChainSpec | null;
 }
 
+/** One INDEPENDENT provider slot of a stage node (embed: `dense` + `sparse`). Chosen, configured and
+ *  turned off on its own; `provider: null` = the slot is off. `config` carries secrets masked. */
+export interface ProviderSlotView {
+  slot: string;
+  title: string;
+  description: string;
+  provider: string | null;
+  available: string[];
+  config: Record<string, unknown> | null;
+  /** JSON Schema per available kind (loosely typed for contract parity; cast to `JsonSchema` to render). */
+  config_schemas: Record<string, Record<string, unknown>>;
+}
+
 /** The product-level view of one pipeline stage — everything the rail renders for it. */
 export interface StageView {
   key: string;
@@ -306,6 +319,8 @@ export interface StageView {
   config: Record<string, unknown> | null;
   chains: ChainView[];
   stack: StackMethod[];
+  /** Independent provider slots (embed only: dense first, then sparse); `[]` for every other stage. */
+  slots: ProviderSlotView[];
   requires: string[];
   notes: string | null;
 }
@@ -339,7 +354,10 @@ export interface StageApplyResponse {
 export type StageAction =
   | { action: "enable_stage"; stage: string }
   | { action: "disable_stage"; stage: string }
-  | { action: "set_provider"; stage: string; kind: string }
-  | { action: "set_config"; stage: string; node?: string | null; config: Record<string, unknown> }
+  | { action: "set_provider"; stage: string; kind: string | null; slot?: string | null }
+  | {
+      action: "set_config"; stage: string; node?: string | null; slot?: string | null;
+      config: Record<string, unknown>; mode?: "replace" | "merge";
+    }
   | { action: "set_chain"; stage: string; slot: string | null; steps: ChainStep[] }
   | { action: "set_stack"; stage: string; steps: StackMethod[] };

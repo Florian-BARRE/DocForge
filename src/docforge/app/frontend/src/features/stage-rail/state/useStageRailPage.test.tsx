@@ -35,7 +35,7 @@ const palette: Palette = { families: [] };
 const stage: StageView = {
   key: "chunk", title: "Chunk", description: "Split the enriched IR into chunks.",
   kind: "provider", enabled: true, removable: false, family: "chunker", provider: "fixed_size",
-  available: ["fixed_size"], config: { candidate_multiplier: 150 }, chains: [], stack: [], requires: [], notes: null,
+  available: ["fixed_size"], config: { candidate_multiplier: 150 }, chains: [], stack: [], slots: [], requires: [], notes: null,
 };
 
 describe("useStageRailPage — build_error folded into issues on /apply", () => {

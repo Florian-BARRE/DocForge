@@ -236,7 +236,7 @@ class CostEstimator:
     @staticmethod
     def __volume(plan: CostPlan, pages: int, chunks: int, a: EstimateAssumptions) -> VolumeEstimate:
         """Project the material volume: chunks, vectors written and a rough storage footprint."""
-        dense = chunks if plan.embed else 0
+        dense = chunks if (plan.embed and plan.embed_dense) else 0
         sparse = chunks if (plan.embed and plan.embed_sparse) else 0
         text_bytes = int(chunks * a.target_chunk_tokens * a.bytes_per_token)
         vector_bytes = dense * a.embed_dense_dims * 4  # float32 dense vectors

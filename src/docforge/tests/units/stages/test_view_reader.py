@@ -105,8 +105,19 @@ def test_stage_catalog_flags_removable_and_available_providers(builder, validato
     # Provider stages carry their kind + the family's choices.
     assert stages["chunk"].provider == "structure_aware"
     assert "fixed_size" in stages["chunk"].available
-    assert stages["embed"].provider == "bge_server"
+    assert stages["embed"].provider == "dense_sparse"
+    # Legacy single-provider kinds stay registered but are never offered.
+    assert "dense_sparse" in stages["embed"].available
+    assert not {"bge_server", "openai_compatible"} & set(stages["embed"].available)
     assert stages["embed"].removable is True
+    # The embed node's two independent provider slots, both on the in-stack bge_server.
+    slots = {slot.slot: slot for slot in stages["embed"].slots}
+    assert set(slots) == {"dense", "sparse"}
+    assert slots["dense"].provider == slots["sparse"].provider == "bge_server"
+    assert "openai_compatible" in slots["dense"].available
+    assert "bm25_local" in slots["sparse"].available
+    assert "bm25_local" not in slots["dense"].available
+    assert set(slots["sparse"].config_schemas) == set(slots["sparse"].available)
     # Mandatory stages are never removable.
     assert stages["intake"].removable is False
     assert stages["parse"].removable is False

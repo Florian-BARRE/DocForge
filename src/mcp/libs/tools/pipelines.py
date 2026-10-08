@@ -104,6 +104,16 @@ def register(mcp: FastMCP, sdk: AsyncClient) -> None:
         only the keys you send change, every other key — the api_key included — is kept; send a
         key as null to reset it to its default. Pass ``mode="replace"`` explicitly to replace the
         whole config. An omitted api_key is always kept; an explicit "" clears it.
+
+        The embed stage has two independent provider slots, ``dense`` and ``sparse`` (listed in the
+        stage view's ``slots`` with each slot's ``provider``, ``available`` kinds and
+        ``config_schemas``). Set a slot provider with
+        ``{"action": "set_provider", "stage": "embed", "slot": "sparse", "kind": "bm25_local"}``
+        (dense kinds: bge_server, openai_compatible; sparse kinds: bge_server, bm25_local). Turn a
+        slot off with ``"kind": null`` (refused if the other slot is already off). Edit one slot's
+        config with ``{"action": "set_config", "stage": "embed", "slot": "dense",
+        "config": {"base_url": "...", "api_key": "..."}}``. Changing a provider sets
+        ``needs_reindex``: then run rebuild_index (or reingest when a dense slot was added).
         """
         payload = dict(action)
         if payload.get("action") == "set_config":

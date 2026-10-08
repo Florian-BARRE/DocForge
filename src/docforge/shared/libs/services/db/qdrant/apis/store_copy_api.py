@@ -7,15 +7,18 @@
 # The post-swap meta-vector backfill re-fills them from Postgres — DOCUMENT-scope only, which is why a
 # collection with a (legacy) chunk-scope lexical field is refused at admission (409
 # ``rebuild_unsupported_chunk_lexical``): its chunk BM25 vectors would be dropped and never refilled.
+# The content sparse vector is dropped too when the OLD store encoded it with another sparse provider
+# (its IDF modifier disagrees with the config); the caller then supplies the re-encoded vectors per
+# point (``extra_sparse``), written in the SAME upsert.
 
 # ====== Standard Library Imports ======
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Collection, Mapping
 
 # ====== Third-Party Library Imports ======
 from qdrant_client import AsyncQdrantClient, models
 
 # ====== Local Project Imports ======
-from ..vectors import VectorNames
+from ..vectors import SparseVec, VectorNames
 
 
 class QdrantStoreCopyApi:
@@ -97,19 +100,38 @@ class QdrantStoreCopyApi:
         }
 
     @staticmethod
-    def keep_vector(vector_name: str, declared: set[str]) -> bool:
-        """Whether a copied vector survives: declared by the new store AND not a meta BM25 vector."""
-        return vector_name in declared and not VectorNames.is_field_sparse(vector_name)
+    def keep_vector(
+        vector_name: str, declared: set[str], dropped: Collection[str] = frozenset()
+    ) -> bool:
+        """Whether a copied vector survives: declared by the new store, not a meta BM25 vector, and
+        not explicitly ``dropped`` (a content sparse vector another encoder produced)."""
+        return (
+            vector_name in declared
+            and vector_name not in dropped
+            and not VectorNames.is_field_sparse(vector_name)
+        )
 
     @classmethod
     def to_points(
-        cls, records: list[models.Record], declared: set[str]
+        cls,
+        records: list[models.Record],
+        declared: set[str],
+        dropped: Collection[str] = frozenset(),
+        extra_sparse: Mapping[str, Mapping[str, SparseVec]] | None = None,
     ) -> list[models.PointStruct]:
-        """Map scrolled records to upsertable points, filtering their named vectors."""
+        """Map scrolled records to upsertable points, filtering their named vectors and adding the
+        caller's re-encoded sparse vectors (``point id → vector name → vector``)."""
         points: list[models.PointStruct] = []
         for record in records:
             vectors = record.vector if isinstance(record.vector, dict) else {}
-            kept = {key: value for key, value in vectors.items() if cls.keep_vector(key, declared)}
+            kept = {
+                key: value
+                for key, value in vectors.items()
+                if cls.keep_vector(key, declared, dropped)
+            }
+            for key, vec in ((extra_sparse or {}).get(str(record.id)) or {}).items():
+                if key in declared:
+                    kept[key] = models.SparseVector(indices=vec.indices, values=vec.values)
             points.append(models.PointStruct(id=record.id, vector=kept, payload=record.payload))
         return points
 
@@ -120,9 +142,12 @@ class QdrantStoreCopyApi:
         target: str,
         records: list[models.Record],
         declared: set[str],
+        dropped: Collection[str] = frozenset(),
+        extra_sparse: Mapping[str, Mapping[str, SparseVec]] | None = None,
     ) -> int:
-        """Upsert one scrolled batch into ``target`` (filtered vectors); return the point count."""
-        points = cls.to_points(records, declared)
+        """Upsert one scrolled batch into ``target`` (filtered + re-encoded vectors); return the
+        point count."""
+        points = cls.to_points(records, declared, dropped, extra_sparse)
         await client.upsert(collection_name=target, points=points, wait=True)
         return len(points)
 

@@ -4,6 +4,9 @@
 # rebuild carries omitted step secrets from the same provider (ChainSecretCarry) and goes through the
 # shared family chain rules; an unknown kind is DATA (a notice, the chain unchanged), never a raise.
 
+# ====== Internal Project Imports ======
+from shared_libs.pipelines.nodes.embed.dense_sparse import EmbedLegacyMigration
+
 # ====== Local Project Imports ======
 from ..chain_rules import ChainRules
 from ..models import ChainStep, SetChain
@@ -69,7 +72,17 @@ class StageChainHandler:
         notices.extend(chain_notices)
         if completed is None:
             return
+        # 3. A legacy single-provider embed kind (completed build-safe as itself) lands as the slot
+        #    node — the stage never emits a pre-slots embedder.
+        if family == "embed":
+            completed = [StageChainHandler.__migrate_embed_step(step) for step in completed]
         setattr(state, field, ChainSpec(family=family, steps=completed))
+
+    @staticmethod
+    def __migrate_embed_step(step: ChainStep) -> ChainStep:
+        """A legacy (bge_server / openai_compatible) embed step mapped onto dense_sparse slots."""
+        kind, config = EmbedLegacyMigration.step(step.kind, dict(step.config))
+        return step.model_copy(update={"kind": kind, "config": config})
 
     @classmethod
     def set_stage_chain(

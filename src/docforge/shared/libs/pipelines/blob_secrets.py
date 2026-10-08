@@ -18,6 +18,10 @@ from typing import Any
 
 # ====== Internal Project Imports ======
 from shared_libs.pipelines.nested_secrets import NestedSecrets
+from shared_libs.pipelines.nodes.embed.dense_sparse.legacy import (
+    DENSE_SPARSE_KIND,
+    EmbedLegacyMigration,
+)
 from shared_libs.pipelines.request_secret_guard import RequestSecretGuard
 from shared_libs.pipelines.secret_identity import (
     SECRET_FIELDS,
@@ -124,6 +128,29 @@ def _stored_providers(blob: dict | None) -> dict[str, ProviderRef]:
     if isinstance(blob, dict):
         walk(blob.get("nodes"))
     return result
+
+
+def _as_slot_source(node: dict, positional: ProviderRef | None) -> ProviderRef | None:
+    """A legacy stored embed node seen as the dense_sparse node an inbound migrated blob carries.
+
+    A stored blob written before the dense/sparse slots holds its key at the top level of a
+    ``bge_server`` / ``openai_compatible`` node; the healed blob a client reads (and writes back)
+    carries it inside the ``dense`` / ``sparse`` slots. Mapping the stored node through the same
+    migration keeps that key restorable — same slot, same endpoint — instead of blanking the mask.
+    """
+    if (
+        positional is None
+        or node.get("family") != "embed"
+        or node.get("kind") != DENSE_SPARSE_KIND
+        or positional[0] != "embed"
+        or not EmbedLegacyMigration.is_legacy(positional[1])
+    ):
+        return positional
+    return (
+        "embed",
+        DENSE_SPARSE_KIND,
+        EmbedLegacyMigration.config(str(positional[1]), positional[2]),
+    )
 
 
 def _chain_siblings(stored: dict[str, ProviderRef], node_id: str) -> list[ProviderRef]:
@@ -320,7 +347,9 @@ def restore_blob_secrets(incoming: dict | None, stored: dict | None) -> dict | N
             node_id = node.get("id")
             config = node.get("config")
             if isinstance(config, dict):
-                positional = providers.get(node_id) if isinstance(node_id, str) else None
+                positional = _as_slot_source(
+                    node, providers.get(node_id) if isinstance(node_id, str) else None
+                )
                 siblings = _chain_siblings(providers, node_id) if isinstance(node_id, str) else []
                 family, kind = node.get("family"), node.get("kind")
                 match = SecretIdentity.pick(family, kind, config, positional, siblings)

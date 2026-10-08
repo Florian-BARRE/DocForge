@@ -116,6 +116,8 @@ async def test_steps_run_in_order_and_complete_the_job(jobs_rebuild, monkeypatch
         "missing_vectors": [],
         "reingest_required_fields": [],
         "needs_reindex": False,
+        "dense_space_changed": False,
+        "reencoded_sparse_points": 0,
     }
     database = context.database
     wait = database.index_rebuild.wait_for_idle.await_args

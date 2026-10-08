@@ -43,6 +43,7 @@ import type {
   SchemaDiff, SchemaDiffModifiedField, SchemaDiffRename, UpdateCollectionResponse,
 } from "./collections";
 import type { CollectionAlias, SetCollectionAliasResponse } from "./collectionAliases";
+import type { RebuildIndexAccepted } from "./collections";
 import type { CapabilitiesResponse, CapabilityMatrix, CapabilityService } from "./capabilities";
 import type { DocumentGridRow } from "./corpus";
 import type { MetadataUpdateResponse, MetadataValuesPatch } from "./documents";
@@ -62,6 +63,7 @@ import type {
   ChainStep,
   ChainView,
   InspectResponse,
+  ProviderSlotView,
   StackMethod,
   StageApplyResponse,
   StageView,
@@ -224,6 +226,7 @@ export type _ChainStepParity = Expect<Equal<Normalize<ChainStep>, Normalize<Sche
 export type _ChainSpecParity = Expect<Equal<Normalize<ChainSpec>, Normalize<Schemas["ChainSpec"]>>>;
 export type _ChainViewParity = Expect<Equal<Normalize<ChainView>, Normalize<Schemas["ChainView"]>>>;
 export type _StackMethodParity = Expect<Equal<Normalize<StackMethod>, Normalize<Schemas["StackMethod"]>>>;
+export type _ProviderSlotViewParity = Expect<Equal<Normalize<ProviderSlotView>, Normalize<Schemas["ProviderSlotView"]>>>;
 export type _StageViewParity = Expect<Equal<Normalize<StageView>, Normalize<Schemas["StageView"]>>>;
 
 // `ValidationIssue.code` is DELIBERATELY the plain `string` every existing consumer (ApiIssueList,
@@ -271,3 +274,7 @@ export type _CollectionAliasParity = Expect<Equal<Normalize<CollectionAlias>, No
 export type _SetCollectionAliasResponseParity = Expect<
   Equal<Normalize<SetCollectionAliasResponse>, Normalize<Schemas["SetCollectionAliasResponse"]>>
 >;
+
+// ---------- collections.ts — the rebuild-index handle ----------
+
+export type _RebuildIndexAcceptedParity = Expect<Equal<Normalize<RebuildIndexAccepted>, Normalize<Schemas["RebuildIndexAccepted"]>>>;

@@ -52,6 +52,7 @@ from .index_rebuild_payloads import (
     StoreCopyResult,
 )
 from .rebuild_guard import RebuildGuard
+from .content_sparse_reencoder import ContentSparseReencoder
 from .store_rebuild_facade import StoreRebuildFacade
 from .ingestion_facade import IngestionFacade
 from .ir_bundle_adapter import IRBundleAdapter
@@ -100,6 +101,7 @@ __all__ = [
     "StoreCopyResult",
     "RebuildGuard",
     "StoreRebuildFacade",
+    "ContentSparseReencoder",
     "FieldPurgeOutcome",
     "SchemaChangeFacade",
     "DatabaseHelpers",

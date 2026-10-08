@@ -99,7 +99,7 @@ class SnippetApplier:
 
         # 2. A non-empty search blob is validated as a genuine SEARCH graph before it can be stored.
         if healed != {}:
-            CollectionHelpers.validate_search_blob(healed)
+            CollectionHelpers.validate_search_blob(healed, collection.pipeline)
 
         # 3. Store it + snapshot; a search-graph change never touches the index signature (no reindex).
         #    The facade still derives needs_reindex, but a search-only write cannot move it — the

@@ -18,7 +18,7 @@ from loggerplusplus import LoggerClass
 from sqlalchemy.exc import IntegrityError
 
 from shared_libs.pipelines.base import NodeExecutionRecord
-from shared_libs.public_models import TextSanitizer
+from shared_libs.public_models import TextSanitizer, VectorLayout
 from shared_libs.services.db.index_signature import CollectionIndexSignature
 from shared_libs.services.db.postgresql import PostgresClient
 from shared_libs.services.db.postgresql.apis import (
@@ -530,6 +530,7 @@ class IngestionFacade(LoggerClass):
         document_id: uuid.UUID,
         dense_dim: int,
         points: Sequence[QdrantPoint],
+        layout: VectorLayout | None = None,
     ) -> None:
         """
         Push a document's chunk vectors into Qdrant (replacing its old points) and flag them indexed.
@@ -548,6 +549,8 @@ class IngestionFacade(LoggerClass):
                 purged first so a re-ingest never orphans the previous run's vectors.
             dense_dim (int): Dense vector dimension (from the pipeline's embed config).
             points (Sequence[QdrantPoint]): The points (ids = chunk ids) with vectors + payload.
+            layout (VectorLayout | None): The embedder's config-derived layout (content axes + sparse
+                IDF) — the store schema follows it; None = the legacy dense + sparse, no-IDF layout.
         """
         # 1. Derive the vector space from the schema (and re-check the slug guard defensively).
         async with self._postgres.session() as session:
@@ -565,10 +568,12 @@ class IngestionFacade(LoggerClass):
                 for f in schema
                 if f.filterable
             },
+            layout=layout,
         )
-        # 2. Refuse points carrying a named vector the store never declared (before any purge, so a
-        #    failed re-ingest keeps the document's previous points) — Qdrant would 400 on the upsert.
-        await self._guard_declared_vectors(collection_id, name, schema, points)
+        # 2. Refuse points carrying a named vector the store never declared, or a sparse vector the
+        #    store declares under another IDF modifier (another encoder's space), before any purge —
+        #    a failed re-ingest keeps the document's previous points; Qdrant would 400 on the upsert.
+        await self._guard_declared_vectors(collection_id, name, schema, points, layout)
         # 3. Upsert FIRST (deterministic ids overwrite the previous run's points in place), THEN purge
         #    the document's leftover points this run did not produce — otherwise they would survive
         #    as orphans (live document_id + enabled payload → polluting the candidate pool). Never
@@ -604,37 +609,43 @@ class IngestionFacade(LoggerClass):
         name: str,
         schema: Sequence,
         points: Sequence[QdrantPoint],
+        layout: VectorLayout | None = None,
     ) -> None:
-        """Fail the ingest clearly when a point carries a metadata vector the store does not declare.
+        """Fail the ingest clearly when a point carries a vector the store cannot take as is.
 
         A chunk-scope semantic field made searchable after the collection's first ingest has no named
         vector in the store (Qdrant cannot add one to a live collection), so every upsert would fail
         with Qdrant's opaque "Not existing vector name". The content vectors are always declared by
-        ``ensure``; only ``meta_*`` names are checked, and the store is read only when one is carried.
+        ``ensure``; only ``meta_*`` names are checked for declaration, and the store is read only when
+        one is carried or a layout is given. With a layout, a carried sparse vector the store declares
+        under the other IDF modifier is refused too (writing it would mix two encoders).
 
         Args:
             collection_id (uuid.UUID): The target collection (named in the rebuild instruction).
             name (str): Its Qdrant collection name.
             schema (Sequence): Its metadata schema (maps a vector name back to its field).
             points (Sequence[QdrantPoint]): The points about to be upserted.
+            layout (VectorLayout | None): The embedder's layout (None = no modifier check).
 
         Raises:
-            UndeclaredVectorError: When a carried metadata vector is not declared by the store.
+            UndeclaredVectorError: When a carried vector is undeclared or modifier-mismatched.
         """
-        # 1. Only metadata vectors can be missing — no store read for a content-only ingest.
+        # 1. Only metadata vectors can be undeclared — no store read for a content-only legacy ingest.
         carried = {
             vector
             for point in points
             for vector in (*point.dense, *point.sparse)
             if vector.startswith("meta_")
         }
-        if not carried:
+        carried_sparse = {vector for point in points for vector in point.sparse}
+        if not carried and (layout is None or not carried_sparse):
             return
-        # 2. Compare against the store's declared names; name each offending field.
-        declared_dense, declared_sparse = await QdrantCollectionApi.declared_vectors(
-            self._qdrant.raw, name
-        )
-        undeclared = sorted(carried - set(declared_dense) - set(declared_sparse))
+        # 2. Compare against the store's declarations; name each offending field.
+        declared = await QdrantCollectionApi.declared(self._qdrant.raw, name)
+        undeclared = set(carried - declared.dense - declared.sparse)
+        if layout is not None:
+            undeclared |= carried_sparse & declared.mismatched(layout)
+        undeclared = sorted(undeclared)
         if undeclared:
             field_of = {
                 vector: field.field_name

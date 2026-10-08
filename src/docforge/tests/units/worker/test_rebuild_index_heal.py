@@ -15,8 +15,8 @@ from shared_libs.public_models import FieldScope
 
 # ====== Internal Project Imports ======
 from shared_libs.services.db.facades import (
+    IndexStateFacade,
     RebuildCancelledError,
-    SearchFacade,
     StoreCopyResult,
 )
 from shared_libs.services.db.facades.helpers import DatabaseHelpers
@@ -68,10 +68,10 @@ async def test_search_and_export_adopt_the_stranded_generation(fake, stable):
     transfer._qdrant = qdrant
     assert await transfer.dense_dim(_cid(stable)) == 4
     assert fake.aliases == {stable: f"{stable}_r7"}
-    # Search sees the store too (the existence gate is the healing one).
+    # Search's target gate (the declared-vectors read) sees the store too — it is a healing read.
     fake.aliases.clear()
-    keys = await SearchFacade(MagicMock(), qdrant).bm25_meta_vectors(_cid(stable))
-    assert fake.aliases == {stable: f"{stable}_r7"} and isinstance(keys, set)
+    declared = await IndexStateFacade(MagicMock(), qdrant).declared_vectors(_cid(stable))
+    assert fake.aliases == {stable: f"{stable}_r7"} and declared == _V
 
 
 async def test_physical_store_wins_over_a_stamped_generation(fake, stable):
@@ -162,3 +162,13 @@ class _session:
 
     async def __aexit__(self, *exc):
         return False
+
+
+async def test_rebuild_to_a_dense_config_from_a_sparse_only_store_fails_clearly(fake, stable):
+    """A copy cannot invent dense vectors: the config gained a dense provider the store never had."""
+    fake.add(stable, set(), {"content_bm25"}, [record(1, "d1")])
+
+    with pytest.raises(ValueError, match="re-ingest the documents"):
+        await facade(fake).rebuild(_cid(stable), batch_size=10)
+
+    assert list(fake.collections) == [stable]

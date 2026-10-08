@@ -20,10 +20,10 @@ URL = f"/api/v1/collections/{COLLECTION_ID}/pipeline/stages/apply"
 
 
 def _keyed_pipeline() -> dict:
-    """The stock pipeline with a live api_key on the embed head."""
+    """The stock pipeline with a live api_key on the embed head's dense slot."""
     blob, _ = StageCompiler().apply(
         IngestPipeline.default_blob(),
-        SetStageConfig(stage="embed", config={"api_key": "sk-live"}, mode="merge"),
+        SetStageConfig(stage="embed", slot="dense", config={"api_key": "sk-live"}, mode="merge"),
     )
     return blob.model_dump(mode="json")
 
@@ -44,6 +44,12 @@ def wired(fastapi_app, monkeypatch):
     return CONTEXT
 
 
+def _dense(stored: dict) -> dict:
+    """The dense slot config of the stored embed node."""
+    node = next(n for n in stored["nodes"] if n.get("family") == "embed")
+    return node["config"]["dense"]
+
+
 def _embed_view(body: dict) -> dict:
     return next(stage for stage in body["stages"] if stage["key"] == "embed")
 
@@ -52,6 +58,7 @@ def test_merge_persists_one_version_and_keeps_the_secret(client, wired) -> None:
     action = {
         "action": "set_config",
         "stage": "embed",
+        "slot": "dense",
         "mode": "merge",
         "config": {"timeout_seconds": 30.0},
     }
@@ -62,27 +69,29 @@ def test_merge_persists_one_version_and_keeps_the_secret(client, wired) -> None:
     update = wired.database.collections.update_config
     update.assert_awaited_once()
     stored = update.await_args.kwargs["pipeline"]
-    head = next(n for n in stored["nodes"] if n.get("kind") == "bge_server")
-    assert head["config"]["api_key"] == "sk-live"
-    assert head["config"]["timeout_seconds"] == 30.0
+    head = _dense(stored)
+    assert head["api_key"] == "sk-live"
+    assert head["timeout_seconds"] == 30.0
     assert update.await_args.kwargs["note"] == "stage action: set_config 'embed'"
     assert update.await_args.kwargs["expected_version"] == 7
     # The returned view never carries the live key.
     assert "sk-live" not in response.text
-    assert _embed_view(body)["config"]["api_key"] == MASK
+    dense_view = next(slot for slot in _embed_view(body)["slots"] if slot["slot"] == "dense")
+    assert dense_view["config"]["api_key"] == MASK
 
 
 def test_replace_omitting_the_secret_keeps_it(client, wired) -> None:
     action = {
         "action": "set_config",
         "stage": "embed",
+        "slot": "dense",
         "config": {"base_url": "http://bge_server:80", "timeout_seconds": 45.0},
     }
     response = client.post(URL, json={"action": action})
     assert response.json()["persisted"] is True
     stored = wired.database.collections.update_config.await_args.kwargs["pipeline"]
-    head = next(n for n in stored["nodes"] if n.get("kind") == "bge_server")
-    assert head["config"]["api_key"] == "sk-live"
+    head = _dense(stored)
+    assert head["api_key"] == "sk-live"
 
 
 def test_noop_persists_nothing(client, wired) -> None:
@@ -99,6 +108,7 @@ def test_invalid_result_persists_nothing(client, wired) -> None:
     action = {
         "action": "set_config",
         "stage": "embed",
+        "slot": "dense",
         "config": {"base_url": "http://bge_server:80", "bogus_key": 1},
     }
     body = client.post(URL, json={"action": action}).json()
@@ -112,6 +122,7 @@ def test_build_error_never_echoes_a_secret(client, wired, capfd) -> None:
     action = {
         "action": "set_config",
         "stage": "embed",
+        "slot": "dense",
         "mode": "merge",
         "config": {"base_url": None, "api_key": "sk-fresh-secret"},
     }
@@ -131,18 +142,28 @@ def test_build_error_never_echoes_a_secret(client, wired, capfd) -> None:
         {
             "action": "set_config",
             "stage": "embed",
+            "slot": "dense",
             "config": {"base_url": "http://evil.example:9", "model": "x"},
         },
         {
             "action": "set_config",
             "stage": "embed",
+            "slot": "dense",
             "mode": "merge",
             "config": {"base_url": "http://evil.example:9"},
         },
         {
             "action": "set_chain",
             "stage": "embed",
-            "steps": [{"kind": "bge_server", "config": {"base_url": "http://evil.example:9"}}],
+            "steps": [
+                {
+                    "kind": "dense_sparse",
+                    "config": {
+                        "dense": {"kind": "bge_server", "base_url": "http://evil.example:9"},
+                        "sparse": None,
+                    },
+                }
+            ],
         },
     ],
     ids=["replace", "merge", "set_chain"],
@@ -159,39 +180,42 @@ def test_a_new_endpoint_with_a_restated_key_persists(client, wired) -> None:
     action = {
         "action": "set_config",
         "stage": "embed",
+        "slot": "dense",
         "mode": "merge",
         "config": {"base_url": "http://other.example:9", "api_key": "sk-other"},
     }
     assert client.post(URL, json={"action": action}).json()["persisted"] is True
     stored = wired.database.collections.update_config.await_args.kwargs["pipeline"]
-    head = next(n for n in stored["nodes"] if n.get("kind") == "bge_server")
-    assert head["config"]["api_key"] == "sk-other"
+    head = _dense(stored)
+    assert head["api_key"] == "sk-other"
 
 
 def test_endpoint_spelling_variants_are_the_same_endpoint(client, wired) -> None:
     action = {
         "action": "set_config",
         "stage": "embed",
+        "slot": "dense",
         "mode": "merge",
         "config": {"base_url": "HTTP://BGE_SERVER:80/"},
     }
     assert client.post(URL, json={"action": action}).json()["persisted"] is True
     stored = wired.database.collections.update_config.await_args.kwargs["pipeline"]
-    head = next(n for n in stored["nodes"] if n.get("kind") == "bge_server")
-    assert head["config"]["api_key"] == "sk-live"
+    head = _dense(stored)
+    assert head["api_key"] == "sk-live"
 
 
 def test_merge_null_clears_the_secret(client, wired) -> None:
     action = {
         "action": "set_config",
         "stage": "embed",
+        "slot": "dense",
         "mode": "merge",
         "config": {"api_key": None},
     }
     assert client.post(URL, json={"action": action}).json()["persisted"] is True
     stored = wired.database.collections.update_config.await_args.kwargs["pipeline"]
-    head = next(n for n in stored["nodes"] if n.get("kind") == "bge_server")
-    assert head["config"]["api_key"] == ""
+    head = _dense(stored)
+    assert head["api_key"] == ""
 
 
 def test_unknown_collection_is_404(client, fastapi_app, monkeypatch) -> None:
@@ -207,6 +231,7 @@ def test_unknown_collection_is_404(client, fastapi_app, monkeypatch) -> None:
 _MERGE = {
     "action": "set_config",
     "stage": "embed",
+    "slot": "dense",
     "mode": "merge",
     "config": {"timeout_seconds": 9.0},
 }

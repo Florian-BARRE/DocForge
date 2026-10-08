@@ -23,7 +23,7 @@ def test_chunk_provider_swap_keeps_wiring_and_validates(compiler, builder, valid
     assert swapped.bindings["chunk"]["ir"] == default.bindings["chunk"]["ir"]
 
 
-@pytest.mark.parametrize("kind", NodeRegistry.kinds("embed"))
+@pytest.mark.parametrize("kind", [c.kind for c in NodeRegistry.catalog("embed")])
 def test_embed_provider_swap_keeps_wiring_and_validates(compiler, builder, validator, kind) -> None:
     from shared_libs.pipelines.ingest import IngestPipeline
 
@@ -49,15 +49,15 @@ def test_set_provider_resets_config_to_build_safe_schema_defaults(compiler) -> N
     from shared_libs.pipelines.ingest import IngestPipeline
 
     default = IngestPipeline.default_blob()
-    swapped, _ = compiler.apply(default, SetProvider(stage="embed", kind="openai_compatible"))
-    embed_node = next(n for n in swapped.nodes if n.id == "embed")
+    swapped, _ = compiler.apply(default, SetProvider(stage="chunk", kind="semantic"))
+    chunk_node = next(n for n in swapped.nodes if n.id == "chunk")
     # Required (default-less) fields are completed with build-safe empty values, never absent.
     from shared_libs.pipelines.registry import NodeRegistry as Registry
 
-    node_class = Registry.get("embed", "openai_compatible")
+    node_class = Registry.get("chunker", "semantic")
     for name, field in node_class.Config.model_fields.items():
         if field.is_required():
-            assert name in embed_node.config, name
+            assert name in chunk_node.config, name
 
 
 def test_set_provider_on_a_non_provider_stage_is_a_clean_notice(compiler) -> None:

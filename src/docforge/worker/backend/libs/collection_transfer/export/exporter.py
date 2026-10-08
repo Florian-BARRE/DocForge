@@ -141,6 +141,7 @@ class CollectionExporter:
             trace_verbosity=getattr(collection, "trace_verbosity", None) or "shape",
             needs_reindex=collection.needs_reindex,
             indexed_signature=collection.indexed_signature,
+            indexed_embed_signature=getattr(collection, "indexed_embed_signature", None),
             title_field=collection.title_field,
             pipeline=redact_blob_secrets(collection.pipeline) or {},
             search=redact_blob_secrets(collection.search) or {},

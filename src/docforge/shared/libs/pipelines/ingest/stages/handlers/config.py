@@ -6,6 +6,7 @@
 
 # ====== Local Project Imports ======
 from ..config_merge import ConfigMode, StageConfigMerge
+from ..embed_slots import EmbedSlots
 from ..models import SetStageConfig
 from ..spec import StageKey
 from ..state import ChainSpec, PipelineState
@@ -70,6 +71,13 @@ class StageConfigHandler:
             notices (list[str]): Collector for no-op notices.
         """
         stage, node, config, mode = action.stage, action.node, action.config, action.mode
+        # 0. A provider SLOT of the stage node (embed dense / sparse) — its kind is kept.
+        if action.slot is not None:
+            if stage != StageKey.EMBED or not EmbedSlots.is_slot(action.slot):
+                notices.append(f"stage '{stage}' has no provider slot '{action.slot}'")
+                return
+            EmbedSlots.set_config(state, action.slot, config, mode, notices)
+            return
         # 1. Intake is composite — a named node targets one of its fixed sub-nodes.
         if stage == StageKey.INTAKE:
             if node is None:

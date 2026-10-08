@@ -12,7 +12,7 @@ from unittest.mock import ANY, AsyncMock, MagicMock
 import pytest
 from sqlalchemy.exc import IntegrityError
 
-from shared_libs.public_models import FieldType
+from shared_libs.public_models import FieldType, VectorLayout
 from shared_libs.services.db.facades import (
     AdmissionResult,
     IngestionFacade,
@@ -20,7 +20,7 @@ from shared_libs.services.db.facades import (
     ReingestOutcome,
 )
 from shared_libs.services.db.facades import ingestion_facade as facade_module
-from shared_libs.services.db.qdrant import PayloadType, QdrantPoint
+from shared_libs.services.db.qdrant import DeclaredVectors, PayloadType, QdrantPoint, SparseVec
 
 
 def _integrity_error(constraint_name: str) -> IntegrityError:
@@ -531,8 +531,12 @@ async def test_index_fails_clearly_on_an_undeclared_chunk_scope_vector(monkeypat
     monkeypatch.setattr(facade_module.QdrantCollectionApi, "ensure", AsyncMock(return_value=set()))
     monkeypatch.setattr(
         facade_module.QdrantCollectionApi,
-        "declared_vectors",
-        AsyncMock(return_value=({"content_dense"}, {"content_bm25"})),
+        "declared",
+        AsyncMock(
+            return_value=DeclaredVectors(
+                dense=frozenset({"content_dense"}), sparse=frozenset({"content_bm25"})
+            )
+        ),
     )
     delete_by_document = AsyncMock()
     upsert = AsyncMock()
@@ -796,3 +800,37 @@ async def test_flag_replay_failure_keeps_status_and_stamps_the_warning() -> None
         session.get = AsyncMock(return_value=document)
         await DocumentApi.flag_replay_failure(session, uuid.uuid4(), "replay failed")
         assert document.status == expected and document.warning_reason == "replay failed"
+
+
+async def test_index_refuses_a_sparse_vector_declared_for_another_encoder(monkeypatch) -> None:
+    """A bm25_local layout (IDF) writing into a store whose content_bm25 was declared WITHOUT IDF
+    (a bge_server-era store) would mix two encoders: refused with the rebuild hint, nothing written."""
+    from shared_libs.services.db.facades.undeclared_vector_error import (  # noqa: PLC0415
+        UndeclaredVectorError,
+    )
+
+    monkeypatch.setattr(facade_module.CollectionApi, "get_schema", AsyncMock(return_value=[]))
+    ensure = AsyncMock(return_value={"content"})
+    monkeypatch.setattr(facade_module.QdrantCollectionApi, "ensure", ensure)
+    monkeypatch.setattr(
+        facade_module.QdrantCollectionApi,
+        "declared",
+        AsyncMock(return_value=DeclaredVectors(sparse=frozenset({"content_bm25"}))),
+    )
+    upsert = AsyncMock()
+    monkeypatch.setattr(facade_module.QdrantIndexApi, "upsert", upsert)
+    points = [
+        QdrantPoint(
+            point_id=str(uuid.uuid4()),
+            payload={},
+            sparse={"content_bm25": SparseVec(indices=[1], values=[1.0])},
+        )
+    ]
+    layout = VectorLayout(dense=False, sparse=True, sparse_idf=True)
+    facade = IngestionFacade(_postgres_yielding(MagicMock()), MagicMock(), MagicMock())
+
+    with pytest.raises(UndeclaredVectorError, match="rebuild_index"):
+        await facade.index(uuid.uuid4(), uuid.uuid4(), 0, points, layout=layout)
+
+    assert ensure.await_args.kwargs["layout"] == layout
+    upsert.assert_not_awaited()

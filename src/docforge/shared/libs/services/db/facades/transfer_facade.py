@@ -17,6 +17,7 @@ from typing import Any
 # ====== Internal Project Imports ======
 from loggerplusplus import LoggerClass
 
+from shared_libs.pipelines.nodes.embed.blob import EmbedBlobResolver
 from shared_libs.services.db.postgresql import PostgresClient
 from shared_libs.services.db.postgresql.apis import (
     BlobApi,
@@ -38,7 +39,6 @@ from shared_libs.services.db.qdrant import (
     QdrantClient,
     QdrantCollectionApi,
     QdrantIndexApi,
-    QdrantLexicalEncodingApi,
     QdrantPoint,
     VectorNames,
 )
@@ -46,9 +46,11 @@ from shared_libs.services.db.s3 import S3Client, S3Object, S3ObjectApi
 
 # ====== Local Project Imports ======
 from .collections_facade import CollectionsFacade
+from .content_sparse_reencoder import ContentSparseReencoder
 from .helpers import DatabaseHelpers
 from .ingestion_facade import IngestionFacade
 from .meta_vector_sync_facade import MetaVectorSyncFacade
+from .meta_vector_sync_helpers import MetaVectorSyncHelpers
 from .transfer_payloads import DocumentExportRows
 
 
@@ -284,10 +286,22 @@ class CollectionTransferFacade(LoggerClass):
         await self._ingestion.store_blobs(objects, rows)
 
     async def ensure_vector_space(self, collection_id: uuid.UUID, dense_dim: int) -> None:
-        """Create the Qdrant collection from the schema + the manifest dense_dim (idempotent)."""
+        """Create the Qdrant collection from the schema + the manifest dense_dim (idempotent).
+
+        The layout (content axes, sparse IDF) follows the imported collection's embed config
+        (strict: a broken embed blob fails the import, never creates a guessed schema); a
+        sparse-only collection ships ``dense_dim`` 0 and declares no dense vector.
+        """
         async with self._postgres.session() as session:
             schema = await CollectionApi.get_schema(session, collection_id)
+            collection = await CollectionApi.get(session, collection_id)
         DatabaseHelpers.validate_vector_slugs(schema)
+        layout = EmbedBlobResolver.layout_or_raise(getattr(collection, "pipeline", None))
+        if layout.dense and dense_dim <= 0:
+            raise ValueError(
+                "bundle carries no dense vector size but the collection's embed config has a dense "
+                "provider — the bundle's vectors cannot fill a dense vector space"
+            )
         name = DatabaseHelpers.qdrant_collection_name(collection_id)
         await QdrantCollectionApi.ensure(
             self._qdrant.raw,
@@ -300,6 +314,7 @@ class CollectionTransferFacade(LoggerClass):
                 for f in schema
                 if f.filterable
             },
+            layout=layout,
         )
 
     async def upsert_points(self, collection_id: uuid.UUID, points: Sequence[QdrantPoint]) -> None:
@@ -307,21 +322,47 @@ class CollectionTransferFacade(LoggerClass):
         name = DatabaseHelpers.qdrant_collection_name(collection_id)
         await QdrantIndexApi.upsert(self._qdrant.raw, name, points)
 
-    async def bm25_meta_vectors(self, collection_id: uuid.UUID) -> set[str]:
-        """The (ensured) vector space's metadata sparse vectors declared in the local BM25 encoding."""
-        name = DatabaseHelpers.qdrant_collection_name(collection_id)
-        return await QdrantLexicalEncodingApi.bm25_meta_vectors(self._qdrant.raw, name)
-
-    async def reencode_bm25_meta_vectors(self, collection_id: uuid.UUID) -> tuple[int, int]:
+    async def reencode_meta_lexical_vectors(self, collection_id: uuid.UUID) -> tuple[int, int]:
         """
-        Re-encode every document's BM25 metadata vectors locally (no provider, dense untouched).
+        Re-encode every document's lexical metadata vectors through the configured sparse provider.
 
         Returns:
             tuple[int, int]: (documents re-encoded, points patched).
         """
         return await self._meta_vectors.backfill_collection_meta_vectors(
-            collection_id, bm25_only=True
+            collection_id, lexical_only=True
         )
+
+    async def content_sparse_reencoder(
+        self, collection_id: uuid.UUID
+    ) -> ContentSparseReencoder | None:
+        """
+        The imported collection's content sparse re-encoder (None when its config has no sparse slot).
+
+        Args:
+            collection_id (uuid.UUID): The (new) imported collection.
+
+        Returns:
+            ContentSparseReencoder | None: Re-encodes chunk text through the configured sparse provider.
+
+        Raises:
+            EmbedLayoutError: The embed node does not build (input-free message).
+        """
+        async with self._postgres.session() as session:
+            collection = await CollectionApi.get(session, collection_id)
+        pipeline = getattr(collection, "pipeline", None) or {}
+        if not EmbedBlobResolver.layout_or_raise(pipeline).sparse:
+            return None
+        embed_node = MetaVectorSyncHelpers.find_embed_node(pipeline)
+        if embed_node is None:
+            return None
+        embedder, _config = MetaVectorSyncHelpers.rebuild_embedder(embed_node)
+        return ContentSparseReencoder(self._postgres, embedder)
+
+    async def flag_needs_reindex(self, collection_id: uuid.UUID) -> None:
+        """Raise the imported collection's ``needs_reindex`` (a repairable vector gap was left)."""
+        async with self._postgres.session() as session:
+            await CollectionApi.update(session, collection_id, needs_reindex=True)
 
     async def rollback_collection(self, collection_id: uuid.UUID) -> None:
         """Delete a half-imported collection everywhere (Qdrant drop → PG cascade → orphan blobs)."""

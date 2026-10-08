@@ -60,27 +60,23 @@ class EncodedQuery(Artifact):
     The query's vectors — the query-side mirror of a chunk's ChunkVectors.
 
     Attributes:
-        dense (list[float]): The dense query vector (always present — a query must be searchable).
-        sparse (SparseVector | None): The lexical query vector; None when the collection's
-            embedder has no sparse axis.
-        meta_sparse (SparseVector | None): The local BM25 query vector (MetaLexicalEncoder) for
-            metadata lexical targets whose vector is BM25-encoded; None when no metadata lexical
-            target was requested.
+        dense (list[float]): The dense query vector; empty when the collection has no dense
+            provider (sparse-only) or the dense encode degraded.
+        sparse (SparseVector | None): The lexical query vector, encoded by the collection's sparse
+            provider — it serves the content AND the metadata lexical targets; None when the
+            collection has no sparse provider.
         model (str): The embedding model that produced the vectors (provenance; must match the
             model the chunks were indexed with).
     """
 
     dense: list[float] = Field(
-        default_factory=list, description="The dense query vector (always present)."
+        default_factory=list,
+        description="The dense query vector (empty on a sparse-only collection or a degraded encode).",
     )
     sparse: SparseVector | None = Field(
         default=None,
-        description="The lexical query vector; None when the embedder has no sparse axis.",
-    )
-    meta_sparse: SparseVector | None = Field(
-        default=None,
-        description="The local BM25 query vector for metadata lexical targets whose stored vector is "
-        "BM25-encoded (modifier=IDF); None when no metadata lexical target was requested.",
+        description="The lexical query vector from the collection's sparse provider (content and "
+        "metadata lexical targets alike); None when the collection has no sparse provider.",
     )
     model: str = Field(
         default="", description="The embedding model that produced the vectors (provenance)."

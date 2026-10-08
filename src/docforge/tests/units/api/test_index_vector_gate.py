@@ -14,7 +14,7 @@ from qdrant_client.http.exceptions import UnexpectedResponse
 from shared_libs.public_models import FieldType
 from shared_libs.public_models.search import SearchResult
 from shared_libs.services.db.facades import IndexStateFacade
-from shared_libs.services.db.qdrant import QdrantCollectionApi
+from shared_libs.services.db.qdrant import DeclaredVectors, QdrantCollectionApi
 
 _EMBED_PIPELINE = {
     "kind": "group",
@@ -65,6 +65,7 @@ def test_missing_vectors_is_empty_when_every_vector_is_declared() -> None:
 # --------------------------------------------------------------------------- #
 async def test_declared_vectors_reads_the_named_vector_maps() -> None:
     qdrant = MagicMock()
+    qdrant.raw.collection_exists = AsyncMock(return_value=True)
     params = SimpleNamespace(vectors={"content_dense": 1}, sparse_vectors={"content_bm25": 1})
     qdrant.raw.get_collection = AsyncMock(
         return_value=SimpleNamespace(config=SimpleNamespace(params=params))
@@ -75,6 +76,7 @@ async def test_declared_vectors_reads_the_named_vector_maps() -> None:
 
 async def test_declared_vectors_is_none_without_a_qdrant_space() -> None:
     qdrant = MagicMock()
+    qdrant.raw.collection_exists = AsyncMock(return_value=True)  # dropped between the two calls
     qdrant.raw.get_collection = AsyncMock(
         side_effect=UnexpectedResponse(404, "Not Found", b"", MagicMock())
     )
@@ -134,8 +136,12 @@ def search_wired(fastapi_app, monkeypatch):
     monkeypatch.setattr(
         CONTEXT.database.collections, "get_schema", AsyncMock(return_value=_schema())
     )
-    declared = AsyncMock(return_value=({"content_dense"}, {"content_bm25"}))
-    monkeypatch.setattr(CONTEXT.database.index_state, "declared_vectors", declared)
+    declared = AsyncMock(
+        return_value=DeclaredVectors(
+            dense=frozenset({"content_dense"}), sparse=frozenset({"content_bm25"})
+        )
+    )
+    monkeypatch.setattr(CONTEXT.database.index_state, "declared", declared)
     search = AsyncMock(return_value=(SearchResult(query="q", hits=[]), (0, 0, None, 0)))
     monkeypatch.setattr(CONTEXT.search_service, "search", search)
     return SimpleNamespace(declared=declared, search=search)
@@ -150,10 +156,75 @@ def test_search_on_an_undeclared_vector_is_422_with_the_rebuild_hint(client, sea
     search_wired.search.assert_not_awaited()
 
 
-def test_content_only_search_never_reads_the_store(client, search_wired) -> None:
-    response = client.post(f"/api/v1/collections/{uuid.uuid4()}/search", json={"query": "q"})
+def test_default_search_reads_the_store_at_most_once_per_ttl(client, search_wired) -> None:
+    collection_id = uuid.uuid4()
+    for _ in range(3):
+        response = client.post(f"/api/v1/collections/{collection_id}/search", json={"query": "q"})
+        assert response.status_code == 200, response.text
+    search_wired.declared.assert_awaited_once()
+    # A matching content sparse modifier keeps the stock default (no targets, no hint).
+    assert search_wired.search.await_args.kwargs["search_targets"] is None
+    assert response.json()["hints"] == []
+
+
+def test_explicit_content_target_never_reads_the_store(client, search_wired) -> None:
+    body = {"query": "q", "search_in": [{"field": "content", "semantic": True}]}
+    response = client.post(f"/api/v1/collections/{uuid.uuid4()}/search", json=body)
     assert response.status_code == 200, response.text
     search_wired.declared.assert_not_awaited()
+
+
+def test_mismatched_content_sparse_drops_the_lexical_axis_with_a_hint(
+    client, search_wired, monkeypatch
+) -> None:
+    from backend.context import CONTEXT  # noqa: PLC0415
+
+    # A bge (non-IDF) config over a store whose content sparse carries the IDF modifier.
+    monkeypatch.setattr(
+        CONTEXT.database.index_state,
+        "declared",
+        AsyncMock(
+            return_value=DeclaredVectors(
+                dense=frozenset({"content_dense"}),
+                sparse=frozenset({"content_bm25"}),
+                idf_sparse=frozenset({"content_bm25"}),
+            )
+        ),
+    )
+    response = client.post(f"/api/v1/collections/{uuid.uuid4()}/search", json={"query": "q"})
+    assert response.status_code == 200, response.text
+    [target] = search_wired.search.await_args.kwargs["search_targets"]
+    assert (target.field, target.semantic, target.lexical) == ("content", True, False)
+    [hint] = response.json()["hints"]
+    assert "lexical axis disabled" in hint["message"] and "rebuild_index" in hint["message"]
+
+
+def test_sparse_only_collection_with_mismatched_sparse_answers_empty_not_422(
+    client, search_wired, monkeypatch
+) -> None:
+    from backend.context import CONTEXT  # noqa: PLC0415
+
+    sparse_only = {
+        **_EMBED_PIPELINE,
+        "nodes": [
+            {
+                "kind": "dense_sparse",
+                "family": "embed",
+                "id": "embed",
+                "config": {"dense": None, "sparse": {"kind": "bm25_local"}},
+            }
+        ],
+    }
+    monkeypatch.setattr(
+        CONTEXT.database.collections,
+        "get",
+        AsyncMock(return_value=SimpleNamespace(pipeline=sparse_only, search={})),
+    )
+    response = client.post(f"/api/v1/collections/{uuid.uuid4()}/search", json={"query": "q"})
+    assert response.status_code == 200, response.text
+    assert response.json()["hits"] == []
+    assert "lexical axis disabled" in response.json()["hints"][0]["message"]
+    search_wired.search.assert_not_awaited()
 
 
 # --------------------------------------------------------------------------- #

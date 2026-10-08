@@ -44,7 +44,7 @@ function keyFixture(overrides: Partial<ApiKeyInfo> = {}): ApiKeyInfo {
 function capabilitiesFixture(authEnabled: boolean): CapabilitiesResponse {
   return {
     version: "1.0.0", auth_enabled: authEnabled, gpu_present: null,
-    services: [], capabilities: { parsers: [], ocr: [], embed: [], chunkers: [], vlm: [], llm: [], rerank: [], contextualize: [], metagen: [] },
+    services: [], capabilities: { parsers: [], ocr: [], embed: [], chunkers: [], vlm: [], llm: [], rerank: [], contextualize: [], metagen: [], embed_dense: [], embed_sparse: [] },
   };
 }
 

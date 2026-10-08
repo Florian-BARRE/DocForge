@@ -48,7 +48,13 @@ def test_swapped_provider_round_trips() -> None:
     state.embed_chain = ChainSpec(
         family="embed",
         steps=[
-            ChainStep(kind="openai_compatible", config={"base_url": "http://x/v1", "model": "m"})
+            ChainStep(
+                kind="dense_sparse",
+                config={
+                    "dense": {"kind": "openai_compatible", "base_url": "http://x/v1", "model": "m"},
+                    "sparse": {"kind": "bm25_local"},
+                },
+            )
         ],
     )
     _assert_lossless(state)

@@ -13,7 +13,7 @@ import { ErrorState } from "../../components/ErrorState";
 import { LoadingState } from "../../components/LoadingState";
 import type { Navigate } from "../../shell/view";
 import { theme } from "../../theme";
-import { ReindexBanner } from "./ReindexBanner";
+import { ReindexBanner, reindexNeeded } from "./ReindexBanner";
 import { SchemaTable } from "./SchemaTable";
 
 interface CollectionDetailPageProps {
@@ -39,7 +39,7 @@ export function CollectionDetailPage({ collectionId, onNavigate }: CollectionDet
 
   return (
     <div style={{ padding: theme.space.xl, maxWidth: 1200, margin: "0 auto", overflowY: "auto", height: "100%" }}>
-      {collection.needs_reindex && <ReindexBanner />}
+      {reindexNeeded(collection) && <ReindexBanner collection={collection} onStarted={load} />}
 
       <div style={{ display: "flex", alignItems: "baseline", gap: theme.space.m, marginBottom: theme.space.m }}>
         <h2 style={{ fontFamily: theme.font.display, fontSize: theme.font.size.xl, fontWeight: 700 }}>

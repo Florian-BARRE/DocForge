@@ -27,6 +27,10 @@ export interface CapabilityMatrix {
   rerank: string[];
   contextualize: string[];
   metagen: string[];
+  /** Provider kinds usable for the embedder's DENSE slot on this deployment. */
+  embed_dense: string[];
+  /** Provider kinds usable for the embedder's SPARSE slot on this deployment. */
+  embed_sparse: string[];
 }
 
 /** The deployment capabilities snapshot returned by GET /capabilities. */

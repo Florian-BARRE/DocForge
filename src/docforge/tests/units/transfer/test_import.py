@@ -571,12 +571,12 @@ class _MetaBm25ExportFacade(FakeExportFacade):
         yield record
 
 
-async def test_import_drops_bundle_bm25_meta_vectors_and_reencodes_locally(tmp_path) -> None:
-    """Into a target whose meta_x_bm25 is declared BM25 (modifier=IDF), the bundle's copy of that
-    vector is NOT upserted (it may be BGE sparse from an old collection) and the local re-encode
-    runs once on the new collection; content + dense meta vectors travel as they are."""
+async def test_import_drops_bundle_meta_sparse_vectors_and_reencodes_them(tmp_path) -> None:
+    """Every bundle meta_*_bm25 is NOT upserted (its encoding may differ from the target's sparse
+    provider) and the provider re-encode runs once on the new collection; content + dense meta
+    vectors travel as they are."""
     reader = await _bundle(_MetaBm25ExportFacade(), tmp_path)
-    facade = FakeImportFacade(bm25_vectors={"meta_x_bm25"})
+    facade = FakeImportFacade()
 
     result = await CollectionImporterV1(facade, reader).run()
 
@@ -587,13 +587,26 @@ async def test_import_drops_bundle_bm25_meta_vectors_and_reencodes_locally(tmp_p
     assert facade.reencoded == [result.collection_id]
 
 
-async def test_import_into_legacy_target_keeps_bundle_vectors(tmp_path) -> None:
-    """No BM25-declared target vector (legacy space) → the bundle's sparse copy is kept verbatim
-    and no re-encode runs (old-bundle tolerance)."""
-    reader = await _bundle(_MetaBm25ExportFacade(), tmp_path)
+async def test_import_without_meta_sparse_vectors_runs_no_reencode(export_facade, tmp_path) -> None:
+    """A bundle with no metadata sparse vector has nothing to re-encode → no provider pass."""
+    reader = await _bundle(export_facade, tmp_path)
     facade = FakeImportFacade()
 
     await CollectionImporterV1(facade, reader).run()
 
-    assert facade.points[0].sparse["meta_x_bm25"].indices == [42]
     assert facade.reencoded == []
+
+
+async def test_import_survives_a_failed_meta_reencode(tmp_path) -> None:
+    """The re-encode is best-effort: a down sparse provider never fails an import already written."""
+    reader = await _bundle(_MetaBm25ExportFacade(), tmp_path)
+    facade = FakeImportFacade()
+
+    async def _boom(_collection_id):
+        raise RuntimeError("sparse provider unreachable")
+
+    facade.reencode_meta_lexical_vectors = _boom
+
+    result = await CollectionImporterV1(facade, reader).run()
+
+    assert result.collection_id is not None and len(facade.points) == 1

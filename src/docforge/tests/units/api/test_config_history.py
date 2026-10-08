@@ -23,15 +23,16 @@ BASE = f"/api/v1/collections/{CID}/config-versions"
 
 
 def _pipeline(**embed: object) -> dict:
-    """The stock pipeline with the embed head config merged."""
+    """The stock pipeline with the embed head's dense slot config merged."""
     blob, _ = StageCompiler().apply(
-        IngestPipeline.default_blob(), SetStageConfig(stage="embed", config=embed, mode="merge")
+        IngestPipeline.default_blob(),
+        SetStageConfig(stage="embed", slot="dense", config=embed, mode="merge"),
     )
     return blob.model_dump(mode="json")
 
 
 def _embed(blob: dict) -> dict:
-    return next(n for n in blob["nodes"] if n.get("kind") == "bge_server")["config"]
+    return next(n for n in blob["nodes"] if n.get("family") == "embed")["config"]["dense"]
 
 
 def _version(n: int, pipeline: dict, search: dict | None = None) -> SimpleNamespace:
@@ -102,9 +103,11 @@ def test_diff_reports_changed_paths_with_masked_values(client, wired) -> None:
     assert response.status_code == 200
     assert "sk-old" not in response.text and "sk-new" not in response.text
     changes = {c["path"]: c for c in response.json()["changes"]}
-    timeout = changes["/pipeline/nodes/embed/config/timeout_seconds"]
+    timeout = changes["/pipeline/nodes/embed/config/dense/timeout_seconds"]
     assert (timeout["op"], timeout["before"], timeout["after"]) == ("changed", 10.0, 20.0)
-    key = changes["/pipeline/nodes/embed/config/api_key"]  # a rotation shows, both sides masked
+    key = changes[
+        "/pipeline/nodes/embed/config/dense/api_key"
+    ]  # a rotation shows, both sides masked
     assert key["before"] == MASK and key["after"] == MASK
 
 
@@ -157,6 +160,7 @@ def test_stage_apply_records_the_author(client, wired) -> None:
     action = {
         "action": "set_config",
         "stage": "embed",
+        "slot": "dense",
         "mode": "merge",
         "config": {"timeout_seconds": 33.0},
     }

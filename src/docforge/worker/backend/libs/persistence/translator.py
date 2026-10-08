@@ -29,6 +29,7 @@ from shared_libs.public_models import (
     PageRender,
     RunBundle,
     TextSanitizer,
+    VectorLayout,
     first_heading,
     role_default_enabled,
 )
@@ -75,6 +76,8 @@ class TranslatedRun:
     blob_rows: list[Blob] = field(default_factory=list)
     points: list[QdrantPoint] = field(default_factory=list)
     dense_dim: int = 0
+    # The embedder's config-derived vector layout (which content axes, sparse IDF) — the store schema.
+    layout: VectorLayout = field(default_factory=VectorLayout)
     # O(1) content-hash dedup (was a linear scan of blob_rows per blob → O(blobs²)).
     seen_hashes: set[str] = field(default_factory=set)
 
@@ -389,6 +392,12 @@ class RunTranslator:
                 )
             )
         out.dense_dim = bundle.embeddings.dimension if bundle.embeddings else 0
+        if bundle.embeddings is not None:
+            out.layout = VectorLayout(
+                dense=bundle.embeddings.dense_enabled,
+                sparse=bundle.embeddings.sparse_enabled,
+                sparse_idf=bundle.embeddings.sparse_idf,
+            )
 
     @classmethod
     def translate(

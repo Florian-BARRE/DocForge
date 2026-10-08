@@ -29,7 +29,6 @@ from config import RUNTIME_CONFIG
 from shared_libs.pipelines.search import CollectionReadPort
 from shared_libs.public_models import DisplayTitleResolver
 from shared_libs.public_models.search import (
-    CONTENT_FIELD,
     Candidate,
     EncodedQuery,
     Hit,
@@ -131,20 +130,15 @@ class CollectionReadPortImpl(CollectionReadPort, LoggerClass):
         #    collection embedder was later swapped to dense-only, past the router's validation)
         #    degrades to empty results rather than a 500 — and is counted as a filter-only call, not
         #    silently lost (the "axes=none" reading of "filter-only vs vector").
-        #    A metadata lexical target needs its vector's stored encoding (BM25 vs legacy) — one
-        #    collection-info read, only when such a target is present.
-        bm25_vectors: set[str] = set()
-        if any(t.lexical and t.field != CONTENT_FIELD for t in targets):
-            bm25_vectors = await self._database.search.bm25_meta_vectors(self._collection_id)
         try:
-            dense, sparse = TargetVectorResolver.resolve(encoded, targets, bm25_vectors)
+            dense, sparse = TargetVectorResolver.resolve(encoded, targets)
         except ValueError as exc:
             self.logger.warning(f"Search targets resolved to no queryable vector: {exc}")
             self.probe.record_call(AXES_NONE, bool(filters), [])
-            # A stopword-only query against a BM25 metadata target is the one cause a caller can fix
-            # by rewording — record it so the response carries a hint instead of a bare [].
+            # A stopword-only query against a term-based sparse provider (bm25_local) is the one cause
+            # a caller can fix by rewording — record it so the response carries a hint, not a bare [].
             self.probe.record_termless_lexical(
-                TargetVectorResolver.termless_lexical_fields(encoded, targets, bm25_vectors)
+                TargetVectorResolver.termless_lexical_fields(encoded, targets)
             )
             return []
 

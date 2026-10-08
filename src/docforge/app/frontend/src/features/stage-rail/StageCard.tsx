@@ -16,6 +16,7 @@ import { theme } from "../../theme";
 import type { StageRailActions } from "./actions";
 import { ChainSection } from "./ChainSection";
 import { ProviderPicker } from "./ProviderPicker";
+import { ProviderSlotsSection } from "./slots/ProviderSlotsSection";
 import { StackEditor } from "./StackEditor";
 import { stageAnchorId } from "./state/stageAnchor";
 import { StageCardHeader } from "./StageCardHeader";
@@ -55,6 +56,9 @@ export function StageCard({ stage, palette, actions, issues }: StageCardProps) {
   // provider identity, same config, TWO editors for one value). ChainSection renders that single
   // step as the provider picker itself (ChainStepList's `primaryKindEditable`), so those two are
   // skipped entirely for this case; every other provider stage (chunk) keeps them.
+  // A stage with independent provider slots (embed) is edited through them instead — its single
+  // `dense_sparse` chain step would only expose the same two nested slot configs as raw JSON.
+  const hasSlots = stage.slots.length > 0;
   const ownChain = stage.chains.length === 1 && stage.chains[0].slot === stage.key;
 
   return (
@@ -108,7 +112,8 @@ export function StageCard({ stage, palette, actions, issues }: StageCardProps) {
 
       {collapsible && expanded && (
         <div style={{ display: "flex", flexDirection: "column", gap: theme.space.m, paddingLeft: 34 + theme.space.m }}>
-          {stage.kind === "provider" && !ownChain && (
+          {hasSlots && <ProviderSlotsSection stage={stage} actions={actions} issues={issues} />}
+          {stage.kind === "provider" && !ownChain && !hasSlots && (
             <>
               <ProviderPicker stage={stage} palette={palette} actions={actions} />
               <StageConfigForm stage={stage} palette={palette} actions={actions} issues={issues} />
@@ -116,7 +121,7 @@ export function StageCard({ stage, palette, actions, issues }: StageCardProps) {
           )}
           {stage.kind === "toggle" && <StageConfigForm stage={stage} palette={palette} actions={actions} issues={issues} />}
           {stage.kind === "stack" && <StackEditor stage={stage} palette={palette} actions={actions} />}
-          {stage.kind !== "stack" && stage.chains.map((chain) => (
+          {stage.kind !== "stack" && !hasSlots && stage.chains.map((chain) => (
             <ChainSection key={chain.slot} stageKey={stage.key} chain={chain} palette={palette} actions={actions} />
           ))}
         </div>

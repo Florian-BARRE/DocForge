@@ -25,6 +25,8 @@ from .filter_validator import SearchFilterValidator
 from .probe import SearchRetrievalProbe
 from .score_kind import ScoreKindClassifier
 from .target_validator import SearchTargetValidator
+from .declared_cache import DeclaredVectorsCache
+from .default_target_correction import DefaultTargetCorrection, DefaultTargetPlan
 
 # ---------------------- Filter value resolution + hints ---------------------- #
 from .filter_hint import FilterHint
@@ -66,6 +68,9 @@ __all__ = [
     "ScoreKindClassifier",
     "SearchRetrievalProbe",
     "SearchTargetValidator",
+    "DeclaredVectorsCache",
+    "DefaultTargetCorrection",
+    "DefaultTargetPlan",
     "FilterHint",
     "FilterResolution",
     "SearchFilterResolver",

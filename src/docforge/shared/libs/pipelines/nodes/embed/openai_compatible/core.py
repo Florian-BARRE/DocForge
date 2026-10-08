@@ -1,20 +1,21 @@
 # ====== Code Summary ======
-# The OpenAI-compatible embedder — dense vectors through any /v1/embeddings endpoint (OpenAI,
-# vLLM, Infinity…) via the shared factory. The protocol has no sparse axis: the base skips it
-# gracefully (dense-only collections).
+# LEGACY single-provider embed node ``(embed, openai_compatible)`` — dense vectors through any
+# OpenAI-compatible /v1/embeddings endpoint, in the shape stored before the dense/sparse slots. Kept
+# registered but NOT selectable so a stored, not-yet-healed blob still builds; the stage reader
+# migrates it to ``(embed, dense_sparse)`` with an openai_compatible dense slot and no sparse slot.
+# Every wire call delegates to the shared OpenAICompatibleProvider (usage folded in there).
 
 # ====== Internal Project Imports ======
 from shared_libs.pipelines.base import NodeUsage
-from shared_libs.pipelines.nodes.openai_compat import (
-    EndpointReachability,
-    LangChainClientPool,
+from shared_libs.pipelines.nodes.openai_compat import (  # noqa: F401 — patch seam for tests
     OpenAICompatConfig,
     OpenAICompatHelpers,
 )
 from shared_libs.pipelines.registry import NodeRegistry
 
 # ====== Local Project Imports ======
-from ..base import BaseEmbedConfig, BaseEmbedderNode
+from ..base import BaseEmbedConfig, BaseEmbedderNode, EmbedConsumes, EmbedProduces
+from ..providers import OpenAICompatibleProvider, OpenAICompatibleProviderConfig
 
 
 class EmbedOpenAICompatibleConfig(BaseEmbedConfig, OpenAICompatConfig):
@@ -23,87 +24,57 @@ class EmbedOpenAICompatibleConfig(BaseEmbedConfig, OpenAICompatConfig):
 
 @NodeRegistry.register("embed")
 class EmbedOpenAICompatibleNode(BaseEmbedderNode):
-    """Dense embedding through any OpenAI-compatible /v1/embeddings endpoint."""
+    """LEGACY: dense embedding through an OpenAI-compatible endpoint (superseded by dense_sparse)."""
 
     KIND = "openai_compatible"
-    NAME = "OpenAI-compatible embeddings"
-    SUMMARY = "Dense vectors through any OpenAI-compatible embeddings endpoint."
+    NAME = "OpenAI-compatible embeddings (legacy single-provider)"
+    SUMMARY = "Legacy shape — read and migrated to the dense/sparse slot embedder."
     HOW_IT_WORKS = (
-        "Sends the text batches to the endpoint's /v1/embeddings route through the shared "
-        "factory. The protocol carries no sparse vectors — the sparse axis is skipped."
+        "Kept only so blobs stored before the dense/sparse slots still build; the stage reader "
+        "migrates it to (embed, dense_sparse) with an openai_compatible dense slot."
     )
     Config = EmbedOpenAICompatibleConfig
     UNIQUE_IN_GRAPH = True
+    SELECTABLE = False
+
+    def __init__(self, id: str, config: EmbedOpenAICompatibleConfig) -> None:
+        """
+        Args:
+            id (str): Graph-unique identifier this node is wired under.
+            config (EmbedOpenAICompatibleConfig): The endpoint config.
+        """
+        super().__init__(id, config)
+        config: EmbedOpenAICompatibleConfig = self.config
+        self.__provider = OpenAICompatibleProvider(
+            OpenAICompatibleProviderConfig(
+                base_url=config.base_url,
+                api_key=config.api_key,
+                model=config.model,
+                timeout_seconds=config.timeout_seconds,
+                preflight_timeout_seconds=config.preflight_timeout_seconds,
+            )
+        )
+
+    def has_sparse(self) -> bool:
+        """The OpenAI embeddings protocol carries no sparse vectors."""
+        return False
+
+    def _collect_usage(self) -> NodeUsage | None:
+        """The provider's folded paid-call usage for this run."""
+        return self.__provider.usage
 
     async def preflight(self) -> None:
-        """Verify the endpoint exposes an OpenAI-compatible embeddings route, before any spend.
-
-        Embedding goes through the openai SDK, which POSTs to ``{base_url}/embeddings``. A plain
-        reachability probe is NOT enough: a TEI-only server (e.g. bge_server, whose routes are
-        ``/embed`` / ``/embed_sparse``) answers on the host yet has no ``/embeddings`` route, so it
-        would pass a reachability check and only 404 mid-run — after the pipeline already spent.
-        Probing the actual embeddings route turns that into an actionable fail-fast.
-        """
-        config: EmbedOpenAICompatibleConfig = self.config
-        await EndpointReachability.check_route_present(
-            node_kind=self.KIND,
-            base_url=config.base_url,
-            path="/embeddings",
-            capability_hint=(
-                "this node needs an OpenAI-compatible /v1/embeddings endpoint; this looks like a "
-                "TEI-only server (its routes are /embed, not /embeddings). Point base_url at an "
-                "OpenAI-compatible embeddings endpoint (e.g. a base_url ending in /v1), or use the "
-                "embed/bge_server node for a TEI/bge_server host"
-            ),
-            api_key=config.api_key,
-            timeout_seconds=config.preflight_timeout_seconds,
-        )
+        """Probe the /embeddings route before any spend."""
+        await self.__provider.preflight()
 
     async def _embed_dense(self, texts: list[str]) -> list[list[float]]:
-        """Dense vectors via the factory-built embeddings client, capturing paid token usage.
+        """Dense vectors via the pooled OpenAI SDK client."""
+        return await self.__provider.embed_dense(texts)
 
-        Calls the underlying OpenAI-SDK embeddings resource directly (rather than LangChain's
-        ``aembed_documents``, which discards usage) so the per-call ``usage.prompt_tokens`` can be
-        folded into the node's running total for the post-hoc cost meter. The base node already caps
-        the batch size and disables the ctx-length check, so a single ``create`` over the batch mirrors
-        the prior behaviour; ``.data`` is re-sorted by index to keep the 1:1 order the caller expects.
-        """
-        config: EmbedOpenAICompatibleConfig = self.config
-        # The pooled client self-heals a dead socket left by an endpoint restart (connect-phase error
-        # → evict + retry once on a fresh client); the batch is already capped by the base node.
-        response = await LangChainClientPool.arun(
-            lambda: OpenAICompatHelpers.embeddings(config),
-            lambda client: client.async_client.create(input=texts, model=config.model),
-            label=f"embed '{self.KIND}'",
-        )
-        self._accumulate_usage(response, config.model)
-        ordered = sorted(response.data, key=lambda item: item.index)
-        return [item.embedding for item in ordered]
-
-    def _accumulate_usage(self, response: object, model: str) -> None:
-        """Fold one embeddings response's input-token usage into the node's running total.
-
-        An embeddings call bills input tokens only, so it maps onto ``NodeUsage`` as
-        ``prompt_tokens=<input tokens>, completion_tokens=0``. Defensive like
-        ``NodeUsage.from_usage_metadata``: a missing/odd usage payload is ignored (leaves the total
-        unchanged, never fails the node), so a paid embed still emits vectors even if its endpoint
-        omits usage — it just contributes no billable tokens.
-
-        Args:
-            response (object): The embeddings API response (carries ``usage.prompt_tokens`` /
-                ``usage.total_tokens`` on an OpenAI-compatible endpoint).
-            model (str): The configured embedding model id — the key into the embed pricing table.
-        """
-        usage = getattr(response, "usage", None)
-        raw_tokens = getattr(usage, "prompt_tokens", None)
-        if raw_tokens is None:
-            raw_tokens = getattr(usage, "total_tokens", None)
-        try:
-            tokens = int(raw_tokens)
-        except (TypeError, ValueError):
-            return
-        prior = self._last_usage.prompt_tokens if self._last_usage is not None else 0
-        self._last_usage = NodeUsage(model=model, prompt_tokens=prior + tokens, completion_tokens=0)
+    async def run(self, data: EmbedConsumes) -> EmbedProduces:
+        """Reset the provider's usage tally, then run the shared embed frame."""
+        self.__provider.usage = None
+        return await super().run(data)
 
 
 __all__ = ["EmbedOpenAICompatibleNode", "EmbedOpenAICompatibleConfig"]
