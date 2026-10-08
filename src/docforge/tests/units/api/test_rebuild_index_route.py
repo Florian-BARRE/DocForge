@@ -134,7 +134,7 @@ def _patch_bulk(monkeypatch) -> None:
 
     from backend.context import CONTEXT
 
-    router_module = importlib.import_module("backend.routers.collections.router")
+    router_module = importlib.import_module("backend.routers.collections.maintenance_routes")
     monkeypatch.setattr(router_module.BlobNormalizer, "normalize", staticmethod(lambda blob: {}))
     monkeypatch.setattr(
         router_module.PipelineBlobValidator, "validate", classmethod(lambda cls, blob: None)

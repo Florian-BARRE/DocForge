@@ -44,6 +44,10 @@ from .io import EmbedConsumes, EmbedProduces
 # caption/OCR/description folded onto it). Such a line carries no searchable content of its own.
 _BARE_IMAGE_MARKER = re.compile(r"^\[Image:[^\]]*\]$")
 
+# The longest provider Retry-After honoured before a retry (a misbehaving header must never park a
+# job for minutes; the retry budget then decides).
+_RETRY_AFTER_CAP_SECONDS = 30.0
+
 # The shape a resilient wrapper carries through its retry/split skeleton (a dense list, or the
 # (dense, sparse) pair of the combined path). Bound so the skeleton stays provider-agnostic.
 _Batch = TypeVar("_Batch")
@@ -130,6 +134,22 @@ class BaseEmbedderNode(ActionNode):
         return None
 
     @staticmethod
+    def __is_overload(error: Exception) -> bool:
+        """The provider said "busy, come back later" (429 / 503): wait, never split the batch."""
+        return isinstance(error, httpx.HTTPStatusError) and error.response.status_code in (429, 503)
+
+    @staticmethod
+    def __retry_after(error: Exception) -> float | None:
+        """The provider's ``Retry-After`` delay in seconds (delta form only), capped; else None."""
+        if not isinstance(error, httpx.HTTPStatusError):
+            return None
+        try:
+            delay = float(error.response.headers.get("Retry-After", ""))
+        except ValueError:
+            return None
+        return min(max(delay, 0.0), _RETRY_AFTER_CAP_SECONDS)
+
+    @staticmethod
     def __is_transient(error: Exception) -> bool:
         """A provider error worth retrying: a timeout, a transport blip, a 429/5xx status, or no
         limiter slot within the wait budget (the shared endpoint is saturated — back off like a
@@ -182,6 +202,10 @@ class BaseEmbedderNode(ActionNode):
         Slot-wait rule: a ``ProviderSlotTimeout`` (no limiter slot within the wait budget) is retried
         with backoff like a provider timeout but NEVER split — the halves would only queue behind the
         same saturated endpoint — so once the budget is spent it is raised as is.
+
+        Overload rule: a 429 / 503 is the provider saying "busy, retry later", not "batch too heavy".
+        It is retried after the provider's ``Retry-After`` (when longer than the backoff) and NEVER
+        split — halving it would double the requests hitting an already-saturated server.
         """
         config: BaseEmbedConfig = self.config
         if config.max_retries == 0:
@@ -210,11 +234,16 @@ class BaseEmbedderNode(ActionNode):
                 if split_on_timeout:
                     break
                 if attempt < total_attempts:
-                    await asyncio.sleep(config.retry_backoff_seconds * attempt)
+                    backoff = config.retry_backoff_seconds * attempt
+                    await asyncio.sleep(max(backoff, self.__retry_after(error) or 0.0))
         # Retries exhausted — split and embed the halves independently, or surface the genuine error
         # on a single text (nothing left to split). ``last_error`` is always set here: the loop only
         # falls through after every attempt raised a transient (a success returns, a hard error raises).
-        if len(texts) <= 1 or isinstance(last_error, ProviderSlotTimeout):
+        if (
+            len(texts) <= 1
+            or isinstance(last_error, ProviderSlotTimeout)
+            or self.__is_overload(last_error)
+        ):
             raise last_error  # type: ignore[misc]
         mid = len(texts) // 2
         self.logger.warning(

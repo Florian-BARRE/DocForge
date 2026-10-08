@@ -17,6 +17,7 @@ import pytest
 
 from shared_libs.services.db.facades import CollectionUpdateSpec
 from shared_libs.services.db.facades import collections_facade as cf_module
+from shared_libs.services.db.facades.collection_name_conflict import CollectionNameConflict
 from shared_libs.services.db.facades.collections_facade import CollectionsFacade
 
 
@@ -151,13 +152,13 @@ async def test_rename_unique_race_maps_to_duplicate_name_error(monkeypatch) -> N
     from sqlalchemy.exc import IntegrityError  # noqa: PLC0415
 
     monkeypatch.setattr(cf_module.DatabaseHelpers, "validate_vector_slugs", lambda _fields: None)
-    # The contract rename write trips the UNIQUE constraint; _is_duplicate_name confirms it's the name.
+    # The contract rename write trips the UNIQUE constraint; is_duplicate_name confirms it's the name.
     monkeypatch.setattr(
         cf_module.CollectionApi,
         "update",
         AsyncMock(side_effect=IntegrityError("stmt", {}, Exception("uq_collection_name"))),
     )
-    monkeypatch.setattr(CollectionsFacade, "_is_duplicate_name", staticmethod(lambda _e: True))
+    monkeypatch.setattr(CollectionNameConflict, "is_duplicate_name", staticmethod(lambda _e: True))
     session = _TrackingSession()
     facade = _facade(session)
 

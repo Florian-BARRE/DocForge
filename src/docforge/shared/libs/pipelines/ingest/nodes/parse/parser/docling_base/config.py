@@ -3,8 +3,9 @@
 # (standard docling + granite VLM). Both run their heavy, native convert in a KILLABLE subprocess the
 # worker manages, so both carry the two caps that make an OOM / hang / crash a clean, attributed
 # single-job failure instead of a wedged worker: a per-document TIME limit (the child is SIGKILLed
-# past it) and an optional address-space MEMORY cap (a runaway allocation dies with a clean
-# MemoryError before the container's cgroup OOM-killer). The sidecar parsers (pp_structure, mineru…)
+# past it), a RESIDENT-memory limit the worker's watchdog enforces (ON by default via the deployment's
+# WORKER_PARSE_RSS_LIMIT_MB; the child is SIGKILLed past it, before the cgroup OOM-killer) and an
+# opt-in address-space cap (RLIMIT_AS, off by default — it bounds virtual memory). The sidecar parsers (pp_structure, mineru…)
 # are already out-of-process over HTTP and do NOT use this — they inherit TimeoutRetryConfig instead.
 
 # ====== Third-Party Library Imports ======
@@ -35,7 +36,20 @@ class BaseDoclingParserConfig(NodeConfig):
         "collection. It bounds VIRTUAL memory, which torch/onnx over-reserve (~5.7 GiB virtual for "
         "~2.3 GiB resident measured on a 6-page PDF), so size it >= 8192; note that on the "
         "GPU (granite) an RLIMIT_AS cap can break CUDA's large virtual reservations, so leave it 0 "
-        "there and rely on the time cap + GPU-OOM kill.",
+        "there and rely on the time cap + GPU-OOM kill + the resident-memory watchdog "
+        "(parse_rss_limit_mb).",
+    )
+    parse_rss_limit_mb: int = Field(
+        default=0,
+        ge=0,
+        description="Resident-memory (RSS) limit in MiB for the parse subprocess and any process it "
+        "spawns, enforced by the worker's watchdog (sampled every 0.5 s): past it the child is "
+        "SIGKILLed and the job fails with ParseMemoryExceededError naming the limit, before the "
+        "container's OOM-killer could reap the worker. 0 (default) means the deployment default "
+        "(WORKER_PARSE_RSS_LIMIT_MB — ON by default: 80% of the container/host memory minus a 1 GiB "
+        "worker reserve). Unlike parse_memory_mb it counts only real resident memory, so it is safe "
+        "on every parser including granite on the GPU. Raise it for a collection of heavy documents "
+        "on a large worker; the warm child's loaded models (~1-2 GiB) count toward it.",
     )
 
 

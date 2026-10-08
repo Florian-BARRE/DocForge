@@ -204,7 +204,7 @@ flowchart TB
 
 **Contrat de la famille** (`BaseParserNode`) : tout parseur consomme `{source: IntakeResult}` et produit `{ir, score}` ; pas de PDF → IR vide + score 0 (dégradation) ; l'escalade se câble dans le graphe par `ScoreBelow(threshold)` — rien à changer au moteur.
 
-**Isolation du convert in-worker (`docling` · `granite_docling`)** : leur convert natif (lourd, non tuable en thread) tourne dans un **sous-processus TUABLE** que le worker gère (`DoclingSubprocessPool`, fork — modèles chargés une fois, ré-utilisés à chaud, ré-engendrés après un échec), borné par deux caps par-collection sur le blob : `parse_timeout_seconds` (le child est SIGKILL au-delà) et `parse_memory_mb` (cap RLIMIT_AS optionnel ; `0` = repli worker `WORKER_PARSE_MEMORY_MB` via `ParseMemoryFallback` pour docling — **OFF (0) par défaut** : RLIMIT_AS borne le VIRTUEL, que torch/onnx sur-réservent (mesuré : PDF réel 6 pages ≈ 5,7 Gio virtuel / 2,3 Gio résident ; un cap 4096 casse le mmap du modèle de layout) — jamais appliqué à granite ; **laisser `0` sur granite/GPU** — un RLIMIT_AS casse les réservations virtuelles CUDA, on s'appuie alors sur le time-cap + le kill GPU-OOM). Un OOM / hang / crash du parse devient donc un **échec de job propre et attribué** (`ParseSubprocessError`, le worker survit, slot libéré, aucun lock laissé bloqué) au lieu de figer le worker. Les parseurs **sidecar** (`pp_structure` · `paddleocr_vl` · `mineru` · `dots_ocr`) sont déjà hors-process en HTTP → non concernés.
+**Isolation du convert in-worker (`docling` · `granite_docling`)** : leur convert natif (lourd, non tuable en thread) tourne dans un **sous-processus TUABLE** que le worker gère (`DoclingSubprocessPool`, fork — modèles chargés une fois, ré-utilisés à chaud, ré-engendrés après un échec), borné par trois caps par-collection sur le blob : `parse_timeout_seconds` (le child est SIGKILL au-delà), `parse_rss_limit_mb` (**watchdog de mémoire RÉSIDENTE, actif par défaut** : le parent échantillonne toutes les 0,5 s le RSS de l'arbre du child — child + processus qu'il engendre — et le SIGKILL au-delà, via le MÊME chemin de kill que le time-cap, AVANT l'OOM-killer cgroup ; `0` = défaut worker `WORKER_PARSE_RSS_LIMIT_MB` via `ParseRssLimit`, `-1` = auto = `max(0,8 × budget − 1024 Mio, 0,5 × budget)` avec budget = `memory.max` cgroup v2 sinon RAM hôte, loggé au démarrage du worker ; **appliqué aussi à granite/GPU** — le RSS ne compte que la mémoire hôte résidente, jamais les réservations virtuelles CUDA ; échec = `ParseMemoryExceededError` « parse_memory_exceeded » nommant la limite + les leviers : remonter la limite, alléger le parse — `do_ocr`/`do_table_structure` off sur docling —, découper le document) et `parse_memory_mb` (cap RLIMIT_AS optionnel ; `0` = repli worker `WORKER_PARSE_MEMORY_MB` via `ParseMemoryFallback` pour docling — **OFF (0) par défaut** : RLIMIT_AS borne le VIRTUEL, que torch/onnx sur-réservent (mesuré : PDF réel 6 pages ≈ 5,7 Gio virtuel / 2,3 Gio résident ; un cap 4096 casse le mmap du modèle de layout) — jamais appliqué à granite ; **laisser `0` sur granite/GPU** — un RLIMIT_AS casse les réservations virtuelles CUDA, on s'appuie alors sur le time-cap + le kill GPU-OOM). Un OOM / hang / crash du parse devient donc un **échec de job propre et attribué** (`ParseSubprocessError`, le worker survit, slot libéré, aucun lock laissé bloqué) au lieu de figer le worker. Les parseurs **sidecar** (`pp_structure` · `paddleocr_vl` · `mineru` · `dots_ocr`) sont déjà hors-process en HTTP → non concernés.
 
 **Doctrine scans (persona-hardening — OCR-default)** : `do_ocr=true` **par défaut** — c'est l'OCR *interne* de
 docling (local, in-stack, aucune API externe), qui ne s'applique qu'aux régions bitmap sans couche texte : un
@@ -533,6 +533,10 @@ sur un embedder CPU déjà saturé (amplification), alors il passe **directement
 tentative** au lieu de brûler le budget de retry ; un batch à 1 texte (rien à couper) ou un transient
 non-timeout garde le budget complet. La passe query (`encode_query_*`) n'est PAS wrappée (le caller
 borne son appel unique).
+**Règle overload** : un `429` / `503` est le provider qui dit « occupé, reviens plus tard » (le
+`bge_server` le renvoie dès que sa file bornée est pleine) — pas « batch trop lourd ». Il est retenté
+après le `Retry-After` du provider (s'il dépasse le backoff, plafonné à 30 s) et n'est **jamais
+splitté** : couper le batch doublerait les requêtes vers un serveur déjà saturé.
 
 **Échec = fatal** (pas de dégradation ici : un chunk sans vecteur est ininde­xable).
 
@@ -628,7 +632,7 @@ re-parse plus le PDF). `replay_from=<stage>` sur `POST /documents/{id}/reingest`
   (n = cibles gardées − documents déjà en RUNNING) refuse **429** `queue_saturated` + `Retry-After`
   (`QUEUE_RETRY_AFTER_SECONDS`) si `profondeur + n > QUEUE_MAX_DEPTH`. Un upload/reingest unitaire n'est jamais gaté.
 - **Limiteur embedder partagé** : sémaphore Redis par endpoint (`ProviderLimiterRegistry`, cf. EMBED `max_concurrency`) — attente bornée → `ProviderSlotTimeout` transitoire, jamais de passage sans slot (sauf Redis injoignable).
-- **Plafond mémoire docling** : repli opt-in `WORKER_PARSE_MEMORY_MB` (défaut 0 = off) quand le blob laisse `parse_memory_mb=0` (cf. PARSE).
+- **Plafond mémoire docling** : watchdog RSS **actif par défaut** `WORKER_PARSE_RSS_LIMIT_MB` (`-1` = auto, 80 % de la mémoire du conteneur/hôte − 1 Gio) quand le blob laisse `parse_rss_limit_mb=0`, + repli RLIMIT_AS opt-in `WORKER_PARSE_MEMORY_MB` (défaut 0 = off) quand il laisse `parse_memory_mb=0` (cf. PARSE).
 
 ---
 

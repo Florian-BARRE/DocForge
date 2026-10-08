@@ -22,7 +22,7 @@ def _patch_pipeline_validation(monkeypatch) -> None:
     """Make the fail-fast blob heal + structural validate no-ops (tested elsewhere)."""
     import importlib
 
-    router_module = importlib.import_module("backend.routers.collections.router")
+    router_module = importlib.import_module("backend.routers.collections.maintenance_routes")
 
     monkeypatch.setattr(router_module.BlobNormalizer, "normalize", staticmethod(lambda blob: {}))
     monkeypatch.setattr(
@@ -150,7 +150,7 @@ def test_bulk_reingest_broken_pipeline_422s_before_any_spend(client, monkeypatch
 
     from backend.context import CONTEXT
 
-    router_module = importlib.import_module("backend.routers.collections.router")
+    router_module = importlib.import_module("backend.routers.collections.maintenance_routes")
 
     def _raise(blob):
         raise router_module.BlobNormalizationError("broken node config")

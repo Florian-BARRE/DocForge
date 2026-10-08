@@ -28,6 +28,7 @@ from shared_libs.pipelines.blob_secrets import (
 from shared_libs.public_models import FieldOrigin, FieldScope, FieldType
 from shared_libs.services.db.facades import CollectionUpdateResult
 from shared_libs.services.db.facades import collections_facade as cf_module
+from shared_libs.services.db.facades.collection_schema_diff import CollectionSchemaDiff
 from shared_libs.services.db.facades.collections_facade import CollectionsFacade
 from shared_libs.services.db.index_signature import CollectionIndexSignature
 from shared_libs.services.db.postgresql.tables import MetadataField
@@ -144,7 +145,7 @@ async def test_schema_diff_applies_a_description_only_change(monkeypatch) -> Non
     monkeypatch.setattr(cf_module.CollectionApi, "get_schema", AsyncMock(return_value=[stored]))
     session = MagicMock()
 
-    await CollectionsFacade._apply_schema_diff(
+    await CollectionSchemaDiff.apply(
         session, uuid.uuid4(), [_row("topic", semantic=True, description="What it means")]
     )
 
@@ -268,7 +269,7 @@ async def test_orphaned_title_field_is_cleared(monkeypatch, schema, expected_cle
     monkeypatch.setattr(cf_module.CollectionApi, "get", AsyncMock(return_value=collection))
     monkeypatch.setattr(cf_module.CollectionApi, "get_schema", AsyncMock(return_value=schema))
 
-    cleared = await _session_facade()._clear_orphaned_title_field(MagicMock(), uuid.uuid4())
+    cleared = await CollectionSchemaDiff.clear_orphaned_title_field(MagicMock(), uuid.uuid4())
 
     assert cleared == expected_cleared
     assert collection.title_field == (None if expected_cleared else "author")

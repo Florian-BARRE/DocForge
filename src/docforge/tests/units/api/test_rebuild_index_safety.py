@@ -77,15 +77,16 @@ def test_rebuild_with_chunk_lexical_field_is_409(client, monkeypatch) -> None:
 
 
 async def test_admission_refuses_chunk_lexical_schema(monkeypatch) -> None:
+    from shared_libs.services.db.facades import index_rebuild_admission as admission
     from shared_libs.services.db.facades import index_rebuild_facade as module
 
     fields = [
         SimpleNamespace(field_name="kw", scope=FieldScope.CHUNK, lexical=True),
         SimpleNamespace(field_name="title", scope=FieldScope.DOCUMENT, lexical=True),
     ]
-    monkeypatch.setattr(module.RebuildJobApi, "lock_collection", AsyncMock(return_value=True))
-    monkeypatch.setattr(module.RebuildJobApi, "active_rebuild", AsyncMock(return_value=None))
-    monkeypatch.setattr(module.CollectionApi, "get_schema", AsyncMock(return_value=fields))
+    monkeypatch.setattr(admission.RebuildJobApi, "lock_collection", AsyncMock(return_value=True))
+    monkeypatch.setattr(admission.RebuildJobApi, "active_rebuild", AsyncMock(return_value=None))
+    monkeypatch.setattr(admission.CollectionApi, "get_schema", AsyncMock(return_value=fields))
 
     @asynccontextmanager
     async def _session():
@@ -110,22 +111,23 @@ def test_delete_during_rebuild_is_409(client, monkeypatch) -> None:
 
 
 async def test_facade_delete_refuses_before_cancelling_anything(monkeypatch) -> None:
+    from shared_libs.services.db.facades import collection_deleter as deleter_module
     from shared_libs.services.db.facades import collections_facade as module
 
     monkeypatch.setattr(
-        module.RebuildJobApi, "active_rebuild", AsyncMock(return_value=_rebuild_job())
+        deleter_module.RebuildJobApi, "active_rebuild", AsyncMock(return_value=_rebuild_job())
     )
-    monkeypatch.setattr(module.CollectionAliasApi, "names_for", AsyncMock(return_value=[]))
+    monkeypatch.setattr(deleter_module.CollectionAliasApi, "names_for", AsyncMock(return_value=[]))
     drop = AsyncMock()
-    monkeypatch.setattr(module.QdrantCollectionApi, "drop", drop)
+    monkeypatch.setattr(deleter_module.QdrantCollectionApi, "drop", drop)
 
     @asynccontextmanager
     async def _session():
         yield MagicMock()
 
     facade = module.CollectionsFacade(SimpleNamespace(session=_session), MagicMock(), MagicMock())
-    facade._cancel_active_jobs = AsyncMock()
+    facade._deleter._cancel_active_jobs = AsyncMock()
     with pytest.raises(IndexRebuildActiveError):
         await facade.delete(COLLECTION_ID)
-    facade._cancel_active_jobs.assert_not_awaited()
+    facade._deleter._cancel_active_jobs.assert_not_awaited()
     drop.assert_not_awaited()

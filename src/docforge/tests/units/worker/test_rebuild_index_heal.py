@@ -20,7 +20,7 @@ from shared_libs.services.db.facades import (
     StoreCopyResult,
 )
 from shared_libs.services.db.facades.helpers import DatabaseHelpers
-from shared_libs.services.db.facades.index_rebuild_facade import IndexRebuildFacade
+from shared_libs.services.db.facades.index_rebuild_reconciler import IndexRebuildReconciler
 from shared_libs.services.db.facades.transfer_facade import CollectionTransferFacade
 from shared_libs.services.db.postgresql.apis import CollectionApi
 from shared_libs.services.db.qdrant import QdrantAliasApi, QdrantCollectionApi
@@ -145,7 +145,7 @@ async def test_first_swap_failed_delete_keeps_temp_then_next_rebuild_settles_it(
 async def test_chunk_semantic_vector_nobody_carries_keeps_needs_reindex(monkeypatch):
     field = SimpleNamespace(field_name="topic", scope=FieldScope.CHUNK, semantic=True)
     monkeypatch.setattr(CollectionApi, "get_schema", staticmethod(AsyncMock(return_value=[field])))
-    rebuild = IndexRebuildFacade(MagicMock(), MagicMock(), index_state=None)
+    rebuild = IndexRebuildReconciler(MagicMock(), MagicMock(), index_state=None)
     rebuild._postgres = SimpleNamespace(session=_session)
     copy = StoreCopyResult(physical="x", copied_points=3, carried_vectors={"content_dense"})
 

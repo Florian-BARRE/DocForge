@@ -20,7 +20,9 @@ from config import RUNTIME_CONFIG
 from shared_libs.observability import ConfigDumpHelpers, CorrelationContext
 from shared_libs.pipelines.base import ProviderLimiterRegistry
 from shared_libs.pipelines.ingest.nodes.parse.parser.docling_base.subprocess import (
+    ContainerMemoryBudget,
     ParseMemoryFallback,
+    ParseRssLimit,
 )
 from shared_libs.pipelines.nodes.http_pool import HttpClientPool
 from shared_libs.pipelines.nodes.openai_compat import LangChainClientPool
@@ -121,6 +123,16 @@ async def startup(ctx: dict[str, Any]) -> None:
 
     # 4a. Docling/granite parse memory fallback for collections that leave parse_memory_mb at 0.
     ParseMemoryFallback.install(RUNTIME_CONFIG.WORKER_PARSE_MEMORY_MB)
+    # 4a''. Default-ON resident-memory watchdog limit for the parse subprocess (resolved once here,
+    #      from the container's real memory budget, and logged so the effective value is visible).
+    budget = ContainerMemoryBudget.detect()
+    rss_limit_mb = ParseRssLimit.from_setting(RUNTIME_CONFIG.WORKER_PARSE_RSS_LIMIT_MB, budget)
+    ParseRssLimit.install(rss_limit_mb)
+    CONTEXT.logger.info(
+        f"Parse RSS watchdog limit: {rss_limit_mb} MiB (WORKER_PARSE_RSS_LIMIT_MB="
+        f"{RUNTIME_CONFIG.WORKER_PARSE_RSS_LIMIT_MB}; budget {budget.total_bytes // (1024 * 1024)} "
+        f"MiB from {budget.source}; 0 = off)"
+    )
 
     # 4a'. Shared-embedder guard — install the Redis lease semaphore the embed nodes consult (pure
     #     nodes see only the ProviderLimiter interface; unbound they get the no-op). 0 disables it.

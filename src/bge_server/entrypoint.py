@@ -47,6 +47,7 @@ def _build_app() -> FastAPI:
         embed_revision=BgeServerConfig.BGE_M3_REVISION,
         rerank_revision=BgeServerConfig.BGE_RERANKER_REVISION,
         load_reranker=BgeServerConfig.BGE_LOAD_RERANKER,
+        max_concurrent=BgeServerConfig.BGE_MAX_CONCURRENT,
     )
 
     # 3. Create the FastAPI app (lifespan registered inside create_app)

@@ -55,6 +55,7 @@ class BgeModelsService(LoggerClass):
         embed_revision: str | None = None,
         rerank_revision: str | None = None,
         load_reranker: bool = True,
+        max_concurrent: int = 0,
     ) -> None:
         """
         Args:
@@ -83,8 +84,13 @@ class BgeModelsService(LoggerClass):
                 constructing (and downloading) the FlagReranker entirely — for embed-only
                 deployments that route production rerank to a hosted/GPU reranker instead.
                 Defaults True to preserve the previous always-load behavior.
+            max_concurrent (int): BGE_MAX_CONCURRENT — cap on simultaneous forward passes.
+                0 = auto, resolved in load() once the device is known: 1 on CPU, else one per
+                loaded model. The torch thread budget below divides by the RESOLVED value, so a
+                cap of 1 hands the single running pass every core.
         """
         LoggerClass.__init__(self)
+        self._max_concurrent_cfg = max_concurrent
         self._embed_model_id = embed_model_id
         self._rerank_model_id = rerank_model_id
         self._device_policy = device_policy
@@ -141,6 +147,11 @@ class BgeModelsService(LoggerClass):
                 )
             raise RuntimeError(f"BgeModelsService.load() has not been called yet.")
         return self._reranker
+
+    @property
+    def max_concurrency(self) -> int:
+        """Effective cap on simultaneous forward passes (final once load() has run)."""
+        return self._max_concurrency
 
     @property
     def reranker_loaded(self) -> bool:
@@ -222,6 +233,15 @@ class BgeModelsService(LoggerClass):
         # the thread cap before any model is instantiated.
         import torch  # noqa: PLC0415
         from FlagEmbedding import BGEM3FlagModel, FlagReranker  # noqa: PLC0415
+
+        # 2b. Resolve the effective forward-pass concurrency now that the device is known.
+        models_count = 2 if self._load_reranker else 1
+        if self._max_concurrent_cfg > 0:
+            self._max_concurrency = min(models_count, self._max_concurrent_cfg)
+        elif resolved.device == "cpu":
+            self._max_concurrency = 1
+        else:
+            self._max_concurrency = models_count
 
         # 3. Cap torch intra-op threads to prevent CPU oversubscription.
         # The batching engine holds TWO independent locks (embed_lock + rerank_lock), so up to

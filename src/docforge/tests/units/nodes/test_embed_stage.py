@@ -355,12 +355,16 @@ class FlakyThenOk(BaseEmbedderNode):
         return [[float(len(t))] for t in texts]
 
 
-def _http_503() -> httpx.HTTPStatusError:
-    """A transient 5xx status error (retried, NOT a timeout) — for the timeout-vs-5xx contrast."""
+def _http_status(code: int, headers: dict[str, str] | None = None) -> httpx.HTTPStatusError:
+    """A transient HTTP status error (retried, NOT a timeout)."""
     request = httpx.Request("POST", "http://embedder/embed")
-    return httpx.HTTPStatusError(
-        "service unavailable", request=request, response=httpx.Response(503, request=request)
-    )
+    response = httpx.Response(code, request=request, headers=headers or {})
+    return httpx.HTTPStatusError(f"status {code}", request=request, response=response)
+
+
+def _http_500() -> httpx.HTTPStatusError:
+    """A generic transient 5xx — retried in full, then split (the timeout-vs-5xx contrast)."""
+    return _http_status(500)
 
 
 @NodeRegistry.register("embed")
@@ -467,12 +471,50 @@ async def test_timeout_on_a_multitext_batch_splits_sooner_than_a_5xx_retries() -
     )  # split immediately — ONE attempt on the full batch
 
     # 2. A 5xx on the same oversized batch burns the whole 1 + max_retries budget before the split.
-    status_node = SizedFlaky(id="e", config=BaseEmbedConfig(**cfg), max_ok=2, error=_http_503())
+    status_node = SizedFlaky(id="e", config=BaseEmbedConfig(**cfg), max_ok=2, error=_http_500())
     out = await status_node.run(EmbedConsumes(chunks=CHUNKS, contract=CONTRACT))
     assert len(out.embeddings.items) == 5
     assert status_node.attempts_by_size[5] == 4  # 1 initial + 3 retries, THEN the split
     # The core property: a timeout reaches the split with strictly fewer same-batch attempts.
     assert timeout_node.attempts_by_size[5] < status_node.attempts_by_size[5]
+
+
+async def test_overload_503_is_retried_but_never_split() -> None:
+    # A 503 / 429 is the provider saying "busy, retry later" — halving the batch would double the
+    # requests hitting a saturated server. It is retried in place, then raised; never split.
+    cfg = dict(
+        model="m", batch_size=8, embed_sparse=False, max_retries=2, retry_backoff_seconds=0.0
+    )
+    node = SizedFlaky(id="e", config=BaseEmbedConfig(**cfg), max_ok=2, error=_http_status(503))
+
+    with pytest.raises(httpx.HTTPStatusError):
+        await node.run(EmbedConsumes(chunks=CHUNKS, contract=CONTRACT))
+
+    assert node.attempts_by_size == {5: 3}  # 1 + 2 retries on the full batch, no halves
+
+
+async def test_retry_after_is_honoured_before_the_next_attempt(monkeypatch) -> None:
+    import asyncio  # noqa: PLC0415
+
+    slept: list[float] = []
+
+    async def _sleep(delay: float) -> None:
+        slept.append(delay)
+
+    monkeypatch.setattr(asyncio, "sleep", _sleep)
+    node = FlakyThenOk(
+        id="e",
+        config=BaseEmbedConfig(
+            model="m", batch_size=8, embed_sparse=False, retry_backoff_seconds=0.1
+        ),
+        fail_times=1,
+        error=_http_status(503, {"Retry-After": "7"}),
+    )
+
+    out = await node.run(EmbedConsumes(chunks=CHUNKS, contract=CONTRACT))
+
+    assert len(out.embeddings.items) == 5
+    assert slept and slept[0] == 7.0  # the provider's delay, not the 0.1 s backoff
 
 
 async def test_persistent_large_batch_failure_splits_adaptively_until_it_succeeds() -> None:

@@ -5,7 +5,9 @@
 # CLEANLY and ATTRIBUTED ("this document is too heavy for docling at this limit") instead of wedging
 # the worker forever on a thread that can never be killed. A genuine docling CONVERT error (a corrupt
 # PDF) is NOT this type — the pool re-raises that as a plain RuntimeError so its chained cause still
-# names the real failure. This one means the isolation mechanism fired.
+# names the real failure. This one means the isolation mechanism fired. Its subclass
+# ParseMemoryExceededError narrows it to "a MEMORY limit fired" (the parent's resident-memory watchdog
+# or the opt-in RLIMIT_AS cap), so the job's error_type alone tells an operator to size memory.
 
 
 class ParseSubprocessError(RuntimeError):
@@ -18,4 +20,12 @@ class ParseSubprocessError(RuntimeError):
     """
 
 
-__all__ = ["ParseSubprocessError"]
+class ParseMemoryExceededError(ParseSubprocessError):
+    """The parse blew a MEMORY limit: the resident-memory watchdog or the RLIMIT_AS cap fired.
+
+    Its class name is what the job row records as ``error_type`` (the engine stamps
+    ``type(exc).__name__``), so a memory kill is classified apart from a time-cap kill or a crash.
+    """
+
+
+__all__ = ["ParseMemoryExceededError", "ParseSubprocessError"]

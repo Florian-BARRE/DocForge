@@ -125,7 +125,9 @@ def test_document_purge_unknown_document_is_404(client, monkeypatch) -> None:
 async def test_collection_purge_cross_tenant_is_403(fastapi_app, monkeypatch) -> None:
     """A key scoped to collection B calling A's purge is 403 — and never reaches the reclaim."""
     from backend.context import CONTEXT  # noqa: PLC0415
-    from backend.routers.collections.router import purge_collection_trace_payloads  # noqa: PLC0415
+    from backend.routers.collections.maintenance_routes import (
+        purge_collection_trace_payloads,  # noqa: PLC0415
+    )
 
     monkeypatch.setattr(
         CONTEXT.database.collections,

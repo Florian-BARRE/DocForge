@@ -5,7 +5,7 @@
 # changes. /embed_colbert is an internal DocForge convention (not part of TEI) exposing BGE-M3's
 # native ColBERT multi-vector head. All inference is delegated to CONTEXT.batching_engine; no
 # model logic here. Back-pressure: QueueFullError from the engine is translated to HTTP 503 with
-# Retry-After: 1.
+# Retry-After.
 #
 # /embed and /embed_all are the two hot numeric routes (a full float matrix per request) — both
 # return an explicit ORJSONResponse instead of a plain value. Returning an already-built Response
@@ -13,8 +13,8 @@
 # float), while `response_model` stays declared purely for OpenAPI schema accuracy.
 
 # ====== Third-Party Library Imports ======
-from fastapi import APIRouter, HTTPException
-from fastapi.responses import ORJSONResponse
+from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import ORJSONResponse, Response
 from loggerplusplus import loggerplusplus
 
 # ====== Internal Project Imports ======
@@ -23,7 +23,7 @@ from backend.libs.utils.error_handling import auto_handle_errors
 from libs.batching import QueueFullError
 
 # ====== Local Project Imports ======
-from .helpers import InferenceHelpers
+from .helpers import ClientDisconnected, InferenceHelpers
 from .models import (
     ColbertTokenVectors,
     EmbedAllResponse,
@@ -35,6 +35,9 @@ from .models import (
 
 router = APIRouter()
 
+# Nobody reads this (the client is gone); 499 is the nginx "client closed request" convention.
+DISCONNECTED_RESPONSE = Response(status_code=499)
+
 # Module-level logger for per-request tracing. All inference request lines go through
 # this logger at DEBUG level — never INFO, to avoid flooding logs when polled at high rate.
 logger = loggerplusplus.bind(identifier="InferenceRouter")
@@ -42,7 +45,7 @@ logger = loggerplusplus.bind(identifier="InferenceRouter")
 
 @router.post("/embed", response_model=list[list[float]])
 @auto_handle_errors
-async def embed(req: EmbedRequest) -> ORJSONResponse:
+async def embed(request: Request, req: EmbedRequest) -> Response:
     """
     Dense embeddings -- mirrors TEI's POST /embed.
 
@@ -52,7 +55,7 @@ async def embed(req: EmbedRequest) -> ORJSONResponse:
 
     Concurrency: requests are submitted to the batching engine's dense queue. Multiple
     concurrent requests are coalesced into single batches to maximize GPU/CPU utilization.
-    When the queue is full, HTTP 503 + Retry-After: 1 is returned immediately.
+    When the queue is full, HTTP 503 + Retry-After is returned immediately.
 
     Args:
         req (EmbedRequest): Request body with texts to embed.
@@ -73,13 +76,15 @@ async def embed(req: EmbedRequest) -> ORJSONResponse:
 
     # 4. Submit to the dense batching worker; translate back-pressure to HTTP 503
     try:
-        dense = await CONTEXT.batching_engine.submit_embed_dense(texts)
-    except QueueFullError:
-        raise HTTPException(
-            status_code=503,
-            detail={"error": "server overloaded — try again shortly"},
-            headers={"Retry-After": "1"},
+        dense = await InferenceHelpers.await_unless_disconnected(
+            request,
+            CONTEXT.batching_engine.submit_embed_dense(texts),
+            CONTEXT.CONFIG.BGE_DISCONNECT_POLL_SECONDS,
         )
+    except QueueFullError:
+        raise InferenceHelpers.overloaded(CONTEXT.CONFIG.BGE_RETRY_AFTER_SECONDS)
+    except ClientDisconnected:
+        return DISCONNECTED_RESPONSE
 
     # 5. Return the plain float matrix directly via ORJSONResponse — bypasses FastAPI's
     #    serialize_response() (Pydantic field.validate + field.serialize walk) entirely, since
@@ -89,7 +94,7 @@ async def embed(req: EmbedRequest) -> ORJSONResponse:
 
 @router.post("/embed_sparse", response_model=list[list[SparseToken]])
 @auto_handle_errors
-async def embed_sparse(req: EmbedRequest) -> list[list[SparseToken]]:
+async def embed_sparse(request: Request, req: EmbedRequest) -> list[list[SparseToken]] | Response:
     """
     Sparse (lexical) embeddings -- mirrors TEI's POST /embed_sparse response shape.
 
@@ -117,13 +122,15 @@ async def embed_sparse(req: EmbedRequest) -> list[list[SparseToken]]:
 
     # 4. Submit to the sparse batching worker
     try:
-        raw = await CONTEXT.batching_engine.submit_embed_sparse(texts)
-    except QueueFullError:
-        raise HTTPException(
-            status_code=503,
-            detail={"error": "server overloaded — try again shortly"},
-            headers={"Retry-After": "1"},
+        raw = await InferenceHelpers.await_unless_disconnected(
+            request,
+            CONTEXT.batching_engine.submit_embed_sparse(texts),
+            CONTEXT.CONFIG.BGE_DISCONNECT_POLL_SECONDS,
         )
+    except QueueFullError:
+        raise InferenceHelpers.overloaded(CONTEXT.CONFIG.BGE_RETRY_AFTER_SECONDS)
+    except ClientDisconnected:
+        return DISCONNECTED_RESPONSE
 
     # 5. Wrap each dict into the typed SparseToken model for response validation. The batching
     #    worker types weights as int | float, so pin each field to its declared type explicitly.
@@ -135,7 +142,7 @@ async def embed_sparse(req: EmbedRequest) -> list[list[SparseToken]]:
 
 @router.post("/embed_all", response_model=EmbedAllResponse)
 @auto_handle_errors
-async def embed_all(req: EmbedRequest) -> ORJSONResponse:
+async def embed_all(request: Request, req: EmbedRequest) -> Response:
     """
     Combined dense + sparse embeddings in ONE forward pass.
 
@@ -150,7 +157,7 @@ async def embed_all(req: EmbedRequest) -> ORJSONResponse:
     is still serialised on the shared embed lock, so it never overlaps a dense or sparse batch
     on the shared model instance. Request-size ceilings are enforced by EmbedRequest (HTTP 422),
     exactly as for /embed and /embed_sparse. Back-pressure: QueueFullError from the engine's
-    embed_all worker queue is translated to HTTP 503 + Retry-After: 1 here, exactly like the
+    embed_all worker queue is translated to HTTP 503 + Retry-After here, exactly like the
     other queued routes.
 
     Args:
@@ -175,13 +182,15 @@ async def embed_all(req: EmbedRequest) -> ORJSONResponse:
     #    engine's configured max_length (same config the dense/sparse workers use), so the
     #    returned vectors are identical to the two separate routes.
     try:
-        dense, sparse_raw = await CONTEXT.batching_engine.embed_all(texts)
-    except QueueFullError:
-        raise HTTPException(
-            status_code=503,
-            detail={"error": "server overloaded — try again shortly"},
-            headers={"Retry-After": "1"},
+        dense, sparse_raw = await InferenceHelpers.await_unless_disconnected(
+            request,
+            CONTEXT.batching_engine.embed_all(texts),
+            CONTEXT.CONFIG.BGE_DISCONNECT_POLL_SECONDS,
         )
+    except QueueFullError:
+        raise InferenceHelpers.overloaded(CONTEXT.CONFIG.BGE_RETRY_AFTER_SECONDS)
+    except ClientDisconnected:
+        return DISCONNECTED_RESPONSE
 
     # 5. Build the sparse sub-shape as plain dicts (matching what SparseToken would serialize to)
     #    and return via ORJSONResponse directly — this bypasses FastAPI's serialize_response()
@@ -196,7 +205,7 @@ async def embed_all(req: EmbedRequest) -> ORJSONResponse:
 
 @router.post("/embed_colbert", response_model=list[list[list[float]]])
 @auto_handle_errors
-async def embed_colbert(req: EmbedRequest) -> ColbertTokenVectors:
+async def embed_colbert(request: Request, req: EmbedRequest) -> ColbertTokenVectors | Response:
     """
     ColBERT multi-vector embeddings -- BGE-M3 native, NOT part of the TEI contract.
 
@@ -224,18 +233,20 @@ async def embed_colbert(req: EmbedRequest) -> ColbertTokenVectors:
 
     # 4. Submit to the colbert batching worker; translate back-pressure to HTTP 503
     try:
-        return await CONTEXT.batching_engine.submit_embed_colbert(texts)
-    except QueueFullError:
-        raise HTTPException(
-            status_code=503,
-            detail={"error": "server overloaded — try again shortly"},
-            headers={"Retry-After": "1"},
+        return await InferenceHelpers.await_unless_disconnected(
+            request,
+            CONTEXT.batching_engine.submit_embed_colbert(texts),
+            CONTEXT.CONFIG.BGE_DISCONNECT_POLL_SECONDS,
         )
+    except QueueFullError:
+        raise InferenceHelpers.overloaded(CONTEXT.CONFIG.BGE_RETRY_AFTER_SECONDS)
+    except ClientDisconnected:
+        return DISCONNECTED_RESPONSE
 
 
 @router.post("/rerank", response_model=list[RerankResult])
 @auto_handle_errors
-async def rerank(req: RerankRequest) -> list[RerankResult]:
+async def rerank(request: Request, req: RerankRequest) -> list[RerankResult] | Response:
     """
     Cross-encoder rerank -- mirrors TEI's POST /rerank.
 
@@ -277,13 +288,15 @@ async def rerank(req: RerankRequest) -> list[RerankResult]:
 
     # 4. Submit to the rerank batching worker
     try:
-        raw = await CONTEXT.batching_engine.submit_rerank(req.query, req.texts)
-    except QueueFullError:
-        raise HTTPException(
-            status_code=503,
-            detail={"error": "server overloaded — try again shortly"},
-            headers={"Retry-After": "1"},
+        raw = await InferenceHelpers.await_unless_disconnected(
+            request,
+            CONTEXT.batching_engine.submit_rerank(req.query, req.texts),
+            CONTEXT.CONFIG.BGE_DISCONNECT_POLL_SECONDS,
         )
+    except QueueFullError:
+        raise InferenceHelpers.overloaded(CONTEXT.CONFIG.BGE_RETRY_AFTER_SECONDS)
+    except ClientDisconnected:
+        return DISCONNECTED_RESPONSE
 
     # 4. Wrap each dict into the typed RerankResult model for response validation, pinning each
     #    field to its declared type (the worker types the payload as int | float).

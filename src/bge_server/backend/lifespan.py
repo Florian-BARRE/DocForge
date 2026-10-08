@@ -26,6 +26,9 @@ from .context import CONTEXT
 # Number of discrete startup steps — update when adding or removing steps.
 TOTAL_STEPS = 4
 
+# Texts per model call on CPU when BGE_SUB_BATCH_SIZE=0 (auto) -- the cancellation granularity.
+CPU_AUTO_SUB_BATCH_SIZE = 8
+
 logger = loggerplusplus.bind(identifier="BGEServer")
 
 
@@ -119,12 +122,20 @@ def lifespan() -> Any:
             # (creates asyncio tasks) — must be inside the lifespan so the tasks bind to the
             # correct asyncio event loop (hot-reload safety).
             _log_step(3, "Starting batching engine")
+            # Auto (0) sub-batch size: 8 on CPU so an abandoned batch stops within seconds; no
+            # splitting elsewhere (GPU passes are fast, and one big pass is more efficient).
+            sub_batch = CONTEXT.CONFIG.BGE_SUB_BATCH_SIZE
+            if sub_batch == 0 and CONTEXT.bge_models.resolved_device == "cpu":
+                sub_batch = CPU_AUTO_SUB_BATCH_SIZE
             CONTEXT.batching_engine = BatchingEngine(
                 models=CONTEXT.bge_models,
                 max_length=CONTEXT.CONFIG.BGE_M3_MAX_LENGTH,
                 max_batch_size=CONTEXT.CONFIG.BGE_MAX_BATCH_SIZE,
                 max_wait_ms=CONTEXT.CONFIG.BGE_MAX_WAIT_MS,
                 max_queue_size=CONTEXT.CONFIG.BGE_MAX_QUEUE_SIZE,
+                max_concurrent=CONTEXT.bge_models.max_concurrency,
+                sub_batch_size=sub_batch,
+                small_max_items=CONTEXT.CONFIG.BGE_SMALL_REQUEST_MAX_ITEMS,
             )
             CONTEXT.batching_engine.start()
 
@@ -184,7 +195,9 @@ def lifespan() -> Any:
                 f"  max_len : {CONTEXT.CONFIG.BGE_M3_MAX_LENGTH}\n"
                 f"  batching: max_batch={CONTEXT.CONFIG.BGE_MAX_BATCH_SIZE}, "
                 f"wait_ms={CONTEXT.CONFIG.BGE_MAX_WAIT_MS}, "
-                f"queue={CONTEXT.CONFIG.BGE_MAX_QUEUE_SIZE}"
+                f"queue={CONTEXT.CONFIG.BGE_MAX_QUEUE_SIZE}, "
+                f"max_concurrent={CONTEXT.bge_models.max_concurrency}, sub_batch={sub_batch}, "
+                f"small_lane<={CONTEXT.CONFIG.BGE_SMALL_REQUEST_MAX_ITEMS}"
             )
             yield
 

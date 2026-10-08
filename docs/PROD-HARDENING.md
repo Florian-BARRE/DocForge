@@ -176,6 +176,14 @@ multi-worker.
 
 - `WORKER_EMBED_MAX_INFLIGHT_PER_ENDPOINT` (default 2) caps concurrent embed requests per embedder
   host across all workers (Redis lease semaphore); lower it if the embedder is shared with other products.
+- `WORKER_PARSE_RSS_LIMIT_MB` (default `-1` = auto, ON) is the docling/granite parse **resident-memory
+  watchdog**: the worker samples the parse subprocess tree's RSS every 0.5 s and SIGKILLs it past the limit, so
+  a PDF too heavy for the container fails with `ParseMemoryExceededError` (message names the limit + the levers:
+  raise `parse_rss_limit_mb` / the env var, docling `do_ocr`/`do_table_structure` off, split the document) instead of meeting the cgroup
+  OOM-killer mid-reingest. Auto = `max(0.8 x budget - 1 GiB, 0.5 x budget)`, budget = cgroup v2 `memory.max`
+  else host RAM; check the `Parse RSS watchdog limit:` line at worker startup. Give the worker container a
+  `mem_limit` so the auto value tracks it; it is per parse, so with `WORKER_CONCURRENCY` > 1 two heavy parses
+  can still jointly exceed it - lower concurrency or set an explicit limit if that bites. `0` disables it.
 - `WORKER_PARSE_MEMORY_MB` (default 0 = off) is an optional docling parse subprocess cap (`RLIMIT_AS`) when a
   collection leaves `parse_memory_mb` at 0 - an oversized PDF then fails with an attributed MemoryError instead of
   OOM-killing the worker. It caps VIRTUAL memory: measured on dev, a 6-page PDF peaked at ~5.7 GiB virtual /

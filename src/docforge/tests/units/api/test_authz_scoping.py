@@ -495,9 +495,9 @@ async def test_list_collections_scoped_key_sees_only_its_own(fastapi_app, monkey
     import importlib  # noqa: PLC0415
 
     from backend.context import CONTEXT  # noqa: PLC0415
-    from backend.routers.collections.router import list_collections  # noqa: PLC0415
+    from backend.routers.collections.read_routes import list_collections  # noqa: PLC0415
 
-    collections_router = importlib.import_module("backend.routers.collections.router")
+    collections_router = importlib.import_module("backend.routers.collections.read_routes")
 
     coll_a = SimpleNamespace(id=uuid.UUID(COLL_A))
     coll_b = SimpleNamespace(id=uuid.UUID(COLL_B))

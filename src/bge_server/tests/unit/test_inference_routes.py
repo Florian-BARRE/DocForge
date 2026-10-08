@@ -110,7 +110,7 @@ def test_embed_all_empty_input(client: TestClient) -> None:
 def test_embed_all_queue_full_returns_503(client: TestClient) -> None:
     """
     POST /embed_all translates the engine's QueueFullError (in-flight admission cap) into
-    HTTP 503 + Retry-After: 1, exactly like the four queued routes.
+    HTTP 503 + Retry-After, exactly like the four queued routes.
     """
     cast(MagicMock, CONTEXT.batching_engine).embed_all = AsyncMock(
         side_effect=QueueFullError("overloaded")
@@ -119,7 +119,7 @@ def test_embed_all_queue_full_returns_503(client: TestClient) -> None:
     resp = client.post("/embed_all", json={"inputs": ["t1"]})
 
     assert resp.status_code == 503
-    assert resp.headers["Retry-After"] == "1"
+    assert resp.headers["Retry-After"] == str(BgeServerConfig.BGE_RETRY_AFTER_SECONDS)
 
 
 # ── Test: /embed returns the exact float matrix via ORJSONResponse ────────────

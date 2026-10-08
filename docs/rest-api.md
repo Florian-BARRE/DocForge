@@ -2113,6 +2113,10 @@ Request-validation errors (`422`) carry FastAPI's structured `detail` array:
 { "detail": [ { "loc": ["body", "query"], "msg": "query must not be blank", "type": "value_error" } ] }
 ```
 
+Each error carries `type`, `loc`, `msg` (and `ctx` when pydantic provides one) — never the submitted
+`input` value: FastAPI's default would echo it (for a missing field, the whole request body), so a
+malformed request would reflect its own `api_key`, password or document text back.
+
 `500` responses are opaque (`{"detail": "Internal server error"}`) unless the app runs in debug
 mode (`FASTAPI_DEBUG_MODE`), which then includes the error/traceback/function — never in
 production.

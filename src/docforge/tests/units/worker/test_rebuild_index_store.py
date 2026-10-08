@@ -20,7 +20,7 @@ from rebuild_qdrant_fake import record as _record
 
 # ====== Internal Project Imports ======
 from shared_libs.services.db.facades.helpers import DatabaseHelpers
-from shared_libs.services.db.facades.index_rebuild_facade import IndexRebuildFacade
+from shared_libs.services.db.facades.index_rebuild_reconciler import IndexRebuildReconciler
 from shared_libs.services.db.postgresql.apis import RebuildJobApi
 from shared_libs.services.db.qdrant import QdrantAliasApi, QdrantCollectionApi, QdrantIndexApi
 
@@ -138,7 +138,7 @@ async def test_reconcile_purges_points_of_vanished_documents(monkeypatch, collec
     )
     delete = AsyncMock()
     monkeypatch.setattr(QdrantIndexApi, "delete_by_documents", staticmethod(delete))
-    facade = IndexRebuildFacade(postgres(), SimpleNamespace(raw="raw"), index_state=None)
+    facade = IndexRebuildReconciler(postgres(), SimpleNamespace(raw="raw"), index_state=None)
 
     removed = await facade._purge_vanished(collection_id, "col_x", {str(alive), str(gone)})
 

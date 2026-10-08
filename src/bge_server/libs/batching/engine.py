@@ -18,7 +18,8 @@
 
 # ====== Standard Library Imports ======
 import asyncio
-from typing import TYPE_CHECKING
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any
 
 # ====== Third-Party Library Imports ======
 from loggerplusplus import LoggerClass
@@ -71,6 +72,9 @@ class BatchingEngine(LoggerClass):
         max_batch_size: int,
         max_wait_ms: int,
         max_queue_size: int,
+        max_concurrent: int = 2,
+        sub_batch_size: int = 0,
+        small_max_items: int = 0,
     ) -> None:
         """
         Args:
@@ -81,11 +85,20 @@ class BatchingEngine(LoggerClass):
             max_batch_size (int): Maximum total cost (units) per batch across all five workers.
             max_wait_ms (int): Batch formation window in milliseconds.
             max_queue_size (int): Per-worker bounded queue capacity.
+            max_concurrent (int): Global cap on simultaneous forward passes across embed AND
+                rerank (BGE_MAX_CONCURRENT, resolved by BgeModelsService). The per-model locks
+                below stay: they keep one model instance single-threaded when the cap is > 1.
+            sub_batch_size (int): Texts/pairs per model call inside a formed batch (0 = one call
+                for the whole batch). Between calls, work nobody is waiting for is dropped.
+            small_max_items (int): Priority-lane threshold forwarded to every worker (0 = off).
         """
         LoggerClass.__init__(self)
 
         self._models = models
         self._max_length = max_length
+        self._sub_batch_size = sub_batch_size
+        # Global admission gate: at most max_concurrent forward passes in flight service-wide.
+        self._gate = asyncio.Semaphore(max(1, max_concurrent))
 
         # embed_lock — dense, sparse, and colbert all call the same embed_model instance, so
         # they share this lock (safety invariant: no concurrent forward passes on one instance).
@@ -103,6 +116,7 @@ class BatchingEngine(LoggerClass):
             max_batch_size=max_batch_size,
             max_wait_ms=max_wait_ms,
             max_queue_size=max_queue_size,
+            small_max_items=small_max_items,
             process_fn=self._process_dense,
         )
         self._sparse_worker = BatchQueueWorker(
@@ -110,6 +124,7 @@ class BatchingEngine(LoggerClass):
             max_batch_size=max_batch_size,
             max_wait_ms=max_wait_ms,
             max_queue_size=max_queue_size,
+            small_max_items=small_max_items,
             process_fn=self._process_sparse,
         )
         self._colbert_worker = BatchQueueWorker(
@@ -117,6 +132,7 @@ class BatchingEngine(LoggerClass):
             max_batch_size=max_batch_size,
             max_wait_ms=max_wait_ms,
             max_queue_size=max_queue_size,
+            small_max_items=small_max_items,
             process_fn=self._process_colbert,
         )
         # embed_all is the PRIMARY production path (the DocForge embed node hits it first) — it
@@ -128,6 +144,7 @@ class BatchingEngine(LoggerClass):
             max_batch_size=max_batch_size,
             max_wait_ms=max_wait_ms,
             max_queue_size=max_queue_size,
+            small_max_items=small_max_items,
             process_fn=self._process_embed_all,
         )
         self._rerank_worker = BatchQueueWorker(
@@ -135,10 +152,74 @@ class BatchingEngine(LoggerClass):
             max_batch_size=max_batch_size,
             max_wait_ms=max_wait_ms,
             max_queue_size=max_queue_size,
+            small_max_items=small_max_items,
             process_fn=self._process_rerank,
         )
 
     # ── Protected process methods ──────────────────────────────────────────────
+
+    @staticmethod
+    def _flatten(items: list[Any]) -> tuple[list[Any], list[tuple[int, int]], list[int]]:
+        """
+        Flatten every item's payload into one list.
+
+        Args:
+            items (list): Batch items exposing ``texts`` (and ``query`` for rerank, handled by
+                the caller).
+
+        Returns:
+            tuple: ``(flat, offsets, owners)`` -- the flat payload list, each item's
+                ``(start, end)`` slice into it, and the owning item index of every flat entry.
+        """
+        flat: list[Any] = []
+        offsets: list[tuple[int, int]] = []
+        owners: list[int] = []
+        for index, item in enumerate(items):
+            start = len(flat)
+            if isinstance(item, RerankItem):
+                flat.extend([item.query, text] for text in item.texts)
+            else:
+                flat.extend(item.texts)
+            offsets.append((start, len(flat)))
+            owners.extend([index] * (len(flat) - start))
+        return flat, offsets, owners
+
+    async def _infer(
+        self,
+        lock: asyncio.Lock,
+        items: list[Any],
+        flat: list[Any],
+        owners: list[int],
+        call: Callable[[list[Any]], list[Any]],
+    ) -> list[Any]:
+        """
+        Run ``call`` over ``flat`` in sub-batches, dropping work nobody is waiting for.
+
+        Takes the global admission gate then the model lock. A forward pass runs in a thread and
+        cannot be interrupted, so cancellation only takes effect at the checks here: before the
+        first pass (the request may have died while queued on the gate/lock) and between every
+        sub-batch. A sub-batch is skipped only when EVERY item that owns one of its entries has
+        been cancelled (client disconnected), so live requests are never short-changed.
+
+        Args:
+            lock (asyncio.Lock): Model lock for the model instance ``call`` uses.
+            items (list): The batch items, whose futures say whether anyone still waits.
+            flat (list): Flattened payload entries.
+            owners (list[int]): Owning item index per flat entry.
+            call (Callable): Blocking model call over a slice of ``flat``, one result per entry.
+
+        Returns:
+            list: One result per flat entry; ``None`` for entries skipped as abandoned.
+        """
+        results: list[Any] = [None] * len(flat)
+        size = self._sub_batch_size if self._sub_batch_size > 0 else max(1, len(flat))
+        async with self._gate, lock:
+            for start in range(0, len(flat), size):
+                end = min(start + size, len(flat))
+                if all(items[o].future.done() for o in set(owners[start:end])):
+                    continue
+                results[start:end] = await asyncio.to_thread(call, flat[start:end])
+        return results
 
     async def _process_dense(self, batch: list[BatchItem]) -> None:
         """
@@ -147,24 +228,21 @@ class BatchingEngine(LoggerClass):
         Args:
             batch (list[BatchItem]): Batch of EmbedItem instances from the dense worker.
         """
-        # Cast for type safety — the dense worker only receives EmbedItem
         items: list[EmbedItem] = [i for i in batch if isinstance(i, EmbedItem)]
         try:
             # 1. Flatten all texts and record per-item offsets for scatter
-            flat_texts: list[str] = []
-            offsets: list[tuple[int, int]] = []
-            for item in items:
-                start = len(flat_texts)
-                flat_texts.extend(item.texts)
-                offsets.append((start, len(flat_texts)))
+            flat, offsets, owners = self._flatten(items)
 
-            # 2. Run the model call in a thread to avoid blocking the event loop;
-            #    acquire embed_lock first so dense/sparse/colbert calls never overlap.
+            # 2. Sub-batched model call under gate + embed_lock (dense/sparse/colbert/embed_all
+            #    share the embed_model instance -- mandatory serialisation)
             max_length = self._max_length
-            async with self._embed_lock:
-                vecs: list[list[float]] = await asyncio.to_thread(
-                    self._models.encode_dense, flat_texts, max_length
-                )
+            vecs = await self._infer(
+                self._embed_lock,
+                items,
+                flat,
+                owners,
+                lambda chunk: self._models.encode_dense(chunk, max_length),
+            )
 
             # 3. Scatter results back to each item's future by text slice
             for item, (start, end) in zip(items, offsets):
@@ -186,22 +264,15 @@ class BatchingEngine(LoggerClass):
         """
         items: list[EmbedItem] = [i for i in batch if isinstance(i, EmbedItem)]
         try:
-            # 1. Flatten texts + record offsets
-            flat_texts: list[str] = []
-            offsets: list[tuple[int, int]] = []
-            for item in items:
-                start = len(flat_texts)
-                flat_texts.extend(item.texts)
-                offsets.append((start, len(flat_texts)))
-
-            # 2. embed_lock + to_thread (same embed_model as dense — mandatory serialisation)
+            flat, offsets, owners = self._flatten(items)
             max_length = self._max_length
-            async with self._embed_lock:
-                token_lists: list[list[dict]] = await asyncio.to_thread(
-                    self._models.encode_sparse, flat_texts, max_length
-                )
-
-            # 3. Scatter by offsets
+            token_lists = await self._infer(
+                self._embed_lock,
+                items,
+                flat,
+                owners,
+                lambda chunk: self._models.encode_sparse(chunk, max_length),
+            )
             for item, (start, end) in zip(items, offsets):
                 if not item.future.done():
                     item.future.set_result(token_lists[start:end])
@@ -220,22 +291,15 @@ class BatchingEngine(LoggerClass):
         """
         items: list[EmbedItem] = [i for i in batch if isinstance(i, EmbedItem)]
         try:
-            # 1. Flatten texts + record offsets
-            flat_texts: list[str] = []
-            offsets: list[tuple[int, int]] = []
-            for item in items:
-                start = len(flat_texts)
-                flat_texts.extend(item.texts)
-                offsets.append((start, len(flat_texts)))
-
-            # 2. embed_lock + to_thread (same embed_model as dense/sparse — mandatory serialisation)
+            flat, offsets, owners = self._flatten(items)
             max_length = self._max_length
-            async with self._embed_lock:
-                token_vec_lists: list[list[list[float]]] = await asyncio.to_thread(
-                    self._models.encode_colbert, flat_texts, max_length
-                )
-
-            # 3. Scatter by offsets
+            token_vec_lists = await self._infer(
+                self._embed_lock,
+                items,
+                flat,
+                owners,
+                lambda chunk: self._models.encode_colbert(chunk, max_length),
+            )
             for item, (start, end) in zip(items, offsets):
                 if not item.future.done():
                     item.future.set_result(token_vec_lists[start:end])
@@ -249,38 +313,27 @@ class BatchingEngine(LoggerClass):
         """
         Flatten, run the combined dense+sparse encode under embed_lock, scatter results back.
 
-        Mirrors _process_dense/_process_sparse's flatten -> offsets -> encode -> scatter shape,
-        but each item's future resolves to a ``(dense_slice, sparse_slice)`` tuple instead of a
-        single list, since embed_all's contract returns both representations from ONE shared
-        forward pass over the WHOLE cross-request batch — the throughput win this worker exists
-        to capture (previously each embed_all call ran its own uncoalesced forward pass).
+        Each item's future resolves to a ``(dense_slice, sparse_slice)`` tuple: both
+        representations come from ONE shared forward pass per sub-batch over the cross-request
+        batch -- the throughput win this worker exists to capture.
 
         Args:
             batch (list[BatchItem]): Batch of EmbedAllItem instances from the embed_all worker.
         """
         items: list[EmbedAllItem] = [i for i in batch if isinstance(i, EmbedAllItem)]
         try:
-            # 1. Flatten all texts and record per-item offsets for scatter
-            flat_texts: list[str] = []
-            offsets: list[tuple[int, int]] = []
-            for item in items:
-                start = len(flat_texts)
-                flat_texts.extend(item.texts)
-                offsets.append((start, len(flat_texts)))
+            flat, offsets, owners = self._flatten(items)
 
-            # 2. One combined forward pass for the entire cross-request batch, under embed_lock —
-            #    the SAME lock dense/sparse/colbert hold, so this can never overlap one of them
-            #    on the shared embed_model instance.
-            max_length = self._max_length
-            async with self._embed_lock:
-                dense, sparse = await asyncio.to_thread(
-                    self._models.encode_dense_sparse, flat_texts, max_length
-                )
+            def combined(chunk: list[Any]) -> list[Any]:
+                dense, sparse = self._models.encode_dense_sparse(chunk, self._max_length)
+                return list(zip(dense, sparse))
 
-            # 3. Scatter (dense_slice, sparse_slice) pairs back to each item's future
+            pairs = await self._infer(self._embed_lock, items, flat, owners, combined)
+
             for item, (start, end) in zip(items, offsets):
                 if not item.future.done():
-                    item.future.set_result((dense[start:end], sparse[start:end]))
+                    rows = pairs[start:end]
+                    item.future.set_result(([r[0] for r in rows], [r[1] for r in rows]))
 
         except Exception as exc:
             for item in items:
@@ -289,48 +342,38 @@ class BatchingEngine(LoggerClass):
 
     async def _process_rerank(self, batch: list[BatchItem]) -> None:
         """
-        Flatten all (query, text) pairs, score in one model call, scatter per-request results.
+        Flatten all (query, text) pairs, score them, scatter per-request results.
 
         Each request's results are re-indexed 0..n-1 (not global offsets) so the TEI contract
         is honoured: the DocForge bge_reranker provider expects local indices. Results are also
-        sorted score-descending per request, matching TEI's own /rerank response order (the
-        DocForge client maps scores back onto candidates by ``index`` and does not depend on
-        response order, so this ordering is purely a TEI-parity concern, not a correctness one).
+        sorted score-descending per request, matching TEI's own /rerank response order.
 
         Args:
             batch (list[BatchItem]): Batch of RerankItem instances from the rerank worker.
         """
         items: list[RerankItem] = [i for i in batch if isinstance(i, RerankItem)]
         try:
-            # 1. Build flat list of [query, text] pairs + record per-request sizes for scatter
-            flat_pairs: list[list[str]] = []
-            sizes: list[int] = []
-            for item in items:
-                for text in item.texts:
-                    flat_pairs.append([item.query, text])
-                sizes.append(len(item.texts))
+            # 1. Flat [query, text] pairs; rerank_lock is independent of embed_lock (separate
+            #    FlagReranker instance), the global gate still caps total concurrency.
+            flat, offsets, owners = self._flatten(items)
+            flat_scores = await self._infer(
+                self._rerank_lock,
+                items,
+                flat,
+                owners,
+                self._models.compute_rerank_scores_flat,
+            )
 
-            # 2. One model call for the entire cross-batch under rerank_lock (independent from
-            #    embed_lock — the reranker is a separate FlagReranker instance, so a large
-            #    embed batch never blocks an interactive rerank call, and vice versa)
-            async with self._rerank_lock:
-                flat_scores: list[float] = await asyncio.to_thread(
-                    self._models.compute_rerank_scores_flat, flat_pairs
-                )
-
-            # 3. Scatter scores back; re-number indices 0..n-1 per request (not global), then
-            #    sort score-descending to match TEI's own /rerank response order.
-            offset = 0
-            for item, size in zip(items, sizes):
-                scores = flat_scores[offset : offset + size]
+            # 2. Scatter scores back; re-number indices 0..n-1 per request, sort descending.
+            for item, (start, end) in zip(items, offsets):
+                if item.future.done():
+                    continue
                 result = sorted(
-                    ({"index": i, "score": float(s)} for i, s in enumerate(scores)),
+                    ({"index": i, "score": float(s)} for i, s in enumerate(flat_scores[start:end])),
                     key=lambda r: r["score"],
                     reverse=True,
                 )
-                if not item.future.done():
-                    item.future.set_result(result)
-                offset += size
+                item.future.set_result(result)
 
         except Exception as exc:
             for item in items:
@@ -489,7 +532,7 @@ class BatchingEngine(LoggerClass):
         Args:
             max_length (int): Tokenizer max length forwarded to encode_dense.
         """
-        async with self._embed_lock:
+        async with self._gate, self._embed_lock:
             await asyncio.to_thread(self._models.encode_dense, ["warm"], max_length)
 
     async def touch_sparse(self, max_length: int) -> None:
@@ -502,7 +545,7 @@ class BatchingEngine(LoggerClass):
         Args:
             max_length (int): Tokenizer max length forwarded to encode_sparse.
         """
-        async with self._embed_lock:
+        async with self._gate, self._embed_lock:
             await asyncio.to_thread(self._models.encode_sparse, ["warm"], max_length)
 
     async def touch_rerank(self) -> None:
@@ -512,7 +555,7 @@ class BatchingEngine(LoggerClass):
         See touch_dense for the locking rationale; rerank uses its own independent
         rerank_lock/FlagReranker instance, so it is guarded separately from embed_lock.
         """
-        async with self._rerank_lock:
+        async with self._gate, self._rerank_lock:
             await asyncio.to_thread(self._models.compute_rerank_scores_flat, [["warm", "warm"]])
 
     async def submit_rerank(self, query: str, texts: list[str]) -> list[dict[str, int | float]]:

@@ -43,6 +43,7 @@ from .routers import (
     snippets_router,
     transfers_router,
 )
+from .utils.validation_errors import ValidationErrorHandler
 
 
 def create_app(
@@ -55,6 +56,9 @@ def create_app(
         lifespan=lifespan(),
         debug=debug,
     )
+    # A 422 never echoes the submitted values (FastAPI's default puts the whole body in `input`, so a
+    # malformed request reflects its own api_key / password / text back).
+    ValidationErrorHandler.install(app)
 
     # Middleware nesting is built LIFO: the LAST `add_middleware` call is the OUTERMOST wrapper. CORS
     # is added last (in entrypoint.py), so it stays outermost. The gates below nest, from the

@@ -1,5 +1,5 @@
 """SetStageConfig ``mode``: ``replace`` (default, whole-dict) vs ``merge`` ({**current, **patch}, a null
-deleting the key) on EVERY __set_config branch — intake (named node), convert, a chain head (embed) and
+deleting the key) on EVERY StageConfigHandler branch — intake (named node), convert, a chain head (embed) and
 a single-config stage (chunk) — plus the chain-rebuild secret carry (same provider only)."""
 
 from shared_libs.pipelines.blob_secrets import MASK

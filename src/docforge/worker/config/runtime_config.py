@@ -209,6 +209,13 @@ class RUNTIME_CONFIG(EnvConfigLoader):
     # virtual than resident memory — a 4096 MiB cap made the layout model's mmap fail on a real PDF.
     # Opt in only after measuring the parse child's VmPeak on the target host.
     WORKER_PARSE_MEMORY_MB = env("WORKER_PARSE_MEMORY_MB", cast=int, default=0)
+    # Resident-memory (RSS) limit (MiB) the worker's watchdog enforces on the docling/granite parse
+    # subprocess tree when a collection's parse_rss_limit_mb is 0: past it the child is SIGKILLed and
+    # the job fails attributed (ParseMemoryExceededError) BEFORE the cgroup OOM-killer can reap the
+    # worker. ON by default: -1 = auto = 80% of the memory budget (cgroup v2 memory.max, else host
+    # RAM) minus a 1 GiB worker reserve, never below 50% of the budget; 0 = off; >0 = explicit MiB.
+    # RSS (not RLIMIT_AS's virtual) is what the OOM-killer counts, so a sized default is safe here.
+    WORKER_PARSE_RSS_LIMIT_MB = env("WORKER_PARSE_RSS_LIMIT_MB", cast=int, default=-1)
     # rebuild_index job: points per Qdrant scroll/upsert batch during the store copy, and how long it
     # waits for the collection's OTHER live jobs (active when it started) before aborting untouched.
     WORKER_REBUILD_INDEX_BATCH_SIZE = env("WORKER_REBUILD_INDEX_BATCH_SIZE", cast=int, default=128)

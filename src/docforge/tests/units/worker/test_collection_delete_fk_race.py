@@ -26,6 +26,7 @@ import pytest
 from sqlalchemy.exc import IntegrityError
 
 from shared_libs.pipelines.engine import ProgressEvent, ProgressPhase
+from shared_libs.services.db.facades import collection_deleter as deleter_module
 from shared_libs.services.db.facades import collections_facade as cf_module
 from shared_libs.services.db.facades.collections_facade import CollectionsFacade
 from shared_libs.services.db.postgresql.apis import JobApi
@@ -72,21 +73,23 @@ async def test_delete_cancels_active_jobs_before_the_cascade_without_raising(mon
     async def _delete(_session, _collection_id):
         order.append("cascade")
 
-    monkeypatch.setattr(cf_module.RebuildJobApi, "active_rebuild", AsyncMock(return_value=None))
-    monkeypatch.setattr(cf_module.CollectionAliasApi, "names_for", AsyncMock(return_value=[]))
+    monkeypatch.setattr(
+        deleter_module.RebuildJobApi, "active_rebuild", AsyncMock(return_value=None)
+    )
+    monkeypatch.setattr(deleter_module.CollectionAliasApi, "names_for", AsyncMock(return_value=[]))
     monkeypatch.setattr(JobApi, "list_active_for_collection", _list_active)
     monkeypatch.setattr(JobApi, "mark_terminal", _mark_terminal)
     monkeypatch.setattr(JobApi, "list_job_ids_for_collection", AsyncMock(return_value=[]))
-    monkeypatch.setattr(cf_module.QdrantCollectionApi, "drop", AsyncMock())
+    monkeypatch.setattr(deleter_module.QdrantCollectionApi, "drop", AsyncMock())
     monkeypatch.setattr(
         cf_module.CollectionApi, "get", AsyncMock(return_value=SimpleNamespace(id=collection_id))
     )
     monkeypatch.setattr(cf_module.CollectionApi, "delete", _delete)
     monkeypatch.setattr(
-        cf_module.BlobApi, "collect_hashes_for_collection", AsyncMock(return_value=[])
+        deleter_module.BlobApi, "collect_hashes_for_collection", AsyncMock(return_value=[])
     )
-    monkeypatch.setattr(cf_module.BlobApi, "delete_unreferenced", AsyncMock(return_value=[]))
-    monkeypatch.setattr(cf_module.TracePurgeHelper, "purge", AsyncMock())
+    monkeypatch.setattr(deleter_module.BlobApi, "delete_unreferenced", AsyncMock(return_value=[]))
+    monkeypatch.setattr(deleter_module.TracePurgeHelper, "purge", AsyncMock())
 
     existed = await facade.delete(collection_id)
 

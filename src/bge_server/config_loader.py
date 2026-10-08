@@ -120,10 +120,28 @@ class BgeServerConfig(EnvConfigLoader):
     # to this many ms for additional items before dispatching the batch. 0 = process immediately
     # with whatever is available (effectively disables wait-based batching).
     BGE_MAX_WAIT_MS: int = env("BGE_MAX_WAIT_MS", cast=int, default="10")
-    # Maximum number of pending items in the per-op bounded queue. When full, submit() raises
-    # QueueFullError and the router responds HTTP 503 with Retry-After: 1. Raise this on
-    # high-traffic servers or lower it for tighter back-pressure control.
-    BGE_MAX_QUEUE_SIZE: int = env("BGE_MAX_QUEUE_SIZE", cast=int, default="256")
+    # Maximum number of pending REQUESTS in the per-op bounded wait queue. When full, submit()
+    # raises QueueFullError and the router responds HTTP 503 with Retry-After immediately. Kept
+    # small on purpose: a long queue on a CPU host only holds work whose client will have timed
+    # out before it runs. Raise it on a high-traffic GPU server.
+    BGE_MAX_QUEUE_SIZE: int = env("BGE_MAX_QUEUE_SIZE", cast=int, default="8")
+    # Retry-After (seconds) advertised on a 503 overload response.
+    BGE_RETRY_AFTER_SECONDS: int = env("BGE_RETRY_AFTER_SECONDS", cast=int, default="2")
+    # Maximum number of model forward passes in flight at once, ACROSS embed and rerank (a global
+    # asyncio.Semaphore around inference). 0 = auto: 1 on a CPU device (one pass gets the whole
+    # thread budget, no oversubscription), else one per loaded model (embed + rerank may overlap).
+    BGE_MAX_CONCURRENT: int = env("BGE_MAX_CONCURRENT", cast=int, default="0")
+    # Texts (or rerank pairs) per model call inside one formed batch. Between sub-batches the
+    # engine drops work whose client has disconnected, so an abandoned batch stops at the next
+    # boundary instead of grinding to the end. 0 = auto: 8 on CPU, no splitting elsewhere.
+    BGE_SUB_BATCH_SIZE: int = env("BGE_SUB_BATCH_SIZE", cast=int, default="0")
+    # Requests with at most this many texts/pairs (a search-query encode, a small rerank) ride a
+    # priority lane and are served before queued bulk-ingest batches. 0 disables the lane.
+    BGE_SMALL_REQUEST_MAX_ITEMS: int = env("BGE_SMALL_REQUEST_MAX_ITEMS", cast=int, default="4")
+    # Seconds between client-disconnect polls while a request waits on the engine.
+    BGE_DISCONNECT_POLL_SECONDS: float = env(
+        "BGE_DISCONNECT_POLL_SECONDS", cast=float, default="0.25"
+    )
     # Number of intra-op threads torch may use PER inference call (torch.set_num_threads).
     # 0 = auto: the service derives a reasonable value at startup as cpu_count/max_concurrency
     # (rounded up, minimum 1) so the combined thread budget stays near the total core count.
@@ -196,6 +214,18 @@ class BgeServerConfig(EnvConfigLoader):
             raise ValueError(f"BGE_MAX_WAIT_MS must be >= 0, got {cls.BGE_MAX_WAIT_MS}")
         if cls.BGE_MAX_QUEUE_SIZE < 1:
             raise ValueError(f"BGE_MAX_QUEUE_SIZE must be >= 1, got {cls.BGE_MAX_QUEUE_SIZE}")
+        for knob in (
+            "BGE_MAX_CONCURRENT",
+            "BGE_SUB_BATCH_SIZE",
+            "BGE_SMALL_REQUEST_MAX_ITEMS",
+            "BGE_RETRY_AFTER_SECONDS",
+        ):
+            if getattr(cls, knob) < 0:
+                raise ValueError(f"{knob} must be >= 0, got {getattr(cls, knob)}")
+        if cls.BGE_DISCONNECT_POLL_SECONDS <= 0:
+            raise ValueError(
+                f"BGE_DISCONNECT_POLL_SECONDS must be > 0, got {cls.BGE_DISCONNECT_POLL_SECONDS}"
+            )
         if cls.BGE_MAX_REQUEST_ITEMS < 1:
             raise ValueError(f"BGE_MAX_REQUEST_ITEMS must be >= 1, got {cls.BGE_MAX_REQUEST_ITEMS}")
         if cls.BGE_MAX_TEXT_CHARS < 1:

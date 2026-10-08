@@ -6,6 +6,10 @@
 # or crashes is detected (broken pipe) and respawned. One request per child at a time (an asyncio.Lock
 # per key) preserves the old process-wide convert serialisation, now as a process boundary that CAN be
 # killed — so one pathological document can never wedge the worker or deadlock a shared convert lock.
+# While it waits for a reply, a resident-memory watchdog (ParseRssWatchdog) samples the child tree's
+# RSS and SIGKILLs it past the limit through the SAME kill path as the time cap, so a document too
+# heavy for the container fails attributed (ParseMemoryExceededError) instead of meeting the cgroup
+# OOM-killer.
 
 # ====== Standard Library Imports ======
 import asyncio
@@ -25,7 +29,10 @@ from shared_libs.public_models import DocumentIR
 
 # ====== Local Project Imports ======
 from .child import serve
-from .errors import ParseSubprocessError
+from .errors import ParseMemoryExceededError, ParseSubprocessError
+from .failure_messages import ParseFailureMessages
+from .process_tree import ProcessTreeHelpers
+from .rss_watchdog import ParseRssWatchdog
 
 # How long to wait for a killed/dead child to be reaped before moving on — a SIGKILLed process exits
 # promptly; the bounded join just keeps a pathological zombie from blocking the next parse forever.
@@ -59,6 +66,7 @@ class DoclingSubprocessPool(LoggerClass):
         self._ctx: BaseContext = multiprocessing.get_context("fork")
         self._children: dict[tuple[str, int], _ParseChild] = {}
         self._locks: dict[tuple[str, int], asyncio.Lock] = {}
+        self._watchdog = ParseRssWatchdog()
         atexit.register(self.shutdown)
 
     @classmethod
@@ -83,11 +91,15 @@ class DoclingSubprocessPool(LoggerClass):
         return child
 
     def __kill(self, key: tuple[str, int]) -> None:
-        """SIGKILL + reap the child for a key and forget it, so the next parse respawns a fresh one."""
+        """SIGKILL + reap the child (and any process it spawned) for a key and forget it, so the next
+        parse respawns a fresh one."""
         child = self._children.pop(key, None)
         if child is None:
             return
         try:
+            # Descendants first: once the child dies they are re-parented and no longer findable.
+            if child.proc.pid is not None:
+                ProcessTreeHelpers.kill_descendants(child.proc.pid)
             child.proc.kill()
             child.proc.join(timeout=_REAP_TIMEOUT_SECONDS)
         except Exception as exc:  # pragma: no cover - best-effort reap
@@ -107,22 +119,29 @@ class DoclingSubprocessPool(LoggerClass):
         return self.__spawn(key, memory_mb)
 
     def __run_once(
-        self, key: tuple[str, int], memory_mb: int, request: dict[str, Any], timeout: float
+        self,
+        key: tuple[str, int],
+        memory_mb: int,
+        request: dict[str, Any],
+        timeout: float,
+        rss_limit_mb: int,
     ) -> tuple[str, Any]:
         """Send ONE request to the key's warm child and classify the outcome (blocking — off-loop).
 
         Returns a ``(outcome, payload)`` pair the async caller maps to an IR or a typed error:
-        ``ok`` (IR JSON), ``timeout`` / ``dead`` / ``memory`` (the child was killed + will respawn),
-        or ``err`` (a genuine convert failure — the warm child survives for the next document).
+        ``ok`` (IR JSON), ``timeout`` / ``rss`` / ``dead`` / ``memory`` (the child was killed + will
+        respawn), or ``err`` (a genuine convert failure — the warm child survives for the next one).
         """
         child = self.__ensure_child(key, memory_mb)
-        # 1. Send the request, then wait UP TO the time limit for a reply. A child that hangs past the
-        #    limit is SIGKILLed here — a thread never could be — so the worker slot is freed.
+        # 1. Send the request, then wait UP TO the time limit for a reply while the watchdog samples
+        #    the child tree's RSS. A child that hangs past the deadline or grows past the RSS limit is
+        #    SIGKILLed here — a thread never could be — so the worker slot (and its memory) is freed.
         try:
             child.conn.send(request)
-            if not child.conn.poll(timeout):
+            outcome = self._watchdog.wait(child.conn, child.proc.pid or 0, timeout, rss_limit_mb)
+            if outcome.kind != "reply":
                 self.__kill(key)
-                return "timeout", None
+                return outcome.kind, outcome.peak_rss_mb
             response = child.conn.recv()
         except (EOFError, BrokenPipeError, OSError):
             # The child died mid-parse (an OOM-kill or a native crash) — the pipe broke. Reap + respawn.
@@ -151,6 +170,7 @@ class DoclingSubprocessPool(LoggerClass):
         source_hash: str,
         timeout_seconds: float,
         memory_mb: int,
+        rss_limit_mb: int = 0,
     ) -> DocumentIR:
         """Parse ``content`` in the key's warm child and return the mapped IR, or raise a typed failure.
 
@@ -162,12 +182,15 @@ class DoclingSubprocessPool(LoggerClass):
             source_hash (str): The IR document id / source hash.
             timeout_seconds (float): Wall-clock cap for THIS parse; the child is killed past it.
             memory_mb (int): The child's address-space cap in MiB (0 disables it).
+            rss_limit_mb (int): The resident-memory limit in MiB the parent's watchdog enforces on
+                the child tree (0 disables it).
 
         Returns:
             DocumentIR: The parsed IR.
 
         Raises:
-            ParseSubprocessError: The parse exceeded its time limit or memory cap or its subprocess died.
+            ParseMemoryExceededError: The parse crossed its RSS limit or its RLIMIT_AS cap.
+            ParseSubprocessError: The parse exceeded its time limit or its subprocess died.
             RuntimeError: A genuine convert failure (its chained docling cause preserved in the message).
         """
         key = (f"{node_class.__module__}.{node_class.__qualname__}", int(memory_mb))
@@ -183,43 +206,34 @@ class DoclingSubprocessPool(LoggerClass):
         lock = self._locks.setdefault(key, asyncio.Lock())
         async with lock:
             outcome, payload = await asyncio.to_thread(
-                self.__run_once, key, int(memory_mb), request, timeout_seconds
+                self.__run_once,
+                key,
+                int(memory_mb),
+                request,
+                timeout_seconds,
+                int(rss_limit_mb),
             )
 
         if outcome == "ok":
             return DocumentIR.model_validate_json(payload)
         if outcome == "timeout":
-            raise ParseSubprocessError(
-                self.__job_timeout_reason("time", timeout_seconds, memory_mb)
+            raise ParseSubprocessError(ParseFailureMessages.timeout(timeout_seconds))
+        if outcome == "rss":
+            raise ParseMemoryExceededError(
+                ParseFailureMessages.rss_exceeded(int(rss_limit_mb), payload)
             )
         if outcome == "memory":
-            reason = self.__job_timeout_reason("memory", timeout_seconds, memory_mb)
-            raise ParseSubprocessError(f"{reason} (child: {payload})")
+            raise ParseMemoryExceededError(
+                ParseFailureMessages.address_space_exceeded(int(memory_mb), payload)
+            )
         if outcome == "dead":
-            raise ParseSubprocessError(self.__crash_reason(timeout_seconds, memory_mb))
+            raise ParseSubprocessError(
+                ParseFailureMessages.crashed(timeout_seconds, int(rss_limit_mb))
+            )
         # A genuine convert failure — re-raise as a plain RuntimeError so its chained cause still names
         # the real error (e.g. a corrupt PDF), never masked as a limit failure.
         _err_type, message = payload
         raise RuntimeError(message)
-
-    @staticmethod
-    def __job_timeout_reason(kind: str, timeout_seconds: float, memory_mb: int) -> str:
-        """The attributed, actionable reason a parse blew its time limit or memory cap."""
-        cap = f"{timeout_seconds}s time" if kind == "time" else f"{memory_mb}MB memory"
-        return (
-            f"parse exceeded its {cap} limit in an isolated subprocess — this document is too heavy "
-            f"for docling at this limit; try a lighter parse (do_ocr / do_table_structure off), raise "
-            f"parse_timeout_seconds / parse_memory_mb, or lower worker concurrency"
-        )
-
-    @staticmethod
-    def __crash_reason(timeout_seconds: float, memory_mb: int) -> str:
-        """The attributed reason the isolated parse subprocess died (crash or OOM-kill)."""
-        return (
-            f"the parse subprocess died (a crash or out-of-memory kill) at a {timeout_seconds}s / "
-            f"{memory_mb}MB cap — this document is likely too heavy for docling; try a lighter parse, "
-            f"raise parse_memory_mb / parse_timeout_seconds, or lower worker concurrency"
-        )
 
     def shutdown(self) -> None:
         """Kill and reap every warm child (registered atexit; also callable on worker teardown)."""

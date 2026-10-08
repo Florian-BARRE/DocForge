@@ -149,7 +149,12 @@ All vars have safe defaults -- the service starts with no `.env` file. Copy
 | `BGE_M3_MAX_LENGTH` | `8192` | Max token length for encode() calls |
 | `BGE_MAX_BATCH_SIZE` | `32` | Max units (texts/pairs) per batch |
 | `BGE_MAX_WAIT_MS` | `10` | Batch formation window in milliseconds |
-| `BGE_MAX_QUEUE_SIZE` | `256` | Per-op queue capacity; full -> HTTP 503 + Retry-After |
+| `BGE_MAX_QUEUE_SIZE` | `8` | Per-op wait-queue capacity (requests); full -> HTTP 503 + Retry-After immediately |
+| `BGE_RETRY_AFTER_SECONDS` | `2` | Retry-After advertised on a 503 |
+| `BGE_MAX_CONCURRENT` | `0` | Global cap on simultaneous forward passes (embed+rerank). 0 = auto: 1 on CPU, else one per loaded model |
+| `BGE_SUB_BATCH_SIZE` | `0` | Texts/pairs per model call; abandoned work is dropped between calls. 0 = auto: 8 on CPU, unsplit elsewhere |
+| `BGE_SMALL_REQUEST_MAX_ITEMS` | `4` | Requests this small ride a priority lane ahead of queued bulk batches (0 = off) |
+| `BGE_DISCONNECT_POLL_SECONDS` | `0.25` | Client-disconnect poll interval while a request waits |
 | `BGE_TORCH_NUM_THREADS` | `0` | Intra-op torch threads (0 = auto) |
 | `LOGGING_CONSOLE_LEVEL` | `INFO` | Console log level |
 | `LOGGING_LPP_FORMAT` | `ShortFormat` | loggerplusplus format (ShortFormat or DebugFormat) |
@@ -158,3 +163,16 @@ All vars have safe defaults -- the service starts with no `.env` file. Copy
 
 **Disable batching:** set `BGE_MAX_BATCH_SIZE=1` and `BGE_MAX_WAIT_MS=0` for per-request processing
 (no wait overhead, useful for debugging or environments where latency matters more than throughput).
+
+## Admission control and abandoned work
+
+- Every inference route polls `request.is_disconnected()` while waiting. A request whose client is
+  gone is never started; a queued one is dropped by the worker without running (HTTP 499, unread).
+- Inference runs in `asyncio.to_thread`: a forward pass already running cannot be interrupted.
+  Cancellation therefore takes effect only at check points: before the first pass and between
+  sub-batches (`BGE_SUB_BATCH_SIZE`). A sub-batch is skipped only if all its requests are abandoned.
+- A global semaphore (`BGE_MAX_CONCURRENT`) caps forward passes; the bounded per-op queue
+  (`BGE_MAX_QUEUE_SIZE`) answers 503 + `Retry-After` immediately when full. `/health` never touches
+  the engine.
+- Small requests (<= `BGE_SMALL_REQUEST_MAX_ITEMS` texts/pairs) are served before queued bulk
+  batches and never coalesced with them. Bulk can wait while small requests keep arriving.

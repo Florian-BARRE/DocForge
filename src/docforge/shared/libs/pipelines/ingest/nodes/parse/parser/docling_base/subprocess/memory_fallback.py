@@ -4,7 +4,8 @@
 # no cap) by default: RLIMIT_AS bounds VIRTUAL memory, which torch/onnxruntime over-reserve, so a sized
 # default broke the layout model's mmap on real PDFs. An operator opts in by sizing
 # RUNTIME_CONFIG.WORKER_PARSE_MEMORY_MB (installed by the worker edge at startup) after measuring the
-# parse child's VmPeak; the node resolves "collection value, else deployment fallback" here. Pure: the shared lib never reads worker config,
+# parse child's VmPeak; the node resolves "collection value, else deployment fallback" here. The
+# default-ON memory guard is the parent's RESIDENT-memory watchdog (ParseRssLimit), not this cap. Pure: the shared lib never reads worker config,
 # and the default blob is untouched (the knob stays 0 in it — no ENGINE_BLOB_VERSION bump).
 
 

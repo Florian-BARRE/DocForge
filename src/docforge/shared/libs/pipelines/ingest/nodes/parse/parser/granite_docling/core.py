@@ -6,7 +6,8 @@
 # — including the KILLABLE parse subprocess (a GPU/CUDA OOM or a native hang kills the isolated child,
 # which the worker respawns, instead of wedging it) — plus the IR mapping (same DoclingIRMapper) and
 # scoring are inherited unchanged from BaseDoclingParserNode. On the GPU, leave parse_memory_mb=0: an
-# RLIMIT_AS cap breaks CUDA's large virtual reservations, so the time cap + GPU-OOM kill guard it.
+# RLIMIT_AS cap breaks CUDA's large virtual reservations, so the time cap + GPU-OOM kill + the
+# host-RSS watchdog (which counts resident pages only, so CUDA reservations never trip it) guard it.
 
 # ====== Standard Library Imports ======
 import threading
@@ -40,7 +41,8 @@ class ParserGraniteDoclingNode(BaseDoclingParserNode):
         "blocks, tables, figures and provenance into the DocumentIR via the SAME mapper as the "
         "standard parser — all inside a KILLABLE subprocess (a CUDA OOM or a native hang kills the "
         "isolated child and fails the job cleanly, never wedging the worker; on the GPU leave "
-        "parse_memory_mb=0 and rely on the time cap + GPU-OOM kill). GPU-recommended (minutes/page on "
+        "parse_memory_mb=0 and rely on the time cap, the GPU-OOM kill and the host resident-memory "
+        "watchdog, parse_rss_limit_mb). GPU-recommended (minutes/page on "
         "CPU); weights fetch once, at runtime, into the worker HF-cache volume."
     )
     Config = ParserGraniteDoclingConfig

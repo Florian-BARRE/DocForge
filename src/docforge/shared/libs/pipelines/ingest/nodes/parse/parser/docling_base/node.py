@@ -7,7 +7,8 @@
 # KILLABLE subprocess the worker manages (DoclingSubprocessPool), NOT a worker thread: a thread that
 # OOMs or hangs mid-convert can never be killed and wedges the worker (and, holding the old convert
 # lock, deadlocks every future parse); a subprocess is SIGKILLed on a time/memory cap and respawned,
-# so one pathological document becomes a clean, attributed single-job failure. The pure convert body
+# so one pathological document becomes a clean, attributed single-job failure. A parent-side
+# resident-memory watchdog (ON by default, both flavours) kills a child about to exhaust the container. The pure convert body
 # (`_convert_to_ir`) is what runs INSIDE that child. Children implement ONLY _build_converter (their
 # engine) and _cache_key (its option axes). I/O, scoring and the native/PDF degradation stay in
 # BaseParserNode; the subprocess caps live on BaseDoclingParserConfig.
@@ -26,7 +27,7 @@ from shared_libs.public_models import DocumentIR, IntakeResult
 from ..base import BaseParserNode
 from ..docling.mapper import DoclingIRMapper
 from .config import BaseDoclingParserConfig
-from .subprocess import DoclingSubprocessPool, ParseMemoryFallback
+from .subprocess import DoclingSubprocessPool, ParseMemoryFallback, ParseRssLimit
 
 
 class BaseDoclingParserNode(BaseParserNode):
@@ -150,6 +151,9 @@ class BaseDoclingParserNode(BaseParserNode):
             memory_mb=ParseMemoryFallback.resolve(
                 config.parse_memory_mb, applies=self._MEMORY_FALLBACK
             ),
+            # RSS counts only host-resident pages (never CUDA's virtual reservations), so unlike
+            # RLIMIT_AS it applies to every flavour, granite on the GPU included.
+            rss_limit_mb=ParseRssLimit.resolve(config.parse_rss_limit_mb),
         )
 
 

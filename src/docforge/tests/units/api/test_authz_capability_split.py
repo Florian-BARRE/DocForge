@@ -223,7 +223,7 @@ async def test_get_collection_withholds_blobs_from_read_text(fastapi_app, monkey
 
     from backend.context import CONTEXT  # noqa: PLC0415
 
-    module = importlib.import_module("backend.routers.collections.router")
+    module = importlib.import_module("backend.routers.collections.read_routes")
     from backend.routers.collections.models import CollectionModel  # noqa: PLC0415
 
     model = CollectionModel.model_construct(name="c", pipeline={"nodes": []}, search={"x": 1})

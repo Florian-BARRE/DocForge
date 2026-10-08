@@ -8,6 +8,7 @@
 
 # ====== Standard Library Imports ======
 import asyncio
+import itertools
 import time
 from collections.abc import Awaitable, Callable
 from typing import Any
@@ -45,6 +46,7 @@ class BatchQueueWorker(LoggerClass):
         max_wait_ms: int,
         max_queue_size: int,
         process_fn: Callable[[list[BatchItem]], Awaitable[None]],
+        small_max_items: int = 0,
     ) -> None:
         """
         Args:
@@ -60,12 +62,25 @@ class BatchQueueWorker(LoggerClass):
                 QueueFullError (translated to HTTP 503 by the router).
             process_fn (Callable): Async function that receives the formed batch and
                 performs flatten -> model call -> scatter. Called from within _run().
+            small_max_items (int): Items with cost <= this ride the priority lane (served before
+                queued bulk items, and batched only with other small items so a query encode
+                never waits on a bulk forward pass formed around it). 0 disables the lane.
         """
         LoggerClass.__init__(self)
         self._name = name
         self._max_batch_size = max_batch_size
         self._max_wait_ms = max_wait_ms
-        self._queue: asyncio.Queue[BatchItem] = asyncio.Queue(maxsize=max_queue_size)
+        # Entries are (lane, seq, item): lane 0 = small/interactive, 1 = bulk; seq keeps FIFO
+        # order inside a lane and makes the tuple comparison never reach the (unorderable) item.
+        # Starvation note: bulk waits while small requests keep arriving; small requests are
+        # short, and the client's own timeout/retry covers the pathological case.
+        self._queue: asyncio.PriorityQueue[tuple[int, int, BatchItem]] = asyncio.PriorityQueue(
+            maxsize=max_queue_size
+        )
+        self._small_max_items = small_max_items
+        self._seq = itertools.count()
+        # One bulk entry pulled while assembling a small-lane batch, served next.
+        self._carry: tuple[int, int, BatchItem] | None = None
         self._process_fn = process_fn
         self._task: asyncio.Task[Any] | None = None
 
@@ -82,14 +97,21 @@ class BatchQueueWorker(LoggerClass):
         """
         while True:
             try:
-                # 1. Block until the first item arrives — this parks the task cheaply
-                first_item = await self._queue.get()
+                # 1. Serve the carried-over entry first, else block for the next one — this
+                #    parks the task cheaply while idle
+                entry = self._carry if self._carry is not None else await self._queue.get()
+                self._carry = None
             except asyncio.CancelledError:
                 # Task was cancelled by stop() — exit cleanly
                 return
 
-            batch: list[BatchItem] = [first_item]
-            total_cost = first_item.cost
+            # An item whose client disconnected while it waited is dropped without running.
+            if entry[2].future.done():
+                continue
+
+            lane = entry[0]
+            batch: list[BatchItem] = [entry[2]]
+            total_cost = entry[2].cost
             t_start = time.perf_counter()
 
             # 2. Greedily pull more items until budget is met or wait window expires
@@ -101,15 +123,21 @@ class BatchQueueWorker(LoggerClass):
                     if remaining <= 0:
                         break
                     try:
-                        item = await asyncio.wait_for(self._queue.get(), timeout=remaining)
-                        batch.append(item)
-                        total_cost += item.cost
+                        more = await asyncio.wait_for(self._queue.get(), timeout=remaining)
                     except TimeoutError:
                         break
                     except asyncio.CancelledError:
                         # Propagate cancel but first ensure pending futures are resolved
                         self._cancel_batch(batch)
                         return
+                    if more[2].future.done():
+                        continue
+                    if more[0] != lane:
+                        # Never mix a bulk item into a small-lane batch (nor the reverse).
+                        self._carry = more
+                        break
+                    batch.append(more[2])
+                    total_cost += more[2].cost
 
             waited_ms = int((time.perf_counter() - t_start) * 1000)
             self.logger.debug(
@@ -159,8 +187,9 @@ class BatchQueueWorker(LoggerClass):
         Raises:
             QueueFullError: When the bounded queue is at capacity.
         """
+        lane = 0 if 0 < self._small_max_items and item.cost <= self._small_max_items else 1
         try:
-            self._queue.put_nowait(item)
+            self._queue.put_nowait((lane, next(self._seq), item))
         except asyncio.QueueFull:
             raise QueueFullError(
                 f"[{self._name}] queue full ({self._queue.maxsize} items) — server overloaded"
@@ -197,9 +226,17 @@ class BatchQueueWorker(LoggerClass):
 
         # Drain any items still sitting in the queue after task cancellation
         drained = 0
+        if self._carry is not None:
+            carried = self._carry[2]
+            self._carry = None
+            if not carried.future.done():
+                carried.future.set_exception(
+                    QueueFullError(f"[{self._name}] worker stopped — request cancelled")
+                )
+            drained += 1
         while not self._queue.empty():
             try:
-                item = self._queue.get_nowait()
+                item = self._queue.get_nowait()[2]
                 if not item.future.done():
                     item.future.set_exception(
                         QueueFullError(f"[{self._name}] worker stopped — request cancelled")
