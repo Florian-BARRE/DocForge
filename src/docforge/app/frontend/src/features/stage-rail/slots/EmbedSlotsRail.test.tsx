@@ -47,7 +47,7 @@ describe("embed slots in the stage rail", () => {
     await waitFor(() => expect(applyStageAction).toHaveBeenCalledWith(
       "/a", blob, { action: "set_provider", stage: "embed", slot: "sparse", kind: null },
     ));
-    expect(await screen.findByText(/dense slot is already off/)).toBeInTheDocument();
+    expect((await screen.findAllByText(/dense slot is already off/)).length).toBeGreaterThan(0);
   });
 
   it("sends a slot-scoped merge set_config after the debounce", async () => {

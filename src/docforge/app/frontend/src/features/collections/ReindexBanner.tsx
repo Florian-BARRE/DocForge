@@ -4,16 +4,17 @@
 // that state predates this visit or was just set by an edit (searchable-schema flags, or a change of
 // the embed dense/sparse provider). Offers the "Rebuild index" action behind a confirm dialog.
 
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { rebuildCollectionIndex, type Collection } from "../../api/collections";
 import { Button } from "../../components/Button";
 import { useToast } from "../../shell/toast";
 import { theme } from "../../theme";
 import { RebuildIndexDialog } from "./RebuildIndexDialog";
+import { useRebuildPolling } from "./useRebuildPolling";
 
 interface ReindexBannerProps {
   collection: Pick<Collection, "id" | "needs_reindex" | "missing_vectors">;
-  /** Fired once the rebuild job is queued, so the parent can refetch the collection. */
+  /** Fired once the rebuild job is queued, then on a cadence until the parent unmounts the banner. */
   onStarted?: () => void;
 }
 
@@ -26,6 +27,9 @@ export function ReindexBanner({ collection, onStarted }: ReindexBannerProps) {
   const [confirming, setConfirming] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [rebuilding, setRebuilding] = useState(false);
+  const stopRebuilding = useCallback(() => setRebuilding(false), []);
+  useRebuildPolling(rebuilding, onStarted, stopRebuilding);
   const missing = collection.missing_vectors ?? [];
 
   const start = () => {
@@ -34,6 +38,7 @@ export function ReindexBanner({ collection, onStarted }: ReindexBannerProps) {
     rebuildCollectionIndex(collection.id)
       .then(() => {
         setConfirming(false);
+        setRebuilding(true);
         toast.success("Index rebuild started — track it in Activity");
         onStarted?.();
       })
@@ -57,7 +62,9 @@ export function ReindexBanner({ collection, onStarted }: ReindexBannerProps) {
           </>
         )}.
       </span>
-      <Button size="sm" variant="secondary" onClick={() => setConfirming(true)}>Rebuild index</Button>
+      <Button size="sm" variant="secondary" disabled={rebuilding} onClick={() => setConfirming(true)}>
+        {rebuilding ? "Rebuilding…" : "Rebuild index"}
+      </Button>
       {confirming && (
         <RebuildIndexDialog pending={pending} error={error} onConfirm={start} onCancel={() => setConfirming(false)} />
       )}

@@ -29,6 +29,9 @@ export interface UseStageRailPageProps {
 
 export function useStageRailPage({ initialBlob, onBlobChange, onSave }: UseStageRailPageProps) {
   const toast = useToast();
+  // Read through a ref: `applyAction` is memoized with `[]` and must always reach the latest toast.
+  const toastRef = useRef(toast);
+  toastRef.current = toast;
   const [palette, setPalette] = useState<Palette | null>(null);
   const [applyUrl, setApplyUrl] = useState<string | null>(null);
   const [blob, setBlob] = useState<GroupBlob | null>(null);
@@ -123,10 +126,15 @@ export function useStageRailPage({ initialBlob, onBlobChange, onSave }: UseStage
         const settledIssues = result.build_error ? issuesFromBuildError(result.build_error) : result.issues;
         setIssues(settledIssues);
         setNotices(result.notices);
+        // The NoticesBar sits at the top of the rail, off-screen when the clicked control is in a
+        // lower stage card (e.g. the embed slot refusing to turn off): echo each notice as a toast.
+        result.notices.forEach((notice) => toastRef.current.info(notice));
         setApplyError(null);
         onBlobChangeRef.current?.(result.blob, result.valid, settledIssues);
       } catch (error) {
-        setApplyError(error instanceof Error ? error.message : String(error));
+        const message = error instanceof Error ? error.message : String(error);
+        setApplyError(message);
+        toastRef.current.error(message);
       } finally {
         pendingRef.current = Math.max(0, pendingRef.current - 1);
         if (pendingRef.current === 0) setBusy(false);

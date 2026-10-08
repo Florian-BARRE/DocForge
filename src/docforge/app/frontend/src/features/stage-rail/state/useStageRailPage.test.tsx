@@ -5,7 +5,7 @@
 // into `issues` (via `issuesFromBuildError`) exactly like the initial `/stages/view` load does, so
 // the badge count and `valid` never disagree.
 
-import { act, renderHook, waitFor } from "@testing-library/react";
+import { act, renderHook, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 import type { GroupBlob, Palette, StageView } from "../../../api/types";
@@ -67,5 +67,30 @@ describe("useStageRailPage — build_error folded into issues on /apply", () => 
 
     expect(result.current.issues).toHaveLength(1);
     expect(result.current.issues[0].message).toContain("less than or equal to 100");
+  });
+
+  it("echoes apply notices and apply errors as toasts (the NoticesBar is off-screen for lower cards)", async () => {
+    vi.mocked(listPipelineDesigns).mockResolvedValue({
+      pipelines: [{
+        key: "ingest", title: "Ingest", description: "", design_url: "/design",
+        inspect_url: "/inspect", edit_url: "/edit", stages_view_url: "/view", stages_apply_url: "/apply",
+      }],
+    });
+    vi.mocked(getDesign).mockResolvedValue({ palette, blob, issues: [] });
+    vi.mocked(viewStages).mockResolvedValue({ stages: [stage], valid: true, issues: [], build_error: null });
+    vi.mocked(applyStageAction).mockResolvedValueOnce({
+      blob, stages: [stage], valid: true, issues: [], build_error: null,
+      notices: ["cannot turn the sparse slot off — the other slot is off too"],
+    });
+
+    const { result } = renderHook(() => useStageRailPage({}), { wrapper });
+    await waitFor(() => expect(result.current.stages).not.toBeNull());
+    act(() => result.current.actions.enableStage("chunk"));
+    await waitFor(() => expect(result.current.notices).toHaveLength(1));
+    expect((await screen.findAllByText(/cannot turn the sparse slot off/)).length).toBeGreaterThan(0);
+
+    vi.mocked(applyStageAction).mockRejectedValueOnce(new Error("422 boom"));
+    act(() => result.current.actions.enableStage("chunk"));
+    expect(await screen.findByText("422 boom")).toBeInTheDocument();
   });
 });

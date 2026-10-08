@@ -6,6 +6,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { describe, expect, it, vi } from "vitest";
 import { ToastProvider } from "../../shell/toast";
 import { ReindexBanner, reindexNeeded } from "./ReindexBanner";
+import { REBUILD_POLL_INTERVAL_MS } from "./useRebuildPolling";
 
 vi.mock("../../api/collections", () => ({ rebuildCollectionIndex: vi.fn() }));
 const { rebuildCollectionIndex } = await import("../../api/collections");
@@ -31,4 +32,19 @@ describe("ReindexBanner", () => {
     await waitFor(() => expect(rebuildCollectionIndex).toHaveBeenCalledWith("c1"));
     await waitFor(() => expect(onStarted).toHaveBeenCalled());
   });
+
+  it("keeps refetching while the rebuild runs so the parent can drop the banner", async () => {
+    vi.mocked(rebuildCollectionIndex).mockResolvedValue({ collection_id: "c1", job_id: "j1" });
+    const onStarted = vi.fn();
+    render(
+      <ToastProvider>
+        <ReindexBanner collection={{ id: "c1", needs_reindex: true, missing_vectors: [] }} onStarted={onStarted} />
+      </ToastProvider>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Rebuild index" }));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Rebuild index" }));
+    await waitFor(() => expect(onStarted).toHaveBeenCalledTimes(1));
+    expect(screen.getByRole("button", { name: "Rebuilding…" })).toBeDisabled();
+    await waitFor(() => expect(onStarted.mock.calls.length).toBeGreaterThan(1), { timeout: REBUILD_POLL_INTERVAL_MS + 2000 });
+  }, 10000);
 });
