@@ -3,10 +3,10 @@
 // persistent left rail SWAPS to the collection's nav while you're inside one (see
 // shell/sidebar/collectionSidebarConfig.tsx), so this shell no longer renders a horizontal section/
 // sub-tab strip. It keeps only: the header (breadcrumb + name + needs-reindex chip + contract
-// subtitle + Settings/Upload actions), the upload panel, and — the sole remaining in-content
-// sub-nav — the Ingestion | Search toggle shown while on the Pipelines page (the two editors live
-// at equal depth under one rail item). Export and Delete moved to Settings ▸ Transfer / ▸ Danger
-// zone (settings/CollectionSettingsPage) — no longer duplicated here. Fetches the collection only
+// subtitle + alias chips + Settings/Upload actions), the upload panel, and — the sole remaining in-content
+// sub-nav — CollectionSubNav (Ingestion | Search on Pipelines, General | Aliases | History | Transfer
+// on Settings; equal-depth sub-tabs under one rail item). Export and Delete live in Settings ▸ Transfer / ▸ General
+// (settings/CollectionSettingsPage) — no longer duplicated here. Fetches the collection only
 // to render this chrome; each nested page still owns its own data fetch.
 
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
@@ -17,10 +17,12 @@ import { Chip } from "../../components/Chip";
 import { ErrorState } from "../../components/ErrorState";
 import { LoadingState } from "../../components/LoadingState";
 import { PageHeader } from "../../components/PageHeader";
-import { TabNav, type TabItem } from "../../components/TabNav";
-import type { Navigate } from "../../shell/view";
+import type { CollectionSettingsSection, Navigate } from "../../shell/view";
 import { theme as t } from "../../theme";
 import { BreadcrumbExtraContext } from "../../shell/collectionBreadcrumbExtra";
+import { CollectionAliasChips } from "./CollectionAliasChips";
+import { CollectionSubNav, type PipelineStage } from "./CollectionSubNav";
+import { useCollectionAliases } from "./state/useCollectionAliases";
 import { UploadPanel } from "./UploadPanel";
 import { bytesToMb } from "./wizard/wizardTypes";
 
@@ -46,14 +48,6 @@ export function useHideHeaderUpload(hide: boolean): void {
   }, [hide, setHidden]);
 }
 
-/** Which pipeline editor is showing — the only in-content sub-nav left in the shell. */
-export type PipelineStage = "ingestion" | "search";
-
-const PIPELINE_STAGES: TabItem<PipelineStage>[] = [
-  { key: "ingestion", label: "Ingestion" },
-  { key: "search", label: "Search" },
-];
-
 interface CollectionShellProps {
   collectionId: string;
   onNavigate: Navigate;
@@ -61,9 +55,12 @@ interface CollectionShellProps {
   /** Set only on the Pipelines page — renders the Ingestion | Search sub-tab bar and marks the active
    *  editor. Absent on every other tab (no in-content sub-nav there). */
   pipelineStage?: PipelineStage;
+  /** Set only on the Settings page — renders the General | Aliases | History | Transfer sub-tab bar. */
+  settingsSection?: CollectionSettingsSection;
 }
 
-export function CollectionShell({ collectionId, onNavigate, children, pipelineStage }: CollectionShellProps) {
+export function CollectionShell({ collectionId, onNavigate, children, pipelineStage, settingsSection }: CollectionShellProps) {
+  const aliasesByCollection = useCollectionAliases();
   const [collection, setCollection] = useState<Collection | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showUpload, setShowUpload] = useState(false);
@@ -118,6 +115,7 @@ export function CollectionShell({ collectionId, onNavigate, children, pipelineSt
             <span style={{ display: "inline-flex", alignItems: "center", gap: t.space.s }}>
               {collection.name}
               {collection.needs_reindex && <Chip tone="warn">needs reindex</Chip>}
+              <CollectionAliasChips collectionId={collectionId} aliases={aliasesByCollection.get(collectionId) ?? []} onNavigate={onNavigate} />
             </span>
           }
           subtitle={subtitle}
@@ -148,17 +146,7 @@ export function CollectionShell({ collectionId, onNavigate, children, pipelineSt
           </div>
         )}
 
-        {/* The only in-content sub-nav left: the two pipeline editors at equal depth. */}
-        {pipelineStage && (
-          <TabNav
-            tabs={PIPELINE_STAGES}
-            active={pipelineStage}
-            onSelect={(stage) => onNavigate({ name: "collection-pipelines", collectionId, stage })}
-            navId="collection-pipeline-stage"
-            ariaLabel="Pipeline editors"
-            panelId="collection-panel"
-          />
-        )}
+        <CollectionSubNav collectionId={collectionId} onNavigate={onNavigate} pipelineStage={pipelineStage} settingsSection={settingsSection} />
       </div>
       <div id="collection-panel" style={{ flex: 1, minHeight: 0 }}>
         <HideHeaderUploadContext.Provider value={hideUploadAction}>

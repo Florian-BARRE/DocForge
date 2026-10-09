@@ -21,7 +21,7 @@ export function ColumnNatureBadges({ filterable, semantic, lexical }: ColumnNatu
   if (active.length === 0) return null;
 
   return (
-    <div style={{ display: "flex", gap: 3, marginTop: 3 }}>
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 3, marginTop: 3 }}>
       {active.map((key) => {
         const badge = COLUMN_NATURE_BADGES[key];
         return (
@@ -31,7 +31,7 @@ export function ColumnNatureBadges({ filterable, semantic, lexical }: ColumnNatu
             style={{
               fontFamily: theme.font.mono, fontSize: theme.font.size.xs, fontWeight: theme.font.weight.medium,
               // Override the header cell's own uppercase/tracking so these short machine words
-              // (filter/dense/bm25) render as-is, matching every other mono machine value in the UI.
+              // (filter/dense/sparse) render as-is, matching every other mono machine value in the UI.
               textTransform: "none", letterSpacing: "normal",
               color: badge.fg, background: badge.bg,
               borderRadius: theme.radius.s, padding: "0 4px", lineHeight: "14px",

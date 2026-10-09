@@ -3,6 +3,9 @@
 // (no router dependency). Every page receives the current view's params as props and a single
 // `onNavigate` callback; App.tsx is the only place that switches on `view.name`.
 
+/** The collection Settings sub-tabs. */
+export type CollectionSettingsSection = "general" | "aliases" | "history" | "transfer";
+
 export type View =
   // The deployment scope's default landing page — a fleet-wide "step back and manage" dashboard
   // (collections health breakdown, worker/queue summary, recent failures). Rendered by
@@ -27,9 +30,10 @@ export type View =
   // This collection's own job history — replaces `collection-jobs` (renamed to match the sidebar's
   // "Activity" label, mirroring the deployment-scope Activity section).
   | { name: "collection-activity"; collectionId: string }
-  // Replaces the standalone `collection-edit` view — the contract editor (+ its Danger Zone) and the
-  // Transfer (export/import/snippets) panel now render together, in-shell, under Settings.
-  | { name: "collection-settings"; collectionId: string }
+  // Replaces the standalone `collection-edit` view. ONE rail entry with equal-depth sub-tabs
+  // (General = contract wizard + Danger zone | Aliases | History | Transfer); `section` absent means
+  // "general" (the default landing sub-tab), same convention as `collection-pipelines`'s `stage`.
+  | { name: "collection-settings"; collectionId: string; section?: CollectionSettingsSection }
   | { name: "document"; collectionId: string; documentId: string }
   | { name: "job"; collectionId: string; jobId: string }
   // Deployment scope's fleet-wide job management ("step back and manage") — one observability home

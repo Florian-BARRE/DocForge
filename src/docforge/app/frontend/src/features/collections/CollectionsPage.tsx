@@ -18,6 +18,7 @@ import type { Navigate } from "../../shell/view";
 import { theme } from "../../theme";
 import { CollectionCard } from "./CollectionCard";
 import { CollectionsToolbar } from "./CollectionsToolbar";
+import { useCollectionAliases } from "./state/useCollectionAliases";
 import { useCollectionsFleet, type FleetHealthFilter } from "./state/useCollectionsFleet";
 import { ImportPanel } from "./transfer/ImportPanel";
 
@@ -38,6 +39,7 @@ export function CollectionsPage({ onNavigate, initialHealthFilter }: Collections
     availableTags, selectedTags, setSelectedTags,
   } = useCollectionsFleet(initialHealthFilter);
   const { mode, setMode } = useViewMode("docforge_view_collections");
+  const aliasesByCollection = useCollectionAliases();
 
   return (
     <div className="df-rise" style={{ padding: `${theme.space.xl}px`, overflowY: "auto", height: "100%", maxWidth: 1200, margin: "0 auto", width: "100%" }}>
@@ -102,6 +104,8 @@ export function CollectionsPage({ onNavigate, initialHealthFilter }: Collections
                   healthError={healthError}
                   docCount={docCount}
                   jobRunning={jobRunning}
+                  aliases={aliasesByCollection.get(collection.id) ?? []}
+                  onNavigate={onNavigate}
                   onClick={() => onNavigate({ name: "collection", collectionId: collection.id })}
                   onDeleted={load}
                 />

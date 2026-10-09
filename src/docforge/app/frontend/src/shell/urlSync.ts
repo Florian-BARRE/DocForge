@@ -55,7 +55,7 @@ export function serializeViewToHash(view: View): string {
     case "collection-activity":
       return `/collections/${encodeURIComponent(view.collectionId)}/activity`;
     case "collection-settings":
-      return `/collections/${encodeURIComponent(view.collectionId)}/settings`;
+      return `/collections/${encodeURIComponent(view.collectionId)}/settings${view.section && view.section !== "general" ? `/${view.section}` : ""}`;
     case "document":
       return `/collections/${encodeURIComponent(view.collectionId)}/documents/${encodeURIComponent(view.documentId)}`;
     case "job":
@@ -131,8 +131,11 @@ export function parseViewFromHash(hash: string): View {
     case "schema":
       return { name: "collection-schema", collectionId };
     case "edit":
-    case "settings":
       return { name: "collection-settings", collectionId };
+    case "settings":
+      return subId === "aliases" || subId === "history" || subId === "transfer"
+        ? { name: "collection-settings", collectionId, section: subId }
+        : { name: "collection-settings", collectionId };
     case "pipeline":
       return { name: "collection-pipelines", collectionId, stage: "ingestion" };
     case "search-pipeline":

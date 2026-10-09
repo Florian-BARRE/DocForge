@@ -26,7 +26,7 @@ declare module "@tanstack/react-table" {
      *  semantic search. Never set on a base column (dense vectors only exist for schema fields). */
     semantic?: boolean;
     /** Metadata-only: this field has a `meta_<slug>_bm25` vector — a query can target it for
-     *  lexical/BM25 search. Never set on a base column. */
+     *  lexical/sparse search. Never set on a base column. */
     lexical?: boolean;
   }
 }

@@ -1,5 +1,5 @@
 // ====== Code Summary ======
-// Compact legend explaining the corpus grid's three search-nature badges (filter/dense/bm25) —
+// Compact legend explaining the corpus grid's three search-nature badges (filter/dense/sparse) —
 // shown once at the top of CorpusFilterPanel so a reader knows what those tiny header badges mean
 // before scanning the grouped filter controls below. Renders from the same COLUMN_NATURE_BADGES
 // source ColumnNatureBadges uses, so label/tone/description can never drift between the two.

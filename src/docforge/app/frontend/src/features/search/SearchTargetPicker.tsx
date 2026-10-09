@@ -1,6 +1,6 @@
 // ====== Code Summary ======
 // The search-target picker for the Search Lab: choose WHERE the query searches — the chunk content
-// and/or specific metadata fields — each on semantic (dense) and/or lexical (BM25) modality. Mirrors
+// and/or specific metadata fields — each on semantic (dense) and/or lexical (sparse) modality. Mirrors
 // SearchFilterBuilder's shape but picks targets instead of filter values. Only ever offers a modality
 // a field actually supports, so the selection it builds can never trigger the backend's 422.
 
@@ -74,7 +74,7 @@ export function SearchTargetPicker({ fields, selection, onToggle, emptyCollectio
           the jargon only needs translating once per page, and a per-field repeat would just be noise
           once a collection has several searchable metadata fields. */}
       <div style={{ fontSize: theme.font.size.xs, color: theme.color.mute }}>
-        semantic — meaning-based match · lexical — exact word match
+        dense — meaning-based match · sparse — exact word match
       </div>
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: theme.space.m }}>
@@ -125,13 +125,13 @@ function TargetRow({ label, supportsSemantic, supportsLexical, disabled, value, 
       {supportsSemantic && (
         <label title="Meaning-based match" style={{ display: "flex", alignItems: "center", gap: 3, fontSize: theme.font.size.xs, color: theme.color.dim, cursor: disabled ? "default" : "pointer" }}>
           <input type="checkbox" disabled={disabled} checked={value.semantic} onChange={(e) => onToggle("semantic", e.target.checked)} />
-          semantic
+          dense
         </label>
       )}
       {supportsLexical && (
         <label title="Exact word match" style={{ display: "flex", alignItems: "center", gap: 3, fontSize: theme.font.size.xs, color: theme.color.dim, cursor: disabled ? "default" : "pointer" }}>
           <input type="checkbox" disabled={disabled} checked={value.lexical} onChange={(e) => onToggle("lexical", e.target.checked)} />
-          lexical
+          sparse
         </label>
       )}
     </div>

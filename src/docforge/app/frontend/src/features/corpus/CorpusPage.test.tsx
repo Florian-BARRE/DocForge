@@ -166,7 +166,7 @@ describe("CorpusPage — loading to loaded transition", () => {
     // tiny badges render under its header label.
     expect(screen.getAllByText("filter").length).toBeGreaterThan(0);
     expect(screen.getByText("dense")).toBeInTheDocument();
-    expect(screen.getByText("bm25")).toBeInTheDocument();
+    expect(screen.getByText("sparse")).toBeInTheDocument();
   });
 
   it("groups the filter panel's controls by the same origin families and shows the badge legend", async () => {
@@ -190,11 +190,11 @@ describe("CorpusPage — loading to loaded transition", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Toggle column filters" }));
 
-    // The legend explains what "filter"/"dense"/"bm25" mean before the reader reaches the
+    // The legend explains what "filter"/"dense"/"sparse" mean before the reader reaches the
     // per-family filter controls below it.
     expect(screen.getByText("Filterable — exact/range filter")).toBeInTheDocument();
     expect(screen.getByText("Semantic search — dense vector on this field")).toBeInTheDocument();
-    expect(screen.getByText("Lexical search — sparse/BM25 on this field")).toBeInTheDocument();
+    expect(screen.getByText("Lexical search — sparse vector on this field")).toBeInTheDocument();
 
     // Filter controls are grouped into the same family sections as the grid's grouped header —
     // scoped to the filter panel itself (its own container, found via the "Clear filters" button)

@@ -16,8 +16,10 @@ import type { Collection, CollectionHealth } from "../../api/collections";
 import { Chip, type ChipTone } from "../../components/Chip";
 import { OverflowMenu } from "../../components/OverflowMenu";
 import { OverflowMenuItem } from "../../components/OverflowMenuItem";
+import type { Navigate } from "../../shell/view";
 import { theme as t } from "../../theme";
 import { lastIngestLabel, parserBadge, probeVerdict } from "./collectionHealth";
+import { CollectionAliasChips } from "./CollectionAliasChips";
 import { CollectionTagChips } from "./CollectionTagChips";
 import { DeleteCollectionDialog } from "./DeleteCollectionDialog";
 import { humanizeProviderLabel } from "./providerKindLabels";
@@ -32,6 +34,9 @@ interface CollectionCardProps {
    *  earns the avatar forge orange (brand.md: orange marks the one active thing, never a static
    *  at-rest identity mark shared by every card in the grid). */
   jobRunning: boolean;
+  /** Alias names pointing at this collection — shown as muted chips linking to Settings ▸ Aliases. */
+  aliases: string[];
+  onNavigate: Navigate;
   onClick: () => void;
   /** Called after this card's collection is deleted, so the parent grid can refetch and drop it. */
   onDeleted: () => void;
@@ -87,7 +92,7 @@ function LastIngestValue({ label }: { label: string }) {
   );
 }
 
-export function CollectionCard({ collection, health, healthError, docCount, jobRunning, onClick, onDeleted }: CollectionCardProps) {
+export function CollectionCard({ collection, health, healthError, docCount, jobRunning, aliases, onNavigate, onClick, onDeleted }: CollectionCardProps) {
   const [hover, setHover] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const { deleting, error: deleteError, remove } = useDeleteCollection();
@@ -144,6 +149,11 @@ export function CollectionCard({ collection, health, healthError, docCount, jobR
             </strong>
             {collection.needs_reindex && <Chip tone="warn" title="A config change requires reindexing">needs reindex</Chip>}
           </div>
+          {aliases.length > 0 && (
+            <div style={{ marginTop: 4 }}>
+              <CollectionAliasChips collectionId={collection.id} aliases={aliases} onNavigate={onNavigate} />
+            </div>
+          )}
           <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 4 }}>
             <span style={{ width: 7, height: 7, borderRadius: t.radius.pill, background: TONE_DOT[verdict.tone] ?? t.color.mute, flexShrink: 0 }} />
             {/* Parser engine name folded into this tooltip rather than its own permanent chip — a

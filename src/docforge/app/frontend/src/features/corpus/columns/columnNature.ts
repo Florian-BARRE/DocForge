@@ -35,10 +35,10 @@ export const COLUMN_NATURE_BADGES: Record<ColumnNatureKey, ColumnNatureBadgeSpec
     fg: theme.color.mute,
   },
   // Stale/amber — reuses `theme.color.warn`, documented in index.css as the "ember — stale /
-  // attention" ink; BM25 is a sparse/lexical match, a fittingly "rougher" tone than dense.
+  // attention" ink; sparse (lexical) search is a word-level match, a fittingly "rougher" tone than dense.
   lexical: {
-    label: "bm25",
-    description: "Lexical search — sparse/BM25 on this field",
+    label: "sparse",
+    description: "Lexical search — sparse vector on this field",
     bg: theme.color.warnSoft,
     fg: theme.color.warnStrong,
   },

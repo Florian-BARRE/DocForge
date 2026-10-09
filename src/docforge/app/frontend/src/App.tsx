@@ -106,8 +106,8 @@ export function App() {
           </CollectionShell>
         )}
         {view.name === "collection-settings" && (
-          <CollectionShell collectionId={view.collectionId} onNavigate={setView}>
-            <CollectionSettingsPage collectionId={view.collectionId} onNavigate={setView} />
+          <CollectionShell collectionId={view.collectionId} onNavigate={setView} settingsSection={view.section ?? "general"}>
+            <CollectionSettingsPage collectionId={view.collectionId} section={view.section ?? "general"} onNavigate={setView} />
           </CollectionShell>
         )}
         {view.name === "collection-pipelines" && (

@@ -3,7 +3,7 @@
 // is a dumb child receiving slices of this state. Submits once, on step 3. Reused for both
 // creation (POST, standalone full-page layout) and editing (PATCH an existing collection). In
 // "edit" mode this renders EMBEDDED — no own page header/back-link/scroll wrapper and no Danger
-// Zone — because it's now one section ("Contract") of `settings/CollectionSettingsPage`, which owns
+// Zone — because it's now embedded in the "General" sub-tab of `settings/CollectionSettingsPage`, which owns
 // the page chrome and the Danger Zone itself.
 
 import { useState } from "react";
@@ -147,7 +147,7 @@ export function CollectionWizard({ onNavigate, mode = "create", initial, collect
     </>
   );
 
-  // Edit mode is always embedded inside `settings/CollectionSettingsPage`'s "Contract" section,
+  // Edit mode is always embedded inside `settings/CollectionSettingsPage`'s General sub-tab,
   // which already supplies the breadcrumb/header/scroll chrome — rendering another one here would
   // duplicate it. Create mode is still reached as its own standalone route (`new-collection`), so
   // it keeps the full page treatment.
