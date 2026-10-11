@@ -1,0 +1,270 @@
+# ====== Code Summary ======
+# Coherence ratchet — the per-worktree dev overlay (compose/overlays/compose.worktree.yml) must keep
+# isolating each git worktree's dev stack from the main checkout's one. Layered on top of
+# compose.dev-cpu.yml (which includes compose.base.yml + overlays/compose.dev.yml), it must:
+#   * reset `container_name` on EVERY service that base/dev pins one on (else two stacks collide);
+#   * reset the host ports of every service, except app / frontend / mcp which publish on
+#     ${BIND_ADDR:-127.0.0.1} with a port variable (APP_PORT / FRONTEND_PORT / MCP_PORT);
+#   * start the core services by default (no profile), the CPU model hosts under `models`, mcp and
+#     frontend under `extras`;
+#   * never pin a `name:` on volumes or networks (they must stay project-scoped).
+# A service added to base/dev with a container_name or host ports goes red here until the worktree
+# overlay handles it. Serviceless: parses the YAML statically (Compose's !reset / !override tags are
+# recorded, not interpreted) and never shells out to docker. scripts/dev-stack.sh, which drives the
+# overlay, must stay executable in the git index and syntactically valid bash.
+
+# ====== Standard Library Imports ======
+import pathlib
+import re
+import shutil
+import subprocess
+from dataclasses import dataclass
+from typing import Any
+
+# ====== Third-Party Library Imports ======
+import pytest
+
+yaml = pytest.importorskip("yaml")
+
+# tests/units/coherence/<this> → parents[3] is src/docforge; its parents[1] is the repo root.
+_SRC_ROOT = pathlib.Path(__file__).resolve().parents[3]
+_REPO_ROOT = _SRC_ROOT.parents[1]
+_COMPOSE_DIR = _REPO_ROOT / "compose"
+_BASE = _COMPOSE_DIR / "compose.base.yml"
+_DEV = _COMPOSE_DIR / "overlays" / "compose.dev.yml"
+_WORKTREE = _COMPOSE_DIR / "overlays" / "compose.worktree.yml"
+_DEV_STACK = _REPO_ROOT / "scripts" / "dev-stack.sh"
+
+_FILES_ABSENT = not all(p.is_file() for p in (_BASE, _DEV, _WORKTREE))
+pytestmark = pytest.mark.skipif(_FILES_ABSENT, reason="compose files absent from this checkout")
+
+# The services a browser reaches from the host, and the port variable each one reads.
+_PUBLISHED = {
+    "docforge_app": "APP_PORT",
+    "docforge_frontend": "FRONTEND_PORT",
+    "docforge_mcp": "MCP_PORT",
+}
+_CORE = (
+    "docforge_app",
+    "docforge_worker",
+    "docforge_postgres",
+    "docforge_redis",
+    "docforge_qdrant",
+    "docforge_seaweedfs",
+    "docforge_gotenberg",
+)
+_MODELS = ("docforge_bge_server", "docforge_paddle_server")
+_EXTRAS = ("docforge_mcp", "docforge_frontend")
+
+
+@dataclass(frozen=True)
+class _Tagged:
+    """A Compose custom-tagged node (`!reset` / `!override`) with its tag and plain value."""
+
+    tag: str
+    value: Any
+
+
+class _ComposeLoader(yaml.SafeLoader):
+    """SafeLoader that records Compose's !reset / !override tags instead of failing on them."""
+
+
+def _construct_tagged(loader: yaml.SafeLoader, node: yaml.Node) -> _Tagged:
+    if isinstance(node, yaml.MappingNode):
+        value: Any = loader.construct_mapping(node, deep=True)
+    elif isinstance(node, yaml.SequenceNode):
+        value = loader.construct_sequence(node, deep=True)
+    else:
+        value = loader.construct_scalar(node)
+        if node.tag == "!reset" and value in ("", "null", "~"):
+            value = None
+    return _Tagged(tag=node.tag, value=value)
+
+
+for _tag in ("!reset", "!override"):
+    _ComposeLoader.add_constructor(_tag, _construct_tagged)
+
+
+def _load(path: pathlib.Path) -> dict[str, Any]:
+    return yaml.load(path.read_text(encoding="utf-8"), Loader=_ComposeLoader) or {}
+
+
+def _services(path: pathlib.Path) -> dict[str, dict[str, Any]]:
+    return {name: (svc or {}) for name, svc in (_load(path).get("services") or {}).items()}
+
+
+@pytest.fixture(scope="module")
+def upstream() -> dict[str, list[dict[str, Any]]]:
+    """Each service of base + dev, mapped to its definitions (in layering order)."""
+    merged: dict[str, list[dict[str, Any]]] = {}
+    for path in (_BASE, _DEV):
+        for name, svc in _services(path).items():
+            merged.setdefault(name, []).append(svc)
+    return merged
+
+
+@pytest.fixture(scope="module")
+def overlay() -> dict[str, Any]:
+    return _load(_WORKTREE)
+
+
+@pytest.fixture(scope="module")
+def overlay_services(overlay: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    return {name: (svc or {}) for name, svc in (overlay.get("services") or {}).items()}
+
+
+def _effective_profiles(
+    name: str,
+    upstream: dict[str, list[dict[str, Any]]],
+    overlay_services: dict[str, dict[str, Any]],
+) -> list[str]:
+    """Profiles after layering the overlay: an overlay !reset / !override replaces upstream's."""
+    svc = overlay_services.get(name, {})
+    if "profiles" in svc:
+        value = svc["profiles"]
+        if isinstance(value, _Tagged):
+            return list(value.value or [])
+        return sorted({*_upstream_profiles(name, upstream), *value})
+    return _upstream_profiles(name, upstream)
+
+
+def _upstream_profiles(name: str, upstream: dict[str, list[dict[str, Any]]]) -> list[str]:
+    return sorted({p for svc in upstream.get(name, []) for p in svc.get("profiles") or []})
+
+
+# ── container_name ───────────────────────────────────────────────────────────────
+
+
+def test_upstream_pins_container_names_so_the_ratchet_is_live(upstream):
+    """Sanity: base/dev do pin container names — otherwise the ratchet below checks nothing."""
+    assert any("container_name" in svc for defs in upstream.values() for svc in defs)
+
+
+def test_every_upstream_container_name_is_reset_in_the_worktree_overlay(upstream, overlay_services):
+    pinned = sorted(
+        name for name, defs in upstream.items() if any("container_name" in svc for svc in defs)
+    )
+    not_reset = [
+        name
+        for name in pinned
+        if overlay_services.get(name, {}).get("container_name") != _Tagged("!reset", None)
+    ]
+    assert not not_reset, (
+        f"services pinning a container_name in base/dev without `container_name: !reset null` in "
+        f"{_WORKTREE.name}: {not_reset}"
+    )
+
+
+def test_overlay_sets_no_container_name_of_its_own(overlay_services):
+    offenders = [
+        name
+        for name, svc in overlay_services.items()
+        if "container_name" in svc and svc["container_name"] != _Tagged("!reset", None)
+    ]
+    assert not offenders, f"overlay must only reset container_name, never set one: {offenders}"
+
+
+def test_overlay_only_targets_services_defined_upstream(upstream, overlay_services):
+    unknown = sorted(set(overlay_services) - set(upstream))
+    assert not unknown, f"overlay services absent from base/dev (typo or stale entry): {unknown}"
+
+
+# ── ports ────────────────────────────────────────────────────────────────────────
+
+
+def test_every_upstream_service_with_ports_is_handled_by_the_overlay(upstream, overlay_services):
+    with_ports = sorted(
+        name for name, defs in upstream.items() if any("ports" in svc for svc in defs)
+    )
+    unhandled = [name for name in with_ports if "ports" not in overlay_services.get(name, {})]
+    assert not unhandled, f"services publishing host ports not reset in the overlay: {unhandled}"
+
+
+def test_unpublished_services_have_their_ports_reset_to_empty(overlay_services):
+    offenders = {
+        name: svc["ports"]
+        for name, svc in overlay_services.items()
+        if name not in _PUBLISHED and "ports" in svc and svc["ports"] != _Tagged("!reset", [])
+    }
+    assert not offenders, f"only app/frontend/mcp may publish host ports, got: {offenders}"
+
+
+@pytest.mark.parametrize(("service", "port_var"), sorted(_PUBLISHED.items()))
+def test_published_service_binds_bind_addr_and_its_port_variable(
+    service, port_var, overlay_services
+):
+    ports = overlay_services.get(service, {}).get("ports")
+    assert isinstance(ports, _Tagged) and ports.tag == "!override", (
+        f"{service}: ports must be `!override` so upstream's fixed ports are dropped, got {ports!r}"
+    )
+    assert ports.value, f"{service}: overlay publishes no port"
+    pattern = re.compile(r"^\$\{BIND_ADDR:-127\.0\.0\.1\}:\$\{" + port_var + r"(?::-\d+)?\}:\d+$")
+    bad = [p for p in ports.value if not (isinstance(p, str) and pattern.match(p))]
+    assert not bad, (
+        f"{service}: ports not bound to ${{BIND_ADDR:-127.0.0.1}}:${{{port_var}}}: {bad}"
+    )
+
+
+# ── profiles ─────────────────────────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize("service", _CORE)
+def test_core_service_has_no_profile(service, upstream, overlay_services):
+    assert service in upstream, f"{service} no longer defined in base/dev"
+    assert _effective_profiles(service, upstream, overlay_services) == []
+
+
+@pytest.mark.parametrize("service", _MODELS)
+def test_model_host_is_in_the_models_profile_only(service, upstream, overlay_services):
+    assert service in upstream, f"{service} no longer defined in base/dev"
+    assert _effective_profiles(service, upstream, overlay_services) == ["models"]
+
+
+@pytest.mark.parametrize("service", _EXTRAS)
+def test_extra_service_is_in_the_extras_profile_only(service, upstream, overlay_services):
+    assert service in upstream, f"{service} no longer defined in base/dev"
+    assert _effective_profiles(service, upstream, overlay_services) == ["extras"]
+
+
+# ── volumes / networks ───────────────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize("section", ["volumes", "networks"])
+def test_overlay_pins_no_name_on_volumes_or_networks(section, overlay):
+    pinned = [
+        key
+        for key, spec in (overlay.get(section) or {}).items()
+        if isinstance(spec, dict) and "name" in spec
+    ]
+    assert not pinned, (
+        f"overlay {section} with a fixed `name:` would be shared across worktrees: {pinned}"
+    )
+
+
+# ── scripts/dev-stack.sh ─────────────────────────────────────────────────────────
+
+
+@pytest.mark.skipif(
+    shutil.which("git") is None or not (_REPO_ROOT / ".git").exists(),
+    reason="not a git checkout",
+)
+def test_dev_stack_script_is_executable_in_the_git_index():
+    result = subprocess.run(
+        ["git", "-C", str(_REPO_ROOT), "ls-files", "-s", "--", "scripts/dev-stack.sh"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if not result.stdout.strip():
+        pytest.skip("scripts/dev-stack.sh not tracked in this checkout")
+    assert result.stdout.split()[0] == "100755"
+
+
+@pytest.mark.skipif(shutil.which("bash") is None, reason="bash not available")
+def test_dev_stack_script_is_valid_bash():
+    if not _DEV_STACK.is_file():
+        pytest.skip("scripts/dev-stack.sh absent")
+    result = subprocess.run(
+        ["bash", "-n", str(_DEV_STACK)], capture_output=True, text=True, check=False
+    )
+    assert result.returncode == 0, result.stderr
