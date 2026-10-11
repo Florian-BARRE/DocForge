@@ -86,15 +86,23 @@ Driven by `scripts/dev-stack.sh` (compose files `compose/compose.dev-cpu.yml` +
 scripts/dev-stack.sh setup      # worktree: port block, .env.worktree, DB copied from main, up
 scripts/dev-stack.sh up         # start or update
 scripts/dev-stack.sh rebuild    # rebuild images and restart, data kept
-scripts/dev-stack.sh url        # address of the app
+scripts/dev-stack.sh url        # address of the UI (Vite frontend)
 scripts/dev-stack.sh status     # address, containers, logs
 scripts/dev-stack.sh teardown   # worktree only: containers, volumes and ports removed
 ```
 
-- Core CPU services start by default (app, worker, postgres, redis, qdrant, seaweedfs, gotenberg).
-  Opt in with `COMPOSE_PROFILES=models` (bge_server, paddle_server) and/or `extras` (mcp, Vite
-  frontend), e.g. `COMPOSE_PROFILES=models,extras scripts/dev-stack.sh up`. The host is shared:
-  check free memory (`free -h`) before enabling `models`.
+- Core CPU services start by default (Vite frontend, app, worker, postgres, redis, qdrant,
+  seaweedfs, gotenberg). Opt in with `COMPOSE_PROFILES=models` (bge_server, paddle_server) and/or
+  `extras` (mcp), e.g. `COMPOSE_PROFILES=models,extras scripts/dev-stack.sh up`. The host is
+  shared: check free memory (`free -h`) before enabling `models`.
+- The UI is the Vite frontend (hot reload) at the URL printed by `scripts/dev-stack.sh url` (first
+  port of the block; `10046` in main); it proxies the API calls to the app. The API itself is on the
+  next port (`API_PORT` in `.env.worktree`; `10040` in main), API docs at `/scalar`; its `/` is 404
+  in dev (the source mount hides the built UI). The frontend's first start runs `npm ci` (a few
+  minutes) and `up --wait` does not wait for it: retry the page if it is not up yet.
+- `services/docforge/s3_config.json` must be readable by the container (mode 644: with rootless
+  Docker and a private checkout directory, a 600 file is unreadable). Otherwise seaweedfs's S3 dies
+  with "permission denied" and the app fails at startup.
 - After a change that affects what runs, `scripts/dev-stack.sh rebuild`, then check the page at the
   URL printed by `scripts/dev-stack.sh url`, and give that URL in your report.
 - Dev env files (`.env`, `services/*/.env`, `.env.worktree`) are gitignored, created from the

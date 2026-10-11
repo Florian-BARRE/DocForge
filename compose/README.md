@@ -76,24 +76,31 @@ script stack is compose project `docforge`, the same as `make up-dev-cpu`.
 scripts/dev-stack.sh setup                        # worktree: port block + .env.worktree + DB copied from main + up
 scripts/dev-stack.sh up                           # core services only
 COMPOSE_PROFILES=models scripts/dev-stack.sh up   # + bge_server / paddle_server
-COMPOSE_PROFILES=models,extras scripts/dev-stack.sh up
+COMPOSE_PROFILES=models,extras scripts/dev-stack.sh up   # + mcp
 scripts/dev-stack.sh rebuild | url | status | teardown
 ```
+
+**The UI is the Vite frontend** (`docforge_frontend`, hot reload), the "app" of
+`scripts/dev-stack.sh` (`url` prints it): it proxies `/api`, `/capabilities` and `/health` to the
+app service (`VITE_API_PROXY_TARGET=http://docforge_app:8000`). The API is published too, on the
+next port, with its docs at `/scalar`; its `/` is 404 in dev because the source bind-mount hides the
+image's built UI. The frontend has no healthcheck, so `up --wait` only waits for it to be running:
+its first start runs `npm ci` in the container (a few minutes) before Vite answers.
 
 **Profiles** (no `--profile full` here — the overlay resets app/worker's profile):
 
 | Profile | Services |
 |---|---|
-| core (none, starts by default) | `docforge_app`, `docforge_worker`, postgres, redis, qdrant, seaweedfs, gotenberg |
+| core (none, starts by default) | `docforge_frontend` (Vite UI), `docforge_app`, `docforge_worker`, postgres, redis, qdrant, seaweedfs, gotenberg |
 | `models` | `docforge_bge_server`, `docforge_paddle_server` (heavy CPU model hosts — check free memory first) |
-| `extras` | `docforge_mcp`, `docforge_frontend` (Vite) |
+| `extras` | `docforge_mcp` |
 
 mineru / dots_ocr keep their GPU-only opt-in profiles.
 
 **Ports**: only the three a browser needs are published, all on `${BIND_ADDR:-127.0.0.1}` —
-app `APP_PORT` (`10040` in main), frontend `FRONTEND_PORT` (`10046`), mcp `MCP_PORT` (`10048`). A
-worktree gets its own port block, written by the script to the gitignored `.env.worktree` (with
-`COMPOSE_PROJECT_NAME`). The data-plane stores publish nothing; services reach each other by
+UI (frontend) `APP_PORT` (`10046` in main), API (app) `API_PORT` (`10040`), mcp `MCP_PORT`
+(`10048`). A worktree gets its own port block, written by the script to the gitignored
+`.env.worktree` (with `COMPOSE_PROJECT_NAME`): UI = first port of the block, API = +1, mcp = +8. The data-plane stores publish nothing; services reach each other by
 service name / alias over the project network.
 
 **What else differs from `compose.dev-cpu.yml`**:
@@ -103,13 +110,17 @@ service name / alias over the project network.
   `container_name` is gone, so `docforge_seaweedfs` gets a project-scoped network alias `seaweedfs`;
 - the worker's HuggingFace cache is the project's named volume, not the host's shared cache;
 - lower memory ceilings (app 1g, worker 3g, postgres 1g with `shared_buffers=256MB`, redis 256m with
-  `maxmemory 160mb`, qdrant 1g, seaweedfs 512m, gotenberg 1g; `models`: bge 4g, paddle 6g).
+  `maxmemory 160mb`, qdrant 1g, seaweedfs 512m, gotenberg 1g, frontend 1g; `models`: bge 4g, paddle 6g).
 
 **Env files**: the project directory is `compose/`, so compose does not read the repo-root `.env` on
 its own — the script passes `--env-file .env` explicitly (then `--env-file .env.worktree` in a
 worktree, the later file wins). Its relative paths (the worker's source mounts) resolve against
 `compose/`, hence a single `../`. `make config-check-all` validates the overlay with no profile and
 with every profile.
+
+**`services/docforge/s3_config.json` must be readable by the container** (mode 644): with rootless
+Docker and a private checkout directory, a 600 file is unreadable inside seaweedfs, its S3 gateway
+dies with "permission denied" and the app fails at startup.
 
 ## The telemetry stack
 
