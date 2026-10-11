@@ -1,0 +1,170 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# DocForge — per-worktree DEV CPU overlay. Lets several git worktrees each run their own dev stack
+# side by side on one shared host (own containers, own volumes, own network, own host ports).
+# Layered with a plain `-f` on top of the dev-cpu scenario, ALWAYS through scripts/dev-stack.sh,
+# which writes .env.worktree (COMPOSE_PROJECT_NAME, BIND_ADDR, APP_PORT, FRONTEND_PORT, MCP_PORT):
+#
+#   scripts/dev-stack.sh setup                      # port block + .env.worktree + DB copy + up
+#   scripts/dev-stack.sh up                         # core services only (see PROFILES below)
+#   COMPOSE_PROFILES=models scripts/dev-stack.sh up # + bge_server / paddle_server
+#   COMPOSE_PROFILES=models,extras scripts/dev-stack.sh up
+#
+# Equivalent raw command (what the script runs):
+#   docker compose --env-file .env --env-file .env.worktree \
+#     -f compose/compose.dev-cpu.yml -f compose/overlays/compose.worktree.yml up -d
+#
+# WHEN TO USE THIS FILE: a feature worktree's dev stack only. Never in prod, never in the main
+# checkout's usual dev stack (`make up-dev-cpu` keeps the fixed 10040-10054 ports and names).
+#
+# `-f` layering (last wins) works on services the scenario brings in through `include:` — verified
+# with `docker compose ... config` on Compose v5.6.0. Relative paths in this file would resolve
+# against the project directory (compose/), but this file declares none.
+#
+# What this changes vs compose.dev-cpu.yml:
+#   - no container_name anywhere (`!reset null`): compose names containers <project>-<service>-N,
+#     so worktrees never collide with each other or with the main checkout's stack;
+#   - no host port except the ones a browser needs, read from .env.worktree and bound to
+#     ${BIND_ADDR:-127.0.0.1}: app (APP_PORT), frontend (FRONTEND_PORT), mcp (MCP_PORT). Services
+#     reach each other over the project network by service name / alias, never via host ports;
+#   - S3 endpoint: botocore rejects '_' in hostnames and the base file relies on the hyphenated
+#     container_name of seaweedfs, which is gone here — a hyphen-free network alias `seaweedfs`
+#     (scoped to this project's own network) replaces it;
+#   - the worker's HuggingFace cache is the project's named volume, not the host's shared cache
+#     (a bind mount on ${HOME} would be shared and written by every worktree at once);
+#   - PROFILES (16 GB host shared with other stacks, no GPU):
+#       core (no profile, starts by default): app, worker, postgres, redis, qdrant, seaweedfs, gotenberg
+#       `models`: bge_server, paddle_server (heavy CPU model hosts)
+#       `extras`: mcp, frontend (Vite)
+#       mineru / dots_ocr keep their GPU-only opt-in profiles;
+#   - lower memory ceilings, with postgres / redis tuned to fit them.
+#
+# Scheduled work: the worker's cron jobs are local housekeeping on this worktree's own stores only;
+# nothing is sent outside the stack, so they stay enabled.
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+  # ── core ─────────────────────────────────────────────────────────────────────
+  docforge_app:
+    container_name: !reset null
+    profiles: !reset []
+    ports: !override
+      - "${BIND_ADDR:-127.0.0.1}:${APP_PORT:-10040}:8000"
+    environment:
+      S3_ENDPOINT_URL: http://seaweedfs:8333
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+
+  docforge_worker:
+    profiles: !reset []
+    environment:
+      S3_ENDPOINT_URL: http://seaweedfs:8333
+    volumes: !override
+      - ../src/docforge/worker:/app/worker
+      - ../src/docforge/shared:/app/shared
+      - docforge_worker_hf_cache:/home/appuser/.cache/huggingface
+    deploy:
+      resources:
+        limits:
+          memory: 3g
+        reservations:
+          memory: 512m
+
+  docforge_postgres:
+    container_name: !reset null
+    ports: !reset []
+    # Base tuning targets a 4g container (shared_buffers=1GB): scaled down to the 1g ceiling.
+    command: !override
+      - postgres
+      - "-c"
+      - "shared_buffers=256MB"
+      - "-c"
+      - "effective_cache_size=512MB"
+      - "-c"
+      - "work_mem=8MB"
+      - "-c"
+      - "maintenance_work_mem=64MB"
+      - "-c"
+      - "max_connections=50"
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+        reservations:
+          memory: 256m
+
+  docforge_redis:
+    container_name: !reset null
+    ports: !reset []
+    # maxmemory stays below the container ceiling (base: 400mb under 512m).
+    command: !override ["redis-server", "--maxmemory", "160mb", "--maxmemory-policy", "noeviction", "--save", ""]
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+        reservations:
+          memory: 64m
+
+  docforge_qdrant:
+    container_name: !reset null
+    ports: !reset []
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+        reservations:
+          memory: 256m
+
+  docforge_seaweedfs:
+    container_name: !reset null
+    ports: !reset []
+    networks:
+      docforge_net:
+        aliases:
+          - seaweedfs             # S3_ENDPOINT_URL above (botocore-valid hostname, project-scoped)
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+
+  docforge_gotenberg:
+    container_name: !reset null
+    ports: !reset []
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+
+  # ── profile `models` ─────────────────────────────────────────────────────────
+  docforge_bge_server:
+    container_name: !reset null
+    profiles: !override ["models"]
+    ports: !reset []
+
+  docforge_paddle_server:
+    container_name: !reset null
+    profiles: !override ["models"]
+    ports: !reset []
+
+  # ── profile `extras` ─────────────────────────────────────────────────────────
+  docforge_mcp:
+    container_name: !reset null
+    profiles: !override ["extras"]
+    ports: !override
+      - "${BIND_ADDR:-127.0.0.1}:${MCP_PORT:-10048}:9000"
+
+  docforge_frontend:
+    container_name: !reset null
+    profiles: !override ["extras"]
+    ports: !override
+      - "${BIND_ADDR:-127.0.0.1}:${FRONTEND_PORT:-10046}:5173"
+
+  # ── GPU-only, opt-in profiles unchanged (mineru / dots_ocr) ──────────────────
+  docforge_mineru_server:
+    container_name: !reset null
+    ports: !reset []
+
+  docforge_dots_ocr_server:
+    container_name: !reset null
+    ports: !reset []

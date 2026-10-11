@@ -10,6 +10,7 @@ PROFILE       := --profile full
 SCENARIO_DIR  := compose
 PROXY         := $(SCENARIO_DIR)/overlays/compose.proxy.yml
 TELEMETRY     := $(SCENARIO_DIR)/overlays/compose.telemetry.yml
+WORKTREE      := $(SCENARIO_DIR)/overlays/compose.worktree.yml
 
 .PHONY: up-prod-cpu up-prod-gpu up-dev-cpu up-dev-gpu \
         up-prod-cpu-proxy up-prod-gpu-proxy up-dev-cpu-proxy up-dev-gpu-proxy \
@@ -74,7 +75,8 @@ logs:
 	$(COMPOSE) -f $(SCENARIO_DIR)/compose.prod-cpu.yml $(PROFILE) logs -f
 
 # Validation gate: every scenario file, alone and combined with every add-on, must resolve to
-# valid config. Run this after touching anything under compose/.
+# valid config, plus the per-worktree dev overlay (scripts/dev-stack.sh) with the default profile
+# set and with every profile. Run this after touching anything under compose/.
 config-check-all:
 	@set -e; \
 	for scenario in prod-cpu prod-gpu dev-cpu dev-gpu; do \
@@ -83,4 +85,9 @@ config-check-all:
 			DOCFORGE_DOMAIN=example.com DOCFORGE_ACME_EMAIL=ops@example.com \
 			$(COMPOSE) -f $(SCENARIO_DIR)/compose.$$scenario.yml $$addons $(PROFILE) config -q && echo OK; \
 		done; \
+	done; \
+	for profiles in "" "*"; do \
+		echo "== dev-cpu -f $(WORKTREE) (COMPOSE_PROFILES='$$profiles') =="; \
+		COMPOSE_PROJECT_NAME=docforge-config-check COMPOSE_PROFILES="$$profiles" \
+		$(COMPOSE) -f $(SCENARIO_DIR)/compose.dev-cpu.yml -f $(WORKTREE) config -q && echo OK; \
 	done

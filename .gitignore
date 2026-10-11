@@ -114,3 +114,7 @@ docs/rpi/
 
 # Docker Compose interpolation vars (copied from .env.example) — may hold local pins
 /.env
+
+# Per-worktree dev stack (scripts/dev-stack.sh): written for each worktree, never committed.
+.env.worktree
+.env.worktree.tmp
