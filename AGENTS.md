@@ -63,6 +63,8 @@ After touching anything under `compose/`: `make config-check-all` (repo root).
 - This is a public repo. No AI attribution trailers in commits, no AI tool setup files and no
   pointers to internal agent paths in tracked files:
   `src/docforge/tests/units/coherence/test_no_internal_artifacts_leak.py` fails the gate otherwise.
+- gitleaks scans commits (`.gitleaks.toml`, test dirs and `docs/rest-api.md` allowlisted); mark a
+  deliberate fake secret elsewhere with an inline `# gitleaks:allow` comment.
 
 ## Invariants and caveats
 
@@ -107,5 +109,7 @@ scripts/dev-stack.sh teardown   # worktree only: containers, volumes and ports r
   URL printed by `scripts/dev-stack.sh url`, and give that URL in your report.
 - Dev env files (`.env`, `services/*/.env`, `.env.worktree`) are gitignored, created from the
   committed `.example` files, and never committed.
-- Do not mix `make up-dev-cpu` and `scripts/dev-stack.sh` in the same checkout: both use the same
-  compose project name.
+- On the dev center, never use `make up-*` / `down-*` (main checkout or worktree): they use the
+  fixed compose project `docforge` and fixed container names, so in a worktree they would take over
+  main's stack. Use `scripts/dev-stack.sh` only. Elsewhere (a contributor's machine) the Makefile
+  scenarios remain the way.

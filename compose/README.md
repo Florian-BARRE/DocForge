@@ -35,11 +35,16 @@ before this reorg.
 | Prod GPU | `docker compose -f compose/compose.prod-gpu.yml --profile full up -d` | Production/staging on a GPU host (NVIDIA Container Toolkit required). |
 | Dev CPU | `docker compose -f compose/compose.dev-cpu.yml --profile full up -d --build` | Local development, CPU machine (the common case). |
 | Dev GPU | `docker compose -f compose/compose.dev-gpu.yml --profile full up -d --build` | Local development on a GPU-equipped machine. |
-
 | Dev-center dev stack | `scripts/dev-stack.sh setup` / `up` / `rebuild` (layers `compose/overlays/compose.worktree.yml` on `compose.dev-cpu.yml`) | The dev center: the main checkout and each git worktree, side by side on one shared CPU host. **Never prod.** See [the per-worktree dev stack](#the-per-worktree-dev-stack). |
 
-`--profile full` is mandatory in every scenario — app/worker/frontend/mcp live under it (omitting
-it starts only the data-plane stores).
+`--profile full` is mandatory in every Makefile/scenario command (the dev-center stack resets
+profiles, see below) — app/worker/frontend/mcp live under it (omitting it starts only the
+data-plane stores).
+
+**On the dev center, never use `make up-*` / `down-*`**: they use the fixed compose project
+`docforge` and fixed container names, so run from a worktree they would take over (or tear down)
+main's stack. Use `scripts/dev-stack.sh` only. Elsewhere (a contributor's machine) the Makefile
+scenarios remain the way to run DocForge.
 
 ## Add-ons (layered with an extra `-f`, never baked into a scenario file)
 
@@ -69,8 +74,9 @@ with no profile and with every profile.
 worktree each run their own stack (own containers, volumes, network and host ports per compose
 project) on one shared host. It is layered with a plain `-f` on top of `compose.dev-cpu.yml`,
 **always through `scripts/dev-stack.sh`** — never in prod, and the Makefile scenarios
-(`make up-dev-cpu`, ...) do not use it. Don't mix the two in one checkout: the main checkout's
-script stack is compose project `docforge`, the same as `make up-dev-cpu`.
+(`make up-dev-cpu`, ...) do not use it. On the dev center, never run `make up-*` / `down-*` at all
+(main checkout or worktree): they use the fixed project `docforge` and fixed container names, so
+they would take over main's stack — `scripts/dev-stack.sh` only.
 
 ```bash
 scripts/dev-stack.sh setup                        # worktree: port block + .env.worktree + DB copied from main + up
@@ -111,6 +117,8 @@ service name / alias over the project network.
 - the worker's HuggingFace cache is the project's named volume, not the host's shared cache;
 - lower memory ceilings (app 1g, worker 3g, postgres 1g with `shared_buffers=256MB`, redis 256m with
   `maxmemory 160mb`, qdrant 1g, seaweedfs 512m, gotenberg 1g, frontend 1g; `models`: bge 4g, paddle 6g).
+  The worker's 3g cap suits the shared host, but a large OCR-heavy ingestion can peak at 2-4 GiB
+  and may be OOM-killed in a dev stack: raise the worker's limit locally if you need such a run.
 
 **Env files**: the project directory is `compose/`, so compose does not read the repo-root `.env` on
 its own — the script passes `--env-file .env` explicitly (then `--env-file .env.worktree` in a

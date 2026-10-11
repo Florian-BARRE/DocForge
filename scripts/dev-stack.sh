@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# One running dev stack per Orca worktree (template from the AI Dev Kit, /opt/aidk/templates/project).
+# One running dev stack per Orca worktree (template from the AI Dev Kit).
 #
 #   scripts/dev-stack.sh setup     worktree: port block, .env.worktree, database copied from main, stack up
 #                                  main checkout: stack up on the usual ports
@@ -51,7 +51,7 @@ worktree_extra_env() { # $1: first port of the block
 }
 # --------------------------------------------------------------------------------------------------
 
-PORT_SLOT=/opt/aidk/bin/aidk-port-slot
+PORT_SLOT="${AIDK_PORT_SLOT:-/opt/aidk/bin/aidk-port-slot}"
 ENV_FILE=.env.worktree
 
 die() { echo "dev-stack: $*" >&2; exit 1; }
@@ -85,6 +85,7 @@ compose() {
 # Writes .env.worktree (same port block on every call). Keeps SEEDED=1 once the copy is done.
 write_env() {
   local base seeded=""
+  [[ -x "$PORT_SLOT" ]] || die "dev-center only: $PORT_SLOT is missing (on another machine use the Makefile scenarios, see compose/README.md)"
   base="$("$PORT_SLOT" acquire "$REPO_KEY" "$ROOT")"
   [[ -f "$ENV_FILE" ]] && grep -qx 'SEEDED=1' "$ENV_FILE" && seeded="SEEDED=1"
   {

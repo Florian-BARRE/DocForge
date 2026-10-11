@@ -8,7 +8,9 @@
 #     scripts/dev-stack.sh — / API_PORT / MCP_PORT);
 #   * start the core services by default (no profile, Vite frontend included), the CPU model hosts
 #     under `models`, mcp under `extras`;
-#   * never pin a `name:` on volumes or networks (they must stay project-scoped).
+#   * never pin a `name:` on volumes or networks, nor let base/dev pin one (the overlay cannot undo
+#     it, so they must stay project-scoped);
+#   * reach seaweedfs's S3 through the project-scoped network alias `seaweedfs` (app and worker).
 # A service added to base/dev with a container_name or host ports goes red here until the worktree
 # overlay handles it. Serviceless: parses the YAML statically (Compose's !reset / !override tags are
 # recorded, not interpreted) and never shells out to docker. scripts/dev-stack.sh, which drives the
@@ -24,8 +26,7 @@ from typing import Any
 
 # ====== Third-Party Library Imports ======
 import pytest
-
-yaml = pytest.importorskip("yaml")
+import yaml
 
 # tests/units/coherence/<this> → parents[3] is src/docforge; its parents[1] is the repo root.
 _SRC_ROOT = pathlib.Path(__file__).resolve().parents[3]
@@ -35,9 +36,6 @@ _BASE = _COMPOSE_DIR / "compose.base.yml"
 _DEV = _COMPOSE_DIR / "overlays" / "compose.dev.yml"
 _WORKTREE = _COMPOSE_DIR / "overlays" / "compose.worktree.yml"
 _DEV_STACK = _REPO_ROOT / "scripts" / "dev-stack.sh"
-
-_FILES_ABSENT = not all(p.is_file() for p in (_BASE, _DEV, _WORKTREE))
-pytestmark = pytest.mark.skipif(_FILES_ABSENT, reason="compose files absent from this checkout")
 
 # The services a browser reaches from the host, and the port variable each one reads.
 _PUBLISHED = {
@@ -241,6 +239,41 @@ def test_overlay_pins_no_name_on_volumes_or_networks(section, overlay):
     assert not pinned, (
         f"overlay {section} with a fixed `name:` would be shared across worktrees: {pinned}"
     )
+
+
+@pytest.mark.parametrize("path", [_BASE, _DEV], ids=["base", "dev"])
+@pytest.mark.parametrize("section", ["volumes", "networks"])
+def test_upstream_pins_no_name_on_volumes_or_networks(section, path):
+    """A fixed `name:` in base/dev would be shared by every stack, and the overlay can't undo it."""
+    pinned = [
+        key
+        for key, spec in (_load(path).get(section) or {}).items()
+        if isinstance(spec, dict) and "name" in spec
+    ]
+    assert not pinned, (
+        f"{path.name} {section} with a fixed `name:` would be shared across worktrees: {pinned}"
+    )
+
+
+# ── S3 endpoint ──────────────────────────────────────────────────────────────────
+
+
+def test_seaweedfs_has_the_seaweedfs_network_alias(overlay_services):
+    networks = overlay_services.get("docforge_seaweedfs", {}).get("networks")
+    assert isinstance(networks, dict), f"docforge_seaweedfs: no networks mapping, got {networks!r}"
+    aliased = [
+        net for net, spec in networks.items() if "seaweedfs" in ((spec or {}).get("aliases") or [])
+    ]
+    assert aliased, "docforge_seaweedfs: no `seaweedfs` network alias (botocore-valid S3 hostname)"
+
+
+@pytest.mark.parametrize("service", ["docforge_app", "docforge_worker"])
+def test_s3_endpoint_points_at_the_seaweedfs_alias(service, overlay_services):
+    env = overlay_services.get(service, {}).get("environment")
+    if isinstance(env, list):
+        env = dict(item.split("=", 1) for item in env if "=" in item)
+    assert isinstance(env, dict), f"{service}: no environment in the overlay, got {env!r}"
+    assert env.get("S3_ENDPOINT_URL") == "http://seaweedfs:8333"
 
 
 # ── scripts/dev-stack.sh ─────────────────────────────────────────────────────────
