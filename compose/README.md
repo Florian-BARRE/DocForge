@@ -13,6 +13,7 @@ compose/
     compose.dev.yml                  # local build + source mounts + hot reload + Vite frontend
     compose.proxy.yml                 # OPTIONAL — Caddy TLS front door (add-on, not baked into scenarios)
     compose.telemetry.yml              # OPTIONAL — Prometheus + Loki + Alloy + Grafana (add-on)
+    compose.worktree.yml               # dev-center dev stack (main checkout + each git worktree) — via scripts/dev-stack.sh only
   compose.dev-cpu.yml  compose.dev-gpu.yml  compose.prod-cpu.yml  compose.prod-gpu.yml   # ready-made scenario files
   README.md                  # this file
 
@@ -34,6 +35,8 @@ before this reorg.
 | Prod GPU | `docker compose -f compose/compose.prod-gpu.yml --profile full up -d` | Production/staging on a GPU host (NVIDIA Container Toolkit required). |
 | Dev CPU | `docker compose -f compose/compose.dev-cpu.yml --profile full up -d --build` | Local development, CPU machine (the common case). |
 | Dev GPU | `docker compose -f compose/compose.dev-gpu.yml --profile full up -d --build` | Local development on a GPU-equipped machine. |
+
+| Dev-center dev stack | `scripts/dev-stack.sh setup` / `up` / `rebuild` (layers `compose/overlays/compose.worktree.yml` on `compose.dev-cpu.yml`) | The dev center: the main checkout and each git worktree, side by side on one shared CPU host. **Never prod.** See [the per-worktree dev stack](#the-per-worktree-dev-stack). |
 
 `--profile full` is mandatory in every scenario — app/worker/frontend/mcp live under it (omitting
 it starts only the data-plane stores).
@@ -57,7 +60,56 @@ docker compose -f compose/compose.prod-gpu.yml -f compose/overlays/compose.proxy
 `up-prod-cpu` / `up-prod-gpu` / `up-dev-cpu` / `up-dev-gpu`, each with a `-proxy` and
 `-telemetry` variant (e.g. `up-dev-gpu-telemetry`), plus `down-*` and `logs`. Run
 `make config-check-all` after touching anything under `compose/` — it validates every scenario
-alone and combined with every add-on combination.
+alone and combined with every add-on combination, plus the worktree overlay on `compose.dev-cpu.yml`
+with no profile and with every profile.
+
+## The per-worktree dev stack
+
+`compose/overlays/compose.worktree.yml` is the dev-center dev stack: the main checkout and every git
+worktree each run their own stack (own containers, volumes, network and host ports per compose
+project) on one shared host. It is layered with a plain `-f` on top of `compose.dev-cpu.yml`,
+**always through `scripts/dev-stack.sh`** — never in prod, and the Makefile scenarios
+(`make up-dev-cpu`, ...) do not use it. Don't mix the two in one checkout: the main checkout's
+script stack is compose project `docforge`, the same as `make up-dev-cpu`.
+
+```bash
+scripts/dev-stack.sh setup                        # worktree: port block + .env.worktree + DB copied from main + up
+scripts/dev-stack.sh up                           # core services only
+COMPOSE_PROFILES=models scripts/dev-stack.sh up   # + bge_server / paddle_server
+COMPOSE_PROFILES=models,extras scripts/dev-stack.sh up
+scripts/dev-stack.sh rebuild | url | status | teardown
+```
+
+**Profiles** (no `--profile full` here — the overlay resets app/worker's profile):
+
+| Profile | Services |
+|---|---|
+| core (none, starts by default) | `docforge_app`, `docforge_worker`, postgres, redis, qdrant, seaweedfs, gotenberg |
+| `models` | `docforge_bge_server`, `docforge_paddle_server` (heavy CPU model hosts — check free memory first) |
+| `extras` | `docforge_mcp`, `docforge_frontend` (Vite) |
+
+mineru / dots_ocr keep their GPU-only opt-in profiles.
+
+**Ports**: only the three a browser needs are published, all on `${BIND_ADDR:-127.0.0.1}` —
+app `APP_PORT` (`10040` in main), frontend `FRONTEND_PORT` (`10046`), mcp `MCP_PORT` (`10048`). A
+worktree gets its own port block, written by the script to the gitignored `.env.worktree` (with
+`COMPOSE_PROJECT_NAME`). The data-plane stores publish nothing; services reach each other by
+service name / alias over the project network.
+
+**What else differs from `compose.dev-cpu.yml`**:
+
+- no `container_name` (`!reset null`) — containers are named `<project>-<service>-N`, so stacks never collide;
+- S3 endpoint `http://seaweedfs:8333`: botocore rejects `_` in hostnames and the base file's hyphenated
+  `container_name` is gone, so `docforge_seaweedfs` gets a project-scoped network alias `seaweedfs`;
+- the worker's HuggingFace cache is the project's named volume, not the host's shared cache;
+- lower memory ceilings (app 1g, worker 3g, postgres 1g with `shared_buffers=256MB`, redis 256m with
+  `maxmemory 160mb`, qdrant 1g, seaweedfs 512m, gotenberg 1g; `models`: bge 4g, paddle 6g).
+
+**Env files**: the project directory is `compose/`, so compose does not read the repo-root `.env` on
+its own — the script passes `--env-file .env` explicitly (then `--env-file .env.worktree` in a
+worktree, the later file wins). Its relative paths (the worker's source mounts) resolve against
+`compose/`, hence a single `../`. `make config-check-all` validates the overlay with no profile and
+with every profile.
 
 ## The telemetry stack
 
@@ -108,7 +160,8 @@ own dir, i.e. `compose/` in every scenario file's invocation. Concretely:
   scenario file — so despite living in the same directory as compose.dev.yml/compose.gpu.yml, their paths
   resolve like `compose.base.yml`'s: a single `../` from `compose/` (e.g.
   `../services/telemetry/prometheus.yml`, `../services/caddy/Caddyfile`), NOT `../../`. See each
-  file's own header comment for the explicit reasoning.
+  file's own header comment for the explicit reasoning. `overlays/compose.worktree.yml` is layered the
+  same way, so its worker source mounts use a single `../` too (`../src/docforge/worker`).
 
 Validated with `docker compose -f <file> config` — it prints every resolved absolute path; that's
 the check to re-run after touching any path in this tree.
