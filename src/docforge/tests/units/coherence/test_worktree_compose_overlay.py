@@ -10,7 +10,9 @@
 #     under `models`, mcp under `extras`;
 #   * never pin a `name:` on volumes or networks, nor let base/dev pin one (the overlay cannot undo
 #     it, so they must stay project-scoped);
-#   * reach seaweedfs's S3 through the project-scoped network alias `seaweedfs` (app and worker).
+#   * reach seaweedfs's S3 through the project-scoped network alias `seaweedfs` (app and worker),
+#     and make app and worker wait for seaweedfs:8333 before starting (survives a host reboot,
+#     where the Docker daemon restarts every container at once and ignores depends_on).
 # A service added to base/dev with a container_name or host ports goes red here until the worktree
 # overlay handles it. Serviceless: parses the YAML statically (Compose's !reset / !override tags are
 # recorded, not interpreted) and never shells out to docker. scripts/dev-stack.sh, which drives the
@@ -274,6 +276,20 @@ def test_s3_endpoint_points_at_the_seaweedfs_alias(service, overlay_services):
         env = dict(item.split("=", 1) for item in env if "=" in item)
     assert isinstance(env, dict), f"{service}: no environment in the overlay, got {env!r}"
     assert env.get("S3_ENDPOINT_URL") == "http://seaweedfs:8333"
+
+
+@pytest.mark.parametrize("service", ["docforge_app", "docforge_worker"])
+def test_app_and_worker_wait_for_s3_before_starting(service, overlay_services):
+    """After a host reboot the daemon ignores depends_on: the command itself must wait for S3."""
+    command = overlay_services.get(service, {}).get("command")
+    assert isinstance(command, _Tagged) and command.tag == "!override", (
+        f"{service}: command must be `!override` (wait for S3, then the dev command), got {command!r}"
+    )
+    assert command.value[:2] == ["sh", "-c"], f"{service}: command must be `sh -c ...`"
+    script = command.value[2]
+    assert '"http://seaweedfs:8333/"' in script and 'exec "$$@"' in script, (
+        f"{service}: command does not wait for seaweedfs:8333 then exec the dev command"
+    )
 
 
 # ── scripts/dev-stack.sh ─────────────────────────────────────────────────────────

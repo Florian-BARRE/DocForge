@@ -53,9 +53,42 @@
 #     The worker's 3g cap fits the shared host, but a large OCR-heavy ingestion can peak at 2-4 GiB
 #     and may be OOM-killed in a dev stack: raise its limit locally if you need such a run.
 #
+# Startup order after a host/VM reboot: the Docker daemon restarts every container of the stack at
+# once and ignores depends_on, so app and worker used to start before seaweedfs's S3 gateway (8333)
+# listened, fail with EndpointConnectionError, and stay down for good (the --reload / watchfiles
+# supervisor keeps the container alive, so no restart policy kicks in). Hence:
+#   - seaweedfs is healthy only when the master (9333) AND the S3 gateway (8333) answer (the base
+#     healthcheck probes the master only, so even `compose up` could start app/worker too early);
+#   - app and worker wait (python HTTP probe, any status = up, up to 180 s, then start anyway) for seaweedfs:8333
+#     before exec'ing the very dev command of overlays/compose.dev.yml (passed as "$@").
+
 # Scheduled work: the worker's cron jobs are local housekeeping on this worktree's own stores only;
 # nothing is sent outside the stack, so they stay enabled.
 # ─────────────────────────────────────────────────────────────────────────────
+
+# Wait for seaweedfs's S3 gateway, then exec the command given as "$@" (see "Startup order" above).
+# `$$` is Compose's escape for a literal `$`.
+x-wait-for-s3: &wait-for-s3 |
+  python -c '
+  import time, urllib.error, urllib.request
+  deadline = time.monotonic() + 180
+  logged = False
+  while True:
+      try:
+          urllib.request.urlopen("http://seaweedfs:8333/", timeout=2).close()
+          break
+      except urllib.error.HTTPError:
+          break  # any HTTP answer (e.g. 403) means the S3 gateway is up
+      except OSError:
+          if time.monotonic() > deadline:
+              print("seaweedfs:8333 still unreachable after 180 s, starting anyway", flush=True)
+              break
+          if not logged:
+              print("waiting for seaweedfs:8333 (S3) before starting...", flush=True)
+              logged = True
+          time.sleep(2)
+  '
+  exec "$$@"
 
 services:
   # ── core ─────────────────────────────────────────────────────────────────────
@@ -75,6 +108,23 @@ services:
     profiles: !reset []
     ports: !override
       - "${BIND_ADDR:-127.0.0.1}:${API_PORT:-10040}:8000"
+    # Same dev command as overlays/compose.dev.yml, behind the S3 wait (args after "sh" are "$@").
+    command: !override
+      - sh
+      - "-c"
+      - *wait-for-s3
+      - sh
+      - uvicorn
+      - "entrypoint:app"
+      - "--host"
+      - "0.0.0.0"
+      - "--port"
+      - "8000"
+      - "--reload"
+      - "--reload-dir"
+      - /app/app
+      - "--reload-dir"
+      - /app/shared
     environment:
       S3_ENDPOINT_URL: http://seaweedfs:8333
     deploy:
@@ -84,6 +134,16 @@ services:
 
   docforge_worker:
     profiles: !reset []
+    # Same dev command as overlays/compose.dev.yml, behind the S3 wait (args after "sh" are "$@").
+    command: !override
+      - sh
+      - "-c"
+      - *wait-for-s3
+      - sh
+      - watchfiles
+      - "arq entrypoint.WorkerSettings"
+      - /app/shared
+      - /app/worker
     environment:
       S3_ENDPOINT_URL: http://seaweedfs:8333
     volumes: !override
@@ -149,6 +209,16 @@ services:
       docforge_net:
         aliases:
           - seaweedfs             # S3_ENDPOINT_URL above (botocore-valid hostname, project-scoped)
+    # Healthy only once the S3 gateway answers too (any HTTP status from 8333, e.g. 403, is up;
+    # curl without -f exits 0 on it, non-zero when nothing listens).
+    healthcheck:
+      test: !override
+        - CMD-SHELL
+        - "curl -fs http://localhost:9333/cluster/status >/dev/null && curl -s -o /dev/null http://localhost:8333/"
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
     deploy:
       resources:
         limits:

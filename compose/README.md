@@ -115,6 +115,9 @@ service name / alias over the project network.
 - S3 endpoint `http://seaweedfs:8333`: botocore rejects `_` in hostnames and the base file's hyphenated
   `container_name` is gone, so `docforge_seaweedfs` gets a project-scoped network alias `seaweedfs`;
 - the worker's HuggingFace cache is the project's named volume, not the host's shared cache;
+- startup order survives a host/VM reboot (the Docker daemon then restarts every container at once and
+  ignores `depends_on`): seaweedfs is healthy only once its S3 gateway (8333) answers too, and app and
+  worker wait for `seaweedfs:8333` (up to 180 s) before exec'ing their usual dev command;
 - lower memory ceilings (app 1g, worker 3g, postgres 1g with `shared_buffers=256MB`, redis 256m with
   `maxmemory 160mb`, qdrant 1g, seaweedfs 512m, gotenberg 1g, frontend 1g; `models`: bge 4g, paddle 6g).
   The worker's 3g cap suits the shared host, but a large OCR-heavy ingestion can peak at 2-4 GiB
