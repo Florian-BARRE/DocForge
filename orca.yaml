@@ -1,0 +1,12 @@
+# One running dev stack per worktree (AI Dev Kit template). Must be on main before the first
+# feature: Orca reads the archive script from the main checkout's orca.yaml.
+setupAgentStartupPolicy: wait-for-setup
+scripts:
+  setup: |
+    ./scripts/dev-stack.sh setup
+  archive: |
+    ./scripts/dev-stack.sh teardown
+defaultTabs:
+  - title: Agent
+  - title: Stack
+    command: ./scripts/dev-stack.sh status

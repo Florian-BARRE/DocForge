@@ -1,0 +1,16 @@
+# gitleaks configuration (v8.25+ syntax), auto-loaded from the repository root by `gitleaks git .`.
+# Keeps every default rule and only skips paths whose "secrets" are deliberate fakes: the test
+# suites of the Python packages under src/ (redaction and auth tests use fake keys) and the curl
+# examples of docs/rest-api.md. A deliberate fake elsewhere: add an inline `gitleaks:allow` comment.
+title = "DocForge gitleaks config"
+minVersion = "v8.25.0"   # `[[allowlists]]` tables
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Fake keys in test suites and REST API doc examples"
+paths = [
+  '''^src/[^/]+/tests/''',
+  '''^docs/rest-api\.md$''',
+]

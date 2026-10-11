@@ -1,0 +1,276 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# DocForge — dev-center DEV CPU overlay: the dev stack of the main checkout AND of every git
+# worktree, side by side on one shared host (own containers, own volumes, own network, own host
+# ports per compose project). Layered with a plain `-f` on top of the dev-cpu scenario, ALWAYS
+# through scripts/dev-stack.sh. The main checkout runs it as project "docforge" on the default
+# ports below (UI 10046, API 10040, mcp 10048); a worktree reads .env.worktree, written by the
+# script (COMPOSE_PROJECT_NAME, BIND_ADDR, APP_PORT, API_PORT, MCP_PORT):
+#
+#   scripts/dev-stack.sh setup                      # port block + .env.worktree + DB copy + up
+#   scripts/dev-stack.sh up                         # core services only (see PROFILES below)
+#   COMPOSE_PROFILES=models scripts/dev-stack.sh up # + bge_server / paddle_server
+#   COMPOSE_PROFILES=models,extras scripts/dev-stack.sh up   # + mcp
+#
+# The UI a browser opens is the Vite dev server (docforge_frontend, APP_PORT, hot reload), which
+# proxies /api, /capabilities and /health to the app SERVICE (VITE_API_PROXY_TARGET, set in
+# overlays/compose.dev.yml). The app itself serves no UI in dev: its source bind-mount hides the
+# image's built frontend dist, so `/` on API_PORT is 404 (API docs at /scalar there). The
+# frontend has no healthcheck, so `up --wait` only waits for it to be running; its first start
+# runs `npm ci` in the container (node_modules volume cold) before Vite listens.
+#
+# Equivalent raw command in a worktree (what the script runs; main: COMPOSE_PROJECT_NAME=docforge
+# and no .env.worktree):
+#   docker compose --env-file .env --env-file .env.worktree \
+#     -f compose/compose.dev-cpu.yml -f compose/overlays/compose.worktree.yml up -d
+#
+# WHEN TO USE THIS FILE: the dev-center dev stack (main checkout and worktrees), via the script.
+# Never in prod. Prod and the Makefile scenarios (make up-dev-cpu, ...) are unchanged and do not
+# use it.
+#
+# `-f` layering (last wins) works on services the scenario brings in through `include:` — verified
+# with `docker compose ... config` on Compose v5.6.0. Relative paths in this file (the worker's
+# source mounts) resolve against the project directory, compose/ — hence a single `../`.
+#
+# What this changes vs compose.dev-cpu.yml:
+#   - no container_name anywhere (`!reset null`): compose names containers <project>-<service>-N,
+#     so stacks of different projects (main, worktrees) never collide;
+#   - no host port except the ones a browser needs, read from .env.worktree and bound to
+#     ${BIND_ADDR:-127.0.0.1}: frontend (APP_PORT), app API (API_PORT), mcp (MCP_PORT). Services
+#     reach each other over the project network by service name / alias, never via host ports;
+#   - S3 endpoint: botocore rejects '_' in hostnames and the base file relies on the hyphenated
+#     container_name of seaweedfs, which is gone here — a hyphen-free network alias `seaweedfs`
+#     (scoped to this project's own network) replaces it;
+#   - the worker's HuggingFace cache is the project's named volume, not the host's shared cache
+#     (a bind mount on ${HOME} would be shared and written by every stack at once);
+#   - PROFILES (16 GB host shared with other stacks, no GPU):
+#       core (no profile, starts by default): frontend (Vite), app, worker, postgres, redis, qdrant,
+#         seaweedfs, gotenberg
+#       `models`: bge_server, paddle_server (heavy CPU model hosts)
+#       `extras`: mcp
+#       mineru / dots_ocr keep their GPU-only opt-in profiles;
+#   - lower memory ceilings, with postgres / redis tuned to fit them; the `models` hosts are capped
+#     too (bge 4g, paddle 6g: enough for PP-Structure, not for the PaddleOCR-VL escalation).
+#     The worker's 3g cap fits the shared host, but a large OCR-heavy ingestion can peak at 2-4 GiB
+#     and may be OOM-killed in a dev stack: raise its limit locally if you need such a run.
+#
+# Startup order after a host/VM reboot: the Docker daemon restarts every container of the stack at
+# once and ignores depends_on, so app and worker used to start before seaweedfs's S3 gateway (8333)
+# listened, fail with EndpointConnectionError, and stay down for good (the --reload / watchfiles
+# supervisor keeps the container alive, so no restart policy kicks in). Hence:
+#   - seaweedfs is healthy only when the master (9333) AND the S3 gateway (8333) answer (the base
+#     healthcheck probes the master only, so even `compose up` could start app/worker too early);
+#   - app and worker wait (python HTTP probe, any status = up, up to 180 s, then start anyway) for seaweedfs:8333
+#     before exec'ing the very dev command of overlays/compose.dev.yml (passed as "$@").
+
+# Scheduled work: the worker's cron jobs are local housekeeping on this worktree's own stores only;
+# nothing is sent outside the stack, so they stay enabled.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Wait for seaweedfs's S3 gateway, then exec the command given as "$@" (see "Startup order" above).
+# `$$` is Compose's escape for a literal `$`. sh is PID 1 and PID 1 ignores SIGTERM without a handler,
+# so the trap lets `docker stop` end the wait at once; the probe runs in the background because sh
+# defers a trap until a foreground child exits, while `wait` returns on it. exec drops the trap.
+x-wait-for-s3: &wait-for-s3 |
+  trap 'exit 143' TERM INT;
+  python -c '
+  import time, urllib.error, urllib.request
+  deadline = time.monotonic() + 180
+  logged = False
+  while True:
+      try:
+          urllib.request.urlopen("http://seaweedfs:8333/", timeout=2).close()
+          break
+      except urllib.error.HTTPError:
+          break  # any HTTP answer (e.g. 403) means the S3 gateway is up
+      except OSError:
+          if time.monotonic() > deadline:
+              print("seaweedfs:8333 still unreachable after 180 s, starting anyway", flush=True)
+              break
+          if not logged:
+              print("waiting for seaweedfs:8333 (S3) before starting...", flush=True)
+              logged = True
+          time.sleep(2)
+  ' &
+  wait;
+  exec "$$@"
+
+services:
+  # ── core ─────────────────────────────────────────────────────────────────────
+  # The UI: Vite dev server (the app of scripts/dev-stack.sh, on APP_PORT).
+  docforge_frontend:
+    container_name: !reset null
+    profiles: !reset []
+    ports: !override
+      - "${BIND_ADDR:-127.0.0.1}:${APP_PORT:-10046}:5173"
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+
+  docforge_app:
+    container_name: !reset null
+    profiles: !reset []
+    ports: !override
+      - "${BIND_ADDR:-127.0.0.1}:${API_PORT:-10040}:8000"
+    # Same dev command as overlays/compose.dev.yml, behind the S3 wait (args after "sh" are "$@").
+    command: !override
+      - sh
+      - "-c"
+      - *wait-for-s3
+      - sh
+      - uvicorn
+      - "entrypoint:app"
+      - "--host"
+      - "0.0.0.0"
+      - "--port"
+      - "8000"
+      - "--reload"
+      - "--reload-dir"
+      - /app/app
+      - "--reload-dir"
+      - /app/shared
+    environment:
+      S3_ENDPOINT_URL: http://seaweedfs:8333
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+
+  docforge_worker:
+    profiles: !reset []
+    # Same dev command as overlays/compose.dev.yml, behind the S3 wait (args after "sh" are "$@").
+    command: !override
+      - sh
+      - "-c"
+      - *wait-for-s3
+      - sh
+      - watchfiles
+      - "arq entrypoint.WorkerSettings"
+      - /app/shared
+      - /app/worker
+    environment:
+      S3_ENDPOINT_URL: http://seaweedfs:8333
+    volumes: !override
+      - ../src/docforge/worker:/app/worker
+      - ../src/docforge/shared:/app/shared
+      - docforge_worker_hf_cache:/home/appuser/.cache/huggingface
+    deploy:
+      resources:
+        limits:
+          memory: 3g
+        reservations:
+          memory: 512m
+
+  docforge_postgres:
+    container_name: !reset null
+    ports: !reset []
+    # Base tuning targets a 4g container (shared_buffers=1GB): scaled down to the 1g ceiling.
+    command: !override
+      - postgres
+      - "-c"
+      - "shared_buffers=256MB"
+      - "-c"
+      - "effective_cache_size=512MB"
+      - "-c"
+      - "work_mem=8MB"
+      - "-c"
+      - "maintenance_work_mem=64MB"
+      - "-c"
+      - "max_connections=50"
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+        reservations:
+          memory: 256m
+
+  docforge_redis:
+    container_name: !reset null
+    ports: !reset []
+    # maxmemory stays below the container ceiling (base: 400mb under 512m).
+    command: !override ["redis-server", "--maxmemory", "160mb", "--maxmemory-policy", "noeviction", "--save", ""]
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+        reservations:
+          memory: 64m
+
+  docforge_qdrant:
+    container_name: !reset null
+    ports: !reset []
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+        reservations:
+          memory: 256m
+
+  docforge_seaweedfs:
+    container_name: !reset null
+    ports: !reset []
+    networks:
+      docforge_net:
+        aliases:
+          - seaweedfs             # S3_ENDPOINT_URL above (botocore-valid hostname, project-scoped)
+    # Healthy only once the S3 gateway answers too (any HTTP status from 8333, e.g. 403, is up;
+    # curl without -f exits 0 on it, non-zero when nothing listens).
+    healthcheck:
+      test: !override
+        - CMD-SHELL
+        - "curl -fs http://localhost:9333/cluster/status >/dev/null && curl -s -o /dev/null http://localhost:8333/"
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+
+  docforge_gotenberg:
+    container_name: !reset null
+    ports: !reset []
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+
+  # ── profile `models` ─────────────────────────────────────────────────────────
+  docforge_bge_server:
+    container_name: !reset null
+    profiles: !override ["models"]
+    ports: !reset []
+    deploy:
+      resources:
+        limits:
+          memory: 4g
+        reservations:
+          memory: 2g
+
+  docforge_paddle_server:
+    container_name: !reset null
+    profiles: !override ["models"]
+    ports: !reset []
+    deploy:
+      resources:
+        limits:
+          memory: 6g
+        reservations:
+          memory: 2g
+
+  # ── profile `extras` ─────────────────────────────────────────────────────────
+  docforge_mcp:
+    container_name: !reset null
+    profiles: !override ["extras"]
+    ports: !override
+      - "${BIND_ADDR:-127.0.0.1}:${MCP_PORT:-10048}:9000"
+
+  # ── GPU-only, opt-in profiles unchanged (mineru / dots_ocr) ──────────────────
+  docforge_mineru_server:
+    container_name: !reset null
+    ports: !reset []
+
+  docforge_dots_ocr_server:
+    container_name: !reset null
+    ports: !reset []

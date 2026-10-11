@@ -1,0 +1,10 @@
+.env
+services/docforge/.env
+services/docforge/postgres.env
+services/docforge/s3_config.json
+services/bge_server/.env
+services/mcp/.env
+services/paddle_server/.env
+services/mineru_server/.env
+services/dots_ocr_server/.env
+services/telemetry/.env
