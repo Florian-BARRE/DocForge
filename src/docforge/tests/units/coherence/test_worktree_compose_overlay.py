@@ -21,6 +21,7 @@
 # ====== Standard Library Imports ======
 import pathlib
 import re
+import shlex
 import shutil
 import subprocess
 from dataclasses import dataclass
@@ -289,6 +290,20 @@ def test_app_and_worker_wait_for_s3_before_starting(service, overlay_services):
     script = command.value[2]
     assert '"http://seaweedfs:8333/"' in script and 'exec "$$@"' in script, (
         f"{service}: command does not wait for seaweedfs:8333 then exec the dev command"
+    )
+    # PID 1 sh ignores SIGTERM without a handler: `docker stop` would wait out its grace period.
+    assert script.lstrip().startswith("trap 'exit 143' TERM INT"), (
+        f"{service}: the S3 wait must start with a SIGTERM/SIGINT trap"
+    )
+    assert command.value[3] == "sh", (
+        f"{service}: the script's $0 must be `sh` (args after it are $@)"
+    )
+    dev_cmd = _services(_DEV).get(service, {}).get("command")
+    if isinstance(dev_cmd, str):
+        dev_cmd = shlex.split(dev_cmd)
+    assert dev_cmd and command.value[4:] == dev_cmd, (
+        f"{service}: the command run after the S3 wait drifted from overlays/compose.dev.yml "
+        f"({command.value[4:]!r} != {dev_cmd!r})"
     )
 
 

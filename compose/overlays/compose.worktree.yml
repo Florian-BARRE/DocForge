@@ -67,8 +67,11 @@
 # ─────────────────────────────────────────────────────────────────────────────
 
 # Wait for seaweedfs's S3 gateway, then exec the command given as "$@" (see "Startup order" above).
-# `$$` is Compose's escape for a literal `$`.
+# `$$` is Compose's escape for a literal `$`. sh is PID 1 and PID 1 ignores SIGTERM without a handler,
+# so the trap lets `docker stop` end the wait at once; the probe runs in the background because sh
+# defers a trap until a foreground child exits, while `wait` returns on it. exec drops the trap.
 x-wait-for-s3: &wait-for-s3 |
+  trap 'exit 143' TERM INT;
   python -c '
   import time, urllib.error, urllib.request
   deadline = time.monotonic() + 180
@@ -87,7 +90,8 @@ x-wait-for-s3: &wait-for-s3 |
               print("waiting for seaweedfs:8333 (S3) before starting...", flush=True)
               logged = True
           time.sleep(2)
-  '
+  ' &
+  wait;
   exec "$$@"
 
 services:
