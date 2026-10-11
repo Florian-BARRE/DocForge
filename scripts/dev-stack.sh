@@ -14,23 +14,20 @@
 # worktree (Orca routes its traffic through the server). Published ports listen on 127.0.0.1 only.
 # The compose files must read the variables below and must not set container_name or volume names.
 #
-# DocForge: a worktree runs compose/compose.dev-cpu.yml + compose/overlays/compose.worktree.yml (no
-# container names, ports from .env.worktree). By default only the core services start; opt in to
-# the others with compose profiles, e.g.
+# DocForge: the main checkout and every worktree run compose/compose.dev-cpu.yml +
+# compose/overlays/compose.worktree.yml (no container names). Main is project "docforge" on the
+# overlay's default ports (app 10040, frontend 10046, mcp 10048, on 127.0.0.1); a worktree reads its
+# project and ports from .env.worktree. By default only the core services start; opt in to the
+# others with compose profiles (a COMPOSE_PROFILES set in the environment is honoured), e.g.
 #   COMPOSE_PROFILES=models scripts/dev-stack.sh up          # + bge_server / paddle_server
 #   COMPOSE_PROFILES=models,extras scripts/dev-stack.sh up   # + mcp / Vite frontend
-# The main checkout keeps the plain dev-cpu scenario (fixed ports 10040-10054) and also starts no
-# profile by default: there only the data-plane stores come up (app/worker/mcp/frontend/bge/paddle
-# live under `full`), so opt in there with COMPOSE_PROFILES=full. A COMPOSE_PROFILES already set in
-# the environment is honoured in both modes.
+# Prod and the Makefile scenarios (make up-dev-cpu, ...) do not use this script or the overlay.
 set -Eeuo pipefail
 
 # --- Project settings: edit when adopting the template -------------------------------------------
 PROJECT="docforge"                   # compose project of the main checkout: lowercase, digits, '-'
-# Dev compose files of a worktree, relative to the repository root.
+# Dev compose files (main checkout and worktrees), relative to the repository root.
 COMPOSE_FILES=(-f compose/compose.dev-cpu.yml -f compose/overlays/compose.worktree.yml)
-# Dev compose files of the main checkout (same files as `make up-dev-cpu`, no default profile).
-MAIN_COMPOSE_FILES=(-f compose/compose.dev-cpu.yml)
 APP_SERVICE="docforge_app"           # service that serves the app, and its port in the container
 APP_CONTAINER_PORT=8000
 APP_PATH="/"                         # path of the page to open
@@ -77,7 +74,7 @@ compose() {
   if ((IS_WORKTREE)); then
     docker compose "${env_args[@]}" --env-file "$ENV_FILE" "${COMPOSE_FILES[@]}" "$@"
   else
-    COMPOSE_PROJECT_NAME="$PROJECT" docker compose "${env_args[@]}" "${MAIN_COMPOSE_FILES[@]}" "$@"
+    COMPOSE_PROJECT_NAME="$PROJECT" docker compose "${env_args[@]}" "${COMPOSE_FILES[@]}" "$@"
   fi
 }
 
