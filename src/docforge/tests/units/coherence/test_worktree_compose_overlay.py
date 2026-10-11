@@ -3,10 +3,11 @@
 # isolating each git worktree's dev stack from the main checkout's one. Layered on top of
 # compose.dev-cpu.yml (which includes compose.base.yml + overlays/compose.dev.yml), it must:
 #   * reset `container_name` on EVERY service that base/dev pins one on (else two stacks collide);
-#   * reset the host ports of every service, except app / frontend / mcp which publish on
-#     ${BIND_ADDR:-127.0.0.1} with a port variable (APP_PORT / FRONTEND_PORT / MCP_PORT);
-#   * start the core services by default (no profile), the CPU model hosts under `models`, mcp and
-#     frontend under `extras`;
+#   * reset the host ports of every service, except frontend / app / mcp which publish on
+#     ${BIND_ADDR:-127.0.0.1} with a port variable (APP_PORT — the UI is the app of
+#     scripts/dev-stack.sh — / API_PORT / MCP_PORT);
+#   * start the core services by default (no profile, Vite frontend included), the CPU model hosts
+#     under `models`, mcp under `extras`;
 #   * never pin a `name:` on volumes or networks (they must stay project-scoped).
 # A service added to base/dev with a container_name or host ports goes red here until the worktree
 # overlay handles it. Serviceless: parses the YAML statically (Compose's !reset / !override tags are
@@ -40,11 +41,12 @@ pytestmark = pytest.mark.skipif(_FILES_ABSENT, reason="compose files absent from
 
 # The services a browser reaches from the host, and the port variable each one reads.
 _PUBLISHED = {
-    "docforge_app": "APP_PORT",
-    "docforge_frontend": "FRONTEND_PORT",
+    "docforge_frontend": "APP_PORT",
+    "docforge_app": "API_PORT",
     "docforge_mcp": "MCP_PORT",
 }
 _CORE = (
+    "docforge_frontend",
     "docforge_app",
     "docforge_worker",
     "docforge_postgres",
@@ -54,7 +56,7 @@ _CORE = (
     "docforge_gotenberg",
 )
 _MODELS = ("docforge_bge_server", "docforge_paddle_server")
-_EXTRAS = ("docforge_mcp", "docforge_frontend")
+_EXTRAS = ("docforge_mcp",)
 
 
 @dataclass(frozen=True)

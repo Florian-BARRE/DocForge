@@ -16,11 +16,15 @@
 #
 # DocForge: the main checkout and every worktree run compose/compose.dev-cpu.yml +
 # compose/overlays/compose.worktree.yml (no container names). Main is project "docforge" on the
-# overlay's default ports (app 10040, frontend 10046, mcp 10048, on 127.0.0.1); a worktree reads its
-# project and ports from .env.worktree. By default only the core services start; opt in to the
-# others with compose profiles (a COMPOSE_PROFILES set in the environment is honoured), e.g.
+# overlay's default ports (UI 10046, API 10040, mcp 10048, on 127.0.0.1); a worktree reads its
+# project and ports from .env.worktree (UI = first port of the block, API = +1, mcp = +8). The UI
+# is the Vite dev server (hot reload) proxying to the app; the API docs are at <API>/scalar. By
+# default only the core services start (UI, app, worker, stores); opt in to the others with
+# compose profiles (a COMPOSE_PROFILES set in the environment is honoured), e.g.
 #   COMPOSE_PROFILES=models scripts/dev-stack.sh up          # + bge_server / paddle_server
-#   COMPOSE_PROFILES=models,extras scripts/dev-stack.sh up   # + mcp / Vite frontend
+#   COMPOSE_PROFILES=models,extras scripts/dev-stack.sh up   # + mcp
+# The first start runs `npm ci` in the frontend container (a few minutes); `up --wait` only waits
+# for it to be running (no healthcheck), so the page may need a moment after `setup` returns.
 # Prod and the Makefile scenarios (make up-dev-cpu, ...) do not use this script or the overlay.
 set -Eeuo pipefail
 
@@ -28,8 +32,8 @@ set -Eeuo pipefail
 PROJECT="docforge"                   # compose project of the main checkout: lowercase, digits, '-'
 # Dev compose files (main checkout and worktrees), relative to the repository root.
 COMPOSE_FILES=(-f compose/compose.dev-cpu.yml -f compose/overlays/compose.worktree.yml)
-APP_SERVICE="docforge_app"           # service that serves the app, and its port in the container
-APP_CONTAINER_PORT=8000
+APP_SERVICE="docforge_frontend"      # service that serves the app (Vite UI), and its container port
+APP_CONTAINER_PORT=5173
 APP_PATH="/"                         # path of the page to open
 # Database copied from main's stack into a new worktree (Postgres). Empty SEED_DB_SERVICE: no copy.
 SEED_DB_SERVICE="docforge_postgres"
@@ -43,7 +47,7 @@ BASE_ENV_FILE=.env
 # The worker's cron jobs are local housekeeping on the worktree's own stores (nothing is sent
 # outside the stack), so no switch is needed to turn them off.
 worktree_extra_env() { # $1: first port of the block
-  printf 'FRONTEND_PORT=%s\nMCP_PORT=%s\n' "$(($1 + 6))" "$(($1 + 8))"
+  printf 'API_PORT=%s\nMCP_PORT=%s\n' "$(($1 + 1))" "$(($1 + 8))"
 }
 # --------------------------------------------------------------------------------------------------
 

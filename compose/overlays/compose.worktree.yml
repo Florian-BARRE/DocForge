@@ -3,13 +3,20 @@
 # worktree, side by side on one shared host (own containers, own volumes, own network, own host
 # ports per compose project). Layered with a plain `-f` on top of the dev-cpu scenario, ALWAYS
 # through scripts/dev-stack.sh. The main checkout runs it as project "docforge" on the default
-# ports below (app 10040, frontend 10046, mcp 10048); a worktree reads .env.worktree, written by
-# the script (COMPOSE_PROJECT_NAME, BIND_ADDR, APP_PORT, FRONTEND_PORT, MCP_PORT):
+# ports below (UI 10046, API 10040, mcp 10048); a worktree reads .env.worktree, written by the
+# script (COMPOSE_PROJECT_NAME, BIND_ADDR, APP_PORT, API_PORT, MCP_PORT):
 #
 #   scripts/dev-stack.sh setup                      # port block + .env.worktree + DB copy + up
 #   scripts/dev-stack.sh up                         # core services only (see PROFILES below)
 #   COMPOSE_PROFILES=models scripts/dev-stack.sh up # + bge_server / paddle_server
-#   COMPOSE_PROFILES=models,extras scripts/dev-stack.sh up
+#   COMPOSE_PROFILES=models,extras scripts/dev-stack.sh up   # + mcp
+#
+# The UI a browser opens is the Vite dev server (docforge_frontend, APP_PORT, hot reload), which
+# proxies /api, /capabilities and /health to the app SERVICE (VITE_API_PROXY_TARGET, set in
+# overlays/compose.dev.yml). The app itself serves no UI in dev: its source bind-mount hides the
+# image's built frontend dist, so `/` on API_PORT is 404 (API docs at /scalar there). The
+# frontend has no healthcheck, so `up --wait` only waits for it to be running; its first start
+# runs `npm ci` in the container (node_modules volume cold) before Vite listens.
 #
 # Equivalent raw command in a worktree (what the script runs; main: COMPOSE_PROJECT_NAME=docforge
 # and no .env.worktree):
@@ -28,7 +35,7 @@
 #   - no container_name anywhere (`!reset null`): compose names containers <project>-<service>-N,
 #     so stacks of different projects (main, worktrees) never collide;
 #   - no host port except the ones a browser needs, read from .env.worktree and bound to
-#     ${BIND_ADDR:-127.0.0.1}: app (APP_PORT), frontend (FRONTEND_PORT), mcp (MCP_PORT). Services
+#     ${BIND_ADDR:-127.0.0.1}: frontend (APP_PORT), app API (API_PORT), mcp (MCP_PORT). Services
 #     reach each other over the project network by service name / alias, never via host ports;
 #   - S3 endpoint: botocore rejects '_' in hostnames and the base file relies on the hyphenated
 #     container_name of seaweedfs, which is gone here — a hyphen-free network alias `seaweedfs`
@@ -36,9 +43,10 @@
 #   - the worker's HuggingFace cache is the project's named volume, not the host's shared cache
 #     (a bind mount on ${HOME} would be shared and written by every stack at once);
 #   - PROFILES (16 GB host shared with other stacks, no GPU):
-#       core (no profile, starts by default): app, worker, postgres, redis, qdrant, seaweedfs, gotenberg
+#       core (no profile, starts by default): frontend (Vite), app, worker, postgres, redis, qdrant,
+#         seaweedfs, gotenberg
 #       `models`: bge_server, paddle_server (heavy CPU model hosts)
-#       `extras`: mcp, frontend (Vite)
+#       `extras`: mcp
 #       mineru / dots_ocr keep their GPU-only opt-in profiles;
 #   - lower memory ceilings, with postgres / redis tuned to fit them; the `models` hosts are capped
 #     too (bge 4g, paddle 6g: enough for PP-Structure, not for the PaddleOCR-VL escalation).
@@ -49,11 +57,22 @@
 
 services:
   # ── core ─────────────────────────────────────────────────────────────────────
+  # The UI: Vite dev server (the app of scripts/dev-stack.sh, on APP_PORT).
+  docforge_frontend:
+    container_name: !reset null
+    profiles: !reset []
+    ports: !override
+      - "${BIND_ADDR:-127.0.0.1}:${APP_PORT:-10046}:5173"
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+
   docforge_app:
     container_name: !reset null
     profiles: !reset []
     ports: !override
-      - "${BIND_ADDR:-127.0.0.1}:${APP_PORT:-10040}:8000"
+      - "${BIND_ADDR:-127.0.0.1}:${API_PORT:-10040}:8000"
     environment:
       S3_ENDPOINT_URL: http://seaweedfs:8333
     deploy:
@@ -170,12 +189,6 @@ services:
     profiles: !override ["extras"]
     ports: !override
       - "${BIND_ADDR:-127.0.0.1}:${MCP_PORT:-10048}:9000"
-
-  docforge_frontend:
-    container_name: !reset null
-    profiles: !override ["extras"]
-    ports: !override
-      - "${BIND_ADDR:-127.0.0.1}:${FRONTEND_PORT:-10046}:5173"
 
   # ── GPU-only, opt-in profiles unchanged (mineru / dots_ocr) ──────────────────
   docforge_mineru_server:
