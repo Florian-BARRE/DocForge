@@ -36,7 +36,8 @@
 #       `models`: bge_server, paddle_server (heavy CPU model hosts)
 #       `extras`: mcp, frontend (Vite)
 #       mineru / dots_ocr keep their GPU-only opt-in profiles;
-#   - lower memory ceilings, with postgres / redis tuned to fit them.
+#   - lower memory ceilings, with postgres / redis tuned to fit them; the `models` hosts are capped
+#     too (bge 4g, paddle 6g: enough for PP-Structure, not for the PaddleOCR-VL escalation).
 #
 # Scheduled work: the worker's cron jobs are local housekeeping on this worktree's own stores only;
 # nothing is sent outside the stack, so they stay enabled.
@@ -141,11 +142,23 @@ services:
     container_name: !reset null
     profiles: !override ["models"]
     ports: !reset []
+    deploy:
+      resources:
+        limits:
+          memory: 4g
+        reservations:
+          memory: 2g
 
   docforge_paddle_server:
     container_name: !reset null
     profiles: !override ["models"]
     ports: !reset []
+    deploy:
+      resources:
+        limits:
+          memory: 6g
+        reservations:
+          memory: 2g
 
   # ── profile `extras` ─────────────────────────────────────────────────────────
   docforge_mcp:
