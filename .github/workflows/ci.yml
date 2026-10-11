@@ -26,8 +26,8 @@ on:
     branches: [main]
   pull_request:
 
-# Least-privilege floor: this workflow only ever calls the reusable gate, which itself only needs
-# to check out the repo. No job here needs anything beyond that.
+# Least-privilege floor: both jobs (the reusable gate and the secrets check below) only need to
+# check out the repo. No job here needs anything beyond that.
 permissions:
   contents: read
 
@@ -38,3 +38,77 @@ concurrency:
 jobs:
   gate:
     uses: ./.github/workflows/gate.yml
+
+  # Secrets hygiene — a public repo, so a leaked dev credential is leaked for good. Two cheap checks,
+  # independent of the gate (no needs:, no secrets, read-only token):
+  #   1. no tracked secret FILE: the real dev files (`.env`, `postgres.env`, `.env.worktree`,
+  #      `s3_config.json`, keys/certs) must never be committed — only their `*.example` templates;
+  #   2. gitleaks on the event's commits ONLY (PR: base..head; push: before..sha, or the single pushed
+  #      commit when `before` is all zeros or not in the clone, e.g. after a force-push), so
+  #      pre-existing history never blocks a PR. It uses the repo's `.gitleaks.toml` (default rules +
+  #      allowlisted test dirs / doc examples), passed explicitly when present. gitleaks is a
+  #      pinned release binary whose sha256 is checked against BOTH the release checksums file and the
+  #      value hard-coded below — bumping the version means updating both GITLEAKS_* values.
+  # Event values reach the scripts through `env:` only (never `${{ }}` inside `run:`).
+  secrets:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Check out (full history, for the commit range)
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: No tracked secret file
+        run: |
+          set -euo pipefail
+          re='(^|/)\.env$|(^|/)[^/]*\.env$|(^|/)\.env\.worktree$|(^|/)s3_config\.json$|\.(pem|key|p12|pfx)$|(^|/)id_(rsa|ed25519|ecdsa)$'
+          hits="$(git ls-files | grep -E "$re" | grep -v '\.example$' || true)"
+          if [ -n "$hits" ]; then
+            echo "::error::Tracked secret file(s) — untrack them and commit a *.example template instead:"
+            echo "$hits"
+            exit 1
+          fi
+          echo "No tracked secret file."
+
+      - name: Install gitleaks (pinned, checksum-verified)
+        env:
+          GITLEAKS_VERSION: 8.30.1
+          GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP"
+          tarball="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          base="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}"
+          curl -fsSL -o "$tarball" "$base/$tarball"
+          curl -fsSL -o checksums.txt "$base/gitleaks_${GITLEAKS_VERSION}_checksums.txt"
+          grep -E "  ${tarball}\$" checksums.txt | sha256sum -c -
+          echo "${GITLEAKS_SHA256}  ${tarball}" | sha256sum -c -
+          tar -xzf "$tarball" gitleaks
+          ./gitleaks version
+
+      - name: gitleaks on the event's commits
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          PUSH_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            range="${PR_BASE_SHA}..${PR_HEAD_SHA}"
+          elif [ -z "$PUSH_BEFORE" ] || [ "$PUSH_BEFORE" = "0000000000000000000000000000000000000000" ] \
+            || ! git cat-file -e "${PUSH_BEFORE}^{commit}" 2>/dev/null; then
+            # New branch, or `before` unknown to this clone (force-push): scan the pushed commit only.
+            range="-1 ${PUSH_SHA}"
+          else
+            range="${PUSH_BEFORE}..${PUSH_SHA}"
+          fi
+          config_args=()
+          if [ -f .gitleaks.toml ]; then config_args=(--config .gitleaks.toml); fi
+          echo "Scanning: $range"
+          "$RUNNER_TEMP/gitleaks" git "${config_args[@]}" --redact --no-banner --exit-code 1 --log-opts="$range" .
