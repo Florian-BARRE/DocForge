@@ -27,6 +27,7 @@ from loggerplusplus import loggerplusplus
 
 # ====== Internal Project Imports ======
 from shared_libs.pipelines.build.validation_message import ValidationMessage
+from shared_libs.pipelines.ingest import BlobNormalizationError, BlobNormalizer
 from shared_libs.pipelines.validation import BlobStructureValidator, BlobValidationError
 from shared_libs.public_models import FieldScope
 from shared_libs.services.db.facades import CollectionTransferFacade
@@ -186,9 +187,13 @@ class CollectionImporterV1:
         Raises:
             CollectionImportError: When the pipeline blob, or a non-empty search blob, is invalid.
         """
-        # 1. The ingest pipeline blob must build + pass structural validation.
+        # 1. The ingest pipeline blob must build + pass structural validation. An exported blob is the
+        #    STORED one (version-stamped, possibly an older engine shape), so heal it to the current
+        #    engine first, exactly as the app does on every read — the pure builder forbids the stamp.
         try:
-            self._blob_validator.validate_ingest(contract.pipeline)
+            self._blob_validator.validate_ingest(BlobNormalizer.normalize(contract.pipeline))
+        except BlobNormalizationError as exc:
+            raise CollectionImportError(f"bundle pipeline blob cannot be migrated: {exc}") from exc
         except BlobValidationError as exc:
             raise CollectionImportError(f"bundle pipeline blob {exc}") from exc
 

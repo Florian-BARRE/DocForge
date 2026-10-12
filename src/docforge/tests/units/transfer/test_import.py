@@ -103,6 +103,19 @@ def test_import_validation_accepts_valid_pipeline_and_empty_search() -> None:
     importer._validate_contract_blobs(_contract(pipeline=valid_pipeline, search={}))
 
 
+def test_import_validation_accepts_a_stamped_stored_pipeline() -> None:
+    """Regression: an export carries the STORED pipeline, which is version-stamped
+    (``_engine_version``). Validation must heal it like every other read — the pure builder forbids
+    the stamp, so a fresh export used to fail to import."""
+    from shared_libs.pipelines.ingest import BlobNormalizer  # noqa: PLC0415
+
+    stamped = BlobNormalizer.stamp(IngestPipeline.default_blob().model_dump(mode="json"))
+    assert BlobNormalizer.STAMP_KEY in stamped
+    importer = CollectionImporterV1(FakeImportFacade(), object())
+
+    importer._validate_contract_blobs(_contract(pipeline=stamped, search={}))
+
+
 async def _bundle(export_facade, tmp_path) -> BundleReader:
     """Produce a real bundle with the exporter, then a validated reader over its tree."""
     exporter = CollectionExporter(
