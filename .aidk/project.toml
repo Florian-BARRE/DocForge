@@ -1,0 +1,51 @@
+# AI Dev Kit: what aidk verify checks before a task is declared done (agents and the Stop hook).
+# Each check is the command as a list of arguments, run from the repository root, in this order.
+# The CI gate's commands (.github/workflows/gate.yml), job by job: docforge, docforge_sdk, mcp, bge_server,
+# paddle_server (CPU wheels, then never re-synced), frontend, sdk-parity. env_from below plays the gate's
+# `cp services/docforge/.env.example services/docforge/.env` (placeholder config, nothing is dialed).
+# Left to the CI: db-tests (a real Postgres service), docker-build (Docker), ci.yml's secrets job (gitleaks,
+# downloaded from GitHub). Not in the CI gate either: mineru_server, dots_ocr_server, live tests (-m live).
+
+[checks]
+docforge-deps = ["uv", "sync", "--frozen", "--directory", "src/docforge"]
+docforge-format = ["uv", "run", "--frozen", "--directory", "src/docforge", "ruff", "format", "--check", "."]
+docforge-lint = ["uv", "run", "--frozen", "--directory", "src/docforge", "ruff", "check", "."]
+docforge-tests = ["uv", "run", "--frozen", "--directory", "src/docforge", "pytest", "tests/units", "-q", "--cov=app", "--cov=worker", "--cov=shared", "--cov-report=term-missing"]
+docforge-rag-eval = ["uv", "run", "--frozen", "--directory", "src/docforge", "python", "-m", "pytest", "tests/rag_eval", "-q", "-m", "not live"]
+sdk-deps = ["uv", "sync", "--frozen", "--directory", "src/docforge_sdk"]
+sdk-format = ["uv", "run", "--frozen", "--directory", "src/docforge_sdk", "ruff", "format", "--check", "."]
+sdk-lint = ["uv", "run", "--frozen", "--directory", "src/docforge_sdk", "ruff", "check", "."]
+sdk-types = ["uv", "run", "--frozen", "--directory", "src/docforge_sdk", "mypy", "--strict", "docforge_sdk"]
+sdk-tests = ["uv", "run", "--frozen", "--directory", "src/docforge_sdk", "pytest", "-q", "-m", "not live"]
+mcp-deps = ["uv", "sync", "--frozen", "--directory", "src/mcp"]
+mcp-format = ["uv", "run", "--frozen", "--directory", "src/mcp", "ruff", "format", "--check", "."]
+mcp-lint = ["uv", "run", "--frozen", "--directory", "src/mcp", "ruff", "check", "."]
+mcp-types = ["uv", "run", "--frozen", "--directory", "src/mcp", "mypy", "."]
+mcp-tests = ["uv", "run", "--frozen", "--directory", "src/mcp", "pytest", "-q"]
+bge-deps = ["uv", "sync", "--frozen", "--directory", "src/bge_server", "--extra", "cpu"]
+bge-format = ["uv", "run", "--no-sync", "--directory", "src/bge_server", "ruff", "format", "--check", "."]
+bge-lint = ["uv", "run", "--no-sync", "--directory", "src/bge_server", "ruff", "check", "."]
+bge-types = ["uv", "run", "--no-sync", "--directory", "src/bge_server", "mypy", "."]
+bge-tests = ["uv", "run", "--no-sync", "--directory", "src/bge_server", "pytest", "-q"]
+paddle-deps = ["uv", "sync", "--frozen", "--directory", "src/paddle_server", "--extra", "cpu"]
+paddle-format = ["uv", "run", "--no-sync", "--directory", "src/paddle_server", "ruff", "format", "--check", "."]
+paddle-lint = ["uv", "run", "--no-sync", "--directory", "src/paddle_server", "ruff", "check", "."]
+paddle-types = ["uv", "run", "--no-sync", "--directory", "src/paddle_server", "mypy", "."]
+paddle-tests = ["uv", "run", "--no-sync", "--directory", "src/paddle_server", "pytest", "-q"]
+frontend-deps = ["npm", "ci", "--prefix", "src/docforge/app/frontend", "--no-audit", "--no-fund"]
+frontend-lint = ["npm", "--prefix", "src/docforge/app/frontend", "run", "lint"]
+frontend-types = ["npm", "--prefix", "src/docforge/app/frontend", "exec", "--", "tsc", "--noEmit", "-p", "src/docforge/app/frontend"]
+frontend-tests = ["npm", "--prefix", "src/docforge/app/frontend", "run", "test"]
+frontend-build = ["npm", "--prefix", "src/docforge/app/frontend", "run", "build"]
+# The sdk-parity job: the backend's current OpenAPI (dumped serviceless) against the SDK's models and snapshot.
+sdk-parity = ["sh", "-c", "set -e; f=$(mktemp); trap 'rm -f \"$f\"' EXIT; LOGGING_ENABLE_CONSOLE=false LOGGING_ENABLE_FILE=false uv run --frozen --directory src/docforge python app/scripts/dump_openapi.py > \"$f\"; uv run --frozen --directory src/docforge_sdk python tests/check_schema_drift.py \"$f\""]
+
+[rules]
+base = "origin/main"
+# A change to source files needs a change to test files (globs, relative to the repository).
+source = ["src/docforge/app/backend/**", "src/docforge/app/config/**", "src/docforge/app/entrypoint.py", "src/docforge/app/frontend/src/**", "src/docforge/worker/backend/**", "src/docforge/worker/config/**", "src/docforge/worker/entrypoint.py", "src/docforge/shared/libs/**", "src/docforge_sdk/docforge_sdk/**", "src/mcp/libs/**", "src/mcp/entrypoint.py", "src/mcp/config_loader.py", "src/*_server/backend/**", "src/*_server/libs/**", "src/*_server/entrypoint.py", "src/*_server/config_loader.py"]
+tests = ["src/docforge/tests/**", "src/docforge_sdk/tests/**", "src/mcp/tests/**", "src/*_server/tests/**", "src/docforge/app/frontend/src/**/*.test.ts", "src/docforge/app/frontend/src/**/*.test.tsx", "src/docforge/app/frontend/src/test/**"]
+require_tests = true
+timeout = 900
+# The checks run with the CI's variables, never with the real environment (shared database...).
+env_from = "services/docforge/.env.example"
