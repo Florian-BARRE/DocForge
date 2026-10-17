@@ -8,3 +8,5 @@ services/paddle_server/.env
 services/mineru_server/.env
 services/dots_ocr_server/.env
 services/telemetry/.env
+CLAUDE.md
+.claude/settings.json
