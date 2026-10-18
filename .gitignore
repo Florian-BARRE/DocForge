@@ -118,3 +118,6 @@ docs/rpi/
 # Per-worktree dev stack (scripts/dev-stack.sh): written for each worktree, never committed.
 .env.worktree
 .env.worktree.tmp
+
+# AI Dev Kit: local folders never committed (Claude Code's worktrees, Orca's own files)
+.orca/
