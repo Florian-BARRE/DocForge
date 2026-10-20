@@ -232,7 +232,7 @@ services:
 
   # ── Qdrant — vector store (named dense + sparse per collection) ─────────────
   docforge_qdrant:
-    image: qdrant/qdrant:v1.19.1
+    image: qdrant/qdrant:v1.19.2
     container_name: docforge-qdrant
     # No host port in prod — REST API internal to docforge_net only. Dev re-publishes
     # 10043 via compose/overlays/compose.dev.yml.
@@ -260,7 +260,7 @@ services:
 
   # ── SeaweedFS — S3-compatible blob store (content-addressed objects) ────────
   docforge_seaweedfs:
-    image: chrislusf/seaweedfs:4.45
+    image: chrislusf/seaweedfs:4.48
     container_name: docforge-seaweedfs
     command: >
       server
