@@ -6,6 +6,9 @@
 # Left to the CI: db-tests (a real Postgres service), docker-build (Docker), ci.yml's secrets job (gitleaks,
 # downloaded from GitHub). Not in the CI gate either: mineru_server, dots_ocr_server, live tests (-m live).
 
+[project]
+kind = "code"    # code, docs or research: docs and research need no tests rule, their checks are optional
+
 [checks]
 docforge-deps = ["uv", "sync", "--frozen", "--directory", "src/docforge"]
 docforge-format = ["uv", "run", "--frozen", "--directory", "src/docforge", "ruff", "format", "--check", "."]
@@ -49,3 +52,9 @@ require_tests = true
 timeout = 900
 # The checks run with the CI's variables, never with the real environment (shared database...).
 env_from = "services/docforge/.env.example"
+
+# The kit's git hooks (every commit and every push, whatever the agent's tool): the names of [checks]
+# run at each commit (keep them fast: a few seconds) and before each push.
+[hooks]
+pre_commit = []
+pre_push = []

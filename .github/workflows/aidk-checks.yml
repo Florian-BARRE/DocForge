@@ -1,4 +1,4 @@
-# AI Dev Kit: the aidk-checks job (written by aidk onboard and aidk upgrade: edit the kit, not this file).
+# AI Dev Kit: the aidk-checks job (written by aidk project onboard and upgrade: change the kit, not this file).
 # Make it a required status check (Settings > Branches > the base branch's rule): a branch that weakens a
 # test or leaves the owns: of its pull request's description cannot be merged, whoever pushed it.
 name: aidk-checks
@@ -10,7 +10,7 @@ jobs:
   aidk-checks:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - run: python3 .aidk/ci/aidk_checks.py

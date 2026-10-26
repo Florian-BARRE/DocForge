@@ -51,7 +51,7 @@ worktree_extra_env() { # $1: first port of the block
 }
 # --------------------------------------------------------------------------------------------------
 
-PORT_SLOT="${AIDK_PORT_SLOT:-/opt/aidk/bin/aidk-port-slot}"
+PORT_SLOT="${AIDK_PORT_SLOT:-$HOME/.aidk/bin/aidk-port-slot}"
 ENV_FILE=.env.worktree
 
 die() { echo "dev-stack: $*" >&2; exit 1; }
