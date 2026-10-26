@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.12"
 resolution-markers = [
     "python_full_version >= '3.15' and sys_platform == 'win32' and extra != 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu'",
@@ -52,9 +52,9 @@ dependencies = [
     { name = "psutil" },
     { name = "pyyaml" },
     { name = "safetensors" },
-    { name = "torch", version = "2.13.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(python_full_version < '3.15' and sys_platform == 'darwin' and extra == 'extra-19-docforge-bge-server-cpu') or (python_full_version >= '3.15' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu') or (sys_platform != 'darwin' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
-    { name = "torch", version = "2.13.0", source = { registry = "https://pypi.org/simple" }, marker = "(extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu') or (extra != 'extra-19-docforge-bge-server-cpu' and extra != 'extra-19-docforge-bge-server-gpu')" },
-    { name = "torch", version = "2.13.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(python_full_version >= '3.15' and extra == 'extra-19-docforge-bge-server-cpu') or (python_full_version < '3.15' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu') or (sys_platform != 'darwin' and extra == 'extra-19-docforge-bge-server-cpu')" },
+    { name = "torch", version = "2.13.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(python_full_version < '3.15' and sys_platform == 'darwin' and extra == 'extra-19-docforge-bge-server-cpu') or (extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
+    { name = "torch", version = "2.13.0", source = { registry = "https://pypi.org/simple" }, marker = "(extra != 'extra-19-docforge-bge-server-cpu' and extra != 'extra-19-docforge-bge-server-gpu') or (extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
+    { name = "torch", version = "2.13.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(python_full_version >= '3.15' and extra == 'extra-19-docforge-bge-server-cpu') or (sys_platform != 'darwin' and extra == 'extra-19-docforge-bge-server-cpu') or (extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
     { name = "torch", version = "2.13.0+cu126", source = { registry = "https://download.pytorch.org/whl/cu126" }, marker = "extra == 'extra-19-docforge-bge-server-gpu'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/8d/75/94cd5d389649578aca399e5aa822637eec18319a1dadc400ffe2f9a7493f/accelerate-1.14.0.tar.gz", hash = "sha256:41b9c4377a54e0b460a959b0defa1b736e4ca0a2373252d9a539964c2afe3c8d", size = 412167, upload-time = "2026-06-11T13:45:52.326Z" }
@@ -82,7 +82,7 @@ dependencies = [
     { name = "frozenlist" },
     { name = "multidict" },
     { name = "propcache" },
-    { name = "typing-extensions", marker = "python_full_version < '3.13' or (extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
+    { name = "typing-extensions", marker = "python_full_version < '3.13'" },
     { name = "yarl" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/58/d9/22ce5786ac0c1653ae8b6c23bded02c1686d11f0dbb45b31ce128e0df985/aiohttp-3.14.3.tar.gz", hash = "sha256:9491196535a88924a60afd5b5f434b5b203b6cc616250878dbdb223a8f7844bc", size = 7971213, upload-time = "2026-07-23T01:57:27.037Z" }
@@ -177,7 +177,7 @@ version = "1.4.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "frozenlist" },
-    { name = "typing-extensions", marker = "python_full_version < '3.13' or (extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
+    { name = "typing-extensions", marker = "python_full_version < '3.13'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/61/62/06741b579156360248d1ec624842ad0edf697050bbaf7c3e46394e106ad1/aiosignal-1.4.0.tar.gz", hash = "sha256:f47eecd9468083c2029cc99945502cb7708b082c232f9aca65da147157b251c7", size = 25007, upload-time = "2025-07-03T22:54:43.528Z" }
 wheels = [
@@ -208,7 +208,7 @@ version = "4.14.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "idna" },
-    { name = "typing-extensions", marker = "python_full_version < '3.13' or (extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
+    { name = "typing-extensions", marker = "python_full_version < '3.13'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/61/cc/a381afa6efea9f496eff839d4a6a1aed3bfafc7b3ab4b0d1b243a12573dd/anyio-4.14.2.tar.gz", hash = "sha256:cfa139f3ed1a23ee8f88a145ddb5ac7605b8bbfd8592baacd7ce3d8bb4313c7f", size = 260176, upload-time = "2026-07-12T20:29:07.082Z" }
 wheels = [
@@ -363,7 +363,7 @@ name = "click"
 version = "8.4.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "colorama", marker = "sys_platform == 'win32' or (extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
+    { name = "colorama", marker = "sys_platform == 'win32'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/76/d4/81420972a676e8ffea40450d8c8c92943e7218a78fe9b64359836cc9876b/click-8.4.2.tar.gz", hash = "sha256:9a6cea6e60b17ebe0a44c5cc636d94f09bd66142c1cd7d8b4cd731c4917a15f6", size = 338000, upload-time = "2026-06-24T17:45:15.148Z" }
 wheels = [
@@ -402,7 +402,7 @@ resolution-markers = [
     "python_full_version < '3.14' and sys_platform != 'emscripten' and sys_platform != 'win32'",
 ]
 dependencies = [
-    { name = "cuda-pathfinder", marker = "(python_full_version < '3.15' and sys_platform != 'emscripten' and sys_platform != 'win32' and extra == 'extra-19-docforge-bge-server-gpu') or (python_full_version >= '3.15' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu') or (sys_platform == 'emscripten' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu') or (sys_platform == 'win32' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
+    { name = "cuda-pathfinder", marker = "(python_full_version < '3.15' and sys_platform != 'emscripten' and sys_platform != 'win32' and extra == 'extra-19-docforge-bge-server-gpu') or (extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/32/45/557d4ed1fa54f0c7db8aee083229f624990d69f7d00f55477eed5c7e169a/cuda_bindings-12.9.7-cp312-cp312-manylinux_2_24_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:0666d3c082ef8f4b2d670950589373550e9f3bf564d635dd883f24a0b40402ff", size = 7071026, upload-time = "2026-05-27T18:44:13.356Z" },
@@ -519,43 +519,43 @@ wheels = [
 
 [package.optional-dependencies]
 cublas = [
-    { name = "nvidia-cublas", marker = "(platform_machine != 'aarch64' and platform_machine != 'x86_64' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu') or (platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-19-docforge-bge-server-cpu' and extra != 'extra-19-docforge-bge-server-gpu') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-19-docforge-bge-server-cpu' and extra != 'extra-19-docforge-bge-server-gpu') or (platform_machine == 'aarch64' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu') or (platform_machine == 'x86_64' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu') or (sys_platform != 'linux' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
-    { name = "nvidia-cuda-nvrtc", marker = "(platform_machine != 'aarch64' and platform_machine != 'x86_64' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu') or (platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-19-docforge-bge-server-cpu' and extra != 'extra-19-docforge-bge-server-gpu') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-19-docforge-bge-server-cpu' and extra != 'extra-19-docforge-bge-server-gpu') or (platform_machine == 'aarch64' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu') or (platform_machine == 'x86_64' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu') or (sys_platform != 'linux' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
+    { name = "nvidia-cublas", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-19-docforge-bge-server-cpu' and extra != 'extra-19-docforge-bge-server-gpu') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-19-docforge-bge-server-cpu' and extra != 'extra-19-docforge-bge-server-gpu') or (extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
+    { name = "nvidia-cuda-nvrtc", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-19-docforge-bge-server-cpu' and extra != 'extra-19-docforge-bge-server-gpu') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-19-docforge-bge-server-cpu' and extra != 'extra-19-docforge-bge-server-gpu') or (extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
 ]
 cudart = [
-    { name = "nvidia-cuda-runtime", marker = "(platform_machine != 'aarch64' and platform_machine != 'x86_64' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu') or (platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-19-docforge-bge-server-cpu' and extra != 'extra-19-docforge-bge-server-gpu') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-19-docforge-bge-server-cpu' and extra != 'extra-19-docforge-bge-server-gpu') or (platform_machine == 'aarch64' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu') or (platform_machine == 'x86_64' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu') or (sys_platform != 'linux' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
+    { name = "nvidia-cuda-runtime", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-19-docforge-bge-server-cpu' and extra != 'extra-19-docforge-bge-server-gpu') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-19-docforge-bge-server-cpu' and extra != 'extra-19-docforge-bge-server-gpu') or (extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
 ]
 cufft = [
-    { name = "nvidia-cufft", marker = "(platform_machine != 'aarch64' and platform_machine != 'x86_64' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu') or (platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-19-docforge-bge-server-cpu' and extra != 'extra-19-docforge-bge-server-gpu') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-19-docforge-bge-server-cpu' and extra != 'extra-19-docforge-bge-server-gpu') or (platform_machine == 'aarch64' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu') or (platform_machine == 'x86_64' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu') or (sys_platform != 'linux' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
-    { name = "nvidia-nvjitlink", marker = "(platform_machine != 'aarch64' and platform_machine != 'x86_64' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu') or (platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-19-docforge-bge-server-cpu' and extra != 'extra-19-docforge-bge-server-gpu') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-19-docforge-bge-server-cpu' and extra != 'extra-19-docforge-bge-server-gpu') or (platform_machine == 'aarch64' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu') or (platform_machine == 'x86_64' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu') or (sys_platform != 'linux' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
+    { name = "nvidia-cufft", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-19-docforge-bge-server-cpu' and extra != 'extra-19-docforge-bge-server-gpu') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-19-docforge-bge-server-cpu' and extra != 'extra-19-docforge-bge-server-gpu') or (extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
+    { name = "nvidia-nvjitlink", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-19-docforge-bge-server-cpu' and extra != 'extra-19-docforge-bge-server-gpu') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-19-docforge-bge-server-cpu' and extra != 'extra-19-docforge-bge-server-gpu') or (extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
 ]
 cufile = [
-    { name = "nvidia-cufile", marker = "(platform_machine != 'aarch64' and platform_machine != 'x86_64' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu') or (platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-19-docforge-bge-server-cpu' and extra != 'extra-19-docforge-bge-server-gpu') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-19-docforge-bge-server-cpu' and extra != 'extra-19-docforge-bge-server-gpu') or (platform_machine == 'aarch64' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu') or (platform_machine == 'x86_64' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu') or (sys_platform != 'linux' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
+    { name = "nvidia-cufile", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-19-docforge-bge-server-cpu' and extra != 'extra-19-docforge-bge-server-gpu') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-19-docforge-bge-server-cpu' and extra != 'extra-19-docforge-bge-server-gpu') or (extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
 ]
 cupti = [
-    { name = "nvidia-cuda-cupti", marker = "(platform_machine != 'aarch64' and platform_machine != 'x86_64' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu') or (platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-19-docforge-bge-server-cpu' and extra != 'extra-19-docforge-bge-server-gpu') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-19-docforge-bge-server-cpu' and extra != 'extra-19-docforge-bge-server-gpu') or (platform_machine == 'aarch64' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu') or (platform_machine == 'x86_64' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu') or (sys_platform != 'linux' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
+    { name = "nvidia-cuda-cupti", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-19-docforge-bge-server-cpu' and extra != 'extra-19-docforge-bge-server-gpu') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-19-docforge-bge-server-cpu' and extra != 'extra-19-docforge-bge-server-gpu') or (extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
 ]
 curand = [
-    { name = "nvidia-curand", marker = "(platform_machine != 'aarch64' and platform_machine != 'x86_64' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu') or (platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-19-docforge-bge-server-cpu' and extra != 'extra-19-docforge-bge-server-gpu') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-19-docforge-bge-server-cpu' and extra != 'extra-19-docforge-bge-server-gpu') or (platform_machine == 'aarch64' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu') or (platform_machine == 'x86_64' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu') or (sys_platform != 'linux' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
+    { name = "nvidia-curand", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-19-docforge-bge-server-cpu' and extra != 'extra-19-docforge-bge-server-gpu') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-19-docforge-bge-server-cpu' and extra != 'extra-19-docforge-bge-server-gpu') or (extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
 ]
 cusolver = [
-    { name = "nvidia-cublas", marker = "(platform_machine != 'aarch64' and platform_machine != 'x86_64' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu') or (platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-19-docforge-bge-server-cpu' and extra != 'extra-19-docforge-bge-server-gpu') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-19-docforge-bge-server-cpu' and extra != 'extra-19-docforge-bge-server-gpu') or (platform_machine == 'aarch64' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu') or (platform_machine == 'x86_64' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu') or (sys_platform != 'linux' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
-    { name = "nvidia-cusolver", marker = "(platform_machine != 'aarch64' and platform_machine != 'x86_64' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu') or (platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-19-docforge-bge-server-cpu' and extra != 'extra-19-docforge-bge-server-gpu') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-19-docforge-bge-server-cpu' and extra != 'extra-19-docforge-bge-server-gpu') or (platform_machine == 'aarch64' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu') or (platform_machine == 'x86_64' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu') or (sys_platform != 'linux' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
-    { name = "nvidia-cusparse", marker = "(platform_machine != 'aarch64' and platform_machine != 'x86_64' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu') or (platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-19-docforge-bge-server-cpu' and extra != 'extra-19-docforge-bge-server-gpu') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-19-docforge-bge-server-cpu' and extra != 'extra-19-docforge-bge-server-gpu') or (platform_machine == 'aarch64' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu') or (platform_machine == 'x86_64' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu') or (sys_platform != 'linux' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
-    { name = "nvidia-nvjitlink", marker = "(platform_machine != 'aarch64' and platform_machine != 'x86_64' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu') or (platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-19-docforge-bge-server-cpu' and extra != 'extra-19-docforge-bge-server-gpu') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-19-docforge-bge-server-cpu' and extra != 'extra-19-docforge-bge-server-gpu') or (platform_machine == 'aarch64' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu') or (platform_machine == 'x86_64' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu') or (sys_platform != 'linux' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
+    { name = "nvidia-cublas", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-19-docforge-bge-server-cpu' and extra != 'extra-19-docforge-bge-server-gpu') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-19-docforge-bge-server-cpu' and extra != 'extra-19-docforge-bge-server-gpu') or (extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
+    { name = "nvidia-cusolver", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-19-docforge-bge-server-cpu' and extra != 'extra-19-docforge-bge-server-gpu') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-19-docforge-bge-server-cpu' and extra != 'extra-19-docforge-bge-server-gpu') or (extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
+    { name = "nvidia-cusparse", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-19-docforge-bge-server-cpu' and extra != 'extra-19-docforge-bge-server-gpu') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-19-docforge-bge-server-cpu' and extra != 'extra-19-docforge-bge-server-gpu') or (extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
+    { name = "nvidia-nvjitlink", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-19-docforge-bge-server-cpu' and extra != 'extra-19-docforge-bge-server-gpu') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-19-docforge-bge-server-cpu' and extra != 'extra-19-docforge-bge-server-gpu') or (extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
 ]
 cusparse = [
-    { name = "nvidia-cusparse", marker = "(platform_machine != 'aarch64' and platform_machine != 'x86_64' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu') or (platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-19-docforge-bge-server-cpu' and extra != 'extra-19-docforge-bge-server-gpu') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-19-docforge-bge-server-cpu' and extra != 'extra-19-docforge-bge-server-gpu') or (platform_machine == 'aarch64' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu') or (platform_machine == 'x86_64' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu') or (sys_platform != 'linux' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
-    { name = "nvidia-nvjitlink", marker = "(platform_machine != 'aarch64' and platform_machine != 'x86_64' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu') or (platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-19-docforge-bge-server-cpu' and extra != 'extra-19-docforge-bge-server-gpu') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-19-docforge-bge-server-cpu' and extra != 'extra-19-docforge-bge-server-gpu') or (platform_machine == 'aarch64' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu') or (platform_machine == 'x86_64' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu') or (sys_platform != 'linux' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
+    { name = "nvidia-cusparse", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-19-docforge-bge-server-cpu' and extra != 'extra-19-docforge-bge-server-gpu') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-19-docforge-bge-server-cpu' and extra != 'extra-19-docforge-bge-server-gpu') or (extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
+    { name = "nvidia-nvjitlink", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-19-docforge-bge-server-cpu' and extra != 'extra-19-docforge-bge-server-gpu') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-19-docforge-bge-server-cpu' and extra != 'extra-19-docforge-bge-server-gpu') or (extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
 ]
 nvjitlink = [
-    { name = "nvidia-nvjitlink", marker = "(platform_machine != 'aarch64' and platform_machine != 'x86_64' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu') or (platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-19-docforge-bge-server-cpu' and extra != 'extra-19-docforge-bge-server-gpu') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-19-docforge-bge-server-cpu' and extra != 'extra-19-docforge-bge-server-gpu') or (platform_machine == 'aarch64' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu') or (platform_machine == 'x86_64' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu') or (sys_platform != 'linux' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
+    { name = "nvidia-nvjitlink", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-19-docforge-bge-server-cpu' and extra != 'extra-19-docforge-bge-server-gpu') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-19-docforge-bge-server-cpu' and extra != 'extra-19-docforge-bge-server-gpu') or (extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
 ]
 nvrtc = [
-    { name = "nvidia-cuda-nvrtc", marker = "(platform_machine != 'aarch64' and platform_machine != 'x86_64' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu') or (platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-19-docforge-bge-server-cpu' and extra != 'extra-19-docforge-bge-server-gpu') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-19-docforge-bge-server-cpu' and extra != 'extra-19-docforge-bge-server-gpu') or (platform_machine == 'aarch64' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu') or (platform_machine == 'x86_64' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu') or (sys_platform != 'linux' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
+    { name = "nvidia-cuda-nvrtc", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-19-docforge-bge-server-cpu' and extra != 'extra-19-docforge-bge-server-gpu') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-19-docforge-bge-server-cpu' and extra != 'extra-19-docforge-bge-server-gpu') or (extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
 ]
 nvtx = [
-    { name = "nvidia-nvtx", marker = "(platform_machine != 'aarch64' and platform_machine != 'x86_64' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu') or (platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-19-docforge-bge-server-cpu' and extra != 'extra-19-docforge-bge-server-gpu') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-19-docforge-bge-server-cpu' and extra != 'extra-19-docforge-bge-server-gpu') or (platform_machine == 'aarch64' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu') or (platform_machine == 'x86_64' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu') or (sys_platform != 'linux' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
+    { name = "nvidia-nvtx", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-19-docforge-bge-server-cpu' and extra != 'extra-19-docforge-bge-server-gpu') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-19-docforge-bge-server-cpu' and extra != 'extra-19-docforge-bge-server-gpu') or (extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
 ]
 
 [[package]]
@@ -610,8 +610,8 @@ dependencies = [
 
 [package.optional-dependencies]
 cpu = [
-    { name = "torch", version = "2.13.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(python_full_version < '3.15' and sys_platform == 'darwin' and extra == 'extra-19-docforge-bge-server-cpu') or (python_full_version >= '3.15' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu') or (sys_platform != 'darwin' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
-    { name = "torch", version = "2.13.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(python_full_version >= '3.15' and extra == 'extra-19-docforge-bge-server-cpu') or (python_full_version < '3.15' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu') or (sys_platform != 'darwin' and extra == 'extra-19-docforge-bge-server-cpu')" },
+    { name = "torch", version = "2.13.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(python_full_version < '3.15' and sys_platform == 'darwin' and extra == 'extra-19-docforge-bge-server-cpu') or (extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
+    { name = "torch", version = "2.13.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(python_full_version >= '3.15' and extra == 'extra-19-docforge-bge-server-cpu') or (sys_platform != 'darwin' and extra == 'extra-19-docforge-bge-server-cpu') or (extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
 ]
 gpu = [
     { name = "torch", version = "2.13.0+cu126", source = { registry = "https://download.pytorch.org/whl/cu126" } },
@@ -653,7 +653,7 @@ dev = [
 
 [[package]]
 name = "fastapi"
-version = "0.143.3"
+version = "0.162.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "annotated-doc" },
@@ -663,9 +663,9 @@ dependencies = [
     { name = "typing-extensions" },
     { name = "typing-inspection" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/38/d5/b0aeb0b303650ac87b0411de4aaf3f901b06042dcc3fb00f30b97b7ff585/fastapi-0.143.3.tar.gz", hash = "sha256:b9ab567ee57afb4454004ce04c889f8f0160ac47946b99795887cd6e88484848", size = 469834, upload-time = "2026-10-16T14:14:13.31Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/e9/eb/2cf8c80abf09b2800aef0a83b41066fbfda8ee5495b7a08b9d1af40f7046/fastapi-0.162.0.tar.gz", hash = "sha256:6a22c1e2e6e32e0633ee7e170f00009a29b8228b16feb219ee42f32fd8d88a8f", size = 527867, upload-time = "2026-10-23T18:47:33.264Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/2c/1a/03d246befcf307219bb2161c97d8c5d314f84125bf7dd245730a28589828/fastapi-0.143.3-py3-none-any.whl", hash = "sha256:75e8bd68e2f52f77d29b2879749c257d64de2d85282d25270caf2bfccce5efe5", size = 144849, upload-time = "2026-10-16T14:14:11.763Z" },
+    { url = "https://files.pythonhosted.org/packages/b4/4f/3f2c25c9b43970b5e9a08beb5e04776247edea684ddc0930f4f02f0bb6cb/fastapi-0.162.0-py3-none-any.whl", hash = "sha256:3785963de305dd09912426cb81f2d230fce98ab3521cdfe97265c8d14983128c", size = 148912, upload-time = "2026-10-23T18:47:31.734Z" },
 ]
 
 [[package]]
@@ -689,9 +689,9 @@ dependencies = [
     { name = "protobuf" },
     { name = "sentence-transformers" },
     { name = "sentencepiece" },
-    { name = "torch", version = "2.13.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(python_full_version < '3.15' and sys_platform == 'darwin' and extra == 'extra-19-docforge-bge-server-cpu') or (python_full_version >= '3.15' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu') or (sys_platform != 'darwin' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
-    { name = "torch", version = "2.13.0", source = { registry = "https://pypi.org/simple" }, marker = "(extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu') or (extra != 'extra-19-docforge-bge-server-cpu' and extra != 'extra-19-docforge-bge-server-gpu')" },
-    { name = "torch", version = "2.13.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(python_full_version >= '3.15' and extra == 'extra-19-docforge-bge-server-cpu') or (python_full_version < '3.15' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu') or (sys_platform != 'darwin' and extra == 'extra-19-docforge-bge-server-cpu')" },
+    { name = "torch", version = "2.13.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(python_full_version < '3.15' and sys_platform == 'darwin' and extra == 'extra-19-docforge-bge-server-cpu') or (extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
+    { name = "torch", version = "2.13.0", source = { registry = "https://pypi.org/simple" }, marker = "(extra != 'extra-19-docforge-bge-server-cpu' and extra != 'extra-19-docforge-bge-server-gpu') or (extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
+    { name = "torch", version = "2.13.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(python_full_version >= '3.15' and extra == 'extra-19-docforge-bge-server-cpu') or (sys_platform != 'darwin' and extra == 'extra-19-docforge-bge-server-cpu') or (extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
     { name = "torch", version = "2.13.0+cu126", source = { registry = "https://download.pytorch.org/whl/cu126" }, marker = "extra == 'extra-19-docforge-bge-server-gpu'" },
     { name = "transformers" },
 ]
@@ -907,7 +907,7 @@ source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "filelock" },
     { name = "fsspec" },
-    { name = "hf-xet", marker = "platform_machine == 'aarch64' or platform_machine == 'amd64' or platform_machine == 'arm64' or platform_machine == 'x86_64' or (extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
+    { name = "hf-xet", marker = "platform_machine == 'aarch64' or platform_machine == 'amd64' or platform_machine == 'arm64' or platform_machine == 'x86_64'" },
     { name = "packaging" },
     { name = "pyyaml" },
     { name = "requests" },
@@ -1083,7 +1083,7 @@ source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "colorama" },
     { name = "loguru" },
-    { name = "win32-setctime", marker = "sys_platform == 'win32' or (extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
+    { name = "win32-setctime", marker = "sys_platform == 'win32'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/ce/27/5c19d41dfa74c738faf9c9218831feb7b478584a9b254f3dac81a2042582/loggerplusplus-1.2.0.tar.gz", hash = "sha256:1ff7f65eba6cb09645dcac796b8f8e786b14aecc297f2b55ddb01429495c7ce2", size = 58136, upload-time = "2026-09-16T13:48:45.508Z" }
 wheels = [
@@ -1095,8 +1095,8 @@ name = "loguru"
 version = "0.7.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "colorama", marker = "sys_platform == 'win32' or (extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
-    { name = "win32-setctime", marker = "sys_platform == 'win32' or (extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
+    { name = "colorama", marker = "sys_platform == 'win32'" },
+    { name = "win32-setctime", marker = "sys_platform == 'win32'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/3a/05/a1dae3dffd1116099471c643b8924f5aa6524411dc6c63fdae648c4f1aca/loguru-0.7.3.tar.gz", hash = "sha256:19480589e77d47b8d85b2c827ad95d49bf31b0dcde16593892eb51dd18706eb6", size = 63559, upload-time = "2024-12-06T11:20:56.608Z" }
 wheels = [
@@ -1417,7 +1417,7 @@ version = "2.4.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "ast-serialize" },
-    { name = "librt", marker = "platform_python_implementation != 'PyPy' or (extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
+    { name = "librt", marker = "platform_python_implementation != 'PyPy'" },
     { name = "mypy-extensions" },
     { name = "pathspec" },
     { name = "typing-extensions" },
@@ -1635,7 +1635,7 @@ name = "nvidia-cudnn-cu12"
 version = "9.10.2.21"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "nvidia-cublas-cu12", marker = "(sys_platform != 'emscripten' and sys_platform != 'win32' and extra == 'extra-19-docforge-bge-server-gpu') or (sys_platform == 'emscripten' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu') or (sys_platform == 'win32' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
+    { name = "nvidia-cublas-cu12", marker = "(sys_platform != 'emscripten' and sys_platform != 'win32' and extra == 'extra-19-docforge-bge-server-gpu') or (extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/fa/41/e79269ce215c857c935fd86bcfe91a451a584dfc27f1e068f568b9ad1ab7/nvidia_cudnn_cu12-9.10.2.21-py3-none-manylinux_2_27_aarch64.whl", hash = "sha256:c9132cc3f8958447b4910a1720036d9eff5928cc3179b0a51fb6d167c6cc87d8", size = 705026878, upload-time = "2025-06-06T21:52:51.348Z" },
@@ -1674,7 +1674,7 @@ name = "nvidia-cufft-cu12"
 version = "11.3.0.4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "nvidia-nvjitlink-cu12", marker = "(sys_platform != 'emscripten' and sys_platform != 'win32' and extra == 'extra-19-docforge-bge-server-gpu') or (sys_platform == 'emscripten' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu') or (sys_platform == 'win32' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
+    { name = "nvidia-nvjitlink-cu12", marker = "(sys_platform != 'emscripten' and sys_platform != 'win32' and extra == 'extra-19-docforge-bge-server-gpu') or (extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/1f/37/c50d2b2f2c07e146776389e3080f4faf70bcc4fa6e19d65bb54ca174ebc3/nvidia_cufft_cu12-11.3.0.4-py3-none-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:d16079550df460376455cba121db6564089176d9bac9e4f360493ca4741b22a6", size = 200164144, upload-time = "2024-11-20T17:40:58.288Z" },
@@ -1744,9 +1744,9 @@ name = "nvidia-cusolver-cu12"
 version = "11.7.1.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "nvidia-cublas-cu12", marker = "(sys_platform != 'emscripten' and sys_platform != 'win32' and extra == 'extra-19-docforge-bge-server-gpu') or (sys_platform == 'emscripten' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu') or (sys_platform == 'win32' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
-    { name = "nvidia-cusparse-cu12", marker = "(sys_platform != 'emscripten' and sys_platform != 'win32' and extra == 'extra-19-docforge-bge-server-gpu') or (sys_platform == 'emscripten' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu') or (sys_platform == 'win32' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
-    { name = "nvidia-nvjitlink-cu12", marker = "(sys_platform != 'emscripten' and sys_platform != 'win32' and extra == 'extra-19-docforge-bge-server-gpu') or (sys_platform == 'emscripten' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu') or (sys_platform == 'win32' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
+    { name = "nvidia-cublas-cu12", marker = "(sys_platform != 'emscripten' and sys_platform != 'win32' and extra == 'extra-19-docforge-bge-server-gpu') or (extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
+    { name = "nvidia-cusparse-cu12", marker = "(sys_platform != 'emscripten' and sys_platform != 'win32' and extra == 'extra-19-docforge-bge-server-gpu') or (extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
+    { name = "nvidia-nvjitlink-cu12", marker = "(sys_platform != 'emscripten' and sys_platform != 'win32' and extra == 'extra-19-docforge-bge-server-gpu') or (extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/93/17/dbe1aa865e4fdc7b6d4d0dd308fdd5aaab60f939abfc0ea1954eac4fb113/nvidia_cusolver_cu12-11.7.1.2-py3-none-manylinux2014_aarch64.whl", hash = "sha256:0ce237ef60acde1efc457335a2ddadfd7610b892d94efee7b776c64bb1cac9e0", size = 157833628, upload-time = "2024-10-01T17:05:05.591Z" },
@@ -1774,7 +1774,7 @@ name = "nvidia-cusparse-cu12"
 version = "12.5.4.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "nvidia-nvjitlink-cu12", marker = "(sys_platform != 'emscripten' and sys_platform != 'win32' and extra == 'extra-19-docforge-bge-server-gpu') or (sys_platform == 'emscripten' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu') or (sys_platform == 'win32' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
+    { name = "nvidia-nvjitlink-cu12", marker = "(sys_platform != 'emscripten' and sys_platform != 'win32' and extra == 'extra-19-docforge-bge-server-gpu') or (extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/eb/eb/6681efd0aa7df96b4f8067b3ce7246833dd36830bb4cec8896182773db7d/nvidia_cusparse_cu12-12.5.4.2-py3-none-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:d25b62fb18751758fe3c93a4a08eff08effedfe4edf1c6bb5afd0890fe88f887", size = 216451147, upload-time = "2024-11-20T17:44:18.055Z" },
@@ -1958,7 +1958,7 @@ source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "numpy" },
     { name = "python-dateutil" },
-    { name = "tzdata", marker = "sys_platform == 'emscripten' or sys_platform == 'win32' or (extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
+    { name = "tzdata", marker = "sys_platform == 'emscripten' or sys_platform == 'win32'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/be/4f/5f3422a2afec5ffc46308b79e53291365a93748b498ac2e58bead0197916/pandas-3.0.5.tar.gz", hash = "sha256:dca3734d6ab7c906e6730f0788b0a1dbb9f2467731f9711f77995c8e9d62d712", size = 4658219, upload-time = "2026-07-22T22:19:28.819Z" }
 wheels = [
@@ -2018,9 +2018,9 @@ dependencies = [
     { name = "psutil" },
     { name = "pyyaml" },
     { name = "safetensors" },
-    { name = "torch", version = "2.13.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(python_full_version < '3.15' and sys_platform == 'darwin' and extra == 'extra-19-docforge-bge-server-cpu') or (python_full_version >= '3.15' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu') or (sys_platform != 'darwin' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
-    { name = "torch", version = "2.13.0", source = { registry = "https://pypi.org/simple" }, marker = "(extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu') or (extra != 'extra-19-docforge-bge-server-cpu' and extra != 'extra-19-docforge-bge-server-gpu')" },
-    { name = "torch", version = "2.13.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(python_full_version >= '3.15' and extra == 'extra-19-docforge-bge-server-cpu') or (python_full_version < '3.15' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu') or (sys_platform != 'darwin' and extra == 'extra-19-docforge-bge-server-cpu')" },
+    { name = "torch", version = "2.13.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(python_full_version < '3.15' and sys_platform == 'darwin' and extra == 'extra-19-docforge-bge-server-cpu') or (extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
+    { name = "torch", version = "2.13.0", source = { registry = "https://pypi.org/simple" }, marker = "(extra != 'extra-19-docforge-bge-server-cpu' and extra != 'extra-19-docforge-bge-server-gpu') or (extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
+    { name = "torch", version = "2.13.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(python_full_version >= '3.15' and extra == 'extra-19-docforge-bge-server-cpu') or (sys_platform != 'darwin' and extra == 'extra-19-docforge-bge-server-cpu') or (extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
     { name = "torch", version = "2.13.0+cu126", source = { registry = "https://download.pytorch.org/whl/cu126" }, marker = "extra == 'extra-19-docforge-bge-server-gpu'" },
     { name = "tqdm" },
     { name = "transformers" },
@@ -2325,7 +2325,7 @@ name = "pytest"
 version = "9.1.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "colorama", marker = "sys_platform == 'win32' or (extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
+    { name = "colorama", marker = "sys_platform == 'win32'" },
     { name = "iniconfig" },
     { name = "packaging" },
     { name = "pluggy" },
@@ -2342,7 +2342,7 @@ version = "1.4.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pytest" },
-    { name = "typing-extensions", marker = "python_full_version < '3.13' or (extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
+    { name = "typing-extensions", marker = "python_full_version < '3.13'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/43/7c/d36d04db312ecf4298932ef77e6e4a9e8ad017906e24e34f0b0c361a2473/pytest_asyncio-1.4.0.tar.gz", hash = "sha256:c6c0d2259945122819f171a32ecea2c349ead889ee28176caaf492143424be42", size = 58514, upload-time = "2026-05-26T09:56:04.083Z" }
 wheels = [
@@ -2521,27 +2521,27 @@ wheels = [
 
 [[package]]
 name = "ruff"
-version = "0.17.1"
+version = "0.17.2"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/f9/e7/e6d5749983b020e6cb1055abec0a6f361a8e94f0184cdcf56d4760995f02/ruff-0.17.1.tar.gz", hash = "sha256:5bb796c5112e9fb9527f2ef2faa0a130d6312d19de92bcfaddd70dbb2d41020f", size = 5323349, upload-time = "2026-10-15T15:23:18.64Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/ae/58/690cf56da80c8f2c8bf12042b6017beac2c34fe961f65420bcb3fb7fac38/ruff-0.17.2.tar.gz", hash = "sha256:84d632402d14c23b488f941db23712d6736a013225162062d34558c3f3c780eb", size = 5333400, upload-time = "2026-10-22T18:38:00.181Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/2e/78/90c46ca6250709f7c37e397b60d06061adee8d0f7d13959ed6a8e49b14fd/ruff-0.17.1-py3-none-linux_armv6l.whl", hash = "sha256:1796c41eafec66f4635125dd1e074a7aa27b8d20c187d484360acf11d247fc4a", size = 10147528, upload-time = "2026-10-15T15:22:33.667Z" },
-    { url = "https://files.pythonhosted.org/packages/aa/d2/a2e28bc35b083ae51fa07dfba5280a667c8b01ecaee7802fc8849dcd5c46/ruff-0.17.1-py3-none-macosx_10_12_x86_64.whl", hash = "sha256:8eadb09a788010be29c895418bdfa513e4e1c65e64b94e5b19e4cd381f6cc7fb", size = 10225974, upload-time = "2026-10-15T15:22:36.328Z" },
-    { url = "https://files.pythonhosted.org/packages/8e/71/7a9029a81c8206ee01a98f6cfeeb56e6c095af86857581a37045c46d7e94/ruff-0.17.1-py3-none-macosx_11_0_arm64.whl", hash = "sha256:29b454f18ca3eeaf37fbf140841dcf27d36109e29dee9aae8acecb68c26c6f74", size = 9270361, upload-time = "2026-10-15T15:22:38.651Z" },
-    { url = "https://files.pythonhosted.org/packages/c0/8c/e075e9c917cb0575297880c96768304e881240171c870cbd8d9b7b54bec2/ruff-0.17.1-py3-none-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:872e03dd231744d6c5ec5c8af6be52b71323fc6ee096e4c8b34d9f844ee3b978", size = 9938300, upload-time = "2026-10-15T15:22:41.284Z" },
-    { url = "https://files.pythonhosted.org/packages/87/27/0b4bb926a49de2383f161272b4d863571a4c7ecdbf595a6bc58813a13367/ruff-0.17.1-py3-none-manylinux_2_17_armv7l.manylinux2014_armv7l.whl", hash = "sha256:4c0d6cb5f8fbac77eec9af49f4fc0eaf856b05545e372b0694d24b4e76b1c640", size = 9948464, upload-time = "2026-10-15T15:22:43.681Z" },
-    { url = "https://files.pythonhosted.org/packages/14/27/518d57e0e02aecb8ea4acac6b57b51a53173d25fa734952bfdd7d531e88e/ruff-0.17.1-py3-none-manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:78beced4a3c94dfedbee4b999b95b6a27b35820fdc0afbacc6d37a8da26c1cd1", size = 10638639, upload-time = "2026-10-15T15:22:46.081Z" },
-    { url = "https://files.pythonhosted.org/packages/01/82/d89a4e498ade59e6cee52d67f8da569019372212b87468c1fdeae884601c/ruff-0.17.1-py3-none-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl", hash = "sha256:7feefc63921202894f0e158b0e32f45a5950d70a7fb693ccb9264816c25b1c05", size = 11337238, upload-time = "2026-10-15T15:22:48.894Z" },
-    { url = "https://files.pythonhosted.org/packages/a2/7c/3b0fdef9352656317c977086fe1d802902406e4f2a0d8578da90c0e6d1c5/ruff-0.17.1-py3-none-manylinux_2_17_s390x.manylinux2014_s390x.whl", hash = "sha256:684154861a819bf1f433669d2a0ce9c3e54677c65b8ebb866cc2a7ec86345785", size = 10896327, upload-time = "2026-10-15T15:22:51.45Z" },
-    { url = "https://files.pythonhosted.org/packages/62/86/5566290219708ce2928f3a29c4f843a1185b341ec6111c4631a33c5ceced/ruff-0.17.1-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:a6ef98e51de8ef38082f90653ceeb84944bd7673783eea13e1647c5b9b064189", size = 10350811, upload-time = "2026-10-15T15:22:54.401Z" },
-    { url = "https://files.pythonhosted.org/packages/ad/d2/ca8462dabb3c413990d49703ba306c30c862195a75448d080fa8fcce9775/ruff-0.17.1-py3-none-manylinux_2_31_riscv64.whl", hash = "sha256:8f9aa5b5bd5fa1937803ea609c8f153b8de39bf3e0e149897ae34b0c5b52f467", size = 10569994, upload-time = "2026-10-15T15:22:57.142Z" },
-    { url = "https://files.pythonhosted.org/packages/e3/ad/dd1864c1f1db17c8cfb297ce70b352388e6977620f66f7182c52855407df/ruff-0.17.1-py3-none-musllinux_1_2_aarch64.whl", hash = "sha256:80e53b0e5faa3c5667f035daaa032893ae42b7cfe708c886d39ed131e54688ab", size = 10059672, upload-time = "2026-10-15T15:23:00.084Z" },
-    { url = "https://files.pythonhosted.org/packages/65/45/3f56cf1d2168c2165cdd5ac6f9668aee66a4cfdd4caf2b2cc5ccb2b1d568/ruff-0.17.1-py3-none-musllinux_1_2_armv7l.whl", hash = "sha256:056c5d5fa0ac790051ae165d7035c7bf956d02de2db557f2e9b31d877a505fca", size = 9947803, upload-time = "2026-10-15T15:23:03.132Z" },
-    { url = "https://files.pythonhosted.org/packages/aa/4b/5457cb2be4c1d1ea5e919558131a0f197a4a454a0530d9e30820e8206e4c/ruff-0.17.1-py3-none-musllinux_1_2_i686.whl", hash = "sha256:bd8f5a55b10f371642eacd0e8665a42a8b97da15c9a7187c79e697b77b5e0ce4", size = 10351807, upload-time = "2026-10-15T15:23:05.628Z" },
-    { url = "https://files.pythonhosted.org/packages/49/fb/db15b4f8fa24a1e36b99e1401f42ef6df16ee299a48670d5d262b771e7d7/ruff-0.17.1-py3-none-musllinux_1_2_x86_64.whl", hash = "sha256:ce05e6f3973611d9550a600e04bb531061e368baba31610eb57c1509a8f21a0a", size = 10765716, upload-time = "2026-10-15T15:23:08.092Z" },
-    { url = "https://files.pythonhosted.org/packages/0a/e8/1e186578076aff7a80735f625005fde678412ab609cd323ed182eb7d6b87/ruff-0.17.1-py3-none-win32.whl", hash = "sha256:1de0030a8aa78c65c5fecb84b2e5c390ac684c0452875a02afc7c083d49a496a", size = 9895093, upload-time = "2026-10-15T15:23:10.582Z" },
-    { url = "https://files.pythonhosted.org/packages/6a/2e/da3d9589bae8e8b58f3a48bd5bc0b980232fb14a83bf02c3be7660f87c1b/ruff-0.17.1-py3-none-win_amd64.whl", hash = "sha256:5df76f16580fab58d0f6c98a3ac254a4abceb7b2489b8b678335869cff77b3d7", size = 10097955, upload-time = "2026-10-15T15:23:13.309Z" },
-    { url = "https://files.pythonhosted.org/packages/df/c9/0f2a4dea06a5e12c1191ee3d96b1e1233797d0d5e18f97a2b909a95a9836/ruff-0.17.1-py3-none-win_arm64.whl", hash = "sha256:42400b9a6ff8515ff27796f07f92e0195be011c86e81e381606f58ea5502fef4", size = 9853542, upload-time = "2026-10-15T15:23:16.05Z" },
+    { url = "https://files.pythonhosted.org/packages/98/b8/8b6d69c57e8fe1cc6af1aa7493b72a1a5b5a8afe34694e302025441729d4/ruff-0.17.2-py3-none-linux_armv6l.whl", hash = "sha256:96a65e755d8dba094707fb23ab602111d9a31ec2835b3a6992a1914a8fcb211e", size = 10183857, upload-time = "2026-10-22T18:37:14.956Z" },
+    { url = "https://files.pythonhosted.org/packages/e8/61/12cc2ff7b2fa90a268ce1e2162c23aaf76e601d22623f6a31b0eeaa764b0/ruff-0.17.2-py3-none-macosx_10_12_x86_64.whl", hash = "sha256:39c5b55c960515cdb32be16e69efb5734c589c06a0eb38a22694524a336b889d", size = 10210904, upload-time = "2026-10-22T18:37:17.985Z" },
+    { url = "https://files.pythonhosted.org/packages/e8/7c/b8850a8e4ad29f64a827dd6c6902db4a9aa538fb2b9eef4e26084001a3bb/ruff-0.17.2-py3-none-macosx_11_0_arm64.whl", hash = "sha256:92a80d2f44584dabb0189b3a6c393e37e525e04942838482010575cb81945be7", size = 9408439, upload-time = "2026-10-22T18:37:20.964Z" },
+    { url = "https://files.pythonhosted.org/packages/b7/b6/6a64fae86ca5e5e29d5adc311e5481de726cedf9aee607435a16c31c442a/ruff-0.17.2-py3-none-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:b7d0906677d89bbf3cf73cde64b5bbe2ab35df3ae43e49ee2627301e91265bac", size = 10047078, upload-time = "2026-10-22T18:37:23.717Z" },
+    { url = "https://files.pythonhosted.org/packages/10/19/23d376547715175aa1bd46df48df6aacc7c6439d9daf19cac15975180aa5/ruff-0.17.2-py3-none-manylinux_2_17_armv7l.manylinux2014_armv7l.whl", hash = "sha256:7cfd783590edf2b77317882631900f6a13ea2e8eacefe6ebf2370d2715299160", size = 9990478, upload-time = "2026-10-22T18:37:26.584Z" },
+    { url = "https://files.pythonhosted.org/packages/93/6c/34cda32cbe13adac5c6b291a307a5570d8ebd37c0c86339f0fe628e55632/ruff-0.17.2-py3-none-manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:122258f6ecde0e0dd1bb60b24263c3edde4338caf723fca711cc729f9bfd414a", size = 10673624, upload-time = "2026-10-22T18:37:29.767Z" },
+    { url = "https://files.pythonhosted.org/packages/bf/10/5d762a4dbc851d8bb47863cf3a28a61bf31c804d393b70d891fac899f5d1/ruff-0.17.2-py3-none-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl", hash = "sha256:7f8fba429d6ac4128ab29cfb8fa6240d2fa671d04adf7f84d3b22fc7b6b6bea4", size = 11351797, upload-time = "2026-10-22T18:37:32.535Z" },
+    { url = "https://files.pythonhosted.org/packages/3f/04/a0e92a81faf5c81c1c98d4374c8401734ccf2b8cca7d0170cb0fec08c6e2/ruff-0.17.2-py3-none-manylinux_2_17_s390x.manylinux2014_s390x.whl", hash = "sha256:583bd67bb9e7061dd09bc46a0a884bae2bbd214dbcd48e509813612619683869", size = 10949414, upload-time = "2026-10-22T18:37:35.501Z" },
+    { url = "https://files.pythonhosted.org/packages/c3/d8/59894cf630d2d86882457a2a6a0a1533410c5c805bfbac6f6eb4b5aef69d/ruff-0.17.2-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:c60f93fec7142dba5b8f487f94bf2f6231dae24dc11e4c48648347c8b0720004", size = 10528000, upload-time = "2026-10-22T18:37:37.88Z" },
+    { url = "https://files.pythonhosted.org/packages/ab/95/d6e30c51e851d37e10762ad91fa1e76ddaad998589b5667962a3cfbc9edd/ruff-0.17.2-py3-none-manylinux_2_31_riscv64.whl", hash = "sha256:c555a877f8f41447e318101cfefea9bf12dfa9f82eedf90c376e57e069f917d0", size = 10571779, upload-time = "2026-10-22T18:37:40.444Z" },
+    { url = "https://files.pythonhosted.org/packages/f4/5a/a7e1d74fb464250137d3d4eca645d323536533b672004d04ee0e46e0caf3/ruff-0.17.2-py3-none-musllinux_1_2_aarch64.whl", hash = "sha256:ba405cbd5ec7bda1f555d5e52be1fd68d02608d4d95d24591bdac92cfacb579f", size = 10051707, upload-time = "2026-10-22T18:37:42.812Z" },
+    { url = "https://files.pythonhosted.org/packages/6e/f2/02fca29ca7999380f0350a7212fe755c11ab9c22d61327356cce8decdbc6/ruff-0.17.2-py3-none-musllinux_1_2_armv7l.whl", hash = "sha256:8c21b4ab24485358f17291a4f8dc5399b834e963b8efedd920fe4fdb02081bb4", size = 9998227, upload-time = "2026-10-22T18:37:45.224Z" },
+    { url = "https://files.pythonhosted.org/packages/d1/00/55aa604a093dfdc1526e570fae0bb7d37a2221c7b4728d5f080b2add16ba/ruff-0.17.2-py3-none-musllinux_1_2_i686.whl", hash = "sha256:5875a16b0de70b43cb81eabea5ae5e8f5d1b2fd1b5e6ed07f80cfe5019d0bd5a", size = 10377692, upload-time = "2026-10-22T18:37:47.704Z" },
+    { url = "https://files.pythonhosted.org/packages/e4/5a/a7a640f47bb906ec8fa233ea84319d503e6dee02b59e3901bd312ebd1f9b/ruff-0.17.2-py3-none-musllinux_1_2_x86_64.whl", hash = "sha256:2d086be452eed686aa51271ecf2cbe5037956517cc6ee39a17b4489ac12f8bbe", size = 10790587, upload-time = "2026-10-22T18:37:50.191Z" },
+    { url = "https://files.pythonhosted.org/packages/2c/d4/c3b74e1b4808438ea7f14bb914478025e2d51261f60774a54a0fa222ec46/ruff-0.17.2-py3-none-win32.whl", hash = "sha256:6bce7d1f5165701ae18f5df85c65afe78cddfa6c5fb4b9bdb0014d60388f3edd", size = 9870537, upload-time = "2026-10-22T18:37:52.486Z" },
+    { url = "https://files.pythonhosted.org/packages/1c/9a/c7da96c2c96d20704cf9027f7a5121da272a8c05f1d1531ba949e3b3df04/ruff-0.17.2-py3-none-win_amd64.whl", hash = "sha256:1b59d447f197bef9ef48a22ba1a6016137753c6099e9bac9c36eb566e422424c", size = 10282826, upload-time = "2026-10-22T18:37:55.2Z" },
+    { url = "https://files.pythonhosted.org/packages/81/60/a3604c79cb02777b6cb84da894104021986f06c4bc41375102cc95049a32/ruff-0.17.2-py3-none-win_arm64.whl", hash = "sha256:195ad918027f817c119310ca89a42d347887dfc28934aaa869325e9c5dc9d962", size = 9827036, upload-time = "2026-10-22T18:37:58.031Z" },
 ]
 
 [[package]]
@@ -2667,9 +2667,9 @@ dependencies = [
     { name = "numpy" },
     { name = "scikit-learn" },
     { name = "scipy" },
-    { name = "torch", version = "2.13.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(python_full_version < '3.15' and sys_platform == 'darwin' and extra == 'extra-19-docforge-bge-server-cpu') or (python_full_version >= '3.15' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu') or (sys_platform != 'darwin' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
-    { name = "torch", version = "2.13.0", source = { registry = "https://pypi.org/simple" }, marker = "(extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu') or (extra != 'extra-19-docforge-bge-server-cpu' and extra != 'extra-19-docforge-bge-server-gpu')" },
-    { name = "torch", version = "2.13.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(python_full_version >= '3.15' and extra == 'extra-19-docforge-bge-server-cpu') or (python_full_version < '3.15' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu') or (sys_platform != 'darwin' and extra == 'extra-19-docforge-bge-server-cpu')" },
+    { name = "torch", version = "2.13.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(python_full_version < '3.15' and sys_platform == 'darwin' and extra == 'extra-19-docforge-bge-server-cpu') or (extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
+    { name = "torch", version = "2.13.0", source = { registry = "https://pypi.org/simple" }, marker = "(extra != 'extra-19-docforge-bge-server-cpu' and extra != 'extra-19-docforge-bge-server-gpu') or (extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
+    { name = "torch", version = "2.13.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(python_full_version >= '3.15' and extra == 'extra-19-docforge-bge-server-cpu') or (sys_platform != 'darwin' and extra == 'extra-19-docforge-bge-server-cpu') or (extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
     { name = "torch", version = "2.13.0+cu126", source = { registry = "https://download.pytorch.org/whl/cu126" }, marker = "extra == 'extra-19-docforge-bge-server-gpu'" },
     { name = "tqdm" },
     { name = "transformers" },
@@ -2747,7 +2747,7 @@ version = "1.3.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyio" },
-    { name = "typing-extensions", marker = "python_full_version < '3.13' or (extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
+    { name = "typing-extensions", marker = "python_full_version < '3.13'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/eb/e3/7c1dc7381d9f8ab7d854328ebfa884e62cb3f3d8549ddfd37c7814f42afa/starlette-1.3.1.tar.gz", hash = "sha256:05d0213193f2fbaae60e2ecb593b4add4262ad4e46536b54abe36f11a71724e0", size = 2703240, upload-time = "2026-06-12T09:23:11.602Z" }
 wheels = [
@@ -2810,13 +2810,13 @@ resolution-markers = [
     "python_full_version < '3.14' and sys_platform == 'darwin'",
 ]
 dependencies = [
-    { name = "filelock", marker = "(python_full_version < '3.15' and sys_platform == 'darwin' and extra == 'extra-19-docforge-bge-server-cpu') or (python_full_version >= '3.15' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu') or (sys_platform != 'darwin' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
-    { name = "fsspec", marker = "(python_full_version < '3.15' and sys_platform == 'darwin' and extra == 'extra-19-docforge-bge-server-cpu') or (python_full_version >= '3.15' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu') or (sys_platform != 'darwin' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
-    { name = "jinja2", marker = "(python_full_version < '3.15' and sys_platform == 'darwin' and extra == 'extra-19-docforge-bge-server-cpu') or (python_full_version >= '3.15' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu') or (sys_platform != 'darwin' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
-    { name = "networkx", marker = "(python_full_version < '3.15' and sys_platform == 'darwin' and extra == 'extra-19-docforge-bge-server-cpu') or (python_full_version >= '3.15' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu') or (sys_platform != 'darwin' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
-    { name = "setuptools", marker = "(python_full_version < '3.15' and sys_platform == 'darwin' and extra == 'extra-19-docforge-bge-server-cpu') or (python_full_version >= '3.15' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu') or (sys_platform != 'darwin' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
-    { name = "sympy", marker = "(python_full_version < '3.15' and sys_platform == 'darwin' and extra == 'extra-19-docforge-bge-server-cpu') or (python_full_version >= '3.15' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu') or (sys_platform != 'darwin' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
-    { name = "typing-extensions", marker = "(python_full_version < '3.15' and sys_platform == 'darwin' and extra == 'extra-19-docforge-bge-server-cpu') or (python_full_version >= '3.15' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu') or (sys_platform != 'darwin' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
+    { name = "filelock", marker = "(python_full_version < '3.15' and sys_platform == 'darwin' and extra == 'extra-19-docforge-bge-server-cpu') or (extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
+    { name = "fsspec", marker = "(python_full_version < '3.15' and sys_platform == 'darwin' and extra == 'extra-19-docforge-bge-server-cpu') or (extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
+    { name = "jinja2", marker = "(python_full_version < '3.15' and sys_platform == 'darwin' and extra == 'extra-19-docforge-bge-server-cpu') or (extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
+    { name = "networkx", marker = "(python_full_version < '3.15' and sys_platform == 'darwin' and extra == 'extra-19-docforge-bge-server-cpu') or (extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
+    { name = "setuptools", marker = "(python_full_version < '3.15' and sys_platform == 'darwin' and extra == 'extra-19-docforge-bge-server-cpu') or (extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
+    { name = "sympy", marker = "(python_full_version < '3.15' and sys_platform == 'darwin' and extra == 'extra-19-docforge-bge-server-cpu') or (extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
+    { name = "typing-extensions", marker = "(python_full_version < '3.15' and sys_platform == 'darwin' and extra == 'extra-19-docforge-bge-server-cpu') or (extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
 ]
 wheels = [
     { url = "https://download-r2.pytorch.org/whl/cpu/torch-2.13.0-cp312-cp312-macosx_14_0_arm64.whl", hash = "sha256:2fe228aba290d14b9f31b049be550dbd469c3fd3013d7a19705b30454da97027", upload-time = "2026-07-08T12:26:18Z" },
@@ -2843,18 +2843,18 @@ resolution-markers = [
 dependencies = [
     { name = "cuda-bindings", version = "13.3.1", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.15' and sys_platform == 'linux' and extra != 'extra-19-docforge-bge-server-cpu' and extra != 'extra-19-docforge-bge-server-gpu') or (extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
     { name = "cuda-toolkit", version = "13.0.3.0", source = { registry = "https://pypi.org/simple" }, extra = ["cublas", "cudart", "cufft", "cufile", "cupti", "curand", "cusolver", "cusparse", "nvjitlink", "nvrtc", "nvtx"], marker = "(sys_platform == 'linux' and extra != 'extra-19-docforge-bge-server-cpu' and extra != 'extra-19-docforge-bge-server-gpu') or (extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
-    { name = "filelock", marker = "(extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu') or (extra != 'extra-19-docforge-bge-server-cpu' and extra != 'extra-19-docforge-bge-server-gpu')" },
-    { name = "fsspec", marker = "(extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu') or (extra != 'extra-19-docforge-bge-server-cpu' and extra != 'extra-19-docforge-bge-server-gpu')" },
-    { name = "jinja2", marker = "(extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu') or (extra != 'extra-19-docforge-bge-server-cpu' and extra != 'extra-19-docforge-bge-server-gpu')" },
-    { name = "networkx", marker = "(extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu') or (extra != 'extra-19-docforge-bge-server-cpu' and extra != 'extra-19-docforge-bge-server-gpu')" },
+    { name = "filelock", marker = "(extra != 'extra-19-docforge-bge-server-cpu' and extra != 'extra-19-docforge-bge-server-gpu') or (extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
+    { name = "fsspec", marker = "(extra != 'extra-19-docforge-bge-server-cpu' and extra != 'extra-19-docforge-bge-server-gpu') or (extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
+    { name = "jinja2", marker = "(extra != 'extra-19-docforge-bge-server-cpu' and extra != 'extra-19-docforge-bge-server-gpu') or (extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
+    { name = "networkx", marker = "(extra != 'extra-19-docforge-bge-server-cpu' and extra != 'extra-19-docforge-bge-server-gpu') or (extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
     { name = "nvidia-cudnn-cu13", marker = "(sys_platform == 'linux' and extra != 'extra-19-docforge-bge-server-cpu' and extra != 'extra-19-docforge-bge-server-gpu') or (extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
     { name = "nvidia-cusparselt-cu13", marker = "(sys_platform == 'linux' and extra != 'extra-19-docforge-bge-server-cpu' and extra != 'extra-19-docforge-bge-server-gpu') or (extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
     { name = "nvidia-nccl-cu13", marker = "(sys_platform == 'linux' and extra != 'extra-19-docforge-bge-server-cpu' and extra != 'extra-19-docforge-bge-server-gpu') or (extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
     { name = "nvidia-nvshmem-cu13", marker = "(sys_platform == 'linux' and extra != 'extra-19-docforge-bge-server-cpu' and extra != 'extra-19-docforge-bge-server-gpu') or (extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
-    { name = "setuptools", marker = "(extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu') or (extra != 'extra-19-docforge-bge-server-cpu' and extra != 'extra-19-docforge-bge-server-gpu')" },
-    { name = "sympy", marker = "(extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu') or (extra != 'extra-19-docforge-bge-server-cpu' and extra != 'extra-19-docforge-bge-server-gpu')" },
+    { name = "setuptools", marker = "(extra != 'extra-19-docforge-bge-server-cpu' and extra != 'extra-19-docforge-bge-server-gpu') or (extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
+    { name = "sympy", marker = "(extra != 'extra-19-docforge-bge-server-cpu' and extra != 'extra-19-docforge-bge-server-gpu') or (extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
     { name = "triton", marker = "(python_full_version < '3.15' and sys_platform == 'linux' and extra != 'extra-19-docforge-bge-server-cpu' and extra != 'extra-19-docforge-bge-server-gpu') or (extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
-    { name = "typing-extensions", marker = "(extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu') or (extra != 'extra-19-docforge-bge-server-cpu' and extra != 'extra-19-docforge-bge-server-gpu')" },
+    { name = "typing-extensions", marker = "(extra != 'extra-19-docforge-bge-server-cpu' and extra != 'extra-19-docforge-bge-server-gpu') or (extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/c4/3a/ed0f4d4d1dcde03bced7aac9a28e800abcdc0cbd06b6775044c9fbd877b7/torch-2.13.0-cp312-cp312-macosx_14_0_arm64.whl", hash = "sha256:2fe228aba290d14b9f31b049be550dbd469c3fd3013d7a19705b30454da97027", size = 111213045, upload-time = "2026-07-08T16:05:22.997Z" },
@@ -2892,13 +2892,13 @@ resolution-markers = [
     "python_full_version < '3.14' and sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32'",
 ]
 dependencies = [
-    { name = "filelock", marker = "(python_full_version >= '3.15' and extra == 'extra-19-docforge-bge-server-cpu') or (python_full_version < '3.15' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu') or (sys_platform != 'darwin' and extra == 'extra-19-docforge-bge-server-cpu')" },
-    { name = "fsspec", marker = "(python_full_version >= '3.15' and extra == 'extra-19-docforge-bge-server-cpu') or (python_full_version < '3.15' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu') or (sys_platform != 'darwin' and extra == 'extra-19-docforge-bge-server-cpu')" },
-    { name = "jinja2", marker = "(python_full_version >= '3.15' and extra == 'extra-19-docforge-bge-server-cpu') or (python_full_version < '3.15' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu') or (sys_platform != 'darwin' and extra == 'extra-19-docforge-bge-server-cpu')" },
-    { name = "networkx", marker = "(python_full_version >= '3.15' and extra == 'extra-19-docforge-bge-server-cpu') or (python_full_version < '3.15' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu') or (sys_platform != 'darwin' and extra == 'extra-19-docforge-bge-server-cpu')" },
-    { name = "setuptools", marker = "(python_full_version >= '3.15' and extra == 'extra-19-docforge-bge-server-cpu') or (python_full_version < '3.15' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu') or (sys_platform != 'darwin' and extra == 'extra-19-docforge-bge-server-cpu')" },
-    { name = "sympy", marker = "(python_full_version >= '3.15' and extra == 'extra-19-docforge-bge-server-cpu') or (python_full_version < '3.15' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu') or (sys_platform != 'darwin' and extra == 'extra-19-docforge-bge-server-cpu')" },
-    { name = "typing-extensions", marker = "(python_full_version >= '3.15' and extra == 'extra-19-docforge-bge-server-cpu') or (python_full_version < '3.15' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu') or (sys_platform != 'darwin' and extra == 'extra-19-docforge-bge-server-cpu')" },
+    { name = "filelock", marker = "(python_full_version >= '3.15' and extra == 'extra-19-docforge-bge-server-cpu') or (sys_platform != 'darwin' and extra == 'extra-19-docforge-bge-server-cpu') or (extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
+    { name = "fsspec", marker = "(python_full_version >= '3.15' and extra == 'extra-19-docforge-bge-server-cpu') or (sys_platform != 'darwin' and extra == 'extra-19-docforge-bge-server-cpu') or (extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
+    { name = "jinja2", marker = "(python_full_version >= '3.15' and extra == 'extra-19-docforge-bge-server-cpu') or (sys_platform != 'darwin' and extra == 'extra-19-docforge-bge-server-cpu') or (extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
+    { name = "networkx", marker = "(python_full_version >= '3.15' and extra == 'extra-19-docforge-bge-server-cpu') or (sys_platform != 'darwin' and extra == 'extra-19-docforge-bge-server-cpu') or (extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
+    { name = "setuptools", marker = "(python_full_version >= '3.15' and extra == 'extra-19-docforge-bge-server-cpu') or (sys_platform != 'darwin' and extra == 'extra-19-docforge-bge-server-cpu') or (extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
+    { name = "sympy", marker = "(python_full_version >= '3.15' and extra == 'extra-19-docforge-bge-server-cpu') or (sys_platform != 'darwin' and extra == 'extra-19-docforge-bge-server-cpu') or (extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
+    { name = "typing-extensions", marker = "(python_full_version >= '3.15' and extra == 'extra-19-docforge-bge-server-cpu') or (sys_platform != 'darwin' and extra == 'extra-19-docforge-bge-server-cpu') or (extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
 ]
 wheels = [
     { url = "https://download-r2.pytorch.org/whl/cpu/torch-2.13.0%2Bcpu-cp312-cp312-linux_s390x.whl", hash = "sha256:ffadde149901c8afa138daa38d898264003cfcf1a3336ca5cd964b5af227d867", upload-time = "2026-07-08T19:28:41Z" },
@@ -2941,7 +2941,7 @@ resolution-markers = [
     "python_full_version < '3.14' and sys_platform != 'emscripten' and sys_platform != 'win32'",
 ]
 dependencies = [
-    { name = "cuda-bindings", version = "12.9.7", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.15' and sys_platform == 'linux' and extra == 'extra-19-docforge-bge-server-gpu') or (python_full_version >= '3.15' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu') or (sys_platform != 'linux' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
+    { name = "cuda-bindings", version = "12.9.7", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.15' and sys_platform == 'linux' and extra == 'extra-19-docforge-bge-server-gpu') or (extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
     { name = "cuda-toolkit", version = "12.6.3", source = { registry = "https://pypi.org/simple" }, extra = ["cublas", "cudart", "cufft", "cufile", "cupti", "curand", "cusolver", "cusparse", "nvjitlink", "nvrtc", "nvtx"], marker = "(sys_platform == 'linux' and extra == 'extra-19-docforge-bge-server-gpu') or (extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
     { name = "filelock", marker = "extra == 'extra-19-docforge-bge-server-gpu'" },
     { name = "fsspec", marker = "extra == 'extra-19-docforge-bge-server-gpu'" },
@@ -2953,7 +2953,7 @@ dependencies = [
     { name = "nvidia-nvshmem-cu12", marker = "(sys_platform == 'linux' and extra == 'extra-19-docforge-bge-server-gpu') or (extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
     { name = "setuptools", marker = "extra == 'extra-19-docforge-bge-server-gpu'" },
     { name = "sympy", marker = "extra == 'extra-19-docforge-bge-server-gpu'" },
-    { name = "triton", marker = "(python_full_version < '3.15' and sys_platform == 'linux' and extra == 'extra-19-docforge-bge-server-gpu') or (python_full_version >= '3.15' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu') or (sys_platform != 'linux' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
+    { name = "triton", marker = "(python_full_version < '3.15' and sys_platform == 'linux' and extra == 'extra-19-docforge-bge-server-gpu') or (extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
     { name = "typing-extensions", marker = "extra == 'extra-19-docforge-bge-server-gpu'" },
 ]
 wheels = [
@@ -2980,7 +2980,7 @@ name = "tqdm"
 version = "4.70.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "colorama", marker = "sys_platform == 'win32' or (extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
+    { name = "colorama", marker = "sys_platform == 'win32'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/21/3b/6c24bec5be5e743ffd99576daa5cc077722fc7d5bbc00bd133fa0c698dc6/tqdm-4.70.0.tar.gz", hash = "sha256:55b0b0dbd97462d06ebee91e4dac24ed4d4702be82b24f07e6c1d27e08cea220", size = 795438, upload-time = "2026-07-27T11:33:15.271Z" }
 wheels = [
@@ -3080,7 +3080,7 @@ standard = [
     { name = "httptools" },
     { name = "python-dotenv" },
     { name = "pyyaml" },
-    { name = "uvloop", marker = "(platform_python_implementation != 'PyPy' and sys_platform != 'cygwin' and sys_platform != 'win32') or (platform_python_implementation == 'PyPy' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu') or (sys_platform == 'cygwin' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu') or (sys_platform == 'win32' and extra == 'extra-19-docforge-bge-server-cpu' and extra == 'extra-19-docforge-bge-server-gpu')" },
+    { name = "uvloop", marker = "platform_python_implementation != 'PyPy' and sys_platform != 'cygwin' and sys_platform != 'win32'" },
     { name = "watchfiles" },
     { name = "websockets" },
 ]
