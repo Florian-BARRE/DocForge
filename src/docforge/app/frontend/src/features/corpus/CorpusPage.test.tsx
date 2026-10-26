@@ -36,12 +36,15 @@ const { getCollection } = await import("../../api/collections");
 const { queryDocuments } = await import("../../api/corpus");
 
 // `@tanstack/react-virtual` only renders a row window once its scroll container reports a nonzero
-// size — it reads `offsetWidth`/`offsetHeight` synchronously at mount (see `virtual-core`'s
-// `getRect`), independently of the `ResizeObserver` stub in test/setup.ts (that stub only prevents
-// the constructor-missing throw; jsdom never actually lays anything out, so both offsets stay 0
+// size — it reads `clientWidth`/`clientHeight` synchronously at mount (see `virtual-core`'s
+// `getRect`; `offsetWidth`/`offsetHeight` before virtual-core 3.19, and still for `measureElement`),
+// independently of the `ResizeObserver` stub in test/setup.ts (that stub only prevents the
+// constructor-missing throw; jsdom never actually lays anything out, so all these sizes stay 0
 // without this). Scoped to this file only, matching this file's own jsdom instance.
 Object.defineProperty(HTMLElement.prototype, "offsetHeight", { configurable: true, value: 600 });
 Object.defineProperty(HTMLElement.prototype, "offsetWidth", { configurable: true, value: 1200 });
+Object.defineProperty(HTMLElement.prototype, "clientHeight", { configurable: true, value: 600 });
+Object.defineProperty(HTMLElement.prototype, "clientWidth", { configurable: true, value: 1200 });
 
 const baseCollection: Collection = {
   id: "col-1",
