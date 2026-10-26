@@ -227,12 +227,21 @@ async def test_cache_eviction_close_error_is_logged_and_swallowed(
             incoming_docforge_token.reset(reset)
 
     (pending_task,) = tuple(provider._pending_closes)
+    # Capture through a loguru sink: loggerplusplus wraps the logger in a proxy whose level
+    # methods cannot be monkeypatched.
     logged_errors: list[str] = []
-    monkeypatch.setattr(provider.logger, "error", lambda msg: logged_errors.append(msg))
+    sink_id = provider.logger.add(
+        lambda message: logged_errors.append(message.record["message"]), level="ERROR"
+    )
 
     # Awaiting a task's own reference does not re-raise past its done-callback; the callback
     # already ran (or runs here) without propagating into this test.
-    await asyncio.gather(pending_task, return_exceptions=True)
+    try:
+        await asyncio.gather(pending_task, return_exceptions=True)
+    finally:
+        provider.logger.remove(sink_id)
 
-    assert logged_errors, "the close failure must be logged"
+    assert any("Failed to close evicted SDK client" in msg for msg in logged_errors), (
+        "the close failure must be logged"
+    )
     assert not provider._pending_closes, "the task must be removed from tracking even on failure"
