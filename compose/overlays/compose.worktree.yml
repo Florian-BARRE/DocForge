@@ -6,10 +6,10 @@
 # ports below (UI 10046, API 10040, mcp 10048); a worktree reads .env.worktree, written by the
 # script (COMPOSE_PROJECT_NAME, BIND_ADDR, APP_PORT, API_PORT, MCP_PORT):
 #
-#   scripts/dev-stack.sh setup                      # port block + .env.worktree + DB copy + up
-#   scripts/dev-stack.sh up                         # core services only (see PROFILES below)
-#   COMPOSE_PROFILES=models scripts/dev-stack.sh up # + bge_server / paddle_server
-#   COMPOSE_PROFILES=models,extras scripts/dev-stack.sh up   # + mcp
+#   aidk stack setup          # Orca's setup (dev-stack.sh prepare): port block + .env.worktree + images, nothing up
+#   aidk stack up frontend    # what the work needs ([stack] of .aidk/project.toml), DB copied from main first
+#   aidk stack up mcp         # a service behind a profile (see PROFILES below) starts when named
+#   scripts/dev-stack.sh up [SERVICE...]   # the same by hand, with compose service names
 #
 # The UI a browser opens is the Vite dev server (docforge_frontend, APP_PORT, hot reload), which
 # proxies /api, /capabilities and /health to the app SERVICE (VITE_API_PROXY_TARGET, set in
@@ -43,7 +43,7 @@
 #   - the worker's HuggingFace cache is the project's named volume, not the host's shared cache
 #     (a bind mount on ${HOME} would be shared and written by every stack at once);
 #   - PROFILES (16 GB host shared with other stacks, no GPU):
-#       core (no profile, starts by default): frontend (Vite), app, worker, postgres, redis, qdrant,
+#       core (no profile): frontend (Vite), app, worker, postgres, redis, qdrant,
 #         seaweedfs, gotenberg
 #       `models`: bge_server, paddle_server (heavy CPU model hosts)
 #       `extras`: mcp
