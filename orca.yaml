@@ -1,12 +1,14 @@
-# One running dev stack per worktree (AI Dev Kit template). Must be on main before the first
-# feature: Orca reads the archive script from the main checkout's orca.yaml.
+# One Docker stack per worktree, the AI Dev Kit's template (with scripts/dev-stack.sh): aidk project onboard
+# writes it as orca.yaml. Orca reads `setup` from the new worktree's own orca.yaml and `archive` from the main
+# checkout's: a change here holds for removals once it is merged.
+# setup, before the agent starts (wait-for-setup): the kit's git hooks, the worktree's ports, env and images
+# (dev-stack.sh prepare). It starts nothing and never fails the worktree: the agent starts what its work needs
+# (aidk stack up NAME, with what it needs). Services that say autostart in [stack] get a "Stack" tab that
+# starts them (aidk stack here).
+# archive, when Orca removes the worktree: its containers and volumes deleted, its ports freed.
 setupAgentStartupPolicy: wait-for-setup
 scripts:
   setup: |
-    ./scripts/dev-stack.sh setup
+    aidk stack setup
   archive: |
-    ./scripts/dev-stack.sh teardown
-defaultTabs:
-  - title: Agent
-  - title: Stack
-    command: ./scripts/dev-stack.sh status
+    aidk stack release
