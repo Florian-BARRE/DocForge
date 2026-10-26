@@ -55,6 +55,52 @@ env_from = "services/docforge/.env.example"
 
 # The kit's git hooks (every commit and every push, whatever the agent's tool): the names of [checks]
 # run at each commit (keep them fast: a few seconds) and before each push.
+# Measured on the dev center: the ruff checks well under a second each; before a push about 66 s together
+# (docforge-tests 47 s, mcp-tests 5 s, frontend-types 4 s, mcp-types 3 s, frontend-lint 3 s, sdk 2+2 s).
 [hooks]
-pre_commit = []
-pre_push = []
+pre_commit = ["docforge-format", "docforge-lint", "sdk-format", "sdk-lint", "mcp-format", "mcp-lint"]
+pre_push = ["sdk-types", "sdk-tests", "mcp-types", "mcp-tests", "frontend-lint", "frontend-types", "docforge-tests"]
+commit_format = "conventional"
+secrets = true
+
+# Never merged without florian: the CI and release, the version, the database schema, production compose, gitleaks.
+[merge]
+never_alone = [".github/workflows/**", ".github/dependabot.yml", "scripts/set_version.sh", "src/docforge/shared/migrations/**", "compose/compose.prod-*.yml", ".gitleaks.toml"]
+
+# The dev stack of a worktree (scripts/dev-stack.sh: compose/compose.dev-cpu.yml + compose/overlays/compose.worktree.yml).
+# Nothing starts at setup; aidk stack up NAME starts a service with what it needs (needs, and the compose
+# file's depends_on: postgres, redis and seaweedfs come with the app and the worker). A service behind a
+# compose profile (models, extras) starts when named.
+[stack.frontend]
+compose = "docforge_frontend"   # the Vite UI (hot reload), proxying the API to the app
+needs = ["app"]
+paths = ["src/docforge/app/frontend/**"]
+
+[stack.app]
+compose = "docforge_app"        # FastAPI backend (API docs at /scalar)
+needs = ["qdrant"]              # search and previews read Qdrant (not a depends_on of the compose file)
+paths = ["src/docforge/app/backend/**", "src/docforge/app/config/**", "src/docforge/app/entrypoint.py", "src/docforge/app/scripts/**", "src/docforge/app/Dockerfile", "src/docforge/shared/**", "src/docforge/pyproject.toml", "src/docforge/uv.lock"]
+
+[stack.worker]
+compose = "docforge_worker"     # arq worker: ingestion pipeline
+needs = ["qdrant", "gotenberg"] # indexing writes to Qdrant; Office files convert through Gotenberg
+paths = ["src/docforge/worker/**", "src/docforge/shared/**", "src/docforge/pyproject.toml", "src/docforge/uv.lock"]
+
+[stack.mcp]
+compose = "docforge_mcp"        # MCP server over the SDK (compose profile extras)
+needs = ["app"]
+paths = ["src/mcp/**"]
+
+[stack.bge]
+compose = "docforge_bge_server" # BGE-M3 embeddings on CPU (compose profile models: several GB of memory)
+paths = ["src/bge_server/**"]
+
+[stack.paddle]
+compose = "docforge_paddle_server"  # PaddleOCR on CPU (compose profile models)
+paths = ["src/paddle_server/**"]
+
+[stack.qdrant]
+compose = "docforge_qdrant"
+
+[stack.gotenberg]
+compose = "docforge_gotenberg"
