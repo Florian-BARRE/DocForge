@@ -16,7 +16,7 @@ dependencies = [
     # its next major is 1.0; starlette's is 2.0) — both caps clear the currently-locked versions
     # and move nothing. This server hand-wires an auth middleware on the starlette layer, so an
     # unreviewed jump across a starlette major is exactly what we want to block here.
-    "uvicorn[standard]>=0.32.0,<1",
+    "uvicorn[standard]>=0.54.0,<1",
     "starlette>=1.8.0,<2",
     # Config & logging (internal libraries) — same sources as the main docforge app. Left
     # unbounded on purpose: internally-versioned, not steered by an external release cadence.
