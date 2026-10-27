@@ -1,7 +1,7 @@
 """Doc↔code coherence ratchets — the mechanical guard against divergence-doc rot.
 
 The 2026-09 full audit's single largest finding class was documentation divergence: code moved,
-the living docs (PIPELINE.md, docs/, CLAUDE.md) did not. These tests turn the cheap, objective
+the living docs (PIPELINE.md, docs/, AGENTS.md) did not. These tests turn the cheap, objective
 slices of that contract into CI-enforced invariants, so the drift is caught at the gate instead of
 by the next audit:
 
@@ -13,8 +13,7 @@ by the next audit:
     point at files/dirs that exist — a rename that forgets its doc ripple goes red here.
   * every compose file must keep the ``compose.*.yml`` naming (the Dependabot docker-compose glob):
     a new scenario/overlay added under the old bare naming would silently lose dependency coverage.
-  * CLAUDE.md's referenced compose/script paths must exist — LOCAL-ONLY (CLAUDE.md is gitignored,
-    absent on CI, so the test skips there; a dev run still enforces it).
+  * AGENTS.md's referenced repo paths must exist (the agents' rules file; CLAUDE.md only imports it).
 
 Deliberately narrow: only objective, string-level facts are checked (a kind name, a path, a stage
 token). Prose accuracy stays a human/review concern.
@@ -25,8 +24,6 @@ import pathlib
 import re
 import subprocess
 
-import pytest
-
 from shared_libs.pipelines.ingest.pipeline import IngestPipeline
 from shared_libs.pipelines.ingest.stages import (
     IngestAssembler,  # noqa: F401 — imports register every node
@@ -35,7 +32,7 @@ from shared_libs.pipelines.registry import NodeRegistry
 
 # src/docforge/ (this uv project's root — PIPELINE.md lives here).
 _SRC_ROOT = pathlib.Path(__file__).resolve().parents[3]
-# The monorepo root (docs/, README.md, compose/, CLAUDE.md live here).
+# The monorepo root (docs/, README.md, compose/, AGENTS.md live here).
 _REPO_ROOT = _SRC_ROOT.parents[1]
 
 # Path-like references we deliberately tolerate as absent (illustrative examples in prose).
@@ -201,12 +198,8 @@ def test_every_env_var_is_documented_in_configuration_md() -> None:
     )
 
 
-@pytest.mark.skipif(
-    not (_REPO_ROOT / "CLAUDE.md").exists(),
-    reason="CLAUDE.md is gitignored (local-only); nothing to check on CI",
-)
-def test_claude_md_referenced_paths_exist() -> None:
-    """LOCAL ratchet: the command matrix in the root CLAUDE.md must reference paths that exist —
-    a stale CLAUDE.md command misleads every future session (the audit's `/dev`-skill class)."""
-    dead = _dead_refs_in(_REPO_ROOT / "CLAUDE.md")
-    assert not dead, f"CLAUDE.md references dead path(s) — fix the command matrix: {dead}"
+def test_agents_md_referenced_paths_exist() -> None:
+    """The root AGENTS.md (read by every agent session; CLAUDE.md only imports it) must reference
+    paths that exist — a stale rule misleads every future session (the audit's `/dev`-skill class)."""
+    dead = _dead_refs_in(_REPO_ROOT / "AGENTS.md")
+    assert not dead, f"AGENTS.md references dead path(s) — fix the rule: {dead}"
