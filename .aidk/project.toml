@@ -1,10 +1,20 @@
 # AI Dev Kit: what aidk verify checks before a task is declared done (agents and the Stop hook).
 # Each check is the command as a list of arguments, run from the repository root, in this order.
-# The CI gate's commands (.github/workflows/gate.yml), job by job: docforge, docforge_sdk, mcp, bge_server,
-# paddle_server (CPU wheels, then never re-synced), frontend, sdk-parity. env_from below plays the gate's
+# The CI gate's commands (.github/workflows/gate.yml, run by ci.yml and by release-sdk.yml's gate), job by
+# job: docforge, docforge_sdk, mcp, bge_server, paddle_server (CPU wheels, then never re-synced), frontend,
+# sdk-parity; then ci.yml's secrets job. env_from below plays the gate's
 # `cp services/docforge/.env.example services/docforge/.env` (placeholder config, nothing is dialed).
-# Left to the CI: db-tests (a real Postgres service), docker-build (Docker), ci.yml's secrets job (gitleaks,
-# downloaded from GitHub). Not in the CI gate either: mineru_server, dots_ocr_server, live tests (-m live).
+# Beyond the CI: mineru_server and dots_ocr_server (format, lint, tests on the base sync: their engines are
+# GPU extras the pure code does not need). Their mypy is left out until issue #167 is fixed (6 Optional
+# errors in libs/mineru/engine.py and libs/dots_ocr/engine.py).
+# Left to the CI, on purpose:
+# - gate.yml db-tests: a real Postgres service (tests/db, -m db, TEST_POSTGRES_*), not a worktree's.
+# - gate.yml docker-build: 7 multi-GB image builds (torch, paddle), far over a check's timeout.
+# - release-sdk.yml version-guard, images, publish, security-scan: on a pushed tag only (tests/units'
+#   test_version_alignment.py keeps the three versions in lockstep locally).
+# - retrieval-quality.yml: workflow_dispatch only, ingests a corpus through the whole dev-cpu stack with bge.
+# - aidk-checks.yml: the kit's drift rules, which aidk verify itself runs before these checks.
+# - live tests (-m live): a running stack.
 
 [project]
 kind = "code"    # code, docs or research: docs and research need no tests rule, their checks are optional
@@ -35,6 +45,14 @@ paddle-format = ["uv", "run", "--no-sync", "--directory", "src/paddle_server", "
 paddle-lint = ["uv", "run", "--no-sync", "--directory", "src/paddle_server", "ruff", "check", "."]
 paddle-types = ["uv", "run", "--no-sync", "--directory", "src/paddle_server", "mypy", "."]
 paddle-tests = ["uv", "run", "--no-sync", "--directory", "src/paddle_server", "pytest", "-q"]
+mineru-deps = ["uv", "sync", "--frozen", "--directory", "src/mineru_server"]
+mineru-format = ["uv", "run", "--frozen", "--directory", "src/mineru_server", "ruff", "format", "--check", "."]
+mineru-lint = ["uv", "run", "--frozen", "--directory", "src/mineru_server", "ruff", "check", "."]
+mineru-tests = ["uv", "run", "--frozen", "--directory", "src/mineru_server", "pytest", "-q"]
+dots-ocr-deps = ["uv", "sync", "--frozen", "--directory", "src/dots_ocr_server"]
+dots-ocr-format = ["uv", "run", "--frozen", "--directory", "src/dots_ocr_server", "ruff", "format", "--check", "."]
+dots-ocr-lint = ["uv", "run", "--frozen", "--directory", "src/dots_ocr_server", "ruff", "check", "."]
+dots-ocr-tests = ["uv", "run", "--frozen", "--directory", "src/dots_ocr_server", "pytest", "-q"]
 frontend-deps = ["npm", "ci", "--prefix", "src/docforge/app/frontend", "--no-audit", "--no-fund"]
 frontend-lint = ["npm", "--prefix", "src/docforge/app/frontend", "run", "lint"]
 frontend-types = ["npm", "--prefix", "src/docforge/app/frontend", "exec", "--", "tsc", "--noEmit", "-p", "src/docforge/app/frontend"]
@@ -42,10 +60,17 @@ frontend-tests = ["npm", "--prefix", "src/docforge/app/frontend", "run", "test"]
 frontend-build = ["npm", "--prefix", "src/docforge/app/frontend", "run", "build"]
 # The sdk-parity job: the backend's current OpenAPI (dumped serviceless) against the SDK's models and snapshot.
 sdk-parity = ["sh", "-c", "set -e; f=$(mktemp); trap 'rm -f \"$f\"' EXIT; LOGGING_ENABLE_CONSOLE=false LOGGING_ENABLE_FILE=false uv run --frozen --directory src/docforge python app/scripts/dump_openapi.py > \"$f\"; uv run --frozen --directory src/docforge_sdk python tests/check_schema_drift.py \"$f\""]
+# ci.yml's secrets job: no tracked secret file (the same pattern), then gitleaks on the branch's commits when
+# it is installed here (the CI downloads it; the kit's commit hook scans each commit anyway, [hooks] secrets).
+secrets-files = ["sh", "-c", '''hits=$(git ls-files | grep -E '(^|/)\.env$|(^|/)[^/]*\.env$|(^|/)\.env\.worktree$|(^|/)s3_config\.json$|\.(pem|key|p12|pfx)$|(^|/)id_(rsa|ed25519|ecdsa)$' | grep -v '\.example$' || true); if [ -n "$hits" ]; then echo "Tracked secret file(s):"; echo "$hits"; exit 1; fi; echo "No tracked secret file."''']
+gitleaks = ["sh", "-c", 'command -v gitleaks >/dev/null 2>&1 || { echo "gitleaks not installed: left to the CI secrets job"; exit 0; }; gitleaks git --config .gitleaks.toml --redact --no-banner --exit-code 1 --log-opts="origin/main..HEAD" .']
 
 [rules]
 base = "origin/main"
 # A change to source files needs a change to test files (globs, relative to the repository).
+# src/*_server covers bge, paddle, mineru and dots_ocr. Left out on purpose: the migrations (tests/db, CI only),
+# src/docforge/app/scripts (dump_openapi.py, checked by sdk-parity), scripts/ (set_version.sh and the kit's
+# dev-stack.sh, guarded by test_version_alignment.py and test_worktree_compose_overlay.py), build and config files.
 source = ["src/docforge/app/backend/**", "src/docforge/app/config/**", "src/docforge/app/entrypoint.py", "src/docforge/app/frontend/src/**", "src/docforge/worker/backend/**", "src/docforge/worker/config/**", "src/docforge/worker/entrypoint.py", "src/docforge/shared/libs/**", "src/docforge_sdk/docforge_sdk/**", "src/mcp/libs/**", "src/mcp/entrypoint.py", "src/mcp/config_loader.py", "src/*_server/backend/**", "src/*_server/libs/**", "src/*_server/entrypoint.py", "src/*_server/config_loader.py"]
 tests = ["src/docforge/tests/**", "src/docforge_sdk/tests/**", "src/mcp/tests/**", "src/*_server/tests/**", "src/docforge/app/frontend/src/**/*.test.ts", "src/docforge/app/frontend/src/**/*.test.tsx", "src/docforge/app/frontend/src/test/**"]
 require_tests = true
@@ -55,11 +80,13 @@ env_from = "services/docforge/.env.example"
 
 # The kit's git hooks (every commit and every push, whatever the agent's tool): the names of [checks]
 # run at each commit (keep them fast: a few seconds) and before each push.
-# Measured on the dev center: the ruff checks well under a second each; before a push about 66 s together
-# (docforge-tests 47 s, mcp-tests 5 s, frontend-types 4 s, mcp-types 3 s, frontend-lint 3 s, sdk 2+2 s).
+# Measured on the dev center (2026-10-27, warm caches): pre_commit 0.2 s together (ruff, cached); pre_push
+# about 76 s (docforge-tests 54 s, sdk-parity 5 s, mcp-tests 5 s, frontend-types 5 s, frontend-lint 3 s,
+# sdk-tests 2 s, the rest under a second each). bge and paddle stay out of both hooks: their checks run
+# --no-sync on the CPU torch/paddle venv, which a worktree only has after aidk verify's bge-deps/paddle-deps.
 [hooks]
-pre_commit = ["docforge-format", "docforge-lint", "sdk-format", "sdk-lint", "mcp-format", "mcp-lint"]
-pre_push = ["sdk-types", "sdk-tests", "mcp-types", "mcp-tests", "frontend-lint", "frontend-types", "docforge-tests"]
+pre_commit = ["docforge-format", "docforge-lint", "sdk-format", "sdk-lint", "mcp-format", "mcp-lint", "mineru-format", "mineru-lint", "dots-ocr-format", "dots-ocr-lint"]
+pre_push = ["sdk-types", "sdk-tests", "mcp-types", "mcp-tests", "mineru-tests", "dots-ocr-tests", "frontend-lint", "frontend-types", "docforge-rag-eval", "sdk-parity", "secrets-files", "docforge-tests"]
 commit_format = "conventional"
 secrets = true
 # src/docforge/uv.lock is ~1.05 MB, over the 1024 KiB default: a lock change would be refused at commit.
@@ -100,6 +127,9 @@ paths = ["src/bge_server/**"]
 [stack.paddle]
 compose = "docforge_paddle_server"  # PaddleOCR on CPU (compose profile models)
 paths = ["src/paddle_server/**"]
+
+# Not declared: docforge_mineru_server and docforge_dots_ocr_server (compose profiles mineru, dots_ocr) reserve
+# a CUDA GPU this machine does not have; their pure code is covered by the mineru-* and dots-ocr-* checks.
 
 [stack.qdrant]
 compose = "docforge_qdrant"
