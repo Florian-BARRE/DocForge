@@ -338,7 +338,5 @@ def test_dev_stack_script_is_valid_bash():
 
 
 def test_dev_stack_script_does_not_call_the_kit_v1():
-    if not _DEV_STACK.is_file():
-        pytest.skip("scripts/dev-stack.sh absent")
     kit_v1_dir = "/".join(("", "opt", "aidk"))  # spelled apart so the repository never names it
     assert kit_v1_dir not in _DEV_STACK.read_text(encoding="utf-8")
