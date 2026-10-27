@@ -22,16 +22,19 @@ export default defineConfig({
   },
   build: {
     outDir: "dist",
-    rollupOptions: {
+    rolldownOptions: {
       output: {
         // Split heavy, rarely-co-loaded vendor code out of the app bundle so the initial
         // load only pays for react/react-dom; TanStack (table+virtual) is only pulled in
         // by the corpus grid feature, itself lazy-loaded below. Matched by module id (not
-        // the object-map form) because react-dom is actually imported via its `react-dom/client`
-        // subpath — an exact-package-name map misses that and silently emits an empty chunk.
-        manualChunks(id) {
-          if (id.includes("node_modules/react-dom") || id.includes("node_modules/react/")) return "vendor-react";
-          if (id.includes("node_modules/@tanstack")) return "vendor-tanstack";
+        // an exact package name) because react-dom is actually imported via its `react-dom/client`
+        // subpath — an exact-package-name match misses that and silently emits an empty chunk.
+        // Rolldown's `codeSplitting.groups` replaces Rollup's deprecated `manualChunks`.
+        codeSplitting: {
+          groups: [
+            { name: "vendor-react", test: /node_modules[\\/]react(-dom)?[\\/]/ },
+            { name: "vendor-tanstack", test: /node_modules[\\/]@tanstack[\\/]/ },
+          ],
         },
       },
     },
