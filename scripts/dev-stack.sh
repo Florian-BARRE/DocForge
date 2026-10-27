@@ -64,13 +64,8 @@ worktree_extra_env() { # $1: first port of the block
 }
 # --------------------------------------------------------------------------------------------------
 
-# The kit's port-slot tool: in the account, or installed for the machine.
-PORT_SLOT="${AIDK_PORT_SLOT:-}"
-if [[ -z "$PORT_SLOT" ]]; then
-  for candidate in "$HOME/.aidk/bin/aidk-port-slot" /opt/aidk/bin/aidk-port-slot; do
-    [[ -x "$candidate" ]] && { PORT_SLOT="$candidate"; break; }
-  done
-fi
+# The kit's port-slot tool, in the account (AIDK_PORT_SLOT overrides it).
+PORT_SLOT="${AIDK_PORT_SLOT:-$HOME/.aidk/bin/aidk-port-slot}"
 ENV_FILE=.env.worktree
 
 die() { echo "dev-stack: $*" >&2; exit 1; }
@@ -108,7 +103,7 @@ compose() {
 # Checked only where a port block is acquired, so teardown, down and ps still run without the tool.
 need_port_slot() {
   [[ -x "$PORT_SLOT" ]] ||
-    die "the AI Dev Kit's port-slot tool is missing (${PORT_SLOT:-not in ~/.aidk/bin nor /opt/aidk/bin}): a worktree needs it for its port block; install the kit or set AIDK_PORT_SLOT"
+    die "the AI Dev Kit's port-slot tool is missing ($PORT_SLOT): a worktree needs it for its port block; install the kit or set AIDK_PORT_SLOT"
 }
 
 # Writes .env.worktree (same port block on every call). Keeps SEEDED=1 once the copy is done.
