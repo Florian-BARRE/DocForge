@@ -7,7 +7,7 @@
 # ``migrated_db_dsn`` already sitting at head (shared by the drift check + the query-execution
 # suite, which only ever INSERT/SELECT — never touch DDL).
 #
-# Connection details default to the documented dev stack (CLAUDE.md "Ports dev": postgres on host
+# Connection details default to the documented dev stack (docs/configuration.md "Ports (dev)": postgres on host
 # 10041, user/db "docforge") and can be overridden via TEST_POSTGRES_* env vars for CI, where the
 # service container will live on a different host/port.
 

@@ -22,7 +22,7 @@
 #
 # Requires the NVIDIA Container Toolkit (Docker Desktop/WSL2 ships it).
 # device placement is a deployment concern (this file), not a per-node runtime knob —
-# there is no runtime DeviceManager by design. See CLAUDE.md #7.
+# there is no runtime DeviceManager by design.
 #
 # The `build:` blocks below are INERT in pure prod-gpu (both `image:` and `build:` are
 # present with no active build context passed via CLI, so `up` without `--build` just pulls
