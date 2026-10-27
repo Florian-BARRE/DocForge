@@ -51,6 +51,11 @@ updates:
     groups:
       docforge-minor-patch:
         update-types: ["minor", "patch"]
+    ignore:
+      # transformers is pinned <5 on purpose (pyproject.toml, `worker` group): 5.x breaks
+      # docling's AutoProcessor use. Lift when docling supports transformers 5.
+      - dependency-name: "transformers"
+        versions: [">=5"]
 
   - package-ecosystem: "uv"
     directory: "/src/docforge_sdk"
@@ -104,30 +109,64 @@ updates:
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
+    ignore:
+      # python 3.12 -> 3.x is a semver-minor tag bump (3.12 -> 3.15). The venv is built in the
+      # ghcr.io/astral-sh/uv:python3.12 stage and copied into this runtime, so bumping the
+      # runtime alone breaks the image. Lift when both stages are moved together by hand.
+      - dependency-name: "python"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      # node majors (odd = non-LTS, e.g. 25) are never auto-proposed: the move to the next LTS
+      # is done by hand (Dockerfile ui-build stage + compose.dev.yml together). Keep for good.
+      - dependency-name: "node"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: "docker"
     directory: "/src/docforge/worker"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
+    ignore:
+      # python 3.12 -> 3.x is a semver-minor tag bump (3.12 -> 3.15). The venv is built in the
+      # ghcr.io/astral-sh/uv:python3.12 stage and copied into this runtime, so bumping the
+      # runtime alone breaks the image. Lift when both stages are moved together by hand.
+      - dependency-name: "python"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
 
   - package-ecosystem: "docker"
     directory: "/src/mcp"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
+    ignore:
+      # python 3.12 -> 3.x is a semver-minor tag bump (3.12 -> 3.15). The venv is built in the
+      # ghcr.io/astral-sh/uv:python3.12 stage and copied into this runtime, so bumping the
+      # runtime alone breaks the image. Lift when both stages are moved together by hand.
+      - dependency-name: "python"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
 
   - package-ecosystem: "docker"
     directory: "/src/bge_server"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
+    ignore:
+      # python 3.12 -> 3.x is a semver-minor tag bump (3.12 -> 3.15). The venv is built in the
+      # ghcr.io/astral-sh/uv:python3.12 stage and copied into this runtime, so bumping the
+      # runtime alone breaks the image. Lift when both stages are moved together by hand.
+      - dependency-name: "python"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
 
   - package-ecosystem: "docker"
     directory: "/src/paddle_server"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
+    ignore:
+      # python 3.12 -> 3.x is a semver-minor tag bump (3.12 -> 3.15). The venv is built in the
+      # ghcr.io/astral-sh/uv:python3.12 stage and copied into this runtime, so bumping the
+      # runtime alone breaks the image. Lift when both stages are moved together by hand.
+      - dependency-name: "python"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
 
   # --- Docker Compose service images (`image:` pins in the compose files) ---
   # See the header note: every compose file now fits the `compose.*.yml` glob, so the root
@@ -159,3 +198,8 @@ updates:
     groups:
       compose-images-minor-patch:
         update-types: ["minor", "patch"]
+    ignore:
+      # Same node rule as the /src/docforge/app docker entry (compose.dev.yml runs the same
+      # node:22 image as the Dockerfile's ui-build stage): the LTS move is done by hand.
+      - dependency-name: "node"
+        update-types: ["version-update:semver-major"]
