@@ -31,7 +31,7 @@ dependencies = [
     "langchain-core>=1.7.0,<2",
     "langchain-openai>=1.7.2,<2",
     "langchain-mistralai>=1.1.6,<2",
-    "sqlalchemy[asyncio]>=2.0.36,<3",
+    "sqlalchemy[asyncio]>=2.1.6,<3",
     # asyncpg is pre-1.0: cap tight at the next minor.
     "asyncpg>=0.32.0,<0.33",
     "alembic>=1.20.1,<2",
