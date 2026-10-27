@@ -31,6 +31,17 @@
 # ============================================================================
 
 version: 2
+
+# Private/extra package indexes the resolver must reach. Dependabot's proxy only lets a job through
+# to the registries listed here (plus the public ones): without this, every `uv /src/paddle_server`
+# update failed with "paddlepaddle-gpu was not found in the package registry" (egress refused).
+registries:
+  # Paddle's CUDA 12.6 wheel index — the `paddle-cu126` [[tool.uv.index]] of
+  # src/paddle_server/pyproject.toml. Public, no credentials. Keep the url in sync with that index.
+  paddle-cu126:
+    type: python-index
+    url: "https://www.paddlepaddle.org.cn/packages/stable/cu126/"
+
 updates:
   # --- GitHub Actions (workflow files under .github/workflows/) ---
   - package-ecosystem: "github-actions"
@@ -56,6 +67,14 @@ updates:
       # docling's AutoProcessor use. Lift when docling supports transformers 5.
       - dependency-name: "transformers"
         versions: [">=5"]
+      # torch/torchvision are capped in [tool.uv] constraint-dependencies (torch<2.14,
+      # torchvision<0.29): cu126, the last CUDA index with sm_70 kernels for the prod V100, stops
+      # at torch 2.13. Dependabot does not read uv constraints, so the bump is unresolvable and
+      # turns the whole run red. Lift together with the cap (when the prod GPU moves off Volta).
+      - dependency-name: "torch"
+        versions: [">=2.14"]
+      - dependency-name: "torchvision"
+        versions: [">=0.29"]
 
   - package-ecosystem: "uv"
     directory: "/src/docforge_sdk"
@@ -83,15 +102,40 @@ updates:
     groups:
       bge-server-minor-patch:
         update-types: ["minor", "patch"]
+    ignore:
+      # torch is capped in [tool.uv] constraint-dependencies (torch<2.14): cu126, the last CUDA
+      # index with sm_70 kernels for the prod V100, stops at torch 2.13. Dependabot does not read
+      # uv constraints, so the bump is unresolvable and turns the whole run red. Lift with the cap.
+      # (No torchvision here: bge_server does not depend on it.)
+      - dependency-name: "torch"
+        versions: [">=2.14"]
+      # transformers is pinned <5 (pyproject.toml): FlagEmbedding's FlagReranker calls the
+      # slow-tokenizer `prepare_for_model`, removed in 5.x (/rerank breaks). Lift when FlagEmbedding
+      # ships a reranker compatible with transformers 5.
+      - dependency-name: "transformers"
+        versions: [">=5"]
+      # huggingface-hub is pinned <1 (pyproject.toml): imported directly by
+      # libs/bge_models/revision.py, and the hub 1.x line comes with transformers 5. Lift with the
+      # transformers rule above.
+      - dependency-name: "huggingface-hub"
+        versions: [">=1"]
 
   - package-ecosystem: "uv"
     directory: "/src/paddle_server"
+    # Paddle's GPU index (top-level `registries`): the resolver needs it for paddlepaddle-gpu.
+    registries:
+      - paddle-cu126
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 10
     groups:
       paddle-server-minor-patch:
         update-types: ["minor", "patch"]
+    ignore:
+      # configplusplus 0.4 needs pyyaml>=6.0.3 while paddlex 3.7.2 pins pyyaml==6.0.2: the bump is
+      # unresolvable. Lift when paddlex relaxes its pyyaml pin.
+      - dependency-name: "configplusplus"
+        versions: [">=0.4"]
 
   # --- Frontend (npm: package.json + package-lock.json) ---
   - package-ecosystem: "npm"
@@ -102,6 +146,12 @@ updates:
     groups:
       frontend-minor-patch:
         update-types: ["minor", "patch"]
+    ignore:
+      # @tanstack/react-table 9 is a rewrite of the corpus grid, not a bump (142 tsc errors in
+      # src/features/corpus/: useReactTable, getCoreRowModel and the column APIs moved to a feature
+      # registry). v8 is maintained and works with React 19. Lift when the grid migration is planned.
+      - dependency-name: "@tanstack/react-table"
+        update-types: ["version-update:semver-major"]
 
   # --- Docker base images (one entry per directory containing a Dockerfile) ---
   - package-ecosystem: "docker"

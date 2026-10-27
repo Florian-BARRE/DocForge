@@ -78,14 +78,20 @@ These tests live under `src/docforge/tests/units/` (`coherence/` for the first o
 
 ## Public repository: never
 
-- No AI attribution trailers in commits or tracked files, and no tracked AI tool setup: `CLAUDE.md`,
-  `.claude/`, `.codex/` and `.mcp.json` stay local and gitignored (`.worktreeinclude` copies `CLAUDE.md`,
-  `.claude/settings.json` and `.codex/config.toml` into each worktree); `test_no_internal_artifacts_leak.py`
-  fails the gate otherwise.
+- No internal dev-process notes tracked: `AUDIT-REMEDIATION.md`, `docs/rpi/`, the UI-screenshot tooling,
+  `docs/archive/agent-memory-legacy/` and `.mcp.json` stay gitignored; `test_no_internal_artifacts_leak.py`
+  fails the gate otherwise. The kit's `CLAUDE.md`, `.claude/settings.json` and `.codex/config.toml` are tracked.
 - gitleaks scans the commits (`.gitleaks.toml`: test dirs and `docs/rest-api.md` allowlisted); mark a
   deliberate fake secret elsewhere with an inline `# gitleaks:allow` comment.
 - Never push a `v*` or `sdk-v*` tag: a tag publishes the images (GHCR) and the SDK (PyPI) through
   `release-sdk.yml`.
+
+## Merging (assisted mode)
+
+The team-leader merges a request once it is green (`aidk-checks` and the CI) and reviewed, through
+`aidk merge`. A request touching a path of `[merge] never_alone` in `.aidk/project.toml` (the workflows,
+`dependabot.yml`, `scripts/set_version.sh`, the migrations, the prod compose files, `.gitleaks.toml`) goes
+to florian, who merges it.
 
 ## Pitfalls
 
