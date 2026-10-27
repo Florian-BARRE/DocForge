@@ -82,9 +82,6 @@ cd "$ROOT"
 GIT_DIR_ABS="$(git rev-parse --path-format=absolute --git-dir)"
 GIT_COMMON_ABS="$(git rev-parse --path-format=absolute --git-common-dir)"
 if [[ "$GIT_DIR_ABS" != "$GIT_COMMON_ABS" ]]; then IS_WORKTREE=1; else IS_WORKTREE=0; fi
-if ((IS_WORKTREE)) && [[ ! -x "$PORT_SLOT" ]]; then
-  die "the AI Dev Kit's port-slot tool is missing (${PORT_SLOT:-not in ~/.aidk/bin nor /opt/aidk/bin}): a worktree needs it for its port block; install the kit or set AIDK_PORT_SLOT"
-fi
 REPO_KEY="$(basename "$(dirname "$GIT_COMMON_ABS")")"   # repository folder of the main checkout
 BASE_ENV_ARGS=()
 [[ -f "$BASE_ENV_FILE" ]] && BASE_ENV_ARGS+=(--env-file "$BASE_ENV_FILE")
@@ -108,9 +105,16 @@ compose() {
   fi
 }
 
+# Checked only where a port block is acquired, so teardown, down and ps still run without the tool.
+need_port_slot() {
+  [[ -x "$PORT_SLOT" ]] ||
+    die "the AI Dev Kit's port-slot tool is missing (${PORT_SLOT:-not in ~/.aidk/bin nor /opt/aidk/bin}): a worktree needs it for its port block; install the kit or set AIDK_PORT_SLOT"
+}
+
 # Writes .env.worktree (same port block on every call). Keeps SEEDED=1 once the copy is done.
 write_env() {
   local base seeded=""
+  need_port_slot
   base="$("$PORT_SLOT" acquire "$REPO_KEY" "$ROOT")"
   [[ -f "$ENV_FILE" ]] && grep -qx 'SEEDED=1' "$ENV_FILE" && seeded="SEEDED=1"
   {
@@ -268,7 +272,11 @@ case "${1:-}" in
           --remove-orphans --timeout 0 || die "the stack is still there: docker compose ps, then teardown again"
       fi
     fi
-    "$PORT_SLOT" release "$REPO_KEY" "$ROOT"
+    if [[ -x "$PORT_SLOT" ]]; then
+      "$PORT_SLOT" release "$REPO_KEY" "$ROOT"
+    else
+      note "WARNING: the port-slot tool is missing: this worktree's port block is not released"
+    fi
     rm -f "$ENV_FILE"
     note "stack, volumes and port block of this worktree removed"
     ;;

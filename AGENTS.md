@@ -112,7 +112,8 @@ These tests live under `src/docforge/tests/units/` (`coherence/` for the first o
 Each worktree runs its own copy of `compose/compose.dev-cpu.yml` + `compose/overlays/compose.worktree.yml`
 (own containers, database copied from main, own ports), driven by `aidk stack` through
 `scripts/dev-stack.sh` (details in `compose/README.md`). The services are declared in `[stack]` of
-`.aidk/project.toml`; nothing starts at setup, start only what the work needs:
+`.aidk/project.toml`; nothing starts or builds at setup, start only what the work needs. The first `up`
+of a worktree builds its images: slow for app, worker, mcp, bge and paddle (several GB, minutes).
 
 ```bash
 aidk stack status            # what is declared, what runs, what would start and why
