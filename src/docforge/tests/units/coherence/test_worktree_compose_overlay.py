@@ -3,6 +3,9 @@
 # isolating each git worktree's dev stack from the main checkout's one. Layered on top of
 # compose.dev-cpu.yml (which includes compose.base.yml + overlays/compose.dev.yml), it must:
 #   * reset `container_name` on EVERY service that base/dev pins one on (else two stacks collide);
+#   * name every image built from source after the compose project (${COMPOSE_PROJECT_NAME:-docforge}),
+#     so a worktree's build never replaces the image main or another worktree runs, while main's
+#     project ("docforge") keeps dev's names;
 #   * reset the host ports of every service, except frontend / app / mcp which publish on
 #     ${BIND_ADDR:-127.0.0.1} with a port variable (APP_PORT — the UI is the app of
 #     scripts/dev-stack.sh — / API_PORT / MCP_PORT);
@@ -18,8 +21,11 @@
 # recorded, not interpreted) and never shells out to docker. scripts/dev-stack.sh, which drives the
 # overlay, must stay executable in the git index and syntactically valid bash, and must look for the
 # kit's port-slot tool in the account only (~/.aidk/bin), never in the kit v1's machine-wide install.
+# Its teardown is run once against a fake `docker` in a throwaway git worktree: it must delete the
+# images that worktree built, never main's docforge-*:dev nor a pulled image.
 
 # ====== Standard Library Imports ======
+import os
 import pathlib
 import re
 import shlex
@@ -171,6 +177,50 @@ def test_overlay_sets_no_container_name_of_its_own(overlay_services):
 def test_overlay_only_targets_services_defined_upstream(upstream, overlay_services):
     unknown = sorted(set(overlay_services) - set(upstream))
     assert not unknown, f"overlay services absent from base/dev (typo or stale entry): {unknown}"
+
+
+# ── images ───────────────────────────────────────────────────────────────────────
+
+_PROJECT_VAR = "${COMPOSE_PROJECT_NAME:-docforge}"
+
+
+def _built_upstream_images(upstream: dict[str, list[dict[str, Any]]]) -> dict[str, str]:
+    """Each service base/dev builds from source, mapped to its (last-defined) image name."""
+    built: dict[str, str] = {}
+    for name, defs in upstream.items():
+        if any("build" in svc for svc in defs):
+            images = [svc["image"] for svc in defs if "image" in svc]
+            built[name] = images[-1] if images else ""
+    return built
+
+
+def test_upstream_builds_images_so_the_ratchet_is_live(upstream):
+    """Sanity: base/dev do build images under a fixed dev name — else the ratchet checks nothing."""
+    assert _built_upstream_images(upstream).get("docforge_app") == "docforge-app:dev"
+
+
+def test_every_built_image_is_named_after_the_compose_project(upstream, overlay_services):
+    """A worktree's build must not overwrite main's (or another worktree's) image."""
+    built = _built_upstream_images(upstream)
+    wrong = {
+        name: overlay_services.get(name, {}).get("image")
+        for name in sorted(built)
+        if not str(overlay_services.get(name, {}).get("image", "")).startswith(_PROJECT_VAR + "-")
+    }
+    assert not wrong, (
+        f"services built from source without an image named `{_PROJECT_VAR}-<name>:<tag>` in "
+        f"{_WORKTREE.name}: {wrong}"
+    )
+
+
+def test_main_keeps_the_dev_image_names(upstream, overlay_services):
+    """Main runs as project "docforge": the overlay must resolve there to dev's very names."""
+    drift = {}
+    for name, dev_image in sorted(_built_upstream_images(upstream).items()):
+        image = str(overlay_services.get(name, {}).get("image", ""))
+        if image.replace(_PROJECT_VAR, "docforge", 1) != dev_image:
+            drift[name] = (image, dev_image)
+    assert not drift, f"overlay image, with the project `docforge`, differs from dev's: {drift}"
 
 
 # ── ports ────────────────────────────────────────────────────────────────────────
@@ -340,3 +390,63 @@ def test_dev_stack_script_is_valid_bash():
 def test_dev_stack_script_does_not_call_the_kit_v1():
     kit_v1_dir = "/".join(("", "opt", "aidk"))  # spelled apart so the repository never names it
     assert kit_v1_dir not in _DEV_STACK.read_text(encoding="utf-8")
+
+
+# A fake `docker`: logs each call; `compose config --images` lists what the real one would (plus
+# main's image, which a worktree's config never names, to prove the filter); one built image is absent.
+_FAKE_DOCKER = """#!/usr/bin/env bash
+echo "$*" >>"$DOCKER_LOG"
+case "$*" in
+  *"config --images"*)
+    printf '%s\\n' docforge-wt-x-app:dev docforge-wt-x-worker:dev docforge-wt-x-mcp:dev \\
+      postgres:16-bookworm node:22-bookworm-slim docforge-app:dev docforge-wt-x-app:dev ;;
+  "image inspect docforge-wt-x-mcp:dev") exit 1 ;;
+esac
+exit 0
+"""
+
+
+@pytest.mark.skipif(
+    shutil.which("bash") is None or shutil.which("git") is None or shutil.which("timeout") is None,
+    reason="bash, git or timeout not available",
+)
+def test_dev_stack_teardown_removes_only_the_worktree_images(tmp_path):
+    main, worktree, bin_dir = tmp_path / "main", tmp_path / "wt-x", tmp_path / "bin"
+    git = ["git", "-c", "user.name=t", "-c", "user.email=t@t", "-c", "init.defaultBranch=main"]
+    subprocess.run([*git, "init", "-q", str(main)], check=True)
+    subprocess.run(
+        [*git, "-C", str(main), "commit", "-q", "--allow-empty", "-m", "init"], check=True
+    )
+    subprocess.run(
+        [*git, "-C", str(main), "worktree", "add", "-q", "-b", "wt-x", str(worktree)], check=True
+    )
+    (worktree / ".env.worktree").write_text(
+        "COMPOSE_PROJECT_NAME=docforge-wt-x\n", encoding="utf-8"
+    )
+    bin_dir.mkdir()
+    for name, body in (("docker", _FAKE_DOCKER), ("port-slot", "#!/usr/bin/env bash\nexit 0\n")):
+        (bin_dir / name).write_text(body, encoding="utf-8")
+        (bin_dir / name).chmod(0o755)
+    log = tmp_path / "docker.log"
+    env = {
+        **os.environ,
+        "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
+        "DOCKER_LOG": str(log),
+        "AIDK_PORT_SLOT": str(bin_dir / "port-slot"),
+    }
+    result = subprocess.run(
+        ["bash", str(_DEV_STACK), "teardown"],
+        cwd=worktree,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    removed = [
+        line.split()[2:]
+        for line in log.read_text(encoding="utf-8").splitlines()
+        if line.startswith("image rm ")
+    ]
+    assert removed == [["docforge-wt-x-app:dev", "docforge-wt-x-worker:dev"]]
+    assert not (worktree / ".env.worktree").exists()
