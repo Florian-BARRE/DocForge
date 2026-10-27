@@ -55,7 +55,7 @@
 services:
   # ── Prometheus — scrapes DocForge app metrics ───────────────────────────────
   prometheus:
-    image: prom/prometheus:v2.54.1
+    image: prom/prometheus:v3.14.0
     container_name: docforge-prometheus
     # Explicit command so we can enable the remote-write RECEIVER: a REMOTE Grafana Alloy running
     # on another host can `prometheus.remote_write` its metrics INTO this Prometheus (the in-stack
@@ -88,7 +88,7 @@ services:
 
   # ── Loki — log storage/index, receives from promtail ────────────────────────
   loki:
-    image: grafana/loki:2.9.8
+    image: grafana/loki:3.7.8
     container_name: docforge-loki
     command: ["-config.file=/etc/loki/loki-config.yml"]
     volumes:
@@ -97,11 +97,10 @@ services:
     ports:
       # Loopback-only by default — loki has no auth of its own and holds every container's logs.
       - "${TELEMETRY_BIND_ADDR:-127.0.0.1}:10052:3100" # Operator access / ad-hoc LogQL queries: http://localhost:10052
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:3100/ready || exit 1"]
-      interval: 15s
-      timeout: 5s
-      retries: 5
+    # No container healthcheck: since 3.x the grafana/loki image is distroless (no shell, no wget,
+    # and the binary has no probe subcommand), so a CMD-SHELL probe can never run and would leave
+    # the container "unhealthy" for good. Loki exposes /ready on :3100 for an operator probe;
+    # alloy and grafana wait for it to be started, and both retry until it answers.
     deploy:
       resources:
         # Log storage/index for the whole stack's container output — bounded so a log flood
@@ -140,7 +139,7 @@ services:
     # exposes /-/ready on :12345 for an operator probe; log delivery is verified against Loki instead.
     depends_on:
       loki:
-        condition: service_healthy
+        condition: service_started
     deploy:
       resources:
         # Tails Docker container logs and forwards to loki — light footprint, small on-disk WAL.
@@ -152,7 +151,7 @@ services:
 
   # ── Grafana — dashboards over Prometheus + Loki, provisioned on boot ────────
   grafana:
-    image: grafana/grafana:11.3.0
+    image: grafana/grafana:13.2.4
     container_name: docforge-grafana
     # Admin credentials live in services/telemetry/.env (GF_SECURITY_ADMIN_USER / _PASSWORD) —
     # the discoverable per-service config home (like services/caddy, services/docforge). Change
@@ -178,7 +177,7 @@ services:
       prometheus:
         condition: service_healthy
       loki:
-        condition: service_healthy
+        condition: service_started
     deploy:
       resources:
         # UI + provisioning engine only — no scrape/ingest load of its own.
