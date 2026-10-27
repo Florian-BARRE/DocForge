@@ -17,7 +17,7 @@ interface TextFilterInputProps {
 
 export function TextFilterInput({ value, onChange, placeholder, ariaLabel }: TextFilterInputProps) {
   const [draft, setDraft] = useState(value);
-  const timerRef = useRef<number>();
+  const timerRef = useRef<number | undefined>(undefined);
 
   // Resync from the outside (e.g. a "clear all filters" action) without fighting the user's typing.
   useEffect(() => setDraft(value), [value]);

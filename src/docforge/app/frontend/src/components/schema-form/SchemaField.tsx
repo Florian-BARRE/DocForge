@@ -3,7 +3,7 @@
 // number → numeric input, string → text (masked when the name smells like a secret) — with its
 // full contract made visible: type (+ bounds / enum values), required flag, default, description.
 
-import { useId, useState } from "react";
+import { useId, useState, type ReactElement } from "react";
 import type { JsonSchema, JsonSchemaProperty } from "../../api/types";
 import { Switch } from "../Switch";
 import { TagsInput } from "../TagsInput";
@@ -113,7 +113,7 @@ export function SchemaField({
   }
   const effectiveError = errorMessage ?? boundsMessage;
 
-  let control: JSX.Element;
+  let control: ReactElement;
   if (resolved.enum) {
     control = (
       <select

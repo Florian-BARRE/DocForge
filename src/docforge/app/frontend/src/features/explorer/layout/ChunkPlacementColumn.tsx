@@ -11,7 +11,7 @@ import type { ChunkMember } from "./chunkAssembly";
 import { ChunkColumnCard } from "./ChunkColumnCard";
 
 interface ChunkPlacementColumnProps {
-  chunkColRef: RefObject<HTMLDivElement>;
+  chunkColRef: RefObject<HTMLDivElement | null>;
   chunkRefs: MutableRefObject<Map<string, HTMLDivElement>>;
   chunks: ChunkInfo[];
   membersByChunk: Map<string, ChunkMember[]>;

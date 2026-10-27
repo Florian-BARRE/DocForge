@@ -82,8 +82,8 @@ export function useSearchPipelineEditor({ initialBlob, onSave, onResetToDefault 
   blobLatestRef.current = blob;
   const inspectUrlRef = useRef<string | null>(null);
   inspectUrlRef.current = inspectUrl;
-  const abortRef = useRef<AbortController>();
-  const debounceRef = useRef<number>();
+  const abortRef = useRef<AbortController | undefined>(undefined);
+  const debounceRef = useRef<number | undefined>(undefined);
 
   const runInspect = useCallback((target: GroupBlob) => {
     const url = inspectUrlRef.current;

@@ -9,7 +9,7 @@
 import { useEffect, useState, type RefObject } from "react";
 import { stageAnchorId } from "./stageAnchor";
 
-export function useActiveStageKey(stageKeys: string[], containerRef: RefObject<HTMLElement>): string | null {
+export function useActiveStageKey(stageKeys: string[], containerRef: RefObject<HTMLElement | null>): string | null {
   const [activeKey, setActiveKey] = useState<string | null>(null);
 
   useEffect(() => {
