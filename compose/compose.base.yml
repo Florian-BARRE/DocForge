@@ -232,7 +232,7 @@ services:
 
   # ── Qdrant — vector store (named dense + sparse per collection) ─────────────
   docforge_qdrant:
-    image: qdrant/qdrant:v1.19.2
+    image: qdrant/qdrant:v1.20.0
     container_name: docforge-qdrant
     # No host port in prod — REST API internal to docforge_net only. Dev re-publishes
     # 10043 via compose/overlays/compose.dev.yml.
