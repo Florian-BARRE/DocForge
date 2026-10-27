@@ -34,6 +34,11 @@
 # What this changes vs compose.dev-cpu.yml:
 #   - no container_name anywhere (`!reset null`): compose names containers <project>-<service>-N,
 #     so stacks of different projects (main, worktrees) never collide;
+#   - every image built from source is named after the compose project,
+#     ${COMPOSE_PROJECT_NAME:-docforge}-<name>:dev instead of overlays/compose.dev.yml's fixed
+#     docforge-<name>:dev, so a build in one worktree never replaces the image main or another
+#     worktree runs. Main's project is "docforge", so its names are unchanged (docforge-app:dev);
+#     a worktree's are docforge-<slug>-app:dev;
 #   - no host port except the ones a browser needs, read from .env.worktree and bound to
 #     ${BIND_ADDR:-127.0.0.1}: frontend (APP_PORT), app API (API_PORT), mcp (MCP_PORT). Services
 #     reach each other over the project network by service name / alias, never via host ports;
@@ -108,6 +113,7 @@ services:
           memory: 1g
 
   docforge_app:
+    image: ${COMPOSE_PROJECT_NAME:-docforge}-app:dev
     container_name: !reset null
     profiles: !reset []
     ports: !override
@@ -137,6 +143,7 @@ services:
           memory: 1g
 
   docforge_worker:
+    image: ${COMPOSE_PROJECT_NAME:-docforge}-worker:dev
     profiles: !reset []
     # Same dev command as overlays/compose.dev.yml, behind the S3 wait (args after "sh" are "$@").
     command: !override
@@ -238,6 +245,7 @@ services:
 
   # ── profile `models` ─────────────────────────────────────────────────────────
   docforge_bge_server:
+    image: ${COMPOSE_PROJECT_NAME:-docforge}-bge-server:dev
     container_name: !reset null
     profiles: !override ["models"]
     ports: !reset []
@@ -249,6 +257,7 @@ services:
           memory: 2g
 
   docforge_paddle_server:
+    image: ${COMPOSE_PROJECT_NAME:-docforge}-paddle-server:dev
     container_name: !reset null
     profiles: !override ["models"]
     ports: !reset []
@@ -261,6 +270,7 @@ services:
 
   # ── profile `extras` ─────────────────────────────────────────────────────────
   docforge_mcp:
+    image: ${COMPOSE_PROJECT_NAME:-docforge}-mcp:dev
     container_name: !reset null
     profiles: !override ["extras"]
     ports: !override
@@ -268,9 +278,11 @@ services:
 
   # ── GPU-only, opt-in profiles unchanged (mineru / dots_ocr) ──────────────────
   docforge_mineru_server:
+    image: ${COMPOSE_PROJECT_NAME:-docforge}-mineru-server:dev
     container_name: !reset null
     ports: !reset []
 
   docforge_dots_ocr_server:
+    image: ${COMPOSE_PROJECT_NAME:-docforge}-dots-ocr-server:dev
     container_name: !reset null
     ports: !reset []

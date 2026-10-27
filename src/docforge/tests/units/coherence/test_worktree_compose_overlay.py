@@ -3,6 +3,9 @@
 # isolating each git worktree's dev stack from the main checkout's one. Layered on top of
 # compose.dev-cpu.yml (which includes compose.base.yml + overlays/compose.dev.yml), it must:
 #   * reset `container_name` on EVERY service that base/dev pins one on (else two stacks collide);
+#   * name every image built from source after the compose project (${COMPOSE_PROJECT_NAME:-docforge}),
+#     so a worktree's build never replaces the image main or another worktree runs, while main's
+#     project ("docforge") keeps dev's names;
 #   * reset the host ports of every service, except frontend / app / mcp which publish on
 #     ${BIND_ADDR:-127.0.0.1} with a port variable (APP_PORT — the UI is the app of
 #     scripts/dev-stack.sh — / API_PORT / MCP_PORT);
@@ -171,6 +174,50 @@ def test_overlay_sets_no_container_name_of_its_own(overlay_services):
 def test_overlay_only_targets_services_defined_upstream(upstream, overlay_services):
     unknown = sorted(set(overlay_services) - set(upstream))
     assert not unknown, f"overlay services absent from base/dev (typo or stale entry): {unknown}"
+
+
+# ── images ───────────────────────────────────────────────────────────────────────
+
+_PROJECT_VAR = "${COMPOSE_PROJECT_NAME:-docforge}"
+
+
+def _built_upstream_images(upstream: dict[str, list[dict[str, Any]]]) -> dict[str, str]:
+    """Each service base/dev builds from source, mapped to its (last-defined) image name."""
+    built: dict[str, str] = {}
+    for name, defs in upstream.items():
+        if any("build" in svc for svc in defs):
+            images = [svc["image"] for svc in defs if "image" in svc]
+            built[name] = images[-1] if images else ""
+    return built
+
+
+def test_upstream_builds_images_so_the_ratchet_is_live(upstream):
+    """Sanity: base/dev do build images under a fixed dev name — else the ratchet checks nothing."""
+    assert _built_upstream_images(upstream).get("docforge_app") == "docforge-app:dev"
+
+
+def test_every_built_image_is_named_after_the_compose_project(upstream, overlay_services):
+    """A worktree's build must not overwrite main's (or another worktree's) image."""
+    built = _built_upstream_images(upstream)
+    wrong = {
+        name: overlay_services.get(name, {}).get("image")
+        for name in sorted(built)
+        if not str(overlay_services.get(name, {}).get("image", "")).startswith(_PROJECT_VAR + "-")
+    }
+    assert not wrong, (
+        f"services built from source without an image named `{_PROJECT_VAR}-<name>:<tag>` in "
+        f"{_WORKTREE.name}: {wrong}"
+    )
+
+
+def test_main_keeps_the_dev_image_names(upstream, overlay_services):
+    """Main runs as project "docforge": the overlay must resolve there to dev's very names."""
+    drift = {}
+    for name, dev_image in sorted(_built_upstream_images(upstream).items()):
+        image = str(overlay_services.get(name, {}).get("image", ""))
+        if image.replace(_PROJECT_VAR, "docforge", 1) != dev_image:
+            drift[name] = (image, dev_image)
+    assert not drift, f"overlay image, with the project `docforge`, differs from dev's: {drift}"
 
 
 # ── ports ────────────────────────────────────────────────────────────────────────

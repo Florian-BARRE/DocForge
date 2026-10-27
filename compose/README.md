@@ -81,7 +81,10 @@ they would take over main's stack — `scripts/dev-stack.sh` only.
 A new worktree starts nothing: Orca's setup (`aidk stack setup`, i.e. `scripts/dev-stack.sh prepare`)
 only writes its port block and `.env.worktree` (seconds: no image is built or pulled). The first
 `aidk stack up` of a worktree builds the images it needs, so the first start of `app`, `worker`,
-`mcp`, `bge` or `paddle` is slow (several GB, minutes); later starts reuse them. The agent starts only
+`mcp`, `bge` or `paddle` is slow (several GB, minutes); later starts reuse them. Each stack names
+the images it builds after its compose project, `${COMPOSE_PROJECT_NAME:-docforge}-<name>:dev`: main
+keeps `docforge-app:dev` and the like, a worktree gets `docforge-<slug>-app:dev`, so a rebuild in one
+worktree never replaces the image main or another worktree runs. The agent starts only
 what its work needs; the services are declared in `[stack]` of `.aidk/project.toml` (each names its
 compose service, its `needs` and its code `paths`), and a worktree copies main's database the first
 time postgres starts:
