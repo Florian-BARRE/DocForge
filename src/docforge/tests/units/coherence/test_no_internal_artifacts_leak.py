@@ -29,6 +29,7 @@ _FORBIDDEN_TRACKED_EXACT = {
 }
 _FORBIDDEN_TRACKED_PREFIXES = (
     ".claude/",  # the whole Claude setup
+    ".codex/",  # the Codex setup (gitignored, copied into worktrees by .worktreeinclude)
     "docs/rpi/",  # RPI research/plan/implementation notes
     "docs/archive/agent-memory-legacy/",
 )
@@ -50,16 +51,28 @@ def _git(*args: str) -> str:
     return result.stdout
 
 
+def _forbidden_tracked(paths: list[str]) -> list[str]:
+    """Return, sorted, the paths that are internal artifacts (exact files or directory prefixes)."""
+    return sorted(
+        p
+        for p in paths
+        if p in _FORBIDDEN_TRACKED_EXACT or p.startswith(_FORBIDDEN_TRACKED_PREFIXES)
+    )
+
+
+@pytest.mark.parametrize(
+    "path", ["CLAUDE.md", ".mcp.json", ".claude/settings.json", ".codex/config.toml"]
+)
+def test_ai_tool_setup_counts_as_internal(path: str) -> None:
+    """Every AI tool setup named in AGENTS.md is an artifact that must never be tracked."""
+    assert _forbidden_tracked([path, "README.md"]) == [path]
+
+
 @pytest.mark.skipif(_NOT_A_CHECKOUT, reason="not a git checkout")
 def test_no_internal_artifact_is_tracked() -> None:
     """No internal / AI-workflow artifact may be tracked by git in the public repo."""
     # 1. Every tracked path, matched against the exact-file set and the directory prefixes.
-    tracked = _git("ls-files").splitlines()
-    bad = sorted(
-        p
-        for p in tracked
-        if p in _FORBIDDEN_TRACKED_EXACT or p.startswith(_FORBIDDEN_TRACKED_PREFIXES)
-    )
+    bad = _forbidden_tracked(_git("ls-files").splitlines())
     assert not bad, (
         "internal artifacts are tracked in the PUBLIC repo — `git rm --cached` them and confirm they "
         f"are gitignored (they persist via scripts/backup-claude.sh): {bad}"

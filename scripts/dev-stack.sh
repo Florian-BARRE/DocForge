@@ -44,7 +44,9 @@ COMPOSE_FILES=(-f compose/compose.dev-cpu.yml -f compose/overlays/compose.worktr
 APP_SERVICE="docforge_frontend"      # service that serves the app (Vite UI), and its container port
 APP_CONTAINER_PORT=5173
 APP_PATH="/"                         # path of the page to open
-PREPARE_IMAGES=true                  # prepare builds and pulls the images, so a first start is quick
+# false: a worktree builds its images on its first `aidk stack up` (several GB for app, worker, mcp,
+# bge and paddle: built at prepare, they made Orca's setup outlast the agent's start).
+PREPARE_IMAGES=false                 # true: prepare builds and pulls the images, so a first start is quick
 # Database copied from main's stack into a new worktree (Postgres). Empty SEED_DB_SERVICE: no copy.
 SEED_DB_SERVICE="docforge_postgres"
 SEED_DB_USER="docforge"
@@ -62,7 +64,13 @@ worktree_extra_env() { # $1: first port of the block
 }
 # --------------------------------------------------------------------------------------------------
 
-PORT_SLOT="${AIDK_PORT_SLOT:-$HOME/.aidk/bin/aidk-port-slot}"  # the kit's, in the account
+# The kit's port-slot tool: in the account, or installed for the machine.
+PORT_SLOT="${AIDK_PORT_SLOT:-}"
+if [[ -z "$PORT_SLOT" ]]; then
+  for candidate in "$HOME/.aidk/bin/aidk-port-slot" /opt/aidk/bin/aidk-port-slot; do
+    [[ -x "$candidate" ]] && { PORT_SLOT="$candidate"; break; }
+  done
+fi
 ENV_FILE=.env.worktree
 
 die() { echo "dev-stack: $*" >&2; exit 1; }
@@ -74,6 +82,9 @@ cd "$ROOT"
 GIT_DIR_ABS="$(git rev-parse --path-format=absolute --git-dir)"
 GIT_COMMON_ABS="$(git rev-parse --path-format=absolute --git-common-dir)"
 if [[ "$GIT_DIR_ABS" != "$GIT_COMMON_ABS" ]]; then IS_WORKTREE=1; else IS_WORKTREE=0; fi
+if ((IS_WORKTREE)) && [[ ! -x "$PORT_SLOT" ]]; then
+  die "the AI Dev Kit's port-slot tool is missing (${PORT_SLOT:-not in ~/.aidk/bin nor /opt/aidk/bin}): a worktree needs it for its port block; install the kit or set AIDK_PORT_SLOT"
+fi
 REPO_KEY="$(basename "$(dirname "$GIT_COMMON_ABS")")"   # repository folder of the main checkout
 BASE_ENV_ARGS=()
 [[ -f "$BASE_ENV_FILE" ]] && BASE_ENV_ARGS+=(--env-file "$BASE_ENV_FILE")
@@ -222,8 +233,8 @@ case "${1:-}" in
   up) shift; bring_up 0 "$@" ;;
   rebuild)
     shift
-    if (($# == 0)); then  # the running services only
-      mapfile -t running < <(compose ps --services --status running)
+    if (($# == 0)); then  # the running services only, a profiled one (models, extras) included
+      mapfile -t running < <(compose --profile '*' ps --services --status running)
       ((${#running[@]})) || { note "nothing runs: up SERVICE... first"; exit 0; }
       set -- "${running[@]}"
     fi
