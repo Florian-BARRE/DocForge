@@ -157,6 +157,9 @@ services:
       - /app/worker
     environment:
       S3_ENDPOINT_URL: http://seaweedfs:8333
+      # The auto parse RSS limit of a 3g cap (1536 MiB) is below one 200-dpi scanned page's docling
+      # peak (1.9-2.2 GiB, #163): pin it under the cap here. Main and prod keep the auto formula.
+      WORKER_PARSE_RSS_LIMIT_MB: "2560"
     volumes: !override
       - ../src/docforge/worker:/app/worker
       - ../src/docforge/shared:/app/shared

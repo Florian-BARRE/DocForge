@@ -15,7 +15,9 @@
 #     it, so they must stay project-scoped);
 #   * reach seaweedfs's S3 through the project-scoped network alias `seaweedfs` (app and worker),
 #     and make app and worker wait for seaweedfs:8333 before starting (survives a host reboot,
-#     where the Docker daemon restarts every container at once and ignores depends_on).
+#     where the Docker daemon restarts every container at once and ignores depends_on);
+#   * pin the worker's WORKER_PARSE_RSS_LIMIT_MB to 2560 (the auto value of its 3g cap fails one
+#     scanned page), which base/dev leave to the auto formula.
 # A service added to base/dev with a container_name or host ports goes red here until the worktree
 # overlay handles it. Serviceless: parses the YAML statically (Compose's !reset / !override tags are
 # recorded, not interpreted) and never shells out to docker. scripts/dev-stack.sh, which drives the
@@ -328,6 +330,30 @@ def test_s3_endpoint_points_at_the_seaweedfs_alias(service, overlay_services):
         env = dict(item.split("=", 1) for item in env if "=" in item)
     assert isinstance(env, dict), f"{service}: no environment in the overlay, got {env!r}"
     assert env.get("S3_ENDPOINT_URL") == "http://seaweedfs:8333"
+
+
+def _environment(svc: dict[str, Any]) -> dict[str, Any]:
+    env = svc.get("environment") or {}
+    if isinstance(env, list):
+        env = dict(item.split("=", 1) for item in env if "=" in item)
+    return env
+
+
+def test_worktree_worker_pins_the_parse_rss_limit(overlay_services):
+    """The auto limit of the 3g cap (1536 MiB) fails one scanned page (#163): pin 2560 under it."""
+    env = _environment(overlay_services.get("docforge_worker", {}))
+    assert str(env.get("WORKER_PARSE_RSS_LIMIT_MB")) == "2560"
+
+
+@pytest.mark.parametrize("path", [_BASE, _DEV], ids=["base", "dev"])
+def test_upstream_leaves_the_parse_rss_limit_to_the_auto_formula(path):
+    """Main and prod keep the auto formula: only the worktree overlay pins the limit."""
+    pinned = [
+        name
+        for name, svc in _services(path).items()
+        if "WORKER_PARSE_RSS_LIMIT_MB" in _environment(svc)
+    ]
+    assert not pinned, f"{path.name} pins WORKER_PARSE_RSS_LIMIT_MB on {pinned}"
 
 
 @pytest.mark.parametrize("service", ["docforge_app", "docforge_worker"])

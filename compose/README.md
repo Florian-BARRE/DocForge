@@ -140,6 +140,8 @@ service name / alias over the project network.
   `maxmemory 160mb`, qdrant 1g, seaweedfs 512m, gotenberg 1g, frontend 1g; `models`: bge 4g, paddle 6g).
   The worker's 3g cap suits the shared host, but a large OCR-heavy ingestion can peak at 2-4 GiB
   and may be OOM-killed in a dev stack: raise the worker's limit locally if you need such a run.
+  The worker's parse RSS watchdog is pinned to `WORKER_PARSE_RSS_LIMIT_MB=2560` (the auto value of a
+  3g cap, 1536 MiB, fails a single scanned page); main and prod keep the auto formula.
 
 **Env files**: the project directory is `compose/`, so compose does not read the repo-root `.env` on
 its own — the script passes `--env-file .env` explicitly (then `--env-file .env.worktree` in a
