@@ -16,7 +16,8 @@
 # A service added to base/dev with a container_name or host ports goes red here until the worktree
 # overlay handles it. Serviceless: parses the YAML statically (Compose's !reset / !override tags are
 # recorded, not interpreted) and never shells out to docker. scripts/dev-stack.sh, which drives the
-# overlay, must stay executable in the git index and syntactically valid bash.
+# overlay, must stay executable in the git index and syntactically valid bash, and must look for the
+# kit's port-slot tool in the account only (~/.aidk/bin), never in the kit v1's machine-wide install.
 
 # ====== Standard Library Imports ======
 import pathlib
@@ -334,3 +335,8 @@ def test_dev_stack_script_is_valid_bash():
         ["bash", "-n", str(_DEV_STACK)], capture_output=True, text=True, check=False
     )
     assert result.returncode == 0, result.stderr
+
+
+def test_dev_stack_script_does_not_call_the_kit_v1():
+    kit_v1_dir = "/".join(("", "opt", "aidk"))  # spelled apart so the repository never names it
+    assert kit_v1_dir not in _DEV_STACK.read_text(encoding="utf-8")
