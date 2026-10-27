@@ -105,6 +105,9 @@ docs/archive/agent-memory-legacy/
 
 # Root AI project instructions — local dev tooling, kept private (like .claude/).
 /CLAUDE.md
+# Codex project settings (the AI Dev Kit writes .codex/config.toml): local too, copied into each
+# worktree by .worktreeinclude.
+/.codex/
 
 # Internal dev-process / AI-workflow artifacts — the PUBLIC repo exposes only code + product docs.
 # The audit-remediation journal (wave log, internal decisions, claude.ai artifact links) and the RPI

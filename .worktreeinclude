@@ -10,3 +10,4 @@ services/dots_ocr_server/.env
 services/telemetry/.env
 CLAUDE.md
 .claude/settings.json
+.codex/config.toml

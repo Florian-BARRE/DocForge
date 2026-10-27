@@ -35,7 +35,7 @@ before this reorg.
 | Prod GPU | `docker compose -f compose/compose.prod-gpu.yml --profile full up -d` | Production/staging on a GPU host (NVIDIA Container Toolkit required). |
 | Dev CPU | `docker compose -f compose/compose.dev-cpu.yml --profile full up -d --build` | Local development, CPU machine (the common case). |
 | Dev GPU | `docker compose -f compose/compose.dev-gpu.yml --profile full up -d --build` | Local development on a GPU-equipped machine. |
-| Dev-center dev stack | `scripts/dev-stack.sh setup` / `up` / `rebuild` (layers `compose/overlays/compose.worktree.yml` on `compose.dev-cpu.yml`) | The dev center: the main checkout and each git worktree, side by side on one shared CPU host. **Never prod.** See [the per-worktree dev stack](#the-per-worktree-dev-stack). |
+| Dev-center dev stack | `aidk stack up NAME` / `rebuild` / `down` through `scripts/dev-stack.sh` (layers `compose/overlays/compose.worktree.yml` on `compose.dev-cpu.yml`) | The dev center: the main checkout and each git worktree, side by side on one shared CPU host. **Never prod.** See [the per-worktree dev stack](#the-per-worktree-dev-stack). |
 
 `--profile full` is mandatory in every Makefile/scenario command (the dev-center stack resets
 profiles, see below) — app/worker/frontend/mcp live under it (omitting it starts only the
@@ -78,13 +78,24 @@ project) on one shared host. It is layered with a plain `-f` on top of `compose.
 (main checkout or worktree): they use the fixed project `docforge` and fixed container names, so
 they would take over main's stack — `scripts/dev-stack.sh` only.
 
+A new worktree starts nothing: Orca's setup (`aidk stack setup`, i.e. `scripts/dev-stack.sh prepare`)
+writes its port block and `.env.worktree` and builds/pulls the images. The agent then starts only
+what its work needs; the services are declared in `[stack]` of `.aidk/project.toml` (each names its
+compose service, its `needs` and its code `paths`), and a worktree copies main's database the first
+time postgres starts:
+
 ```bash
-scripts/dev-stack.sh setup                        # worktree: port block + .env.worktree + DB copied from main + up
-scripts/dev-stack.sh up                           # core services only
-COMPOSE_PROFILES=models scripts/dev-stack.sh up   # + bge_server / paddle_server
-COMPOSE_PROFILES=models,extras scripts/dev-stack.sh up   # + mcp
-scripts/dev-stack.sh rebuild | url | status | teardown
+aidk stack status                                 # declared services, what runs, what would start
+aidk stack up frontend                            # docforge_frontend + docforge_app + qdrant + postgres/redis/seaweedfs
+aidk stack up worker                              # docforge_worker + qdrant + gotenberg + the stores
+aidk stack up mcp                                 # docforge_mcp (profile extras) + the app
+aidk stack up bge paddle                          # bge_server / paddle_server (profile models)
+aidk stack rebuild NAME | browse | down           # rebuild an image, open the UI in Orca, stop
+aidk stack release                                # worktree removal (Orca's archive): containers, volumes, ports
 ```
+
+`scripts/dev-stack.sh up SERVICE...` (compose names) and `setup` (everything not behind a profile)
+still work by hand; `url`, `ps`, `status` and `teardown` too.
 
 **The UI is the Vite frontend** (`docforge_frontend`, hot reload), the "app" of
 `scripts/dev-stack.sh` (`url` prints it): it proxies `/api`, `/capabilities` and `/health` to the
@@ -93,11 +104,12 @@ next port, with its docs at `/scalar`; its `/` is 404 in dev because the source 
 image's built UI. The frontend has no healthcheck, so `up --wait` only waits for it to be running:
 its first start runs `npm ci` in the container (a few minutes) before Vite answers.
 
-**Profiles** (no `--profile full` here — the overlay resets app/worker's profile):
+**Profiles** (no `--profile full` here — the overlay resets app/worker's profile). Naming a service
+behind a profile starts it (`aidk stack up mcp`); `COMPOSE_PROFILES` in the environment is honoured too:
 
 | Profile | Services |
 |---|---|
-| core (none, starts by default) | `docforge_frontend` (Vite UI), `docforge_app`, `docforge_worker`, postgres, redis, qdrant, seaweedfs, gotenberg |
+| core (none) | `docforge_frontend` (Vite UI), `docforge_app`, `docforge_worker`, postgres, redis, qdrant, seaweedfs, gotenberg |
 | `models` | `docforge_bge_server`, `docforge_paddle_server` (heavy CPU model hosts — check free memory first) |
 | `extras` | `docforge_mcp` |
 

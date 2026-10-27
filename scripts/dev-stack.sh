@@ -1,30 +1,39 @@
 #!/usr/bin/env bash
-# One running dev stack per Orca worktree (template from the AI Dev Kit).
+# One running dev stack per Orca worktree (template from the AI Dev Kit, ~/.aidk/kit/platforms/linux/templates/project).
 #
-#   scripts/dev-stack.sh setup     worktree: port block, .env.worktree, database copied from main, stack up
-#                                  main checkout: stack up on the usual ports
-#   scripts/dev-stack.sh up        start (or update) the stack
-#   scripts/dev-stack.sh rebuild   rebuild the images and restart, data kept
-#   scripts/dev-stack.sh seed      worktree only: copy main's database into this one (only if empty)
-#   scripts/dev-stack.sh url       print the address of the app
-#   scripts/dev-stack.sh status    address, containers, then the logs (Orca "Stack" tab)
-#   scripts/dev-stack.sh teardown  worktree only: stop, delete its containers and volumes, free the ports
+#   scripts/dev-stack.sh prepare           worktree: port block, .env.worktree, images built and pulled;
+#                                          nothing started (aidk stack setup, when .aidk/project.toml has a [stack])
+#   scripts/dev-stack.sh setup             prepare, then the whole stack up, database copied from main first
+#                                          (main checkout: the whole stack up on the usual ports)
+#   scripts/dev-stack.sh up [SERVICE...]   start these and what they depend on (depends_on), or the whole stack;
+#                                          a worktree copies main's database first when the database is among them
+#   scripts/dev-stack.sh stop SERVICE...   stop these services, data kept
+#   scripts/dev-stack.sh rebuild [SERVICE...]  rebuild the images and restart (the running ones without a
+#                                          name), data kept
+#   scripts/dev-stack.sh down              stop the whole stack, data kept
+#   scripts/dev-stack.sh seed              worktree only: copy main's database into this one (only if empty)
+#   scripts/dev-stack.sh deps SERVICE...   what `up SERVICE...` starts (the services and their depends_on)
+#   scripts/dev-stack.sh url               print the address of the app
+#   scripts/dev-stack.sh ps                the address and the containers
+#   scripts/dev-stack.sh status            the same, then follows the logs (Orca "Stack" tab)
+#   scripts/dev-stack.sh teardown          worktree only: stop, delete its containers and volumes, free the ports
 #
 # In a worktree, the app is at http://localhost:<first port of the block>, in Orca's browser of that
 # worktree (Orca routes its traffic through the server). Published ports listen on 127.0.0.1 only.
 # The compose files must read the variables below and must not set container_name or volume names.
+# Which services a worktree starts, and when, is declared in .aidk/project.toml ([stack]: aidk stack up NAME).
 #
 # DocForge: the main checkout and every worktree run compose/compose.dev-cpu.yml +
 # compose/overlays/compose.worktree.yml (no container names). Main is project "docforge" on the
 # overlay's default ports (UI 10046, API 10040, mcp 10048, on 127.0.0.1); a worktree reads its
 # project and ports from .env.worktree (UI = first port of the block, API = +1, mcp = +8). The UI
-# is the Vite dev server (hot reload) proxying to the app; the API docs are at <API>/scalar. By
-# default only the core services start (UI, app, worker, stores); opt in to the others with
-# compose profiles (a COMPOSE_PROFILES set in the environment is honoured), e.g.
-#   COMPOSE_PROFILES=models scripts/dev-stack.sh up          # + bge_server / paddle_server
-#   COMPOSE_PROFILES=models,extras scripts/dev-stack.sh up   # + mcp
+# is the Vite dev server (hot reload) proxying to the app; the API docs are at <API>/scalar.
+# A worktree starts nothing at setup (prepare); `aidk stack up frontend` starts the UI, the app and
+# the stores. A service behind a compose profile (bge_server / paddle_server: models, mcp: extras)
+# starts when named (`up docforge_mcp`, `aidk stack up mcp`); a COMPOSE_PROFILES set in the
+# environment is honoured too, e.g. COMPOSE_PROFILES=models scripts/dev-stack.sh up.
 # The first start runs `npm ci` in the frontend container (a few minutes); `up --wait` only waits
-# for it to be running (no healthcheck), so the page may need a moment after `setup` returns.
+# for it to be running (no healthcheck), so the page may need a moment after `up` returns.
 # Prod and the Makefile scenarios (make up-dev-cpu, ...) do not use this script or the overlay.
 set -Eeuo pipefail
 
@@ -35,9 +44,11 @@ COMPOSE_FILES=(-f compose/compose.dev-cpu.yml -f compose/overlays/compose.worktr
 APP_SERVICE="docforge_frontend"      # service that serves the app (Vite UI), and its container port
 APP_CONTAINER_PORT=5173
 APP_PATH="/"                         # path of the page to open
+PREPARE_IMAGES=true                  # prepare builds and pulls the images, so a first start is quick
 # Database copied from main's stack into a new worktree (Postgres). Empty SEED_DB_SERVICE: no copy.
 SEED_DB_SERVICE="docforge_postgres"
 SEED_DB_USER="docforge"
+SEED_DB_NAME="docforge"              # database checked for tables before a copy (POSTGRES_DB)
 # Compose interpolation file of the repository (POSTGRES_DSN with the local dev password). Compose
 # does not read it on its own (the project directory is compose/), so it is passed explicitly,
 # before .env.worktree (the later file wins).
@@ -51,7 +62,7 @@ worktree_extra_env() { # $1: first port of the block
 }
 # --------------------------------------------------------------------------------------------------
 
-PORT_SLOT="${AIDK_PORT_SLOT:-$HOME/.aidk/bin/aidk-port-slot}"
+PORT_SLOT="${AIDK_PORT_SLOT:-$HOME/.aidk/bin/aidk-port-slot}"  # the kit's, in the account
 ENV_FILE=.env.worktree
 
 die() { echo "dev-stack: $*" >&2; exit 1; }
@@ -64,6 +75,8 @@ GIT_DIR_ABS="$(git rev-parse --path-format=absolute --git-dir)"
 GIT_COMMON_ABS="$(git rev-parse --path-format=absolute --git-common-dir)"
 if [[ "$GIT_DIR_ABS" != "$GIT_COMMON_ABS" ]]; then IS_WORKTREE=1; else IS_WORKTREE=0; fi
 REPO_KEY="$(basename "$(dirname "$GIT_COMMON_ABS")")"   # repository folder of the main checkout
+BASE_ENV_ARGS=()
+[[ -f "$BASE_ENV_FILE" ]] && BASE_ENV_ARGS+=(--env-file "$BASE_ENV_FILE")
 
 worktree_slug() { # folder name -> lowercase, digits, '-' (at most 30 characters)
   local s
@@ -73,19 +86,20 @@ worktree_slug() { # folder name -> lowercase, digits, '-' (at most 30 characters
 }
 
 compose() {
-  local env_args=()
-  [[ -f "$BASE_ENV_FILE" ]] && env_args+=(--env-file "$BASE_ENV_FILE")
   if ((IS_WORKTREE)); then
-    docker compose "${env_args[@]}" --env-file "$ENV_FILE" "${COMPOSE_FILES[@]}" "$@"
+    [[ -f "$ENV_FILE" ]] || write_env  # the worktree's port block, before anything reads it
+    docker compose "${BASE_ENV_ARGS[@]}" --env-file "$ENV_FILE" "${COMPOSE_FILES[@]}" "$@"
   else
-    COMPOSE_PROJECT_NAME="$PROJECT" docker compose "${env_args[@]}" "${COMPOSE_FILES[@]}" "$@"
+    # The main checkout keeps its usual ports, on loopback too: Orca's browser reaches them through
+    # the server, the LAN never does (a compose file may default to every interface for prod).
+    BIND_ADDR="${BIND_ADDR:-127.0.0.1}" COMPOSE_PROJECT_NAME="$PROJECT" docker compose "${BASE_ENV_ARGS[@]}" \
+      "${COMPOSE_FILES[@]}" "$@"
   fi
 }
 
 # Writes .env.worktree (same port block on every call). Keeps SEEDED=1 once the copy is done.
 write_env() {
   local base seeded=""
-  [[ -x "$PORT_SLOT" ]] || die "dev-center only: $PORT_SLOT is missing (on another machine use the Makefile scenarios, see compose/README.md)"
   base="$("$PORT_SLOT" acquire "$REPO_KEY" "$ROOT")"
   [[ -f "$ENV_FILE" ]] && grep -qx 'SEEDED=1' "$ENV_FILE" && seeded="SEEDED=1"
   {
@@ -125,6 +139,14 @@ seed() {
     note "WARNING: main's stack ($PROJECT) is not running: this worktree starts with an empty database"
     return 0
   fi
+  # SEEDED=1 is lost if .env.worktree is deleted by hand: never restore over existing tables.
+  local tables
+  tables="$(compose exec -T "$SEED_DB_SERVICE" psql -U "$SEED_DB_USER" -d "$SEED_DB_NAME" -tAc \
+    "select count(*) from information_schema.tables where table_schema = 'public'" 2>/dev/null || true)"
+  if [[ "${tables//[[:space:]]/}" =~ ^[1-9][0-9]*$ ]]; then
+    note "this worktree's database already has tables: not copying"
+    return 0
+  fi
   note "copying main's database into this worktree (read-only on main)"
   # The target is new and empty: "already exists" errors on the role and the default databases
   # are expected and harmless.
@@ -133,32 +155,89 @@ seed() {
   printf 'SEEDED=1\n' >>"$ENV_FILE"
 }
 
+# The services `up SERVICE...` starts: these and, through depends_on, what they depend on (one per line).
+deps() {
+  # --profile '*': a service behind a profile (mcp: extras) starts when named, so its depends_on count too.
+  compose --profile '*' config --format json | python3 -I -c '
+import json, sys
+services = json.load(sys.stdin).get("services") or {}
+todo, seen = list(sys.argv[1:]), set()
+while todo:
+    name = todo.pop()
+    if name in seen or name not in services:
+        continue
+    seen.add(name)
+    todo += list(services[name].get("depends_on") or [])
+print("\n".join(sorted(seen)))' "$@"
+}
+
+prepare() {
+  ((IS_WORKTREE)) && write_env
+  [[ "$PREPARE_IMAGES" == true ]] || return 0
+  # A broken Dockerfile on a branch must not block the worktree: its agent is the one to fix it.
+  note "building and pulling the images (nothing is started)"
+  compose build --quiet || note "WARNING: an image did not build: up will show why"
+  compose pull --quiet --ignore-buildable 2>/dev/null || note "WARNING: an image could not be pulled: up will try again"
+}
+
+# Starts SERVICE... (all without a name): the worktree's port block first, main's database copied when the
+# database is among what starts. BUILD=1: rebuild the images.
+bring_up() {
+  local build="$1"; shift
+  if ((IS_WORKTREE)); then
+    [[ -f "$ENV_FILE" ]] || write_env
+    if [[ -n "$SEED_DB_SERVICE" ]] && ! grep -qx 'SEEDED=1' "$ENV_FILE" &&
+        { (($# == 0)) || deps "$@" | grep -qx "$SEED_DB_SERVICE"; }; then
+      seed
+    fi
+  fi
+  if ((build)); then
+    compose up -d --build --wait --wait-timeout 600 "$@"
+  else
+    compose up -d --wait --wait-timeout 600 "$@"
+  fi
+  if ((IS_WORKTREE)) && { (($# == 0)) || deps "$@" | grep -qx "$APP_SERVICE"; }; then
+    url="$(app_url)" && orca_comment "$url" && note "ready: $url (open it in this worktree's browser in Orca)"
+  fi
+  return 0
+}
+
 orca_comment() { # best effort: the address shows in Orca's worktree list
   local cli="${ORCA_CLI_COMMAND:-orca-ide}"
   command -v "$cli" >/dev/null 2>&1 || return 0
   "$cli" worktree set --worktree "path:$ROOT" --comment "App : $1" --json >/dev/null 2>&1 || true
 }
 
-up() { compose up -d --wait --wait-timeout 600 "$@"; }
-
 case "${1:-}" in
+  prepare) prepare ;;
   setup)
     if ((IS_WORKTREE)); then
       write_env
-      seed
-      up
-      url="$(app_url)"
-      orca_comment "$url"
-      note "ready: $url (open it in this worktree's browser in Orca)"
+      bring_up 0
     else
-      up
+      bring_up 0
       note "main stack up: $(app_url || echo '?')"
     fi
     ;;
-  up) up ;;
-  rebuild) up --build ;;
+  up) shift; bring_up 0 "$@" ;;
+  rebuild)
+    shift
+    if (($# == 0)); then  # the running services only
+      mapfile -t running < <(compose ps --services --status running)
+      ((${#running[@]})) || { note "nothing runs: up SERVICE... first"; exit 0; }
+      set -- "${running[@]}"
+    fi
+    bring_up 1 "$@"
+    ;;
+  stop) shift; (($#)) || die "stop needs the services to stop (down stops the whole stack)"; compose stop "$@" ;;
+  down) compose --profile '*' down --remove-orphans ;;  # no -v: data kept
+  deps) shift; (($#)) || die "deps needs services"; deps "$@" ;;
   seed) seed ;;
   url) app_url || exit 1 ;;
+  ps)
+    app_url || true
+    compose ps
+    ;;
   status)
     app_url || true
     compose ps
@@ -166,8 +245,18 @@ case "${1:-}" in
     ;;
   teardown)
     ((IS_WORKTREE)) || die "teardown never runs in the main checkout (it would delete main's data)"
-    # Every profile, so containers started with COMPOSE_PROFILES=models/extras go too.
-    if [[ -f "$ENV_FILE" ]]; then COMPOSE_PROFILES='*' compose down -v --remove-orphans; fi
+    # --profile '*': services behind a compose profile (pgAdmin…) and their volumes go too. Orca gives the
+    # archive script 120 s and keeps the worktree when it fails: 5 s for the containers to stop, a kill
+    # when that is not enough, everything bounded well under the limit.
+    if [[ -f "$ENV_FILE" ]]; then
+      if ! timeout 60 docker compose "${BASE_ENV_ARGS[@]}" --env-file "$ENV_FILE" "${COMPOSE_FILES[@]}" --profile '*' down -v \
+          --remove-orphans --timeout 5; then
+        note "the stack did not stop in time: killing it"
+        timeout 15 docker compose "${BASE_ENV_ARGS[@]}" --env-file "$ENV_FILE" "${COMPOSE_FILES[@]}" --profile '*' kill || true
+        timeout 20 docker compose "${BASE_ENV_ARGS[@]}" --env-file "$ENV_FILE" "${COMPOSE_FILES[@]}" --profile '*' down -v \
+          --remove-orphans --timeout 0 || die "the stack is still there: docker compose ps, then teardown again"
+      fi
+    fi
     "$PORT_SLOT" release "$REPO_KEY" "$ROOT"
     rm -f "$ENV_FILE"
     note "stack, volumes and port block of this worktree removed"

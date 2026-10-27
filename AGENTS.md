@@ -79,8 +79,9 @@ These tests live under `src/docforge/tests/units/` (`coherence/` for the first o
 ## Public repository: never
 
 - No AI attribution trailers in commits or tracked files, and no tracked AI tool setup: `CLAUDE.md`,
-  `.claude/` and `.mcp.json` stay local and gitignored (`.worktreeinclude` copies `CLAUDE.md` and
-  `.claude/settings.json` into each worktree); `test_no_internal_artifacts_leak.py` fails the gate otherwise.
+  `.claude/`, `.codex/` and `.mcp.json` stay local and gitignored (`.worktreeinclude` copies `CLAUDE.md`,
+  `.claude/settings.json` and `.codex/config.toml` into each worktree); `test_no_internal_artifacts_leak.py`
+  fails the gate otherwise.
 - gitleaks scans the commits (`.gitleaks.toml`: test dirs and `docs/rest-api.md` allowlisted); mark a
   deliberate fake secret elsewhere with an inline `# gitleaks:allow` comment.
 - Never push a `v*` or `sdk-v*` tag: a tag publishes the images (GHCR) and the SDK (PyPI) through
@@ -95,29 +96,40 @@ These tests live under `src/docforge/tests/units/` (`coherence/` for the first o
 - The `src/docforge` suite reads `services/docforge/.env` at import; `aidk verify` uses the
   `.env.example` instead, as the CI does.
 
+## Release and publication (florian's, untouched by agents)
+
+- `.github/workflows/release-sdk.yml` runs on a pushed tag: `v*` runs the gate, then publishes the SDK
+  (`docforge-sdk` on PyPI, Trusted Publishing through OIDC in the `pypi` environment) and the GHCR images
+  (`GITHUB_TOKEN` with `packages: write`), then scans the images; `sdk-v*` publishes the SDK only.
+- The version moves with `scripts/set_version.sh X.Y.Z`. Agents never push a `v*`/`sdk-v*` tag and never
+  change the release workflow without florian.
+- No `pull_request_target` workflow and no stored secret: the workflows use only `GITHUB_TOKEN`.
+- Dependabot (`.github/dependabot.yml`): minor and patch bumps grouped in weekly PRs per ecosystem, each
+  major alone; a major merges only with florian's go.
+
 ## Dev stack (dev center: main checkout and each worktree)
 
-Driven by `scripts/dev-stack.sh` (compose files `compose/compose.dev-cpu.yml` +
-`compose/overlays/compose.worktree.yml`, details in `compose/README.md`):
+Each worktree runs its own copy of `compose/compose.dev-cpu.yml` + `compose/overlays/compose.worktree.yml`
+(own containers, database copied from main, own ports), driven by `aidk stack` through
+`scripts/dev-stack.sh` (details in `compose/README.md`). The services are declared in `[stack]` of
+`.aidk/project.toml`; nothing starts at setup, start only what the work needs:
 
 ```bash
-scripts/dev-stack.sh setup      # worktree: port block, .env.worktree, DB copied from main, up
-scripts/dev-stack.sh up         # start or update
-scripts/dev-stack.sh rebuild    # rebuild images and restart, data kept (after a change that affects what runs)
-scripts/dev-stack.sh url        # address of the UI (Vite frontend)
-scripts/dev-stack.sh status     # address, containers, logs
-scripts/dev-stack.sh teardown   # worktree only: containers, volumes and ports removed
+aidk stack status            # what is declared, what runs, what would start and why
+aidk stack up frontend       # the UI (Vite, hot reload) + the app + qdrant, postgres, redis, seaweedfs
+aidk stack up worker         # the ingestion worker (+ qdrant, gotenberg and the stores)
+aidk stack up mcp            # the MCP server (compose profile extras) and the app
+aidk stack up bge paddle     # the CPU models (compose profile models): check `free -h` first
+aidk stack rebuild NAME      # after a change to an image (Dockerfile, dependencies), data kept
+aidk stack browse            # open the UI in this worktree's Orca browser; give florian its URL
+aidk stack down              # stop what you started
 ```
 
-- Core CPU services start by default (Vite frontend, app, worker, postgres, redis, qdrant,
-  seaweedfs, gotenberg). Opt in with `COMPOSE_PROFILES=models` (bge_server, paddle_server) and/or
-  `extras` (mcp), e.g. `COMPOSE_PROFILES=models,extras scripts/dev-stack.sh up`. The host is
-  shared: check free memory (`free -h`) before enabling `models`.
-- The UI is the Vite frontend (hot reload) at the URL printed by `scripts/dev-stack.sh url` (first
-  port of the block; `10046` in main); it proxies the API calls to the app. The API is on the next
-  port (`API_PORT` in `.env.worktree`; `10040` in main), API docs at `/scalar`; its `/` is 404 in dev
-  (the source mount hides the built UI). The frontend's first start runs `npm ci` (a few minutes) and
-  `up --wait` does not wait for it: retry the page if it is not up yet.
+- The UI is the Vite frontend at the first port of the worktree's block (`scripts/dev-stack.sh url`;
+  `10046` in main); it proxies the API calls to the app. The API is on the next port (`API_PORT` in
+  `.env.worktree`; `10040` in main), API docs at `/scalar`; its `/` is 404 in dev (the source mount
+  hides the built UI). The frontend's first start runs `npm ci` (a few minutes) and `up --wait` does not
+  wait for it: retry the page if it is not up yet.
 - `services/docforge/s3_config.json` must be mode 644 (rootless Docker cannot read a 600 file in a
   private checkout): otherwise seaweedfs's S3 dies with "permission denied" and the app fails at startup.
 - Never `make up-*` / `down-*` on the dev center (main checkout or worktree): fixed compose project
