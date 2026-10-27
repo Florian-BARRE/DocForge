@@ -18,7 +18,7 @@ function focusableElements(container: HTMLElement): HTMLElement[] {
   return Array.from(container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR));
 }
 
-export function useFocusTrap<T extends HTMLElement>(onClose: () => void): RefObject<T> {
+export function useFocusTrap<T extends HTMLElement>(onClose: () => void): RefObject<T | null> {
   const containerRef = useRef<T>(null);
 
   useEffect(() => {

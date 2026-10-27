@@ -10,7 +10,7 @@ import { ReadingOrderEntry } from "./ReadingOrderEntry";
 import { blockPageNumberOf } from "../format";
 
 interface IrBlocksColumnProps {
-  midColRef: RefObject<HTMLDivElement>;
+  midColRef: RefObject<HTMLDivElement | null>;
   irRefs: MutableRefObject<Map<string, HTMLDivElement>>;
   blocks: IRBlock[];
   chunkByBlockId: Map<string, ChunkInfo>;

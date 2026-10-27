@@ -26,7 +26,7 @@ export function usePipelinePreview({ collectionId, blob }: UsePipelinePreviewArg
   const [error, setError] = useState<string | null>(null);
   const blobRef = useRef(blob);
   blobRef.current = blob;
-  const pollTimeoutRef = useRef<number>();
+  const pollTimeoutRef = useRef<number | undefined>(undefined);
   // Bumped on every `run()` / unmount — a poll whose runId no longer matches the latest is a stale
   // in-flight response from a superseded/abandoned run and must not touch state.
   const runIdRef = useRef(0);

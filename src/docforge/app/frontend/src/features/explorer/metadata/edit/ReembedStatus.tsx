@@ -3,6 +3,7 @@
 // job — a live "Re-embedding metadata…" indicator tied to it (orange while in progress, green once
 // the search index caught up, red on failure) with a link to the job.
 
+import type { ReactElement } from "react";
 import type { MetadataUpdateResponse } from "../../../../api/documents";
 import { Chip } from "../../../../components/Chip";
 import type { Navigate } from "../../../../shell/view";
@@ -21,7 +22,7 @@ export function ReembedStatus({ result, collectionId, onNavigate }: ReembedStatu
   const status = job?.status ?? "pending";
   const terminal = job !== null && ["done", "failed", "cancelled"].includes(status);
 
-  let chip: JSX.Element;
+  let chip: ReactElement;
   if (!jobId) chip = <Chip tone="ok">Saved</Chip>;
   else if (status === "done") chip = <Chip tone="ok">{result.reembedding ? "Saved · search index updated" : "Saved · index synced"}</Chip>;
   else if (status === "failed" || status === "cancelled")

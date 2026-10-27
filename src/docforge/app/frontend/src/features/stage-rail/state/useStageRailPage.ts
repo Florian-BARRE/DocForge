@@ -146,7 +146,7 @@ export function useStageRailPage({ initialBlob, onBlobChange, onSave }: UseStage
   //    feels native, then debounces the actual `/apply` round-trip. `debouncePending` tracks that
   //    armed-but-not-yet-sent window so Save can be blocked — `blob` only mirrors the LAST settled
   //    `/apply`, so saving while a debounce is armed would persist a stale blob.
-  const debounceRef = useRef<number>();
+  const debounceRef = useRef<number | undefined>(undefined);
   const applyLocalThenDebounced = useCallback(
     (mutateLocally: (s: StageView[]) => StageView[], buildAction: (s: StageView[]) => StageAction) => {
       const current = stagesLatestRef.current;
