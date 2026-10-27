@@ -44,7 +44,9 @@ COMPOSE_FILES=(-f compose/compose.dev-cpu.yml -f compose/overlays/compose.worktr
 APP_SERVICE="docforge_frontend"      # service that serves the app (Vite UI), and its container port
 APP_CONTAINER_PORT=5173
 APP_PATH="/"                         # path of the page to open
-PREPARE_IMAGES=true                  # prepare builds and pulls the images, so a first start is quick
+# false: a worktree builds its images on its first `aidk stack up` (several GB for app, worker, mcp,
+# bge and paddle: built at prepare, they made Orca's setup outlast the agent's start).
+PREPARE_IMAGES=false                 # true: prepare builds and pulls the images, so a first start is quick
 # Database copied from main's stack into a new worktree (Postgres). Empty SEED_DB_SERVICE: no copy.
 SEED_DB_SERVICE="docforge_postgres"
 SEED_DB_USER="docforge"
@@ -62,7 +64,13 @@ worktree_extra_env() { # $1: first port of the block
 }
 # --------------------------------------------------------------------------------------------------
 
-PORT_SLOT="${AIDK_PORT_SLOT:-$HOME/.aidk/bin/aidk-port-slot}"  # the kit's, in the account
+# The kit's port-slot tool: in the account, or installed for the machine.
+PORT_SLOT="${AIDK_PORT_SLOT:-}"
+if [[ -z "$PORT_SLOT" ]]; then
+  for candidate in "$HOME/.aidk/bin/aidk-port-slot" /opt/aidk/bin/aidk-port-slot; do
+    [[ -x "$candidate" ]] && { PORT_SLOT="$candidate"; break; }
+  done
+fi
 ENV_FILE=.env.worktree
 
 die() { echo "dev-stack: $*" >&2; exit 1; }
@@ -97,9 +105,16 @@ compose() {
   fi
 }
 
+# Checked only where a port block is acquired, so teardown, down and ps still run without the tool.
+need_port_slot() {
+  [[ -x "$PORT_SLOT" ]] ||
+    die "the AI Dev Kit's port-slot tool is missing (${PORT_SLOT:-not in ~/.aidk/bin nor /opt/aidk/bin}): a worktree needs it for its port block; install the kit or set AIDK_PORT_SLOT"
+}
+
 # Writes .env.worktree (same port block on every call). Keeps SEEDED=1 once the copy is done.
 write_env() {
   local base seeded=""
+  need_port_slot
   base="$("$PORT_SLOT" acquire "$REPO_KEY" "$ROOT")"
   [[ -f "$ENV_FILE" ]] && grep -qx 'SEEDED=1' "$ENV_FILE" && seeded="SEEDED=1"
   {
@@ -222,8 +237,8 @@ case "${1:-}" in
   up) shift; bring_up 0 "$@" ;;
   rebuild)
     shift
-    if (($# == 0)); then  # the running services only
-      mapfile -t running < <(compose ps --services --status running)
+    if (($# == 0)); then  # the running services only, a profiled one (models, extras) included
+      mapfile -t running < <(compose --profile '*' ps --services --status running)
       ((${#running[@]})) || { note "nothing runs: up SERVICE... first"; exit 0; }
       set -- "${running[@]}"
     fi
@@ -257,7 +272,11 @@ case "${1:-}" in
           --remove-orphans --timeout 0 || die "the stack is still there: docker compose ps, then teardown again"
       fi
     fi
-    "$PORT_SLOT" release "$REPO_KEY" "$ROOT"
+    if [[ -x "$PORT_SLOT" ]]; then
+      "$PORT_SLOT" release "$REPO_KEY" "$ROOT"
+    else
+      note "WARNING: the port-slot tool is missing: this worktree's port block is not released"
+    fi
     rm -f "$ENV_FILE"
     note "stack, volumes and port block of this worktree removed"
     ;;
