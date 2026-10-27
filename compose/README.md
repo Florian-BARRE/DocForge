@@ -136,12 +136,12 @@ service name / alias over the project network.
 - startup order survives a host/VM reboot (the Docker daemon then restarts every container at once and
   ignores `depends_on`): seaweedfs is healthy only once its S3 gateway (8333) answers too, and app and
   worker wait for `seaweedfs:8333` (up to 180 s) before exec'ing their usual dev command;
-- lower memory ceilings (app 1g, worker 3g, postgres 1g with `shared_buffers=256MB`, redis 256m with
+- lower memory ceilings (app 1g, worker 4g, postgres 1g with `shared_buffers=256MB`, redis 256m with
   `maxmemory 160mb`, qdrant 1g, seaweedfs 512m, gotenberg 1g, frontend 1g; `models`: bge 4g, paddle 6g).
-  The worker's 3g cap suits the shared host, but a large OCR-heavy ingestion can peak at 2-4 GiB
-  and may be OOM-killed in a dev stack: raise the worker's limit locally if you need such a run.
-  The worker's parse RSS watchdog is pinned to `WORKER_PARSE_RSS_LIMIT_MB=2560` (the auto value of a
-  3g cap, 1536 MiB, fails a single scanned page); main and prod keep the auto formula.
+  Worktrees are CPU-only and parse one document at a time, so the worker gets 4g and its parse RSS
+  watchdog is pinned to `WORKER_PARSE_RSS_LIMIT_MB=3072`: prod's ratio (cap - 1 GiB, ~1 GiB left to
+  the arq worker), so a heavy parse fails with `ParseMemoryExceededError` before the OOM-killer reaps
+  the worker. Main and prod keep the auto formula.
 
 **Env files**: the project directory is `compose/`, so compose does not read the repo-root `.env` on
 its own — the script passes `--env-file .env` explicitly (then `--env-file .env.worktree` in a

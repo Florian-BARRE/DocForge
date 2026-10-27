@@ -16,8 +16,8 @@
 #   * reach seaweedfs's S3 through the project-scoped network alias `seaweedfs` (app and worker),
 #     and make app and worker wait for seaweedfs:8333 before starting (survives a host reboot,
 #     where the Docker daemon restarts every container at once and ignores depends_on);
-#   * pin the worker's WORKER_PARSE_RSS_LIMIT_MB to 2560 (the auto value of its 3g cap fails one
-#     scanned page), which base/dev leave to the auto formula.
+#   * cap the worker at 4g and pin its WORKER_PARSE_RSS_LIMIT_MB to 3072 (cap - 1 GiB, prod's
+#     ratio), which base/dev leave to the auto formula.
 # A service added to base/dev with a container_name or host ports goes red here until the worktree
 # overlay handles it. Serviceless: parses the YAML statically (Compose's !reset / !override tags are
 # recorded, not interpreted) and never shells out to docker. scripts/dev-stack.sh, which drives the
@@ -340,9 +340,11 @@ def _environment(svc: dict[str, Any]) -> dict[str, Any]:
 
 
 def test_worktree_worker_pins_the_parse_rss_limit(overlay_services):
-    """The auto limit of the 3g cap (1536 MiB) fails one scanned page (#163): pin 2560 under it."""
-    env = _environment(overlay_services.get("docforge_worker", {}))
-    assert str(env.get("WORKER_PARSE_RSS_LIMIT_MB")) == "2560"
+    """A scanned page peaks at 1.9-2.2 GiB (#163): 4g cap, watchdog at cap - 1 GiB (prod's ratio)."""
+    worker = overlay_services.get("docforge_worker", {})
+    limits = (((worker.get("deploy") or {}).get("resources") or {}).get("limits")) or {}
+    assert limits.get("memory") == "4g"
+    assert str(_environment(worker).get("WORKER_PARSE_RSS_LIMIT_MB")) == "3072"
 
 
 @pytest.mark.parametrize("path", [_BASE, _DEV], ids=["base", "dev"])
