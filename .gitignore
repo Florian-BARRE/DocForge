@@ -56,14 +56,10 @@ logs/
 .DS_Store
 Thumbs.db
 
-# ── Claude Code / AI dev tooling (kept LOCAL, never published) ──
-# The whole .claude/ tree (agents, rules, commands, agent-memory, session data, knowledge graph)
-# and the MCP client config are internal AI-assisted-workflow tooling. This repo is PUBLIC, so this
-# tree is deliberately NOT committed (it holds internal notes, not product code). To guard against the
-# "single unversioned copy" loss risk, snapshot it with `scripts/backup-claude.sh` (timestamped tars
-# under /home/dev-center/backups, retained) — run it after meaningful .claude/ changes, and sync that
-# backup dir to a PRIVATE remote for off-VM durability. Never move .claude/ into this public repo.
-.claude/
+# ── Claude Code local tooling (not versioned), except what the AI Dev Kit commits ──
+.claude/*
+!.claude/settings.json
+.claude/worktrees/
 .mcp.json
 
 # ── Alembic / migrations (keep structure, not generated) ──
@@ -92,7 +88,7 @@ htmlcov/
 !src/docforge/tests/units/build/**
 src/docforge/app/frontend/scripts/node_modules/
 
-# UI-screenshot dev tooling — internal, kept private like .claude/ (Playwright-via-Docker recipe).
+# UI-screenshot dev tooling — internal, kept private (Playwright-via-Docker recipe).
 src/docforge/app/frontend/scripts/ui-shot.mjs
 src/docforge/app/frontend/scripts/*.png
 src/docforge/app/frontend/scripts/*.mjs
@@ -103,15 +99,9 @@ src/docforge/app/frontend/UI-SCREENSHOT.md
 # Retired AI agent-memory snapshots — internal, not part of the public docs.
 docs/archive/agent-memory-legacy/
 
-# Root AI project instructions — local dev tooling, kept private (like .claude/).
-/CLAUDE.md
-# Codex project settings (the AI Dev Kit writes .codex/config.toml): local too, copied into each
-# worktree by .worktreeinclude.
-/.codex/
-
 # Internal dev-process / AI-workflow artifacts — the PUBLIC repo exposes only code + product docs.
-# The audit-remediation journal (wave log, internal decisions, claude.ai artifact links) and the RPI
-# research/plan/implementation notes stay internal (backed up via scripts/backup-claude.sh like .claude/).
+# The audit-remediation journal (wave log, internal decisions) and the RPI
+# research/plan/implementation notes stay internal.
 /AUDIT-REMEDIATION.md
 docs/rpi/
 

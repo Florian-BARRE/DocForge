@@ -62,6 +62,8 @@ pre_commit = ["docforge-format", "docforge-lint", "sdk-format", "sdk-lint", "mcp
 pre_push = ["sdk-types", "sdk-tests", "mcp-types", "mcp-tests", "frontend-lint", "frontend-types", "docforge-tests"]
 commit_format = "conventional"
 secrets = true
+# src/docforge/uv.lock is ~1.05 MB, over the 1024 KiB default: a lock change would be refused at commit.
+max_file_kb = 2048
 
 # Never merged without florian: the CI and release, the version, the database schema, production compose, gitleaks.
 [merge]

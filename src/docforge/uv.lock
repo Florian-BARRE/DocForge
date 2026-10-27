@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.12"
 resolution-markers = [
     "python_full_version >= '3.14' and sys_platform == 'darwin'",
@@ -39,7 +39,7 @@ dependencies = [
     { name = "pyyaml" },
     { name = "safetensors" },
     { name = "torch", version = "2.13.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform == 'darwin' and extra == 'extra-8-docforge-cpu') or (extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
-    { name = "torch", version = "2.13.0", source = { registry = "https://pypi.org/simple" }, marker = "(extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu') or (extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu')" },
+    { name = "torch", version = "2.13.0", source = { registry = "https://pypi.org/simple" }, marker = "(extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu') or (extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
     { name = "torch", version = "2.13.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform != 'darwin' and extra == 'extra-8-docforge-cpu') or (extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
     { name = "torch", version = "2.13.0+cu126", source = { registry = "https://download.pytorch.org/whl/cu126" }, marker = "extra == 'extra-8-docforge-gpu'" },
 ]
@@ -113,7 +113,7 @@ dependencies = [
     { name = "frozenlist" },
     { name = "multidict" },
     { name = "propcache" },
-    { name = "typing-extensions", marker = "python_full_version < '3.13' or (extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
+    { name = "typing-extensions", marker = "python_full_version < '3.13'" },
     { name = "yarl" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/58/d9/22ce5786ac0c1653ae8b6c23bded02c1686d11f0dbb45b31ce128e0df985/aiohttp-3.14.3.tar.gz", hash = "sha256:9491196535a88924a60afd5b5f434b5b203b6cc616250878dbdb223a8f7844bc", size = 7971213, upload-time = "2026-07-23T01:57:27.037Z" }
@@ -217,7 +217,7 @@ version = "1.4.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "frozenlist" },
-    { name = "typing-extensions", marker = "python_full_version < '3.13' or (extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
+    { name = "typing-extensions", marker = "python_full_version < '3.13'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/61/62/06741b579156360248d1ec624842ad0edf697050bbaf7c3e46394e106ad1/aiosignal-1.4.0.tar.gz", hash = "sha256:f47eecd9468083c2029cc99945502cb7708b082c232f9aca65da147157b251c7", size = 25007, upload-time = "2025-07-03T22:54:43.528Z" }
 wheels = [
@@ -226,16 +226,16 @@ wheels = [
 
 [[package]]
 name = "alembic"
-version = "1.20.0"
+version = "1.20.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "mako" },
     { name = "sqlalchemy" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/ed/aa/02910bdb8e2f1444f6654d5b296cd827d126f82209050ee7b1000f92ac4b/alembic-1.20.0.tar.gz", hash = "sha256:db505480647bc60386c5369402f4a57a506b7539c9e9ef5e270d45cbbe4939bf", size = 2093272, upload-time = "2026-09-11T19:09:11.126Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/93/1c/00909e0fbebad2121d916fdcab044cae988146680e9ee4387ba25fef8747/alembic-1.20.1.tar.gz", hash = "sha256:83490def1f723413db5096591f7609ac52544805be93849170088ed04f5a2e0b", size = 2103576, upload-time = "2026-10-22T03:24:35.93Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/3f/27/78a89b55b0904d222183164e079b4ca56208e94eff1d35ad1f1ad5be9b06/alembic-1.20.0-py3-none-any.whl", hash = "sha256:77eb101048d95f982c0353e9233404889dcd7a6fc244c107836c0e2fc9cf7d9d", size = 268719, upload-time = "2026-09-11T19:09:12.88Z" },
+    { url = "https://files.pythonhosted.org/packages/11/3c/8740f5b4e1bd57333e4f84265b9b6363da4f7cf70f5622dd1e2fde7a0bd5/alembic-1.20.1-py3-none-any.whl", hash = "sha256:9970712cfb81ea26c8658d378aaa5b8f6ff9146e5bb111d70497c164016cf598", size = 270355, upload-time = "2026-10-22T03:24:37.667Z" },
 ]
 
 [[package]]
@@ -268,7 +268,7 @@ version = "4.14.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "idna" },
-    { name = "typing-extensions", marker = "python_full_version < '3.13' or (extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
+    { name = "typing-extensions", marker = "python_full_version < '3.13'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/3b/72/5562aabb8dd7181e8e860622a38bea08d17842b99ecd4c91f84ac95251b0/anyio-4.14.1.tar.gz", hash = "sha256:8d648a3544c1a700e3ff78615cd679e4c5c3f149904287e73687b2596963629e", size = 254831, upload-time = "2026-06-24T20:56:06.017Z" }
 wheels = [
@@ -487,7 +487,7 @@ name = "click"
 version = "8.4.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "colorama", marker = "sys_platform == 'win32' or (extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
+    { name = "colorama", marker = "sys_platform == 'win32'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/76/d4/81420972a676e8ffea40450d8c8c92943e7218a78fe9b64359836cc9876b/click-8.4.2.tar.gz", hash = "sha256:9a6cea6e60b17ebe0a44c5cc636d94f09bd66142c1cd7d8b4cd731c4917a15f6", size = 338000, upload-time = "2026-06-24T17:45:15.148Z" }
 wheels = [
@@ -508,7 +508,7 @@ name = "colorlog"
 version = "6.10.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "colorama", marker = "sys_platform == 'win32' or (extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
+    { name = "colorama", marker = "sys_platform == 'win32'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/a2/61/f083b5ac52e505dfc1c624eafbf8c7589a0d7f32daa398d2e7590efa5fda/colorlog-6.10.1.tar.gz", hash = "sha256:eb4ae5cb65fe7fec7773c2306061a8e63e02efc2c72eba9d27b0fa23c94f1321", size = 17162, upload-time = "2025-10-16T16:14:11.978Z" }
 wheels = [
@@ -638,7 +638,7 @@ resolution-markers = [
     "python_full_version < '3.13' and sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32'",
 ]
 dependencies = [
-    { name = "cuda-pathfinder", marker = "(sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32' and extra == 'extra-8-docforge-gpu') or (sys_platform == 'darwin' and extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu') or (sys_platform == 'emscripten' and extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu') or (sys_platform == 'win32' and extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
+    { name = "cuda-pathfinder", marker = "(sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32' and extra == 'extra-8-docforge-gpu') or (extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/32/45/557d4ed1fa54f0c7db8aee083229f624990d69f7d00f55477eed5c7e169a/cuda_bindings-12.9.7-cp312-cp312-manylinux_2_24_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:0666d3c082ef8f4b2d670950589373550e9f3bf564d635dd883f24a0b40402ff", size = 7071026, upload-time = "2026-05-27T18:44:13.356Z" },
@@ -756,43 +756,43 @@ wheels = [
 
 [package.optional-dependencies]
 cublas = [
-    { name = "nvidia-cublas", marker = "(platform_machine != 'aarch64' and platform_machine != 'x86_64' and extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu') or (platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu') or (platform_machine == 'aarch64' and extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu') or (platform_machine == 'x86_64' and extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu') or (sys_platform != 'linux' and extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
-    { name = "nvidia-cuda-nvrtc", marker = "(platform_machine != 'aarch64' and platform_machine != 'x86_64' and extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu') or (platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu') or (platform_machine == 'aarch64' and extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu') or (platform_machine == 'x86_64' and extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu') or (sys_platform != 'linux' and extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
+    { name = "nvidia-cublas", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu') or (extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
+    { name = "nvidia-cuda-nvrtc", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu') or (extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
 ]
 cudart = [
-    { name = "nvidia-cuda-runtime", marker = "(platform_machine != 'aarch64' and platform_machine != 'x86_64' and extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu') or (platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu') or (platform_machine == 'aarch64' and extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu') or (platform_machine == 'x86_64' and extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu') or (sys_platform != 'linux' and extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
+    { name = "nvidia-cuda-runtime", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu') or (extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
 ]
 cufft = [
-    { name = "nvidia-cufft", marker = "(platform_machine != 'aarch64' and platform_machine != 'x86_64' and extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu') or (platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu') or (platform_machine == 'aarch64' and extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu') or (platform_machine == 'x86_64' and extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu') or (sys_platform != 'linux' and extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
-    { name = "nvidia-nvjitlink", marker = "(platform_machine != 'aarch64' and platform_machine != 'x86_64' and extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu') or (platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu') or (platform_machine == 'aarch64' and extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu') or (platform_machine == 'x86_64' and extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu') or (sys_platform != 'linux' and extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
+    { name = "nvidia-cufft", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu') or (extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
+    { name = "nvidia-nvjitlink", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu') or (extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
 ]
 cufile = [
-    { name = "nvidia-cufile", marker = "(platform_machine != 'aarch64' and platform_machine != 'x86_64' and extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu') or (platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu') or (platform_machine == 'aarch64' and extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu') or (platform_machine == 'x86_64' and extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu') or (sys_platform != 'linux' and extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
+    { name = "nvidia-cufile", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu') or (extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
 ]
 cupti = [
-    { name = "nvidia-cuda-cupti", marker = "(platform_machine != 'aarch64' and platform_machine != 'x86_64' and extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu') or (platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu') or (platform_machine == 'aarch64' and extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu') or (platform_machine == 'x86_64' and extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu') or (sys_platform != 'linux' and extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
+    { name = "nvidia-cuda-cupti", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu') or (extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
 ]
 curand = [
-    { name = "nvidia-curand", marker = "(platform_machine != 'aarch64' and platform_machine != 'x86_64' and extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu') or (platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu') or (platform_machine == 'aarch64' and extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu') or (platform_machine == 'x86_64' and extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu') or (sys_platform != 'linux' and extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
+    { name = "nvidia-curand", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu') or (extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
 ]
 cusolver = [
-    { name = "nvidia-cublas", marker = "(platform_machine != 'aarch64' and platform_machine != 'x86_64' and extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu') or (platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu') or (platform_machine == 'aarch64' and extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu') or (platform_machine == 'x86_64' and extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu') or (sys_platform != 'linux' and extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
-    { name = "nvidia-cusolver", marker = "(platform_machine != 'aarch64' and platform_machine != 'x86_64' and extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu') or (platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu') or (platform_machine == 'aarch64' and extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu') or (platform_machine == 'x86_64' and extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu') or (sys_platform != 'linux' and extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
-    { name = "nvidia-cusparse", marker = "(platform_machine != 'aarch64' and platform_machine != 'x86_64' and extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu') or (platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu') or (platform_machine == 'aarch64' and extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu') or (platform_machine == 'x86_64' and extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu') or (sys_platform != 'linux' and extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
-    { name = "nvidia-nvjitlink", marker = "(platform_machine != 'aarch64' and platform_machine != 'x86_64' and extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu') or (platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu') or (platform_machine == 'aarch64' and extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu') or (platform_machine == 'x86_64' and extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu') or (sys_platform != 'linux' and extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
+    { name = "nvidia-cublas", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu') or (extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
+    { name = "nvidia-cusolver", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu') or (extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
+    { name = "nvidia-cusparse", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu') or (extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
+    { name = "nvidia-nvjitlink", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu') or (extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
 ]
 cusparse = [
-    { name = "nvidia-cusparse", marker = "(platform_machine != 'aarch64' and platform_machine != 'x86_64' and extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu') or (platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu') or (platform_machine == 'aarch64' and extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu') or (platform_machine == 'x86_64' and extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu') or (sys_platform != 'linux' and extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
-    { name = "nvidia-nvjitlink", marker = "(platform_machine != 'aarch64' and platform_machine != 'x86_64' and extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu') or (platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu') or (platform_machine == 'aarch64' and extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu') or (platform_machine == 'x86_64' and extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu') or (sys_platform != 'linux' and extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
+    { name = "nvidia-cusparse", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu') or (extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
+    { name = "nvidia-nvjitlink", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu') or (extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
 ]
 nvjitlink = [
-    { name = "nvidia-nvjitlink", marker = "(platform_machine != 'aarch64' and platform_machine != 'x86_64' and extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu') or (platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu') or (platform_machine == 'aarch64' and extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu') or (platform_machine == 'x86_64' and extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu') or (sys_platform != 'linux' and extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
+    { name = "nvidia-nvjitlink", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu') or (extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
 ]
 nvrtc = [
-    { name = "nvidia-cuda-nvrtc", marker = "(platform_machine != 'aarch64' and platform_machine != 'x86_64' and extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu') or (platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu') or (platform_machine == 'aarch64' and extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu') or (platform_machine == 'x86_64' and extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu') or (sys_platform != 'linux' and extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
+    { name = "nvidia-cuda-nvrtc", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu') or (extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
 ]
 nvtx = [
-    { name = "nvidia-nvtx", marker = "(platform_machine != 'aarch64' and platform_machine != 'x86_64' and extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu') or (platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu') or (platform_machine == 'aarch64' and extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu') or (platform_machine == 'x86_64' and extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu') or (sys_platform != 'linux' and extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
+    { name = "nvidia-nvtx", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu') or (extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
 ]
 
 [[package]]
@@ -914,13 +914,13 @@ worker = [
 [package.metadata]
 requires-dist = [
     { name = "aioboto3", specifier = ">=15.5.0,<16" },
-    { name = "alembic", specifier = ">=1.20.0,<2" },
+    { name = "alembic", specifier = ">=1.20.1,<2" },
     { name = "arq", specifier = ">=0.28.0,<0.29" },
     { name = "asyncpg", specifier = ">=0.32.0,<0.33" },
     { name = "configplusplus", specifier = ">=0.4.0" },
     { name = "fastapi", extras = ["standard"], specifier = ">=0.115.0,<1" },
     { name = "httpx", specifier = ">=0.28.1,<1" },
-    { name = "langchain-core", specifier = ">=1.6.12,<2" },
+    { name = "langchain-core", specifier = ">=1.7.0,<2" },
     { name = "langchain-mistralai", specifier = ">=1.1.6,<2" },
     { name = "langchain-openai", specifier = ">=1.7.2,<2" },
     { name = "limits", specifier = ">=3.13,<6" },
@@ -930,8 +930,8 @@ requires-dist = [
     { name = "psutil", specifier = ">=7.2.2,<8" },
     { name = "pydantic", specifier = ">=2.14.1,<3" },
     { name = "pyfiglet", specifier = ">=1.0.2,<2" },
-    { name = "pypdf", specifier = ">=6.21.0,<7" },
-    { name = "qdrant-client", specifier = ">=1.19.1,<2" },
+    { name = "pypdf", specifier = ">=6.21.2,<7" },
+    { name = "qdrant-client", specifier = ">=1.20.0,<2" },
     { name = "snowballstemmer", specifier = ">=3.0,<4" },
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0.36,<3" },
     { name = "tiktoken", specifier = ">=0.14.0" },
@@ -949,10 +949,10 @@ dev = [
     { name = "pytest", specifier = ">=8.3.0" },
     { name = "pytest-asyncio", specifier = ">=0.24.0" },
     { name = "pytest-cov", specifier = ">=6.0.0" },
-    { name = "ruff", specifier = ">=0.17.1" },
+    { name = "ruff", specifier = ">=0.17.2" },
 ]
 worker = [
-    { name = "docling", specifier = ">=2.140.0,<3" },
+    { name = "docling", specifier = ">=2.142.1,<3" },
     { name = "pillow", specifier = ">=12.3.0,<13" },
     { name = "pypdfium2", specifier = ">=5.14.0,<6" },
     { name = "pytesseract", specifier = ">=0.3,<0.4" },
@@ -962,33 +962,32 @@ worker = [
 
 [[package]]
 name = "doclang"
-version = "0.7.0"
+version = "0.8.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "lxml" },
-    { name = "saxonche" },
     { name = "typer" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/7f/a5/78f6b240f8348340d6e8c25b434ab08d26676472f0dfaeaf325330c09a1c/doclang-0.7.0.tar.gz", hash = "sha256:58c8fcc49d8700cf7a8eb3f256ac4fe47c4fb34f423f8afda50184dc178832a5", size = 28677, upload-time = "2026-06-24T15:43:05.808Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/b1/3d/67a1af92bcd22548b02aa44dc24615a511d5c5ee9070259625ddc4b3c0a7/doclang-0.8.0.tar.gz", hash = "sha256:29607b86670c769071c785ade7b1f48d20f188b8eff9b68ffdb0446de1d979dc", size = 66380, upload-time = "2026-10-15T14:50:55.169Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/39/0f/d39a33521fd7cd357c2a6b0851db1db4c6d9926f3cb156b00e36adc51faa/doclang-0.7.0-py3-none-any.whl", hash = "sha256:14e61b14c94e717e1d742839e647aa04337d99174cb3f86c16382493c1a33bf2", size = 28782, upload-time = "2026-06-24T15:43:04.892Z" },
+    { url = "https://files.pythonhosted.org/packages/67/18/6c22e40531a43ae978584f16a2ada71c358bf1174c56ce4e9a57d49f2753/doclang-0.8.0-py3-none-any.whl", hash = "sha256:7c768f641414629ec23576ed1a4a76b3e934ff734803f09f8d9bd084ac2cae90", size = 69943, upload-time = "2026-10-15T14:50:53.844Z" },
 ]
 
 [[package]]
 name = "docling"
-version = "2.140.0"
+version = "2.142.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "docling-slim", extra = ["standard"] },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/d2/c8/16dbc85693242bcb442853cfc7931839899a8c249c3bc2fd54237e129070/docling-2.140.0.tar.gz", hash = "sha256:a8df49153b61ba1c6ffae1d83f1e03b645eaec509af36e8e10a9825c291fd13d", size = 9101, upload-time = "2026-10-16T09:03:17.312Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/c6/7a/71edecf102ba26c3dc6bd7344c10373761359eaf59d563424e82b9dc2ec8/docling-2.142.1.tar.gz", hash = "sha256:da56c51989045b3109d0b4fde7ab4cd57b9db67d80a780cf5d5da5e1be33810f", size = 9146, upload-time = "2026-10-23T08:22:09.742Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/bc/48/655152e26bea8be1b87e9651dccb961e89e2a2b6735ba36cf07eb72cdbfb/docling-2.140.0-py3-none-any.whl", hash = "sha256:8500cb3344dd81b1dfdfd6f97885c3ccd1cf0c4768cb488104856c787af3787f", size = 5241, upload-time = "2026-10-16T09:03:16.176Z" },
+    { url = "https://files.pythonhosted.org/packages/0e/9d/f68c418d11115ac593197a28b0f1e689876294035a1a5ea640be5e06218e/docling-2.142.1-py3-none-any.whl", hash = "sha256:72e52caeb95e36fcc3b2d90a6e77a8229432d20b22efdf17527b9ed5a08bd1b2", size = 5242, upload-time = "2026-10-23T08:22:08.356Z" },
 ]
 
 [[package]]
 name = "docling-core"
-version = "2.103.0"
+version = "2.104.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "defusedxml" },
@@ -1006,9 +1005,9 @@ dependencies = [
     { name = "typer" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/de/97/d335c239ab36cd9061a5cd7115026da01cd84f7fd4a137d0d0003fb1efb4/docling_core-2.103.0.tar.gz", hash = "sha256:74f6f3623fc744876255965bc05f46b70edcaf894d7be1d6d04b3a0575b2b382", size = 436345, upload-time = "2026-10-19T16:32:53.255Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/dd/39/07095f73dec9a9dfeaf75acce470a708c7f88fc66a5565a63f88dd6567ff/docling_core-2.104.0.tar.gz", hash = "sha256:94a5c968d40c3ff3cba59fe94d4c92b53e617637ba758b3f6bd38f585e147fe1", size = 446513, upload-time = "2026-10-22T14:02:02.15Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/5b/3b/4421a5d4714a21214d18a9e3f4fde5ca46ebb70a46368558be0cd01326c8/docling_core-2.103.0-py3-none-any.whl", hash = "sha256:2b406fbf20f02289ae6356d8e09d4eea0db41ae42fc0f7f56aae9b48b075bec7", size = 326126, upload-time = "2026-10-19T16:32:51.392Z" },
+    { url = "https://files.pythonhosted.org/packages/a4/3d/effaf34794872ad8800bb0cc21de9c5c838ec080086249c6d222afaaa276/docling_core-2.104.0-py3-none-any.whl", hash = "sha256:e820fb6f130678df06119ea1f437d1a597c1c441fddd0e95299e27348d961011", size = 329981, upload-time = "2026-10-22T14:02:00.295Z" },
 ]
 
 [package.optional-dependencies]
@@ -1032,11 +1031,11 @@ dependencies = [
     { name = "pillow" },
     { name = "safetensors", extra = ["torch"] },
     { name = "torch", version = "2.13.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform == 'darwin' and extra == 'extra-8-docforge-cpu') or (extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
-    { name = "torch", version = "2.13.0", source = { registry = "https://pypi.org/simple" }, marker = "(extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu') or (extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu')" },
+    { name = "torch", version = "2.13.0", source = { registry = "https://pypi.org/simple" }, marker = "(extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu') or (extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
     { name = "torch", version = "2.13.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform != 'darwin' and extra == 'extra-8-docforge-cpu') or (extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
     { name = "torch", version = "2.13.0+cu126", source = { registry = "https://download.pytorch.org/whl/cu126" }, marker = "extra == 'extra-8-docforge-gpu'" },
     { name = "torchvision", version = "0.28.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform == 'darwin' and extra == 'extra-8-docforge-cpu') or (extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
-    { name = "torchvision", version = "0.28.0", source = { registry = "https://pypi.org/simple" }, marker = "(extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu') or (extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu')" },
+    { name = "torchvision", version = "0.28.0", source = { registry = "https://pypi.org/simple" }, marker = "(extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu') or (extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
     { name = "torchvision", version = "0.28.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform != 'darwin' and extra == 'extra-8-docforge-cpu') or (extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
     { name = "torchvision", version = "0.28.0+cu126", source = { registry = "https://download.pytorch.org/whl/cu126" }, marker = "extra == 'extra-8-docforge-gpu'" },
     { name = "transformers" },
@@ -1054,7 +1053,7 @@ dependencies = [
     { name = "docling-core" },
     { name = "pillow" },
     { name = "pydantic" },
-    { name = "pywin32", marker = "sys_platform == 'win32' or (extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
+    { name = "pywin32", marker = "sys_platform == 'win32'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/d7/ea/f609987314655e8ad0136d68d0961f60a28421d2cd79da5a67d59f4c0c92/docling_parse-7.22.3.tar.gz", hash = "sha256:100e9c320e199343cd7bb03a816956e578109dd53d76cc72ecbd9d9e89954dc6", size = 7050703, upload-time = "2026-10-13T04:24:34.028Z" }
 wheels = [
@@ -1077,7 +1076,7 @@ wheels = [
 
 [[package]]
 name = "docling-slim"
-version = "2.140.0"
+version = "2.142.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "certifi" },
@@ -1090,9 +1089,9 @@ dependencies = [
     { name = "requests" },
     { name = "tqdm" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/35/16/ad528a3882a62655b1c9df387ed01931e8d1c00d15e452d879450167fe0a/docling_slim-2.140.0.tar.gz", hash = "sha256:0d8f72cb7f2da3146a8171265d47f8b115aec6557156256d62a453ca6495f702", size = 843603, upload-time = "2026-10-16T09:01:53.171Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/1f/43/fa84e245dd80d8c48912f0495c3a31a333fb3804efb0295646f5f052e748/docling_slim-2.142.1.tar.gz", hash = "sha256:b6042f9b6c8f156f04d59a298188b33aa8f6317ca57073225453056c164af0f4", size = 922507, upload-time = "2026-10-23T08:20:49.57Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/87/2b/c2fdd9f74844072200869d2037e777a7533b7d7ebf734d06667c7f7fd1f9/docling_slim-2.140.0-py3-none-any.whl", hash = "sha256:91ab66bc79c471aa4c23d956a6c4887344d84673a496dcc867ec6a3ada8e41d5", size = 1024840, upload-time = "2026-10-16T09:01:50.903Z" },
+    { url = "https://files.pythonhosted.org/packages/c7/5f/6ca181855e1cad1d9e8be1830fa660cf481bbb5e5da6caa21df491181e71/docling_slim-2.142.1-py3-none-any.whl", hash = "sha256:8013da3da0692b51406e6192c3b2aba4c241da92ff055af106dbe6b723b7f528", size = 1116839, upload-time = "2026-10-23T08:20:47.142Z" },
 ]
 
 [package.optional-dependencies]
@@ -1122,11 +1121,11 @@ standard = [
     { name = "rtree" },
     { name = "scipy" },
     { name = "torch", version = "2.13.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform == 'darwin' and extra == 'extra-8-docforge-cpu') or (extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
-    { name = "torch", version = "2.13.0", source = { registry = "https://pypi.org/simple" }, marker = "(extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu') or (extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu')" },
+    { name = "torch", version = "2.13.0", source = { registry = "https://pypi.org/simple" }, marker = "(extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu') or (extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
     { name = "torch", version = "2.13.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform != 'darwin' and extra == 'extra-8-docforge-cpu') or (extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
     { name = "torch", version = "2.13.0+cu126", source = { registry = "https://download.pytorch.org/whl/cu126" }, marker = "extra == 'extra-8-docforge-gpu'" },
     { name = "torchvision", version = "0.28.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform == 'darwin' and extra == 'extra-8-docforge-cpu') or (extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
-    { name = "torchvision", version = "0.28.0", source = { registry = "https://pypi.org/simple" }, marker = "(extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu') or (extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu')" },
+    { name = "torchvision", version = "0.28.0", source = { registry = "https://pypi.org/simple" }, marker = "(extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu') or (extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
     { name = "torchvision", version = "0.28.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform != 'darwin' and extra == 'extra-8-docforge-cpu') or (extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
     { name = "torchvision", version = "0.28.0+cu126", source = { registry = "https://download.pytorch.org/whl/cu126" }, marker = "extra == 'extra-8-docforge-gpu'" },
     { name = "typer" },
@@ -1160,7 +1159,7 @@ name = "faker"
 version = "40.28.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "tzdata", marker = "sys_platform == 'win32' or (extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
+    { name = "tzdata", marker = "sys_platform == 'win32'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/cc/2d/3ead106cef42eab305e15f9c089dcc68a40387d5ce04af18585af4ebbb44/faker-40.28.1.tar.gz", hash = "sha256:2a63fb51abab8790636d4030a094cf942404cbccc9c288d1cad70e2e3e9ecd58", size = 2022717, upload-time = "2026-07-01T22:23:43.763Z" }
 wheels = [
@@ -1698,8 +1697,8 @@ name = "httpcore2"
 version = "2.12.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "h11", marker = "sys_platform != 'emscripten' or (extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
-    { name = "truststore", marker = "sys_platform != 'emscripten' or (extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
+    { name = "h11" },
+    { name = "truststore" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/be/ad/f4f0e57345f1870f3e8cb624e058d7eca6e5a27d33bcc3311d9b618734cd/httpcore2-2.12.0.tar.gz", hash = "sha256:9293522bba0aa7c4c8e9e3f040c16575bd8868e155a77fa30c7a9085a5eae648", size = 67548, upload-time = "2026-08-18T13:22:08.211Z" }
 wheels = [
@@ -1776,12 +1775,12 @@ name = "httpx2"
 version = "2.12.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "anyio", marker = "sys_platform != 'emscripten' or (extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
-    { name = "httpcore2", marker = "sys_platform != 'emscripten' or (extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
-    { name = "httpx2-jsfetch", marker = "sys_platform == 'emscripten' or (extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
+    { name = "anyio", marker = "sys_platform != 'emscripten'" },
+    { name = "httpcore2", marker = "sys_platform != 'emscripten'" },
+    { name = "httpx2-jsfetch", marker = "sys_platform == 'emscripten'" },
     { name = "idna" },
-    { name = "truststore", marker = "sys_platform != 'emscripten' or (extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
-    { name = "typing-extensions", marker = "python_full_version < '3.13' or (extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
+    { name = "truststore", marker = "sys_platform != 'emscripten'" },
+    { name = "typing-extensions", marker = "python_full_version < '3.13'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/7f/f8/579a8b51e42e38ee32647df9f08aa25643ae788e275cc625b199829c4671/httpx2-2.12.0.tar.gz", hash = "sha256:7631fe9887a8a2275f4a2540e053aa670fcc50742864a9ae7c66e609fdcf12cf", size = 100040, upload-time = "2026-08-18T13:22:09.086Z" }
 wheels = [
@@ -1804,7 +1803,7 @@ source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "filelock" },
     { name = "fsspec" },
-    { name = "hf-xet", marker = "platform_machine == 'aarch64' or platform_machine == 'amd64' or platform_machine == 'arm64' or platform_machine == 'x86_64' or (extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
+    { name = "hf-xet", marker = "platform_machine == 'aarch64' or platform_machine == 'amd64' or platform_machine == 'arm64' or platform_machine == 'x86_64'" },
     { name = "packaging" },
     { name = "pyyaml" },
     { name = "requests" },
@@ -1991,7 +1990,7 @@ wheels = [
 
 [[package]]
 name = "langchain-core"
-version = "1.6.12"
+version = "1.7.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "httpx" },
@@ -2005,9 +2004,9 @@ dependencies = [
     { name = "typing-extensions" },
     { name = "uuid-utils" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/12/c2/9779d64322d4e270f6d5392bc86b30f735581a87b5eefd6ad15a0828a169/langchain_core-1.6.12.tar.gz", hash = "sha256:dc6b2a965c351b4cc94df1c80220bcf3c5472e14437d2186c8290ea22f4d0219", size = 1015639, upload-time = "2026-10-16T19:28:31.055Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/64/cb/77d1dabe57d0dc0f96f65cba321366c341627295d1c09eefa58549e34391/langchain_core-1.7.0.tar.gz", hash = "sha256:c34e53358b103cd73f43c63f5f46f9b5c6c3467efdffcdf134892b89020494e4", size = 1020046, upload-time = "2026-10-22T17:47:21.554Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/c6/7b/49de1d4d6b9ff62e7c40a6fceb6aeecd8c190ac5f49dd7a99948c6650c16/langchain_core-1.6.12-py3-none-any.whl", hash = "sha256:39b07aed976baac14c47b7a21e3c7d4073362bccf06cf8799c585dcc9548547d", size = 573838, upload-time = "2026-10-16T19:28:29.466Z" },
+    { url = "https://files.pythonhosted.org/packages/b3/d8/ed130e91cee0525cb47d185b98a5a6ffd6a8b660a100fbee43d887e745d6/langchain_core-1.7.0-py3-none-any.whl", hash = "sha256:e82b24d7ac51fc74874baa29d6b3c0b8234880d4f3d897f8ff57fb80dfd9b07d", size = 574676, upload-time = "2026-10-22T17:47:19.749Z" },
 ]
 
 [[package]]
@@ -2043,14 +2042,14 @@ wheels = [
 
 [[package]]
 name = "langchain-protocol"
-version = "0.0.18"
+version = "0.0.20"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/d2/59/b5959aea96faa9146e2e49a7a22882b3528c62efafe9a6a95beab30c2305/langchain_protocol-0.0.18.tar.gz", hash = "sha256:ec3e11782f1ed0c9db38e5a9ed01b0e7a0d3fba406faa8aef6594b73c56a63e6", size = 6150, upload-time = "2026-06-18T17:08:26.959Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/cb/8b/d908d082c3cf5368ddd1816ed114de79c873f979ba7f98b95fab0e841643/langchain_protocol-0.0.20.tar.gz", hash = "sha256:0f5bd002474265648e91161771a9e0438fe9480bd55a416e51af0f60070637ec", size = 6280, upload-time = "2026-10-20T11:13:50.84Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/99/2e/d82db9eec13ad0f72e7aaad5c4bc730ab111934fdc83c85523206eb9b0a0/langchain_protocol-0.0.18-py3-none-any.whl", hash = "sha256:70b53a86fbf9cedc863555effe44da192ab02d556ddbf2cf95b8873adcf41b5a", size = 7221, upload-time = "2026-06-18T17:08:25.996Z" },
+    { url = "https://files.pythonhosted.org/packages/02/4b/f1c99a0b27c5ff8b4b131c0d6e62012c17cc424089efe213767db927afd2/langchain_protocol-0.0.20-py3-none-any.whl", hash = "sha256:3c935e5e46b0f6f9cb52f45ba7cfa53d1b9fa80c82c4a277d47f03e07f7385b1", size = 7347, upload-time = "2026-10-20T11:13:49.566Z" },
 ]
 
 [[package]]
@@ -2070,7 +2069,7 @@ dependencies = [
     { name = "anyio" },
     { name = "distro" },
     { name = "httpx2" },
-    { name = "orjson", marker = "platform_python_implementation != 'PyPy' or (extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
+    { name = "orjson", marker = "platform_python_implementation != 'PyPy'" },
     { name = "packaging" },
     { name = "pydantic" },
     { name = "requests" },
@@ -2117,7 +2116,7 @@ source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "colorama" },
     { name = "loguru" },
-    { name = "win32-setctime", marker = "sys_platform == 'win32' or (extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
+    { name = "win32-setctime", marker = "sys_platform == 'win32'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/ce/27/5c19d41dfa74c738faf9c9218831feb7b478584a9b254f3dac81a2042582/loggerplusplus-1.2.0.tar.gz", hash = "sha256:1ff7f65eba6cb09645dcac796b8f8e786b14aecc297f2b55ddb01429495c7ce2", size = 58136, upload-time = "2026-09-16T13:48:45.508Z" }
 wheels = [
@@ -2129,8 +2128,8 @@ name = "loguru"
 version = "0.7.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "colorama", marker = "sys_platform == 'win32' or (extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
-    { name = "win32-setctime", marker = "sys_platform == 'win32' or (extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
+    { name = "colorama", marker = "sys_platform == 'win32'" },
+    { name = "win32-setctime", marker = "sys_platform == 'win32'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/3a/05/a1dae3dffd1116099471c643b8924f5aa6524411dc6c63fdae648c4f1aca/loguru-0.7.3.tar.gz", hash = "sha256:19480589e77d47b8d85b2c827ad95d49bf31b0dcde16593892eb51dd18706eb6", size = 63559, upload-time = "2024-12-06T11:20:56.608Z" }
 wheels = [
@@ -2337,7 +2336,7 @@ version = "2.10.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pygments" },
-    { name = "pywin32", marker = "sys_platform == 'win32' or (extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
+    { name = "pywin32", marker = "sys_platform == 'win32'" },
     { name = "tqdm" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/3a/93/80ac75c20ce54c785648b4ed363c88f148bf22637e10c9863db4fbe73e74/mpire-2.10.2.tar.gz", hash = "sha256:f66a321e93fadff34585a4bfa05e95bd946cf714b442f51c529038eb45773d97", size = 271270, upload-time = "2024-05-07T14:00:31.815Z" }
@@ -2704,7 +2703,7 @@ name = "nvidia-cudnn-cu12"
 version = "9.10.2.21"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "nvidia-cublas-cu12", marker = "(sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32' and extra == 'extra-8-docforge-gpu') or (sys_platform == 'darwin' and extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu') or (sys_platform == 'emscripten' and extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu') or (sys_platform == 'win32' and extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
+    { name = "nvidia-cublas-cu12", marker = "(sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32' and extra == 'extra-8-docforge-gpu') or (extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/fa/41/e79269ce215c857c935fd86bcfe91a451a584dfc27f1e068f568b9ad1ab7/nvidia_cudnn_cu12-9.10.2.21-py3-none-manylinux_2_27_aarch64.whl", hash = "sha256:c9132cc3f8958447b4910a1720036d9eff5928cc3179b0a51fb6d167c6cc87d8", size = 705026878, upload-time = "2025-06-06T21:52:51.348Z" },
@@ -2743,7 +2742,7 @@ name = "nvidia-cufft-cu12"
 version = "11.3.0.4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "nvidia-nvjitlink-cu12", marker = "(sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32' and extra == 'extra-8-docforge-gpu') or (sys_platform == 'darwin' and extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu') or (sys_platform == 'emscripten' and extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu') or (sys_platform == 'win32' and extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
+    { name = "nvidia-nvjitlink-cu12", marker = "(sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32' and extra == 'extra-8-docforge-gpu') or (extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/1f/37/c50d2b2f2c07e146776389e3080f4faf70bcc4fa6e19d65bb54ca174ebc3/nvidia_cufft_cu12-11.3.0.4-py3-none-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:d16079550df460376455cba121db6564089176d9bac9e4f360493ca4741b22a6", size = 200164144, upload-time = "2024-11-20T17:40:58.288Z" },
@@ -2813,9 +2812,9 @@ name = "nvidia-cusolver-cu12"
 version = "11.7.1.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "nvidia-cublas-cu12", marker = "(sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32' and extra == 'extra-8-docforge-gpu') or (sys_platform == 'darwin' and extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu') or (sys_platform == 'emscripten' and extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu') or (sys_platform == 'win32' and extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
-    { name = "nvidia-cusparse-cu12", marker = "(sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32' and extra == 'extra-8-docforge-gpu') or (sys_platform == 'darwin' and extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu') or (sys_platform == 'emscripten' and extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu') or (sys_platform == 'win32' and extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
-    { name = "nvidia-nvjitlink-cu12", marker = "(sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32' and extra == 'extra-8-docforge-gpu') or (sys_platform == 'darwin' and extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu') or (sys_platform == 'emscripten' and extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu') or (sys_platform == 'win32' and extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
+    { name = "nvidia-cublas-cu12", marker = "(sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32' and extra == 'extra-8-docforge-gpu') or (extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
+    { name = "nvidia-cusparse-cu12", marker = "(sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32' and extra == 'extra-8-docforge-gpu') or (extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
+    { name = "nvidia-nvjitlink-cu12", marker = "(sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32' and extra == 'extra-8-docforge-gpu') or (extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/93/17/dbe1aa865e4fdc7b6d4d0dd308fdd5aaab60f939abfc0ea1954eac4fb113/nvidia_cusolver_cu12-11.7.1.2-py3-none-manylinux2014_aarch64.whl", hash = "sha256:0ce237ef60acde1efc457335a2ddadfd7610b892d94efee7b776c64bb1cac9e0", size = 157833628, upload-time = "2024-10-01T17:05:05.591Z" },
@@ -2843,7 +2842,7 @@ name = "nvidia-cusparse-cu12"
 version = "12.5.4.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "nvidia-nvjitlink-cu12", marker = "(sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32' and extra == 'extra-8-docforge-gpu') or (sys_platform == 'darwin' and extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu') or (sys_platform == 'emscripten' and extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu') or (sys_platform == 'win32' and extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
+    { name = "nvidia-nvjitlink-cu12", marker = "(sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32' and extra == 'extra-8-docforge-gpu') or (extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/eb/eb/6681efd0aa7df96b4f8067b3ce7246833dd36830bb4cec8896182773db7d/nvidia_cusparse_cu12-12.5.4.2-py3-none-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:d25b62fb18751758fe3c93a4a08eff08effedfe4edf1c6bb5afd0890fe88f887", size = 216451147, upload-time = "2024-11-20T17:44:18.055Z" },
@@ -3122,7 +3121,7 @@ source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "numpy" },
     { name = "python-dateutil" },
-    { name = "tzdata", marker = "sys_platform == 'emscripten' or sys_platform == 'win32' or (extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
+    { name = "tzdata", marker = "sys_platform == 'emscripten' or sys_platform == 'win32'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/f8/87/4341c6252d1c47b08768c3d25ac487362bf403f0313ddae4a2a26c9b1b4c/pandas-3.0.3.tar.gz", hash = "sha256:696a4a00a2a2a35d4e5deb3fc946641b96c944f02230e4f76137fe35d806c4fc", size = 4651414, upload-time = "2026-05-11T18:54:29.21Z" }
 wheels = [
@@ -3265,7 +3264,7 @@ name = "portalocker"
 version = "3.2.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "pywin32", marker = "sys_platform == 'win32' or (extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
+    { name = "pywin32", marker = "sys_platform == 'win32'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/5e/77/65b857a69ed876e1951e88aaba60f5ce6120c33703f7cb61a3c894b8c1b6/portalocker-3.2.0.tar.gz", hash = "sha256:1f3002956a54a8c3730586c5c77bf18fae4149e07eaf1c29fc3faf4d5a3f89ac", size = 95644, upload-time = "2025-06-14T13:20:40.03Z" }
 wheels = [
@@ -3688,11 +3687,11 @@ sdist = { url = "https://files.pythonhosted.org/packages/5d/ab/34ec41718af73c001
 
 [[package]]
 name = "pypdf"
-version = "6.21.0"
+version = "6.21.2"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/d5/40/08cc87810195e5ee37a6917d4b19abc907c8def3a7ce265a81c7f5073304/pypdf-6.21.0.tar.gz", hash = "sha256:c16174c8653abafbe4d023b3c9227d226938d9579ffb5a73b4fac7756c0895a6", size = 7088285, upload-time = "2026-10-16T10:23:18.47Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/06/28/081f1cbcca7042441dafc8de00f48ba60853f89e5bff92c5f26477346d81/pypdf-6.21.2.tar.gz", hash = "sha256:0a3e1c5c886a1be03646c16a04827cc166c2a0575c971b26a4bf89686551c2d4", size = 7144571, upload-time = "2026-10-21T16:44:55.272Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/f4/64/5cea5792cae22892a4ddba8ed9f7424c77b4cb49fdca5016bd62145c12c6/pypdf-6.21.0-py3-none-any.whl", hash = "sha256:3aec619699dacb1b73f57e87d9adaa4424814517b2cc028de20adba5a37af4c4", size = 405135, upload-time = "2026-10-16T10:23:16.38Z" },
+    { url = "https://files.pythonhosted.org/packages/1b/4d/c9d2d67f204eff463237a1a8f5e25a6923b7b1043982b91fcaf104c8ef60/pypdf-6.21.2-py3-none-any.whl", hash = "sha256:1d44d1a3a200f25062adff0085b02040e4646431ac2ccac22e42679e91466084", size = 407766, upload-time = "2026-10-21T16:44:53.626Z" },
 ]
 
 [[package]]
@@ -3743,7 +3742,7 @@ name = "pytest"
 version = "9.1.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "colorama", marker = "sys_platform == 'win32' or (extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
+    { name = "colorama", marker = "sys_platform == 'win32'" },
     { name = "iniconfig" },
     { name = "packaging" },
     { name = "pluggy" },
@@ -3760,7 +3759,7 @@ version = "1.4.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pytest" },
-    { name = "typing-extensions", marker = "python_full_version < '3.13' or (extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
+    { name = "typing-extensions", marker = "python_full_version < '3.13'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/43/7c/d36d04db312ecf4298932ef77e6e4a9e8ad017906e24e34f0b0c361a2473/pytest_asyncio-1.4.0.tar.gz", hash = "sha256:c6c0d2259945122819f171a32ecea2c349ead889ee28176caaf492143424be42", size = 58514, upload-time = "2026-05-26T09:56:04.083Z" }
 wheels = [
@@ -3920,7 +3919,7 @@ wheels = [
 
 [[package]]
 name = "qdrant-client"
-version = "1.19.1"
+version = "1.20.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "grpcio" },
@@ -3931,9 +3930,9 @@ dependencies = [
     { name = "pydantic" },
     { name = "urllib3" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/4e/20/c8fcd645d3f595b086fa11a085980e9f641fd56fc6221fb325d634b8c4fa/qdrant_client-1.19.1.tar.gz", hash = "sha256:8f1d851a8463ce8cc11cf39ed8a9c9fb4b5f9de60e9a096ff56da42d1f074907", size = 360625, upload-time = "2026-09-16T06:43:13.818Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/a7/59/212766131e3f032baa54cfed47230e209538d686229c0d6389ad339f3cd7/qdrant_client-1.20.0.tar.gz", hash = "sha256:58ff8aec0c56d2dd4d9f0cae1940c280b364bfde18715d4ccc10c3e118bcd053", size = 417239, upload-time = "2026-10-22T10:26:16.275Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/d0/9f/becebdda02beddd422587eba0d7dfac5b1f1e0aa1ada5bcf9b9e6f1c3717/qdrant_client-1.19.1-py3-none-any.whl", hash = "sha256:fca1a96c3f90f5fff853f6ee6877838a5768a04c963df9891a655a63313af8a0", size = 406533, upload-time = "2026-09-16T06:43:12.428Z" },
+    { url = "https://files.pythonhosted.org/packages/63/f0/f37da771d09d779313ad470945600cb5d3e1a26864126def802a3254b536/qdrant_client-1.20.0-py3-none-any.whl", hash = "sha256:0ab261197a497d16f3bf8a663c22e994f485c9fd7212d3c8b07c1a9de32fc152", size = 471157, upload-time = "2026-10-22T10:26:14.838Z" },
 ]
 
 [[package]]
@@ -4000,7 +3999,7 @@ source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "attrs" },
     { name = "rpds-py" },
-    { name = "typing-extensions", marker = "python_full_version < '3.13' or (extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
+    { name = "typing-extensions", marker = "python_full_version < '3.13'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/22/f5/df4e9027acead3ecc63e50fe1e36aca1523e1719559c499951bb4b53188f/referencing-0.37.0.tar.gz", hash = "sha256:44aefc3142c5b842538163acb373e24cce6632bd54bdb01b21ad5863489f50d8", size = 78036, upload-time = "2025-10-13T15:30:48.871Z" }
 wheels = [
@@ -4331,27 +4330,27 @@ wheels = [
 
 [[package]]
 name = "ruff"
-version = "0.17.1"
+version = "0.17.2"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/f9/e7/e6d5749983b020e6cb1055abec0a6f361a8e94f0184cdcf56d4760995f02/ruff-0.17.1.tar.gz", hash = "sha256:5bb796c5112e9fb9527f2ef2faa0a130d6312d19de92bcfaddd70dbb2d41020f", size = 5323349, upload-time = "2026-10-15T15:23:18.64Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/ae/58/690cf56da80c8f2c8bf12042b6017beac2c34fe961f65420bcb3fb7fac38/ruff-0.17.2.tar.gz", hash = "sha256:84d632402d14c23b488f941db23712d6736a013225162062d34558c3f3c780eb", size = 5333400, upload-time = "2026-10-22T18:38:00.181Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/2e/78/90c46ca6250709f7c37e397b60d06061adee8d0f7d13959ed6a8e49b14fd/ruff-0.17.1-py3-none-linux_armv6l.whl", hash = "sha256:1796c41eafec66f4635125dd1e074a7aa27b8d20c187d484360acf11d247fc4a", size = 10147528, upload-time = "2026-10-15T15:22:33.667Z" },
-    { url = "https://files.pythonhosted.org/packages/aa/d2/a2e28bc35b083ae51fa07dfba5280a667c8b01ecaee7802fc8849dcd5c46/ruff-0.17.1-py3-none-macosx_10_12_x86_64.whl", hash = "sha256:8eadb09a788010be29c895418bdfa513e4e1c65e64b94e5b19e4cd381f6cc7fb", size = 10225974, upload-time = "2026-10-15T15:22:36.328Z" },
-    { url = "https://files.pythonhosted.org/packages/8e/71/7a9029a81c8206ee01a98f6cfeeb56e6c095af86857581a37045c46d7e94/ruff-0.17.1-py3-none-macosx_11_0_arm64.whl", hash = "sha256:29b454f18ca3eeaf37fbf140841dcf27d36109e29dee9aae8acecb68c26c6f74", size = 9270361, upload-time = "2026-10-15T15:22:38.651Z" },
-    { url = "https://files.pythonhosted.org/packages/c0/8c/e075e9c917cb0575297880c96768304e881240171c870cbd8d9b7b54bec2/ruff-0.17.1-py3-none-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:872e03dd231744d6c5ec5c8af6be52b71323fc6ee096e4c8b34d9f844ee3b978", size = 9938300, upload-time = "2026-10-15T15:22:41.284Z" },
-    { url = "https://files.pythonhosted.org/packages/87/27/0b4bb926a49de2383f161272b4d863571a4c7ecdbf595a6bc58813a13367/ruff-0.17.1-py3-none-manylinux_2_17_armv7l.manylinux2014_armv7l.whl", hash = "sha256:4c0d6cb5f8fbac77eec9af49f4fc0eaf856b05545e372b0694d24b4e76b1c640", size = 9948464, upload-time = "2026-10-15T15:22:43.681Z" },
-    { url = "https://files.pythonhosted.org/packages/14/27/518d57e0e02aecb8ea4acac6b57b51a53173d25fa734952bfdd7d531e88e/ruff-0.17.1-py3-none-manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:78beced4a3c94dfedbee4b999b95b6a27b35820fdc0afbacc6d37a8da26c1cd1", size = 10638639, upload-time = "2026-10-15T15:22:46.081Z" },
-    { url = "https://files.pythonhosted.org/packages/01/82/d89a4e498ade59e6cee52d67f8da569019372212b87468c1fdeae884601c/ruff-0.17.1-py3-none-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl", hash = "sha256:7feefc63921202894f0e158b0e32f45a5950d70a7fb693ccb9264816c25b1c05", size = 11337238, upload-time = "2026-10-15T15:22:48.894Z" },
-    { url = "https://files.pythonhosted.org/packages/a2/7c/3b0fdef9352656317c977086fe1d802902406e4f2a0d8578da90c0e6d1c5/ruff-0.17.1-py3-none-manylinux_2_17_s390x.manylinux2014_s390x.whl", hash = "sha256:684154861a819bf1f433669d2a0ce9c3e54677c65b8ebb866cc2a7ec86345785", size = 10896327, upload-time = "2026-10-15T15:22:51.45Z" },
-    { url = "https://files.pythonhosted.org/packages/62/86/5566290219708ce2928f3a29c4f843a1185b341ec6111c4631a33c5ceced/ruff-0.17.1-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:a6ef98e51de8ef38082f90653ceeb84944bd7673783eea13e1647c5b9b064189", size = 10350811, upload-time = "2026-10-15T15:22:54.401Z" },
-    { url = "https://files.pythonhosted.org/packages/ad/d2/ca8462dabb3c413990d49703ba306c30c862195a75448d080fa8fcce9775/ruff-0.17.1-py3-none-manylinux_2_31_riscv64.whl", hash = "sha256:8f9aa5b5bd5fa1937803ea609c8f153b8de39bf3e0e149897ae34b0c5b52f467", size = 10569994, upload-time = "2026-10-15T15:22:57.142Z" },
-    { url = "https://files.pythonhosted.org/packages/e3/ad/dd1864c1f1db17c8cfb297ce70b352388e6977620f66f7182c52855407df/ruff-0.17.1-py3-none-musllinux_1_2_aarch64.whl", hash = "sha256:80e53b0e5faa3c5667f035daaa032893ae42b7cfe708c886d39ed131e54688ab", size = 10059672, upload-time = "2026-10-15T15:23:00.084Z" },
-    { url = "https://files.pythonhosted.org/packages/65/45/3f56cf1d2168c2165cdd5ac6f9668aee66a4cfdd4caf2b2cc5ccb2b1d568/ruff-0.17.1-py3-none-musllinux_1_2_armv7l.whl", hash = "sha256:056c5d5fa0ac790051ae165d7035c7bf956d02de2db557f2e9b31d877a505fca", size = 9947803, upload-time = "2026-10-15T15:23:03.132Z" },
-    { url = "https://files.pythonhosted.org/packages/aa/4b/5457cb2be4c1d1ea5e919558131a0f197a4a454a0530d9e30820e8206e4c/ruff-0.17.1-py3-none-musllinux_1_2_i686.whl", hash = "sha256:bd8f5a55b10f371642eacd0e8665a42a8b97da15c9a7187c79e697b77b5e0ce4", size = 10351807, upload-time = "2026-10-15T15:23:05.628Z" },
-    { url = "https://files.pythonhosted.org/packages/49/fb/db15b4f8fa24a1e36b99e1401f42ef6df16ee299a48670d5d262b771e7d7/ruff-0.17.1-py3-none-musllinux_1_2_x86_64.whl", hash = "sha256:ce05e6f3973611d9550a600e04bb531061e368baba31610eb57c1509a8f21a0a", size = 10765716, upload-time = "2026-10-15T15:23:08.092Z" },
-    { url = "https://files.pythonhosted.org/packages/0a/e8/1e186578076aff7a80735f625005fde678412ab609cd323ed182eb7d6b87/ruff-0.17.1-py3-none-win32.whl", hash = "sha256:1de0030a8aa78c65c5fecb84b2e5c390ac684c0452875a02afc7c083d49a496a", size = 9895093, upload-time = "2026-10-15T15:23:10.582Z" },
-    { url = "https://files.pythonhosted.org/packages/6a/2e/da3d9589bae8e8b58f3a48bd5bc0b980232fb14a83bf02c3be7660f87c1b/ruff-0.17.1-py3-none-win_amd64.whl", hash = "sha256:5df76f16580fab58d0f6c98a3ac254a4abceb7b2489b8b678335869cff77b3d7", size = 10097955, upload-time = "2026-10-15T15:23:13.309Z" },
-    { url = "https://files.pythonhosted.org/packages/df/c9/0f2a4dea06a5e12c1191ee3d96b1e1233797d0d5e18f97a2b909a95a9836/ruff-0.17.1-py3-none-win_arm64.whl", hash = "sha256:42400b9a6ff8515ff27796f07f92e0195be011c86e81e381606f58ea5502fef4", size = 9853542, upload-time = "2026-10-15T15:23:16.05Z" },
+    { url = "https://files.pythonhosted.org/packages/98/b8/8b6d69c57e8fe1cc6af1aa7493b72a1a5b5a8afe34694e302025441729d4/ruff-0.17.2-py3-none-linux_armv6l.whl", hash = "sha256:96a65e755d8dba094707fb23ab602111d9a31ec2835b3a6992a1914a8fcb211e", size = 10183857, upload-time = "2026-10-22T18:37:14.956Z" },
+    { url = "https://files.pythonhosted.org/packages/e8/61/12cc2ff7b2fa90a268ce1e2162c23aaf76e601d22623f6a31b0eeaa764b0/ruff-0.17.2-py3-none-macosx_10_12_x86_64.whl", hash = "sha256:39c5b55c960515cdb32be16e69efb5734c589c06a0eb38a22694524a336b889d", size = 10210904, upload-time = "2026-10-22T18:37:17.985Z" },
+    { url = "https://files.pythonhosted.org/packages/e8/7c/b8850a8e4ad29f64a827dd6c6902db4a9aa538fb2b9eef4e26084001a3bb/ruff-0.17.2-py3-none-macosx_11_0_arm64.whl", hash = "sha256:92a80d2f44584dabb0189b3a6c393e37e525e04942838482010575cb81945be7", size = 9408439, upload-time = "2026-10-22T18:37:20.964Z" },
+    { url = "https://files.pythonhosted.org/packages/b7/b6/6a64fae86ca5e5e29d5adc311e5481de726cedf9aee607435a16c31c442a/ruff-0.17.2-py3-none-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:b7d0906677d89bbf3cf73cde64b5bbe2ab35df3ae43e49ee2627301e91265bac", size = 10047078, upload-time = "2026-10-22T18:37:23.717Z" },
+    { url = "https://files.pythonhosted.org/packages/10/19/23d376547715175aa1bd46df48df6aacc7c6439d9daf19cac15975180aa5/ruff-0.17.2-py3-none-manylinux_2_17_armv7l.manylinux2014_armv7l.whl", hash = "sha256:7cfd783590edf2b77317882631900f6a13ea2e8eacefe6ebf2370d2715299160", size = 9990478, upload-time = "2026-10-22T18:37:26.584Z" },
+    { url = "https://files.pythonhosted.org/packages/93/6c/34cda32cbe13adac5c6b291a307a5570d8ebd37c0c86339f0fe628e55632/ruff-0.17.2-py3-none-manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:122258f6ecde0e0dd1bb60b24263c3edde4338caf723fca711cc729f9bfd414a", size = 10673624, upload-time = "2026-10-22T18:37:29.767Z" },
+    { url = "https://files.pythonhosted.org/packages/bf/10/5d762a4dbc851d8bb47863cf3a28a61bf31c804d393b70d891fac899f5d1/ruff-0.17.2-py3-none-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl", hash = "sha256:7f8fba429d6ac4128ab29cfb8fa6240d2fa671d04adf7f84d3b22fc7b6b6bea4", size = 11351797, upload-time = "2026-10-22T18:37:32.535Z" },
+    { url = "https://files.pythonhosted.org/packages/3f/04/a0e92a81faf5c81c1c98d4374c8401734ccf2b8cca7d0170cb0fec08c6e2/ruff-0.17.2-py3-none-manylinux_2_17_s390x.manylinux2014_s390x.whl", hash = "sha256:583bd67bb9e7061dd09bc46a0a884bae2bbd214dbcd48e509813612619683869", size = 10949414, upload-time = "2026-10-22T18:37:35.501Z" },
+    { url = "https://files.pythonhosted.org/packages/c3/d8/59894cf630d2d86882457a2a6a0a1533410c5c805bfbac6f6eb4b5aef69d/ruff-0.17.2-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:c60f93fec7142dba5b8f487f94bf2f6231dae24dc11e4c48648347c8b0720004", size = 10528000, upload-time = "2026-10-22T18:37:37.88Z" },
+    { url = "https://files.pythonhosted.org/packages/ab/95/d6e30c51e851d37e10762ad91fa1e76ddaad998589b5667962a3cfbc9edd/ruff-0.17.2-py3-none-manylinux_2_31_riscv64.whl", hash = "sha256:c555a877f8f41447e318101cfefea9bf12dfa9f82eedf90c376e57e069f917d0", size = 10571779, upload-time = "2026-10-22T18:37:40.444Z" },
+    { url = "https://files.pythonhosted.org/packages/f4/5a/a7e1d74fb464250137d3d4eca645d323536533b672004d04ee0e46e0caf3/ruff-0.17.2-py3-none-musllinux_1_2_aarch64.whl", hash = "sha256:ba405cbd5ec7bda1f555d5e52be1fd68d02608d4d95d24591bdac92cfacb579f", size = 10051707, upload-time = "2026-10-22T18:37:42.812Z" },
+    { url = "https://files.pythonhosted.org/packages/6e/f2/02fca29ca7999380f0350a7212fe755c11ab9c22d61327356cce8decdbc6/ruff-0.17.2-py3-none-musllinux_1_2_armv7l.whl", hash = "sha256:8c21b4ab24485358f17291a4f8dc5399b834e963b8efedd920fe4fdb02081bb4", size = 9998227, upload-time = "2026-10-22T18:37:45.224Z" },
+    { url = "https://files.pythonhosted.org/packages/d1/00/55aa604a093dfdc1526e570fae0bb7d37a2221c7b4728d5f080b2add16ba/ruff-0.17.2-py3-none-musllinux_1_2_i686.whl", hash = "sha256:5875a16b0de70b43cb81eabea5ae5e8f5d1b2fd1b5e6ed07f80cfe5019d0bd5a", size = 10377692, upload-time = "2026-10-22T18:37:47.704Z" },
+    { url = "https://files.pythonhosted.org/packages/e4/5a/a7a640f47bb906ec8fa233ea84319d503e6dee02b59e3901bd312ebd1f9b/ruff-0.17.2-py3-none-musllinux_1_2_x86_64.whl", hash = "sha256:2d086be452eed686aa51271ecf2cbe5037956517cc6ee39a17b4489ac12f8bbe", size = 10790587, upload-time = "2026-10-22T18:37:50.191Z" },
+    { url = "https://files.pythonhosted.org/packages/2c/d4/c3b74e1b4808438ea7f14bb914478025e2d51261f60774a54a0fa222ec46/ruff-0.17.2-py3-none-win32.whl", hash = "sha256:6bce7d1f5165701ae18f5df85c65afe78cddfa6c5fb4b9bdb0014d60388f3edd", size = 9870537, upload-time = "2026-10-22T18:37:52.486Z" },
+    { url = "https://files.pythonhosted.org/packages/1c/9a/c7da96c2c96d20704cf9027f7a5121da272a8c05f1d1531ba949e3b3df04/ruff-0.17.2-py3-none-win_amd64.whl", hash = "sha256:1b59d447f197bef9ef48a22ba1a6016137753c6099e9bac9c36eb566e422424c", size = 10282826, upload-time = "2026-10-22T18:37:55.2Z" },
+    { url = "https://files.pythonhosted.org/packages/81/60/a3604c79cb02777b6cb84da894104021986f06c4bc41375102cc95049a32/ruff-0.17.2-py3-none-win_arm64.whl", hash = "sha256:195ad918027f817c119310ca89a42d347887dfc28934aaa869325e9c5dc9d962", size = 9827036, upload-time = "2026-10-22T18:37:58.031Z" },
 ]
 
 [[package]]
@@ -4394,36 +4393,9 @@ wheels = [
 torch = [
     { name = "numpy" },
     { name = "torch", version = "2.13.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform == 'darwin' and extra == 'extra-8-docforge-cpu') or (extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
-    { name = "torch", version = "2.13.0", source = { registry = "https://pypi.org/simple" }, marker = "(extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu') or (extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu')" },
+    { name = "torch", version = "2.13.0", source = { registry = "https://pypi.org/simple" }, marker = "(extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu') or (extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
     { name = "torch", version = "2.13.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform != 'darwin' and extra == 'extra-8-docforge-cpu') or (extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
     { name = "torch", version = "2.13.0+cu126", source = { registry = "https://download.pytorch.org/whl/cu126" }, marker = "extra == 'extra-8-docforge-gpu'" },
-]
-
-[[package]]
-name = "saxonche"
-version = "13.0.0"
-source = { registry = "https://pypi.org/simple" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/12/1d/6a555839ea469cb5b33907ab5cd4544cda9e7d57b210374f3a48a19be608/saxonche-13.0.0-cp312-cp312-macosx_10_11_x86_64.whl", hash = "sha256:256e03c865b04dacbdb5385f86c0e71759671ff7ad59ef39c56f8862b4fc5a46", size = 41566011, upload-time = "2026-05-29T15:09:59.83Z" },
-    { url = "https://files.pythonhosted.org/packages/f9/37/b6767148a0e3ad54c71ecfdae09f9e602680877de1e5c382c619a2b6e253/saxonche-13.0.0-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:c5189518d3a25588147a667a8c2e605fcc879a69a7f7d7567a3940ffffa9a05e", size = 40404305, upload-time = "2026-05-29T15:05:26.644Z" },
-    { url = "https://files.pythonhosted.org/packages/51/d3/4d563d0de45d9b49765ddaff3866119ca76e754e35c8c62ccaa7a179ee1f/saxonche-13.0.0-cp312-cp312-manylinux_2_24_aarch64.whl", hash = "sha256:b3cc0862a67ebb863eebdcc2ed4b75e97d48114b798eca9149213758942ee122", size = 41733936, upload-time = "2026-05-29T15:07:45.711Z" },
-    { url = "https://files.pythonhosted.org/packages/f9/2d/98d05807c21e65e5a569052ae0a7fbcd465c6f1ac4fbfdd29bbff537ea9f/saxonche-13.0.0-cp312-cp312-manylinux_2_24_x86_64.whl", hash = "sha256:d190a1021636c11a85a410cf62cc7f8fd78cb1a756dabaa12d5a1e03bc236a3d", size = 42421163, upload-time = "2026-05-29T15:02:45.469Z" },
-    { url = "https://files.pythonhosted.org/packages/b4/3e/2414668f6e2db4a939935cda5125a33156db211f2cf941aba19196f2faf5/saxonche-13.0.0-cp312-cp312-win_amd64.whl", hash = "sha256:d05ca490ca090613c9d9fd1b3364c1c07e969825bfaf9ea26472329e7806c745", size = 40467874, upload-time = "2026-06-10T12:33:37.49Z" },
-    { url = "https://files.pythonhosted.org/packages/47/39/f1d8c9f22a203fd8aef91ebdc1b1eeab671781035a9acfc4edbcd7b81405/saxonche-13.0.0-cp313-cp313-macosx_10_11_x86_64.whl", hash = "sha256:0dfeaedd747a159a1026c011936e45d3faa4c671ac7f48709b9279070830616b", size = 41567928, upload-time = "2026-05-29T15:10:16.584Z" },
-    { url = "https://files.pythonhosted.org/packages/60/05/f6fb0d5e1077e3baca6d5b211dbb4d6770a27913f78492fba4e398975559/saxonche-13.0.0-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:a09e9646c63e470bc83e51293e91ac69eb7dd4876a87e5faae5aa6c56811d348", size = 40403669, upload-time = "2026-05-29T15:05:41.558Z" },
-    { url = "https://files.pythonhosted.org/packages/9a/b2/56a2881c2cd8d78c32bbdad2c6280250d85142e4ce165af9731101cfc6a4/saxonche-13.0.0-cp313-cp313-manylinux_2_24_aarch64.whl", hash = "sha256:04388b0625617df696e26f6c04b06479111a55e6cd86a7e00fbf5e2a38446523", size = 41743651, upload-time = "2026-05-29T15:07:59.78Z" },
-    { url = "https://files.pythonhosted.org/packages/33/0b/b7d1999a3e885ffb19415c1dbc3008d623508825affa7ab00cf027ff817e/saxonche-13.0.0-cp313-cp313-manylinux_2_24_x86_64.whl", hash = "sha256:db7333b004b811e2e0860f3e63de8abddb78ea77da8b385e8a478adaf6c98a8f", size = 42373764, upload-time = "2026-05-29T15:03:02.978Z" },
-    { url = "https://files.pythonhosted.org/packages/d8/93/7f4c4732dbdd4467f11666b4951742bfdcc4650dba5525b832537a00f4a8/saxonche-13.0.0-cp313-cp313-win_amd64.whl", hash = "sha256:c166aa28e6833d1cf66e5a9938002fe1d66db6b0d6df6e4e97ce8851af8113b7", size = 40468309, upload-time = "2026-06-10T12:33:12.857Z" },
-    { url = "https://files.pythonhosted.org/packages/e7/1e/470e354c09a5a44efd48df555657be7a365f29079d59962f4faa36ca9eef/saxonche-13.0.0-cp314-cp314-macosx_11_0_arm64.whl", hash = "sha256:22d2f3315258d3bfe53bee1a0b50e231aba9d17d8fa3f49f2b58074523d2cfe3", size = 40406446, upload-time = "2026-05-29T15:05:55.385Z" },
-    { url = "https://files.pythonhosted.org/packages/26/b0/1d49b576adee2f7becf6e104ca65c5e6de7b1297fec88f48b3845ebb743a/saxonche-13.0.0-cp314-cp314-macosx_11_0_x86_64.whl", hash = "sha256:ea9ffe40e8a47997b7b522bb202af2e73eca7f609f9ac07980f8ab944c5b8eaa", size = 41564424, upload-time = "2026-05-29T15:10:33.845Z" },
-    { url = "https://files.pythonhosted.org/packages/b0/40/0ed698395b0fd216a6ef95c9fe1435648ca80a7ebf1289d422a6d97928a1/saxonche-13.0.0-cp314-cp314-manylinux_2_24_aarch64.whl", hash = "sha256:557df07f5c7280da4cf066c1d16a0bc57281e33c3042fe9e881222f3ffd0c2b2", size = 41729836, upload-time = "2026-05-29T15:08:14.948Z" },
-    { url = "https://files.pythonhosted.org/packages/28/c6/f9e6cc024e5e899bcca4c4b730457c1990b2c62197d470867a3b7aef796b/saxonche-13.0.0-cp314-cp314-manylinux_2_24_x86_64.whl", hash = "sha256:5642a59a3eab771e9a5dfb39638b1b20c61da5467e6d441b79250eb3beadfb66", size = 42352411, upload-time = "2026-05-29T15:03:21.002Z" },
-    { url = "https://files.pythonhosted.org/packages/f9/cc/fd3d40352678f57af709164cae7c45c7fe3e4117346bdbd6f093fc2181aa/saxonche-13.0.0-cp314-cp314-win_amd64.whl", hash = "sha256:090c98bade417c6441a706efb1945a5f03f5155d8405f42d05ab5d794b8c97e4", size = 41325871, upload-time = "2026-06-10T12:32:30.656Z" },
-    { url = "https://files.pythonhosted.org/packages/60/1d/cdaf33dc078d77456ffe0f7a9d3a4974ef9d511e4f88361da966e3eeba97/saxonche-13.0.0-cp314-cp314t-macosx_11_0_arm64.whl", hash = "sha256:e66becf854635f65aa74e3647766be81034c94e80e7e6efe70bcb2c4eee48dc0", size = 40426271, upload-time = "2026-05-29T15:06:11.471Z" },
-    { url = "https://files.pythonhosted.org/packages/37/79/af5287eb605e92ec04d3e79af5aeceb23af2543da50817353266ad1496ce/saxonche-13.0.0-cp314-cp314t-macosx_11_0_x86_64.whl", hash = "sha256:cf793d03d15582bfcfd9065b20476a2932b9af5612e7703eac1d257782934718", size = 41598756, upload-time = "2026-05-29T15:10:49.833Z" },
-    { url = "https://files.pythonhosted.org/packages/52/b1/eb3c6a38fc82aff6416d587087f58601a67d10bf13cbdc8473eb8a1427e9/saxonche-13.0.0-cp314-cp314t-manylinux_2_24_aarch64.whl", hash = "sha256:8e2c2e120ca927ebac84430283f5b7cda28f73372a4b8c5f5a3e8dfdbea3702c", size = 41999657, upload-time = "2026-05-29T15:08:32.05Z" },
-    { url = "https://files.pythonhosted.org/packages/e9/f1/16aa68cade7f4b7ad316624ab9e3e258577a76e33ae36ff314aa4c3d64c2/saxonche-13.0.0-cp314-cp314t-manylinux_2_24_x86_64.whl", hash = "sha256:904616e139498429c1cd9a791f602526bc80cae47e44a76c00c7eaae7e286045", size = 42547764, upload-time = "2026-05-29T15:03:38.181Z" },
-    { url = "https://files.pythonhosted.org/packages/83/86/aa0bd8f78e8c1344f21636edfb3502a806933b383d82abb729bd7e6d5d84/saxonche-13.0.0-cp314-cp314t-win_amd64.whl", hash = "sha256:0535808aefa75cd2a80a6a000cf5772e9ece699f715adeb38db1600ebd3a25fb", size = 41385487, upload-time = "2026-06-10T12:32:38.062Z" },
 ]
 
 [[package]]
@@ -4622,7 +4594,7 @@ name = "sqlalchemy"
 version = "2.0.51"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "greenlet", marker = "platform_machine == 'AMD64' or platform_machine == 'WIN32' or platform_machine == 'aarch64' or platform_machine == 'amd64' or platform_machine == 'ppc64le' or platform_machine == 'win32' or platform_machine == 'x86_64' or (extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
+    { name = "greenlet", marker = "platform_machine == 'AMD64' or platform_machine == 'WIN32' or platform_machine == 'aarch64' or platform_machine == 'amd64' or platform_machine == 'ppc64le' or platform_machine == 'win32' or platform_machine == 'x86_64'" },
     { name = "typing-extensions" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/02/f1/a7a892f18d4d224e6b26f706531eafccc41e37594d37d304786969ee13cb/sqlalchemy-2.0.51.tar.gz", hash = "sha256:804dccd8a4a6242c4e30ad961e540e18a588f6527202f2d6791b01845d59fdc9", size = 9912201, upload-time = "2026-06-15T15:41:20.012Z" }
@@ -4669,7 +4641,7 @@ version = "1.6.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyio" },
-    { name = "typing-extensions", marker = "python_full_version < '3.13' or (extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
+    { name = "typing-extensions", marker = "python_full_version < '3.13'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/b5/b4/205b0d5241d934e8add0c38aa924c4f9fb7330834ff11e5444db964ec3f9/starlette-1.6.0.tar.gz", hash = "sha256:d4e3ac5e546444960c710297a3c9fc3f7ebae1b7e963f3d36173b49da535be9b", size = 2716969, upload-time = "2026-08-08T18:27:57.512Z" }
 wheels = [
@@ -4832,18 +4804,18 @@ resolution-markers = [
 dependencies = [
     { name = "cuda-bindings", version = "13.3.1", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.15' and sys_platform == 'linux' and extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu') or (extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
     { name = "cuda-toolkit", version = "13.0.3.0", source = { registry = "https://pypi.org/simple" }, extra = ["cublas", "cudart", "cufft", "cufile", "cupti", "curand", "cusolver", "cusparse", "nvjitlink", "nvrtc", "nvtx"], marker = "(sys_platform == 'linux' and extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu') or (extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
-    { name = "filelock", marker = "(extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu') or (extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu')" },
-    { name = "fsspec", marker = "(extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu') or (extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu')" },
-    { name = "jinja2", marker = "(extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu') or (extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu')" },
-    { name = "networkx", marker = "(extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu') or (extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu')" },
+    { name = "filelock", marker = "(extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu') or (extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
+    { name = "fsspec", marker = "(extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu') or (extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
+    { name = "jinja2", marker = "(extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu') or (extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
+    { name = "networkx", marker = "(extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu') or (extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
     { name = "nvidia-cudnn-cu13", marker = "(sys_platform == 'linux' and extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu') or (extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
     { name = "nvidia-cusparselt-cu13", marker = "(sys_platform == 'linux' and extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu') or (extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
     { name = "nvidia-nccl-cu13", marker = "(sys_platform == 'linux' and extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu') or (extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
     { name = "nvidia-nvshmem-cu13", marker = "(sys_platform == 'linux' and extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu') or (extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
-    { name = "setuptools", marker = "(extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu') or (extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu')" },
-    { name = "sympy", marker = "(extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu') or (extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu')" },
+    { name = "setuptools", marker = "(extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu') or (extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
+    { name = "sympy", marker = "(extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu') or (extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
     { name = "triton", marker = "(python_full_version < '3.15' and sys_platform == 'linux' and extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu') or (extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
-    { name = "typing-extensions", marker = "(extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu') or (extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu')" },
+    { name = "typing-extensions", marker = "(extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu') or (extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/c4/3a/ed0f4d4d1dcde03bced7aac9a28e800abcdc0cbd06b6775044c9fbd877b7/torch-2.13.0-cp312-cp312-macosx_14_0_arm64.whl", hash = "sha256:2fe228aba290d14b9f31b049be550dbd469c3fd3013d7a19705b30454da97027", size = 111213045, upload-time = "2026-07-08T16:05:22.997Z" },
@@ -4932,7 +4904,7 @@ resolution-markers = [
     "python_full_version < '3.13' and sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32'",
 ]
 dependencies = [
-    { name = "cuda-bindings", version = "12.9.7", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.15' and sys_platform == 'linux' and extra == 'extra-8-docforge-gpu') or (python_full_version >= '3.15' and extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu') or (sys_platform != 'linux' and extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
+    { name = "cuda-bindings", version = "12.9.7", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.15' and sys_platform == 'linux' and extra == 'extra-8-docforge-gpu') or (extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
     { name = "cuda-toolkit", version = "12.6.3", source = { registry = "https://pypi.org/simple" }, extra = ["cublas", "cudart", "cufft", "cufile", "cupti", "curand", "cusolver", "cusparse", "nvjitlink", "nvrtc", "nvtx"], marker = "(sys_platform == 'linux' and extra == 'extra-8-docforge-gpu') or (extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
     { name = "filelock", marker = "extra == 'extra-8-docforge-gpu'" },
     { name = "fsspec", marker = "extra == 'extra-8-docforge-gpu'" },
@@ -4944,7 +4916,7 @@ dependencies = [
     { name = "nvidia-nvshmem-cu12", marker = "(sys_platform == 'linux' and extra == 'extra-8-docforge-gpu') or (extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
     { name = "setuptools", marker = "extra == 'extra-8-docforge-gpu'" },
     { name = "sympy", marker = "extra == 'extra-8-docforge-gpu'" },
-    { name = "triton", marker = "(python_full_version < '3.15' and sys_platform == 'linux' and extra == 'extra-8-docforge-gpu') or (python_full_version >= '3.15' and extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu') or (sys_platform != 'linux' and extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
+    { name = "triton", marker = "(python_full_version < '3.15' and sys_platform == 'linux' and extra == 'extra-8-docforge-gpu') or (extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
     { name = "typing-extensions", marker = "extra == 'extra-8-docforge-gpu'" },
 ]
 wheels = [
@@ -5006,9 +4978,9 @@ resolution-markers = [
     "python_full_version < '3.13' and sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32'",
 ]
 dependencies = [
-    { name = "numpy", marker = "(extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu') or (extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu')" },
-    { name = "pillow", marker = "(extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu') or (extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu')" },
-    { name = "torch", version = "2.13.0", source = { registry = "https://pypi.org/simple" }, marker = "(extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu') or (extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu')" },
+    { name = "numpy", marker = "(extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu') or (extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
+    { name = "pillow", marker = "(extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu') or (extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
+    { name = "torch", version = "2.13.0", source = { registry = "https://pypi.org/simple" }, marker = "(extra != 'extra-8-docforge-cpu' and extra != 'extra-8-docforge-gpu') or (extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/15/49/c1cab1ecbb3ff1a380a3f99283db1dee61b8afe354f6352c643b65937130/torchvision-0.28.0-cp312-cp312-macosx_14_0_arm64.whl", hash = "sha256:e9f54c30cd52e3ef7fd034cc69b7bb7e0964e1c8f8743e018ab92e95b40f9eee", size = 1856020, upload-time = "2026-07-08T16:07:52.182Z" },
@@ -5107,7 +5079,7 @@ name = "tqdm"
 version = "4.68.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "colorama", marker = "sys_platform == 'win32' or (extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
+    { name = "colorama", marker = "sys_platform == 'win32'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/87/d7/0535a28b1f5f24f6612fb3ff1e89fb1a8d160fee0f976e0aa6803862134b/tqdm-4.68.3.tar.gz", hash = "sha256:00dfa48452b6b6cfae3dd9885636c23d3422d1ec97c66d96818cbd5e0821d482", size = 170596, upload-time = "2026-06-17T07:36:52.105Z" }
 wheels = [
@@ -5260,7 +5232,7 @@ version = "0.26.8"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "annotated-doc" },
-    { name = "colorama", marker = "sys_platform == 'win32' or (extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
+    { name = "colorama", marker = "sys_platform == 'win32'" },
     { name = "rich" },
     { name = "shellingham" },
 ]
@@ -5391,7 +5363,7 @@ standard = [
     { name = "httptools" },
     { name = "python-dotenv" },
     { name = "pyyaml" },
-    { name = "uvloop", marker = "(platform_python_implementation != 'PyPy' and sys_platform != 'cygwin' and sys_platform != 'win32') or (platform_python_implementation == 'PyPy' and extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu') or (sys_platform == 'cygwin' and extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu') or (sys_platform == 'win32' and extra == 'extra-8-docforge-cpu' and extra == 'extra-8-docforge-gpu')" },
+    { name = "uvloop", marker = "platform_python_implementation != 'PyPy' and sys_platform != 'cygwin' and sys_platform != 'win32'" },
     { name = "watchfiles" },
     { name = "websockets" },
 ]
