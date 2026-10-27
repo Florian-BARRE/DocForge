@@ -114,7 +114,7 @@ worker = [
     # whose AutoProcessor API breaks docling 2.108 (ModuleNotFoundError at parse). Pin to 4.x.
     # The <5 cap is also CVE-relevant (a deliberate security pin), not only an API-compat guard.
     "transformers>=4.46,<5",
-    "pillow>=12.3.0,<13",
+    "pillow>=13.0.0,<14",
     "pypdfium2>=5.14.0,<6",
     "rapidocr-onnxruntime>=1.4.4,<2",
     "pytesseract>=0.3,<0.4",
