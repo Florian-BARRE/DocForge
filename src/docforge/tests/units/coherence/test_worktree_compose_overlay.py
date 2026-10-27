@@ -21,8 +21,11 @@
 # recorded, not interpreted) and never shells out to docker. scripts/dev-stack.sh, which drives the
 # overlay, must stay executable in the git index and syntactically valid bash, and must look for the
 # kit's port-slot tool in the account only (~/.aidk/bin), never in the kit v1's machine-wide install.
+# Its teardown is run once against a fake `docker` in a throwaway git worktree: it must delete the
+# images that worktree built, never main's docforge-*:dev nor a pulled image.
 
 # ====== Standard Library Imports ======
+import os
 import pathlib
 import re
 import shlex
@@ -387,3 +390,63 @@ def test_dev_stack_script_is_valid_bash():
 def test_dev_stack_script_does_not_call_the_kit_v1():
     kit_v1_dir = "/".join(("", "opt", "aidk"))  # spelled apart so the repository never names it
     assert kit_v1_dir not in _DEV_STACK.read_text(encoding="utf-8")
+
+
+# A fake `docker`: logs each call; `compose config --images` lists what the real one would (plus
+# main's image, which a worktree's config never names, to prove the filter); one built image is absent.
+_FAKE_DOCKER = """#!/usr/bin/env bash
+echo "$*" >>"$DOCKER_LOG"
+case "$*" in
+  *"config --images"*)
+    printf '%s\\n' docforge-wt-x-app:dev docforge-wt-x-worker:dev docforge-wt-x-mcp:dev \\
+      postgres:16-bookworm node:22-bookworm-slim docforge-app:dev docforge-wt-x-app:dev ;;
+  "image inspect docforge-wt-x-mcp:dev") exit 1 ;;
+esac
+exit 0
+"""
+
+
+@pytest.mark.skipif(
+    shutil.which("bash") is None or shutil.which("git") is None or shutil.which("timeout") is None,
+    reason="bash, git or timeout not available",
+)
+def test_dev_stack_teardown_removes_only_the_worktree_images(tmp_path):
+    main, worktree, bin_dir = tmp_path / "main", tmp_path / "wt-x", tmp_path / "bin"
+    git = ["git", "-c", "user.name=t", "-c", "user.email=t@t", "-c", "init.defaultBranch=main"]
+    subprocess.run([*git, "init", "-q", str(main)], check=True)
+    subprocess.run(
+        [*git, "-C", str(main), "commit", "-q", "--allow-empty", "-m", "init"], check=True
+    )
+    subprocess.run(
+        [*git, "-C", str(main), "worktree", "add", "-q", "-b", "wt-x", str(worktree)], check=True
+    )
+    (worktree / ".env.worktree").write_text(
+        "COMPOSE_PROJECT_NAME=docforge-wt-x\n", encoding="utf-8"
+    )
+    bin_dir.mkdir()
+    for name, body in (("docker", _FAKE_DOCKER), ("port-slot", "#!/usr/bin/env bash\nexit 0\n")):
+        (bin_dir / name).write_text(body, encoding="utf-8")
+        (bin_dir / name).chmod(0o755)
+    log = tmp_path / "docker.log"
+    env = {
+        **os.environ,
+        "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
+        "DOCKER_LOG": str(log),
+        "AIDK_PORT_SLOT": str(bin_dir / "port-slot"),
+    }
+    result = subprocess.run(
+        ["bash", str(_DEV_STACK), "teardown"],
+        cwd=worktree,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    removed = [
+        line.split()[2:]
+        for line in log.read_text(encoding="utf-8").splitlines()
+        if line.startswith("image rm ")
+    ]
+    assert removed == [["docforge-wt-x-app:dev", "docforge-wt-x-worker:dev"]]
+    assert not (worktree / ".env.worktree").exists()

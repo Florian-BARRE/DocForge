@@ -16,7 +16,8 @@
 #   scripts/dev-stack.sh url               print the address of the app
 #   scripts/dev-stack.sh ps                the address and the containers
 #   scripts/dev-stack.sh status            the same, then follows the logs (Orca "Stack" tab)
-#   scripts/dev-stack.sh teardown          worktree only: stop, delete its containers and volumes, free the ports
+#   scripts/dev-stack.sh teardown          worktree only: stop, delete its containers, volumes and built
+#                                          images, free the ports
 #
 # In a worktree, the app is at http://localhost:<first port of the block>, in Orca's browser of that
 # worktree (Orca routes its traffic through the server). Published ports listen on 127.0.0.1 only.
@@ -212,6 +213,27 @@ bring_up() {
   return 0
 }
 
+# Teardown: deletes the images this worktree built (${COMPOSE_PROJECT_NAME}-<name>:dev, several GB each).
+# The names come from the compose config, not a glob: a worktree "bge" must never match main's
+# docforge-bge-server:dev. Pulled images and main's docforge-*:dev stay; a missing image is skipped.
+remove_worktree_images() {
+  [[ -f "$ENV_FILE" ]] || return 0
+  local project images
+  project="$(env_value COMPOSE_PROJECT_NAME)"
+  [[ "$project" == "$PROJECT"-* ]] || { note "WARNING: unexpected project '$project': images kept"; return 0; }
+  mapfile -t images < <(timeout 20 docker compose "${BASE_ENV_ARGS[@]}" --env-file "$ENV_FILE" \
+    "${COMPOSE_FILES[@]}" --profile '*' config --images --no-env-resolution 2>/dev/null |
+    grep -E "^${project}-[a-z0-9_.-]+:dev\$" | sort -u)
+  ((${#images[@]})) || return 0
+  local present=() image
+  for image in "${images[@]}"; do
+    docker image inspect "$image" >/dev/null 2>&1 && present+=("$image")
+  done
+  ((${#present[@]})) || return 0
+  note "removing this worktree's images: ${present[*]}"
+  timeout 30 docker image rm "${present[@]}" >/dev/null || note "WARNING: some images were not removed (in use?)"
+}
+
 orca_comment() { # best effort: the address shows in Orca's worktree list
   local cli="${ORCA_CLI_COMMAND:-orca-ide}"
   command -v "$cli" >/dev/null 2>&1 || return 0
@@ -267,13 +289,14 @@ case "${1:-}" in
           --remove-orphans --timeout 0 || die "the stack is still there: docker compose ps, then teardown again"
       fi
     fi
+    remove_worktree_images
     if [[ -x "$PORT_SLOT" ]]; then
       "$PORT_SLOT" release "$REPO_KEY" "$ROOT"
     else
       note "WARNING: the port-slot tool is missing: this worktree's port block is not released"
     fi
     rm -f "$ENV_FILE"
-    note "stack, volumes and port block of this worktree removed"
+    note "stack, volumes, images and port block of this worktree removed"
     ;;
   *)
     sed -n '2,/^set -Eeuo/{/^set -Eeuo/d;s/^# \{0,1\}//;p}' "$0" >&2
