@@ -1,5 +1,5 @@
 // ====== Code Summary ======
-// Minimal flat ESLint config (ESLint 9). Its ENTIRE job is the gate persona demand: catch a
+// Minimal flat ESLint config (ESLint 10). Its ENTIRE job is the gate persona demand: catch a
 // Rules-of-Hooks violation (a custom/built-in hook called after a conditional early-return, or
 // inside a condition/loop) at lint time instead of letting it crash the app at runtime — see the
 // CollectionOverview incident this config exists to prevent. `exhaustive-deps` stays a warning

@@ -24,11 +24,13 @@ describe("SearchQueryCard — active segment is always accent", () => {
     );
     const off = screen.getByRole("radio", { name: "Off" });
     expect(off).toHaveAttribute("aria-checked", "true");
-    expect(off).toHaveStyle({ background: theme.color.accent, color: theme.color.onAccent });
+    // jsdom's toHaveStyle does not match the background shorthand: read the inline style.
+    expect(off.style.background).toBe(theme.color.accent);
+    expect(off).toHaveStyle({ color: theme.color.onAccent });
 
     const rewrite = screen.getByRole("radio", { name: "Rewrite" });
     expect(rewrite).toHaveAttribute("aria-checked", "false");
-    expect(rewrite).toHaveStyle({ background: "transparent" });
+    expect(rewrite.style.background).toBe("transparent");
   });
 
   it("paints the selected 'Rewrite' option with the same accent background", () => {
@@ -43,6 +45,7 @@ describe("SearchQueryCard — active segment is always accent", () => {
     );
     const rewrite = screen.getByRole("radio", { name: "Rewrite" });
     expect(rewrite).toHaveAttribute("aria-checked", "true");
-    expect(rewrite).toHaveStyle({ background: theme.color.accent, color: theme.color.onAccent });
+    expect(rewrite.style.background).toBe(theme.color.accent);
+    expect(rewrite).toHaveStyle({ color: theme.color.onAccent });
   });
 });
