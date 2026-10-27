@@ -20,6 +20,7 @@ from sqlalchemy import (
     Numeric,
     Select,
     String,
+    Text,
     cast,
     func,
     literal,
@@ -325,7 +326,9 @@ def _as_text(column: Any) -> Any:
     # ``value #>> '{}'`` (via literal_column, NOT a bound param) so it matches the functional index
     # ``ix_docmeta_field_value_text`` expression byte-for-byte — a placeholder would defeat the index.
     # (The 1-arg ``jsonb_extract_path_text(value)`` this replaced is not a real Postgres function.)
-    return column.op("#>>")(literal_column("'{}'"))
+    # ``return_type=Text`` types the result as text, not JSONB: the SQL is unchanged, but ``ilike``
+    # on it no longer trips SQLAlchemy's "ilike on a JSON type" deprecation (issue #156).
+    return column.op("#>>", return_type=Text)(literal_column("'{}'"))
 
 
 def _escape_like(value: str) -> str:

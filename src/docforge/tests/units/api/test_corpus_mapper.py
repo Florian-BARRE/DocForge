@@ -7,9 +7,12 @@ DB — the mapper is pure and the builder statements are compiled to SQL text on
 import pathlib
 import sys
 import uuid
+import warnings
 from types import SimpleNamespace
 
 import pytest
+from sqlalchemy.dialects import postgresql
+from sqlalchemy.exc import SADeprecationWarning
 
 # The ``backend`` package lives under app/ — put it on the path exactly as the api conftest's
 # fastapi_app fixture does, so this pure test module imports it at collection time without booting.
@@ -229,6 +232,23 @@ def test_scalar_contains_and_range_use_arrow_extraction() -> None:
     assert "#>>" in contains_sql and "jsonb_extract_path_text" not in contains_sql
     range_sql = _scalar_filter_sql("gte", 2020, field_type=FieldType.INTEGER)
     assert "#>>" in range_sql and "jsonb_extract_path_text" not in range_sql
+
+
+def test_scalar_contains_ilikes_the_text_accessor_without_jsonb_deprecation() -> None:
+    """contains must ILIKE the ``value #>> '{}'`` TEXT expression, not a JSONB-typed one: SQLAlchemy
+    2.1 deprecates ilike on a JSON type (issue #156) and a future release raises on it."""
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", SADeprecationWarning)
+        schema = [_field(1, "f", FieldType.STRING)]
+        spec = CorpusMapper.to_spec(
+            DocumentFilter(metadata=[MetadataFilter(field="f", op="contains", value="ad")]),
+            None,
+            schema,
+        )
+        predicate = DocumentQueryApi._value_predicate(spec.metadata[0])
+        sql = str(predicate.compile(dialect=postgresql.dialect()))
+    # The exact inline accessor the functional index ``ix_docmeta_field_value_text`` is built on.
+    assert "(document_metadata.value #>> '{}') ILIKE" in sql
 
 
 def test_metadata_sort_subquery_uses_arrow_extraction() -> None:
