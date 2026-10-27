@@ -55,8 +55,9 @@
 #       mineru / dots_ocr keep their GPU-only opt-in profiles;
 #   - lower memory ceilings, with postgres / redis tuned to fit them; the `models` hosts are capped
 #     too (bge 4g, paddle 6g: enough for PP-Structure, not for the PaddleOCR-VL escalation).
-#     The worker's 3g cap fits the shared host, but a large OCR-heavy ingestion can peak at 2-4 GiB
-#     and may be OOM-killed in a dev stack: raise its limit locally if you need such a run.
+#     The worker gets 4g (worktrees are CPU-only and parse one document at a time) and its parse
+#     RSS watchdog 3072 MiB, prod's ratio (cap - 1 GiB left to the arq worker), so a heavy parse
+#     fails with ParseMemoryExceededError before the OOM-killer reaps the worker.
 #
 # Startup order after a host/VM reboot: the Docker daemon restarts every container of the stack at
 # once and ignores depends_on, so app and worker used to start before seaweedfs's S3 gateway (8333)
@@ -157,6 +158,10 @@ services:
       - /app/worker
     environment:
       S3_ENDPOINT_URL: http://seaweedfs:8333
+      # The auto parse RSS limit of a 4g cap (2252 MiB) leaves little room over one 200-dpi scanned
+      # page's docling peak (1.9-2.2 GiB, #163): pin it to cap - 1 GiB (prod's ratio, 3072 at 5g)
+      # so ~1 GiB stays for the arq worker. Main and prod keep the auto formula.
+      WORKER_PARSE_RSS_LIMIT_MB: "3072"
     volumes: !override
       - ../src/docforge/worker:/app/worker
       - ../src/docforge/shared:/app/shared
@@ -164,7 +169,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 3g
+          memory: 4g
         reservations:
           memory: 512m
 

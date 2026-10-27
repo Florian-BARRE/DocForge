@@ -76,6 +76,11 @@ class ParserDoclingNode(BaseDoclingParserNode):
         pipeline_options = PdfPipelineOptions()
         pipeline_options.do_ocr = config.do_ocr
         pipeline_options.do_table_structure = config.do_table_structure
+        # 3. One page per OCR / layout / table batch (default 4): same text and time on CPU, but a
+        #    multi-page scan peaks 0.3-0.6 GiB lower in RSS, under the parse watchdog (#163).
+        pipeline_options.ocr_batch_size = 1
+        pipeline_options.layout_batch_size = 1
+        pipeline_options.table_batch_size = 1
         return DocumentConverter(
             format_options={InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_options)}
         )
