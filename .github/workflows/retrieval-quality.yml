@@ -9,8 +9,8 @@
 # hit@1 is reported but never gated (too jittery on 48 queries — see tests/rag_eval/gate.py).
 #
 # What this is NOT: a merge gate. It is `workflow_dispatch`-only (no `schedule`, no `push`,
-# no `pull_request`) and is NEVER `needs:`-ed by ci.yml / gate.yml / release-sdk.yml / any
-# release-images workflow, and must never be added to branch-protection required checks. A red
+# no `pull_request`) and is NEVER `needs:`-ed by ci.yml / gate.yml / release-sdk.yml (which
+# also publishes the GHCR images), and must never be added to branch-protection required checks. A red
 # run is a real, visible signal (an operator has to notice and act on it) — this is why the
 # comparison step is allowed to FAIL the job outright rather than using `continue-on-error`,
 # which would make the job cosmetic and silently ignored.
