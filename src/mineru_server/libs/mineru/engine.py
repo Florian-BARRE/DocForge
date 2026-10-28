@@ -133,8 +133,11 @@ class MineruEngine(LoggerClass):
         max_idx = -1
         for block in content_list:
             if isinstance(block, dict):
+                page_idx = block.get("page_idx")
+                if page_idx is None:
+                    continue
                 try:
-                    max_idx = max(max_idx, int(block.get("page_idx")))
+                    max_idx = max(max_idx, int(page_idx))
                 except (TypeError, ValueError):
                     continue
         return max_idx + 1

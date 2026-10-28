@@ -316,6 +316,10 @@ class DotsOcrEngine(LoggerClass):
         Returns:
             str: The model's raw generated text (a JSON list of layout elements), or "" if empty.
         """
+        model, processor = self._model, self._processor
+        if model is None or processor is None:
+            raise RuntimeError("dots.ocr model is not loaded: call _ensure_model() first")
+
         import torch  # noqa: PLC0415
         from qwen_vl_utils import process_vision_info  # noqa: PLC0415
 
@@ -337,26 +341,24 @@ class DotsOcrEngine(LoggerClass):
         ]
 
         # 2. Apply the chat template + vision preprocessing the model's own processor defines.
-        prompt_text = self._processor.apply_chat_template(
+        prompt_text = processor.apply_chat_template(
             messages, tokenize=False, add_generation_prompt=True
         )
         image_inputs, video_inputs = process_vision_info(messages)
-        inputs = self._processor(
+        inputs = processor(
             text=[prompt_text],
             images=image_inputs,
             videos=video_inputs,
             padding=True,
             return_tensors="pt",
         )
-        inputs = inputs.to(self._model.device)
+        inputs = inputs.to(model.device)
 
         # 3. Greedy-decode the layout JSON, then trim the prompt tokens before decoding to text.
         with torch.inference_mode():
-            generated = self._model.generate(
-                **inputs, max_new_tokens=self._max_tokens, do_sample=False
-            )
+            generated = model.generate(**inputs, max_new_tokens=self._max_tokens, do_sample=False)
         trimmed = [out[len(inp) :] for inp, out in zip(inputs.input_ids, generated)]
-        decoded = self._processor.batch_decode(
+        decoded = processor.batch_decode(
             trimmed, skip_special_tokens=True, clean_up_tokenization_spaces=False
         )
         return decoded[0] if decoded else ""
