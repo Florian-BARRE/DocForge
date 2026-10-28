@@ -5,8 +5,7 @@
 # sdk-parity; then ci.yml's secrets job. env_from below plays the gate's
 # `cp services/docforge/.env.example services/docforge/.env` (placeholder config, nothing is dialed).
 # Beyond the CI: mineru_server and dots_ocr_server (format, lint, tests on the base sync: their engines are
-# GPU extras the pure code does not need). Their mypy is left out until issue #167 is fixed (6 Optional
-# errors in libs/mineru/engine.py and libs/dots_ocr/engine.py).
+# GPU extras the pure code does not need).
 # Left to the CI, on purpose:
 # - gate.yml db-tests: a real Postgres service (tests/db, -m db, TEST_POSTGRES_*), not a worktree's.
 # - gate.yml docker-build: 7 multi-GB image builds (torch, paddle), far over a check's timeout.
@@ -48,10 +47,12 @@ paddle-tests = ["uv", "run", "--no-sync", "--directory", "src/paddle_server", "p
 mineru-deps = ["uv", "sync", "--frozen", "--directory", "src/mineru_server"]
 mineru-format = ["uv", "run", "--frozen", "--directory", "src/mineru_server", "ruff", "format", "--check", "."]
 mineru-lint = ["uv", "run", "--frozen", "--directory", "src/mineru_server", "ruff", "check", "."]
+mineru-types = ["uv", "run", "--frozen", "--directory", "src/mineru_server", "mypy", "."]
 mineru-tests = ["uv", "run", "--frozen", "--directory", "src/mineru_server", "pytest", "-q"]
 dots-ocr-deps = ["uv", "sync", "--frozen", "--directory", "src/dots_ocr_server"]
 dots-ocr-format = ["uv", "run", "--frozen", "--directory", "src/dots_ocr_server", "ruff", "format", "--check", "."]
 dots-ocr-lint = ["uv", "run", "--frozen", "--directory", "src/dots_ocr_server", "ruff", "check", "."]
+dots-ocr-types = ["uv", "run", "--frozen", "--directory", "src/dots_ocr_server", "mypy", "."]
 dots-ocr-tests = ["uv", "run", "--frozen", "--directory", "src/dots_ocr_server", "pytest", "-q"]
 frontend-deps = ["npm", "ci", "--prefix", "src/docforge/app/frontend", "--no-audit", "--no-fund"]
 frontend-lint = ["npm", "--prefix", "src/docforge/app/frontend", "run", "lint"]

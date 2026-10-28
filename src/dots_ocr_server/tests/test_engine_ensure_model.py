@@ -180,3 +180,11 @@ def test_resolve_downloads_a_dotted_hub_id_to_a_dotfree_dir(
     calls.clear()
     assert engine._resolve_local_model_dir() == resolved
     assert calls == {}
+
+
+def test_generate_without_a_loaded_model_raises_a_clear_error() -> None:
+    """_generate on an unloaded engine fails with a clear RuntimeError, not a None attribute error."""
+    engine = _engine()
+
+    with pytest.raises(RuntimeError, match="not loaded"):
+        engine._generate(object())
