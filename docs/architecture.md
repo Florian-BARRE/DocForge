@@ -194,6 +194,8 @@ The engine is **pure**: nodes never touch these stores. All I/O is a **façade**
 `shared/libs/services/db/facades/` (auth · collections · documents · ingestion · jobs · metagen ·
 search), called by the worker or a router — never from a node. Providers (URL + secret) live **per
 collection in the DB**, never in `.env`, so they are swappable within a family without redeploying.
+CPU/GPU is a **deployment concern** of the images (the worker's and each model sidecar's): a node's
+config never carries a device knob.
 
 A read-only **storage-footprint** surface (`GET /api/v1/collections/{id}/storage`, the
 `StorageFootprintFacade`) reports how much hardware a collection occupies across these three stores:

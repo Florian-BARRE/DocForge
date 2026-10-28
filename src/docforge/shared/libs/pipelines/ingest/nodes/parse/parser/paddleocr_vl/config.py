@@ -2,7 +2,7 @@
 # Config of the PaddleOCR-VL 1.6 parser node — a NETWORK client, so its config is the per-collection
 # endpoint (base_url + optional bearer + timeout) plus the sub-pipeline toggles it forwards to the
 # sidecar on every request. There is NO device knob: PaddlePaddle CPU/GPU is a deployment concern
-# owned by the sidecar image (invariant #7). Lean default: every heavy sub-pipeline OFF
+# owned by the sidecar image (docs/architecture.md §4). Lean default: every heavy sub-pipeline OFF
 # (chart/seal/image-block-OCR). The timeout defaults HIGH — PaddleOCR-VL is a VLM (~minutes per page
 # on CPU), far slower than PP-StructureV3, so the base 300 s would truncate a real multi-page parse.
 

@@ -6,7 +6,8 @@ current engine no longer knows — here a metagen node with the removed ``kind="
 DemoCollection incident) — cannot be migrated: it is rejected with a 422 BEFORE any spend (no
 dedup lookup, no bytes stored, no document/job admitted, no job enqueued), carrying a clear,
 actionable message (the cause + the one recovery: re-save from the default). This guards DocForge
-invariant #4 (structural fail-fast before spend) and eliminates the cryptic foreach_invalid_body.
+invariant of structural fail-fast before spend (docs/architecture.md §3) and eliminates the cryptic
+foreach_invalid_body.
 
 CONTEXT is patched with recording fakes so the endpoint runs without a store — the point is
 exactly that the downstream (store/admit/enqueue) is never reached. ``from backend...`` imports

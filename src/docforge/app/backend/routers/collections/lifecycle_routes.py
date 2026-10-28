@@ -53,8 +53,9 @@ async def create_collection(
         CollectionModel: The created contract (201); 409 on name clash, 422 on bad
         pipeline or colliding vector slugs.
     """
-    # 1. Structural validation FIRST — fail-fast BEFORE any store touch (invariant #4), so a malformed
-    #    request is a clean 422 even when the DB is unreachable (never a 500 from a driver error).
+    # 1. Structural validation FIRST — fail-fast BEFORE any store touch (docs/architecture.md §3),
+    #    so a malformed request is a clean 422 even when the DB is unreachable (never a 500 from a
+    #    driver error).
     #    Fields, then the pipeline blob: the caller's explicit graph wins, otherwise the stock blob the
     #    ``preset`` selects (light = enrichment-free core), healed to the current engine and validated.
     CollectionHelpers.validate_fields(request.fields)

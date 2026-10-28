@@ -1,7 +1,7 @@
 # ====== Code Summary ======
 # DocumentViewHelpers — turns a document's stored IR into an on-the-fly markdown or HTML VIEW
-# (invariant #1: those formats are generated views, the IR is the source). It owns the small
-# orchestration the two view endpoints share: adapt the DB-shaped IRBundle to a canonical
+# (docs/architecture.md §1: those formats are generated views, the IR is the source). It owns the
+# small orchestration the two view endpoints share: adapt the DB-shaped IRBundle to a canonical
 # DocumentIR, run the pure IRLinearizer, and wrap the string in a Response with the right
 # content-type and an optional attachment Content-Disposition derived from the document's filename.
 # A page selection renders each selected page on its own (the IR restricted to that page's blocks,

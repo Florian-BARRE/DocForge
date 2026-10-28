@@ -3,8 +3,8 @@
 Before the 0.14.0 fix, ``FigureClassifyNode`` (hosted VLM), ``ChunkerSemanticNode`` (embeddings) and
 the metagen PREP nodes (default LLM endpoint) defined no ``preflight()``, so the worker reachability
 sweep (``probes_endpoint`` = "does it override ``ActionNode.preflight``?") marked them SKIPPED and a
-wrong/unreachable endpoint only failed MID-RUN, after paid parse/render (invariant #4). These tests
-prove each one now:
+wrong/unreachable endpoint only failed MID-RUN, after paid parse/render (docs/architecture.md §3:
+fail-fast before spend). These tests prove each one now:
   * reports ``probes_endpoint`` True (the sweep picks it up);
   * probes its configured endpoint (reachable -> passes, unreachable -> PreflightError);
 and that a fully-local ``figure_classify`` (classify_backend="local") stays a no-op (no network call),

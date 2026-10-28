@@ -765,7 +765,7 @@ les services in-stack (`intake`/`parse` docling · `contextualize` local · `emb
 providers recommandés pré-remplis mais **jamais exécutés** : une collection fraîche ingère n'importe quel
 document avec **zéro config externe**. Les activer est un opt-in explicite dans le studio (flip du stage +
 endpoint réel). C'est ce qui rend `WORKER_PREFLIGHT_ENABLED` **on par défaut** sans danger (aucun
-placeholder n'est jamais dans un graphe exécuté out-of-box — cf. invariant #4).
+placeholder n'est jamais dans un graphe exécuté out-of-box — cf. [`docs/architecture.md` §3](../../docs/architecture.md#collection--contract-fail-fast-at-build)).
 
 **La découverte d'abord** — `GET /api/v1/pipelines` : la liste des surfaces de design disponibles
 (`{key, title, description, design_url, inspect_url, edit_url, stages_view_url, stages_apply_url}`) — le SEUL
