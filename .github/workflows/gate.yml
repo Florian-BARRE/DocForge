@@ -22,8 +22,8 @@ on:
 # Explicit least-privilege floor. Critically, this ALSO caps what the gate can inherit when called
 # from a release workflow: a reusable workflow's effective GITHUB_TOKEN permissions are the most
 # restrictive intersection of the caller's and the callee's own `permissions:` block, so declaring
-# `contents: read` here means the gate can NEVER end up holding release-images.yml's `packages: write`
-# (or release-sdk.yml's `id-token: write`), even though those workflows call it. No job below needs
+# `contents: read` here means the gate can NEVER end up holding release-sdk.yml's `packages: write`
+# (GHCR images) or `id-token: write` (PyPI), even though that workflow calls it. No job below needs
 # anything beyond checkout.
 permissions:
   contents: read
@@ -242,12 +242,12 @@ jobs:
         run: npm run build
 
   docker-build:
-    # No-push CPU sanity build of every one of the 5 Dockerfiles in this repo, on every push/PR.
+    # No-push CPU sanity build of every one of the 7 Dockerfiles in this repo, on every push/PR.
     # Before this job existed, the FIRST real `docker build` of any of them ran on an actual `v*`
     # tag push (release-sdk.yml's `images` job) — a broken Dockerfile (renamed apt package, a COPY
     # path typo, a stage-name typo) therefore only ever surfaced mid-release, blocking a real
     # release rather than a PR. Builds THROUGH each Dockerfile's full `runtime` stage (verified: all
-    # 5 name their final stage `runtime`), not just the dependency-builder stage — the runtime stage
+    # 7 name their final stage `runtime`), not just the dependency-builder stage — the runtime stage
     # (apt-get, chown, USER, the final COPYs) is exactly where these Dockerfiles tend to break, and a
     # builder-only build would miss all of it. GPU legs are deliberately excluded: CUDA torch/paddle
     # builds are multi-GiB and release-only (see release-sdk.yml's own runner-disk-pressure
