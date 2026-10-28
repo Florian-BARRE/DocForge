@@ -169,7 +169,8 @@ seed() {
 # The services `up SERVICE...` starts: these and, through depends_on, what they depend on (one per line).
 deps() {
   # --profile '*': a service behind a profile (mcp: extras) starts when named, so its depends_on count too.
-  compose --profile '*' config --format json | python3 -I -c '
+  # --no-env-resolution: a missing env file must not break the list (need_env_files reports it).
+  compose --profile '*' config --no-env-resolution --format json | python3 -I -c '
 import json, sys
 services = json.load(sys.stdin).get("services") or {}
 todo, seen = list(sys.argv[1:]), set()
@@ -180,6 +181,43 @@ while todo:
     seen.add(name)
     todo += list(services[name].get("depends_on") or [])
 print("\n".join(sorted(seen)))' "$@"
+}
+
+# Stops with the list of the env files (env_file) that SERVICE... and what they depend on need (every
+# active service without a name) and that do not exist, each with the template to copy. Compose would
+# stop at the first one with a bare "env file … not found".
+need_env_files() {
+  local profiles=() missing=() file msg
+  (($#)) && profiles=(--profile '*')
+  mapfile -t missing < <(compose "${profiles[@]}" config --no-env-resolution --format json | python3 -I -c '
+import json, os, sys
+services = json.load(sys.stdin).get("services") or {}
+todo, seen = list(sys.argv[2:]) or list(services), set()
+while todo:
+    name = todo.pop()
+    if name in seen or name not in services:
+        continue
+    seen.add(name)
+    todo += list(services[name].get("depends_on") or [])
+missing = set()
+for name in seen:
+    for entry in services[name].get("env_file") or []:
+        if isinstance(entry, str):
+            entry = {"path": entry}
+        if entry.get("required", True) and not os.path.exists(entry["path"]):
+            missing.add(os.path.relpath(entry["path"], sys.argv[1]))
+print("\n".join(sorted(missing)))' "$ROOT" "$@")
+  [[ -n "${missing[*]}" ]] || return 0
+  msg="missing env files, which the compose files read:"
+  for file in "${missing[@]}"; do
+    [[ -n "$file" ]] || continue
+    if [[ -f "$file.example" ]]; then
+      msg+=$'\n'"  $file: copy its template (cp $file.example $file), then fill it in"
+    else
+      msg+=$'\n'"  $file"
+    fi
+  done
+  die "$msg"
 }
 
 prepare() {
@@ -195,8 +233,9 @@ prepare() {
 # database is among what starts. BUILD=1: rebuild the images.
 bring_up() {
   local build="$1"; shift
+  ((IS_WORKTREE)) && [[ ! -f "$ENV_FILE" ]] && write_env
+  need_env_files "$@"
   if ((IS_WORKTREE)); then
-    [[ -f "$ENV_FILE" ]] || write_env
     if [[ -n "$SEED_DB_SERVICE" ]] && ! grep -qx 'SEEDED=1' "$ENV_FILE" &&
         { (($# == 0)) || deps "$@" | grep -qx "$SEED_DB_SERVICE"; }; then
       seed
@@ -263,7 +302,7 @@ case "${1:-}" in
     ;;
   stop) shift; (($#)) || die "stop needs the services to stop (down stops the whole stack)"; compose stop "$@" ;;
   down) compose --profile '*' down --remove-orphans ;;  # no -v: data kept
-  deps) shift; (($#)) || die "deps needs services"; deps "$@" ;;
+  deps) shift; (($#)) || die "deps needs services"; need_env_files "$@"; deps "$@" ;;
   seed) seed ;;
   url) app_url || exit 1 ;;
   ps)
