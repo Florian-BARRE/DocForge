@@ -2,8 +2,8 @@
 # Config of the PaddleOCR node — a NETWORK client of the in-stack paddle_server sidecar's OCR-only
 # endpoint. Its config is the per-collection endpoint (base_url + optional bearer + timeout/retry).
 # There is NO device knob: PaddlePaddle CPU/GPU is a deployment concern owned by the sidecar image
-# (invariant #7). base_url defaults to the in-stack sidecar so the provider is reachable out of the
-# box; override per collection to point at a remote sidecar.
+# (docs/architecture.md §4). base_url defaults to the in-stack sidecar so the provider is reachable
+# out of the box; override per collection to point at a remote sidecar.
 
 # ====== Third-Party Library Imports ======
 from pydantic import Field, field_validator

@@ -2,9 +2,9 @@
 # Config of the PP-StructureV3 (PaddleOCR) parser node — a NETWORK client, so its config is the
 # per-collection endpoint (base_url + optional bearer + timeout) plus the sub-pipeline toggles it
 # forwards to the sidecar on every request. There is NO device knob: PaddlePaddle CPU/GPU is a
-# deployment concern owned by the sidecar image (invariant #7). Lean default: table recognition ON,
-# everything else OFF (formula/seal/orientation/unwarping) — the fastest cold start for born-digital
-# PDFs, each toggle overridable per collection without a sidecar rebuild.
+# deployment concern owned by the sidecar image (docs/architecture.md §4). Lean default: table
+# recognition ON, everything else OFF (formula/seal/orientation/unwarping) — the fastest cold start
+# for born-digital PDFs, each toggle overridable per collection without a sidecar rebuild.
 
 # ====== Third-Party Library Imports ======
 from pydantic import Field, field_validator

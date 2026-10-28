@@ -1,4 +1,4 @@
-"""On-the-fly markdown/HTML document views (generated from the canonical IR, invariant #1).
+"""On-the-fly markdown/HTML document views (generated from the IR: docs/architecture.md §1).
 
 Two concerns, all serviceless (the DB façade is mocked):
   1. IRBundleAdapter — the IRBundle(DB rows) -> DocumentIR reconstruction: enrichment fold onto the

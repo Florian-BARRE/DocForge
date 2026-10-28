@@ -1,10 +1,10 @@
 # ====== Code Summary ======
-# Config of the dots.ocr parser node — a NETWORK client, so its config is the per-collection endpoint
-# (base_url + optional bearer + timeout). There is NO device knob: torch/CUDA CPU/GPU is a deployment
-# concern owned by the sidecar image (invariant #7), and the dots_ocr sidecar's /parse endpoint takes
-# no sub-pipeline query params (rendering DPI/backend are sidecar-side env). The timeout defaults HIGH —
-# dots.ocr is a per-page VLM (minutes per document, even on GPU), so the base 300 s would truncate a
-# real multi-page parse.
+# Config of the dots.ocr parser node — a NETWORK client, so its config is the per-collection
+# endpoint (base_url + optional bearer + timeout). There is NO device knob: torch/CUDA CPU/GPU is a
+# deployment concern owned by the sidecar image (docs/architecture.md §4), and the dots_ocr
+# sidecar's /parse endpoint takes no sub-pipeline query params (rendering DPI/backend are
+# sidecar-side env). The timeout defaults HIGH — dots.ocr is a per-page VLM (minutes per document,
+# even on GPU), so the base 300 s would truncate a real multi-page parse.
 
 # ====== Third-Party Library Imports ======
 from pydantic import Field, field_validator

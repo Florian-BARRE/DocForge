@@ -37,8 +37,10 @@ have one.) The SDK's live tests are opt-in: `uv run pytest -m live` needs a runn
 
 Every push and PR runs the reusable gate in [`.github/workflows/gate.yml`](.github/workflows/gate.yml):
 **format → lint → type-check → unit tests** for every package, plus the **frontend build** and an
-**SDK↔backend OpenAPI coherence check**. A change can't merge unless the whole gate is green — and the
-**same gate must pass before the SDK publishes** ([`release-sdk.yml`](.github/workflows/release-sdk.yml)).
+**SDK↔backend OpenAPI coherence check**. A change is merged only once the whole gate is green and
+the change is reviewed — a maintainers' rule, not a GitHub branch protection (the repository has
+none) — and the **same gate must pass before the SDK publishes**
+([`release-sdk.yml`](.github/workflows/release-sdk.yml) runs it first).
 
 Run the essentials locally before opening a PR:
 

@@ -1,8 +1,9 @@
 # ====== Code Summary ======
-# IRLinearizer — the public facade the app calls to turn the canonical DocumentIR into a full-document
-# markdown or HTML VIEW on the fly (invariant #1: markdown/PDF/HTML are generated views, the IR is the
-# source). It owns one markdown and one html emitter and delegates the walk to them. PURE: no I/O — a
-# caller holding a DocumentIR gets a string back, nothing is read or written.
+# IRLinearizer — the public facade the app calls to turn the canonical DocumentIR into a
+# full-document markdown or HTML VIEW on the fly (docs/architecture.md §1: markdown/PDF/HTML are
+# generated views, the IR is the source). It owns one markdown and one html emitter and delegates
+# the walk to them. PURE: no I/O — a caller holding a DocumentIR gets a string back, nothing is read
+# or written.
 
 # ====== Standard Library Imports ======
 from __future__ import annotations

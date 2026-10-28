@@ -96,7 +96,7 @@ aidk stack up frontend                            # docforge_frontend + docforge
 aidk stack up worker                              # docforge_worker + qdrant + gotenberg + the stores
 aidk stack up mcp                                 # docforge_mcp (profile extras) + the app
 aidk stack up bge paddle                          # bge_server / paddle_server (profile models)
-aidk stack rebuild NAME | browse | down           # rebuild an image, open the UI in Orca, stop
+aidk stack rebuild NAME | browse | down           # rebuild an image, open the UI in Orca, stop (volumes, images kept)
 aidk stack release                                # worktree removal (Orca's archive): containers, volumes, images, ports
 ```
 

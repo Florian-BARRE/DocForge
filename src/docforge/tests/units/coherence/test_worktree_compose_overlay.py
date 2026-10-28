@@ -25,8 +25,11 @@
 # kit's port-slot tool in the account only (~/.aidk/bin), never in the kit v1's machine-wide install.
 # Its teardown is run once against a fake `docker` in a throwaway git worktree: it must delete the
 # images that worktree built, never main's docforge-*:dev nor a pulled image.
+# Its `deps` and `up` stop before compose, naming every missing env file the services to start read
+# (and the .example to copy), never with a traceback.
 
 # ====== Standard Library Imports ======
+import json
 import os
 import pathlib
 import re
@@ -478,3 +481,90 @@ def test_dev_stack_teardown_removes_only_the_worktree_images(tmp_path):
     ]
     assert removed == [["docforge-wt-x-app:dev", "docforge-wt-x-worker:dev"]]
     assert not (worktree / ".env.worktree").exists()
+
+
+# A fake `docker` for the env-file check: `config --no-env-resolution` prints the JSON of $CONFIG_JSON,
+# a real `config` (env files resolved) fails as the real one does on a missing file, any other call
+# (`up` included) is logged and succeeds.
+_FAKE_DOCKER_ENV = """#!/usr/bin/env bash
+echo "$*" >>"$DOCKER_LOG"
+case "$*" in
+  *"config --no-env-resolution"*) cat "$CONFIG_JSON" ;;
+  *" config "*) echo "env file $MISSING not found: stat $MISSING: no such file or directory" >&2; exit 1 ;;
+esac
+exit 0
+"""
+
+
+@pytest.mark.skipif(
+    shutil.which("bash") is None or shutil.which("git") is None or shutil.which("python3") is None,
+    reason="bash, git or python3 not available",
+)
+@pytest.mark.parametrize("command", [["deps", "docforge_frontend"], ["up", "docforge_frontend"]])
+def test_dev_stack_names_the_missing_env_files_and_their_template(tmp_path, command):
+    main, worktree, bin_dir = tmp_path / "main", tmp_path / "wt-x", tmp_path / "bin"
+    git = ["git", "-c", "user.name=t", "-c", "user.email=t@t", "-c", "init.defaultBranch=main"]
+    subprocess.run([*git, "init", "-q", str(main)], check=True)
+    subprocess.run(
+        [*git, "-C", str(main), "commit", "-q", "--allow-empty", "-m", "init"], check=True
+    )
+    subprocess.run(
+        [*git, "-C", str(main), "worktree", "add", "-q", "-b", "wt-x", str(worktree)], check=True
+    )
+    (worktree / ".env.worktree").write_text(
+        "COMPOSE_PROJECT_NAME=docforge-wt-x\nAPP_PORT=1\n", encoding="utf-8"
+    )
+    services = worktree / "services"
+    (services / "docforge").mkdir(parents=True)
+    (services / "docforge" / ".env.example").write_text("X=1\n", encoding="utf-8")
+    (services / "mcp").mkdir()
+    (services / "mcp" / ".env").write_text("X=1\n", encoding="utf-8")
+    config = {
+        "services": {
+            "docforge_frontend": {"depends_on": {"docforge_app": {}}},
+            "docforge_app": {
+                "env_file": [{"path": str(services / "docforge" / ".env")}],
+                "depends_on": {"docforge_postgres": {}},
+            },
+            "docforge_postgres": {
+                "env_file": [{"path": str(services / "docforge" / "postgres.env")}]
+            },
+            "docforge_mcp": {"env_file": [{"path": str(services / "mcp" / ".env")}]},
+            "docforge_bge_server": {"env_file": [{"path": str(services / "bge" / ".env")}]},
+            "docforge_worker": {
+                "env_file": [{"path": str(services / "worker.env"), "required": False}]
+            },
+        }
+    }
+    config_json = tmp_path / "config.json"
+    config_json.write_text(json.dumps(config), encoding="utf-8")
+    bin_dir.mkdir()
+    (bin_dir / "docker").write_text(_FAKE_DOCKER_ENV, encoding="utf-8")
+    (bin_dir / "docker").chmod(0o755)
+    log = tmp_path / "docker.log"
+    env = {
+        **os.environ,
+        "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
+        "DOCKER_LOG": str(log),
+        "CONFIG_JSON": str(config_json),
+        "MISSING": str(services / "docforge" / ".env"),
+        "AIDK_PORT_SLOT": str(tmp_path / "no-port-slot"),
+    }
+    result = subprocess.run(
+        ["bash", str(_DEV_STACK), *command],
+        cwd=worktree,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode != 0
+    assert "Traceback" not in result.stderr
+    lines = [line.strip() for line in result.stderr.splitlines()]
+    # Only what frontend needs, through depends_on: not bge (unrelated), not mcp (present).
+    assert lines[1:] == [
+        "services/docforge/.env: copy its template (cp services/docforge/.env.example "
+        "services/docforge/.env), then fill it in",
+        "services/docforge/postgres.env",
+    ]
+    assert not any(" up " in f" {line} " for line in log.read_text(encoding="utf-8").splitlines())
