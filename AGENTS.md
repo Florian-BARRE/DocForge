@@ -129,7 +129,8 @@ aidk stack up mcp            # the MCP server (compose profile extras) and the a
 aidk stack up bge paddle     # the CPU models (compose profile models): check `free -h` first
 aidk stack rebuild NAME      # after a change to an image (Dockerfile, dependencies), data kept
 aidk stack browse            # open the UI in this worktree's Orca browser; give florian its URL
-aidk stack down              # stop what you started
+aidk stack down              # stop what you started: the volumes (data) and the images stay
+aidk stack release           # remove everything: containers, volumes, built images, port block
 ```
 
 - The UI is the Vite frontend at the first port of the worktree's block (`scripts/dev-stack.sh url`;
@@ -137,6 +138,8 @@ aidk stack down              # stop what you started
   `.env.worktree`; `10040` in main), API docs at `/scalar`; its `/` is 404 in dev (the source mount
   hides the built UI). The frontend's first start runs `npm ci` (a few minutes) and `up --wait` does not
   wait for it: retry the page if it is not up yet.
+- The stack reads the `services/*/.env` files (`env_file`): `scripts/dev-stack.sh up` and `deps` stop
+  with the list of the missing ones and the `.env.example` to copy.
 - `services/docforge/s3_config.json` must be mode 644 (rootless Docker cannot read a 600 file in a
   private checkout): otherwise seaweedfs's S3 dies with "permission denied" and the app fails at startup.
 - Never `make up-*` / `down-*` on the dev center (main checkout or worktree): fixed compose project

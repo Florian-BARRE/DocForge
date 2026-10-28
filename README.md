@@ -176,7 +176,8 @@ gotenberg `10045` · frontend `10046` · bge_server `10047` · mcp `10048` · pa
 
 Contributions welcome — see **[CONTRIBUTING.md](CONTRIBUTING.md)**. Every push runs the full gate
 (`ruff format --check` · `ruff check` · `mypy` · unit tests) across all packages, the frontend build,
-and an **SDK↔backend OpenAPI coherence check** — nothing merges (or publishes) unless it's all green.
+and an **SDK↔backend OpenAPI coherence check** — nothing publishes unless it's all green, and a change
+is merged only once it is green and reviewed (a maintainers' rule: no GitHub branch protection).
 
 ```bash
 cd src/docforge
