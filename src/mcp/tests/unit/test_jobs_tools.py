@@ -6,7 +6,10 @@
 from __future__ import annotations
 
 # ====== Standard Library Imports ======
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
@@ -19,6 +22,19 @@ from libs.tools import jobs as jobs_tools
 
 JID = "55555555-5555-5555-5555-555555555555"
 EID = "66666666-6666-6666-6666-666666666666"
+
+
+@contextmanager
+def _patched_sleep() -> Iterator[AsyncMock]:
+    """
+    Mock the sleep wait_for_job awaits, in libs.tools.jobs only.
+
+    Patching `asyncio.sleep` itself would also catch every other sleeper of the process, such as
+    the contract tests' session uvicorn thread (its main loop sleeps 0.1s), and inflate the counts.
+    """
+    sleep_mock = AsyncMock()
+    with patch.object(jobs_tools, "asyncio", SimpleNamespace(sleep=sleep_mock)):
+        yield sleep_mock
 
 
 def _register_with_fake_sdk() -> tuple[MCPServer, AsyncMock]:
@@ -94,7 +110,7 @@ async def test_wait_for_job_returns_immediately_once_terminal() -> None:
     jobs_tools.register(mcp, sdk)
     fn = _tool_fn(mcp, "wait_for_job")
 
-    with patch("libs.tools.jobs.asyncio.sleep", new_callable=AsyncMock) as sleep_mock:
+    with _patched_sleep() as sleep_mock:
         result = await fn(job_id=JID)
 
     get_mock.assert_awaited_once_with(JID)
@@ -111,7 +127,7 @@ async def test_wait_for_job_polls_until_terminal() -> None:
     jobs_tools.register(mcp, sdk)
     fn = _tool_fn(mcp, "wait_for_job")
 
-    with patch("libs.tools.jobs.asyncio.sleep", new_callable=AsyncMock) as sleep_mock:
+    with _patched_sleep() as sleep_mock:
         result = await fn(job_id=JID)
 
     assert get_mock.await_count == 2
@@ -128,7 +144,7 @@ async def test_wait_for_job_returns_non_terminal_status_once_timeout_elapses() -
     jobs_tools.register(mcp, sdk)
     fn = _tool_fn(mcp, "wait_for_job")
 
-    with patch("libs.tools.jobs.asyncio.sleep", new_callable=AsyncMock) as sleep_mock:
+    with _patched_sleep() as sleep_mock:
         result = await fn(job_id=JID, timeout_s=0)
 
     get_mock.assert_awaited_once_with(JID)
@@ -150,7 +166,7 @@ async def test_wait_for_job_clamps_sleep_to_remaining_deadline() -> None:
     # 0.5s backoff delay — so the sleep must be clamped to that 0.25s, not the full 0.5s.
     with (
         patch("libs.tools.jobs.time.monotonic", side_effect=[0.0, 0.75, 1.0]),
-        patch("libs.tools.jobs.asyncio.sleep", new_callable=AsyncMock) as sleep_mock,
+        _patched_sleep() as sleep_mock,
     ):
         result = await fn(job_id=JID, timeout_s=1.0)
 
@@ -186,7 +202,7 @@ async def test_wait_for_job_clamps_a_timeout_above_the_hard_cap() -> None:
     # deadline but nowhere near an uncapped 10_000.0 one, proving the clamp took effect.
     with (
         patch("libs.tools.jobs.time.monotonic", side_effect=[0.0, 0.0, 500.0]),
-        patch("libs.tools.jobs.asyncio.sleep", new_callable=AsyncMock) as sleep_mock,
+        _patched_sleep() as sleep_mock,
     ):
         result = await fn(job_id=JID, timeout_s=10_000.0)
 
