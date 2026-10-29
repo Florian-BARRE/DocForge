@@ -12,7 +12,7 @@ from unittest.mock import AsyncMock
 # ====== Third-Party Library Imports ======
 from docforge_sdk import AsyncClient
 from docforge_sdk.models import CollectionAliasModel, SetCollectionAliasResponse
-from mcp.server.fastmcp import FastMCP
+from mcp.server.mcpserver import MCPServer
 
 # ====== Internal Project Imports ======
 from libs.tools import collection_aliases
@@ -23,7 +23,7 @@ _A = CollectionAliasModel(
 )
 
 
-def _wired(existing: list[CollectionAliasModel]) -> tuple[FastMCP, AsyncClient]:
+def _wired(existing: list[CollectionAliasModel]) -> tuple[MCPServer, AsyncClient]:
     sdk = AsyncClient("http://localhost:8000")
     sdk.collection_aliases.list = AsyncMock(return_value=existing)  # type: ignore[method-assign]
     sdk.collection_aliases.set = AsyncMock(  # type: ignore[method-assign]
@@ -33,12 +33,12 @@ def _wired(existing: list[CollectionAliasModel]) -> tuple[FastMCP, AsyncClient]:
         )
     )  # fmt: skip
     sdk.collection_aliases.delete = AsyncMock(return_value=None)  # type: ignore[method-assign]
-    mcp = FastMCP("t")
+    mcp = MCPServer("t")
     collection_aliases.register(mcp, sdk)
     return mcp, sdk
 
 
-async def _call(mcp: FastMCP, name: str, args: dict[str, Any]) -> Any:
+async def _call(mcp: MCPServer, name: str, args: dict[str, Any]) -> Any:
     tool = mcp._tool_manager.get_tool(name)
     assert tool is not None
     return await tool.fn(**args)

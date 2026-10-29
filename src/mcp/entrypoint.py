@@ -1,6 +1,6 @@
 # ====== Code Summary ======
 # Entry point for the standalone DocForge MCP server (name aligned with docforge/entrypoint.py).
-# Wires McpConfig → ScopedSdkProvider (docforge_sdk) → FastMCP, then runs the requested transport:
+# Wires McpConfig → ScopedSdkProvider (docforge_sdk) → MCPServer, then runs the requested transport:
 #   - stdio           → local Claude Desktop / Claude Code (env DOCFORGE_API_TOKEN, no network)
 #   - streamable-http → long-lived container service; auth is delegated to DocForge — each
 #                        request's own Authorization bearer is forwarded upstream as-is, and a

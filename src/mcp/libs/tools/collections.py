@@ -9,7 +9,7 @@ from typing import Any, Literal
 # ====== Third-Party Library Imports ======
 from docforge_sdk import AsyncClient, CreateCollectionRequest, FieldSpec, UpdateCollectionRequest
 from docforge_sdk.models import BulkReingestRequest, CollectionSnippet, DocumentFilter
-from mcp.server.fastmcp import FastMCP
+from mcp.server.mcpserver import MCPServer
 
 # ====== Local Project Imports ======
 from .schema_diff_rendering import CONFIRM_HINT, SchemaDiffRenderer
@@ -34,11 +34,11 @@ def _lean(collection: dict[str, Any], include_pipelines: bool) -> dict[str, Any]
     return {key: value for key, value in collection.items() if key not in _PIPELINE_BLOB_KEYS}
 
 
-def register(mcp: FastMCP, sdk: AsyncClient) -> None:
+def register(mcp: MCPServer, sdk: AsyncClient) -> None:
     """Register collection tools on the MCP server.
 
     Args:
-        mcp (FastMCP): The MCP server instance.
+        mcp (MCPServer): The MCP server instance.
         sdk (AsyncClient): The DocForge API client.
     """
 

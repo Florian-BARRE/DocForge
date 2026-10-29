@@ -1,10 +1,12 @@
 # ====== Code Summary ======
-# Contract tests over the real streamable-HTTP wire: the mcp 1.x Python client and raw JSON-RPC
-# POSTs against the served app (build_mcp + build_http_app). Pins what today's clients rely on:
-# the negotiated protocol version, stateless calls under every handshake-era Mcp-Protocol-Version
-# header (or none), the result shapes (compact text, inline image), the error shapes (SDK 404,
-# unknown argument), the bearer gate (401 + WWW-Authenticate), per-caller bearer isolation and
-# the raised request-body ceiling.
+# Contract tests over the real streamable-HTTP wire: the mcp 1.x Python client (a script in a
+# throwaway env, see client_env.py), the mcp 2.x `Client` (in-process, both negotiation modes) and
+# raw JSON-RPC POSTs against the served app (build_mcp + build_http_app). Pins what clients rely
+# on: the negotiated protocol version (2025-11-25 for every handshake-era client, 2026-07-28 for a
+# 2.x client in auto mode), stateless calls under every handshake-era Mcp-Protocol-Version header
+# (or none), the result shapes (compact text, inline image), the error shapes (SDK 404, unknown
+# argument), the bearer gate (401 + WWW-Authenticate), per-caller bearer isolation, a remote Host
+# header (DNS-rebinding protection off) and the raised request-body ceiling.
 
 from __future__ import annotations
 
@@ -12,37 +14,26 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
-from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+import shutil
+from pathlib import Path
 from typing import Any
 
 # ====== Third-Party Library Imports ======
 import httpx
+import httpx2
 import pytest
-from mcp import ClientSession
-from mcp.client.streamable_http import streamablehttp_client
-from mcp.types import ImageContent, TextContent
+from mcp import Client
+from mcp.client.streamable_http import streamable_http_client
+from mcp.types import CallToolResult, ImageContent, TextContent
 
 # ====== Internal Project Imports ======
+from client_env import MCP_1X_REQUIREMENT, run_client_script
 from conftest import COLLECTION_ID, IMAGE_BLOB_HASH, PNG_BYTES, ContractServer
 
 _ACCEPT = "application/json, text/event-stream"
 
-# streamablehttp_client is the 1.x name the OpenAI Agents SDK still calls on mcp 1.x; 1.29 flags it.
-pytestmark = pytest.mark.filterwarnings(
-    "ignore:Use `streamable_http_client` instead:DeprecationWarning"
-)
-
-
-@asynccontextmanager
-async def _session(url: str, token: str = "key-a") -> AsyncIterator[ClientSession]:
-    async with streamablehttp_client(url, headers={"Authorization": f"Bearer {token}"}) as (
-        read,
-        write,
-        _,
-    ):
-        async with ClientSession(read, write) as session:
-            yield session
+_MCP1_CLIENT_SCRIPT = Path(__file__).with_name("mcp1_client.py")
+_WHOAMI_TOKENS = [f"key-{n}" for n in range(8)]
 
 
 def _rpc(
@@ -58,14 +49,6 @@ def _rpc(
         headers={"Authorization": "Bearer key-a", "Accept": _ACCEPT, **headers},
         timeout=30,
     )
-
-
-async def test_mcp_1x_client_negotiates_2025_11_25(server: ContractServer) -> None:
-    async with _session(server.url) as session:
-        init = await session.initialize()
-    assert init.protocolVersion == "2025-11-25"
-    assert init.serverInfo.name == "DocForge"
-    assert init.capabilities.tools is not None
 
 
 @pytest.mark.parametrize("requested", ["2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25"])
@@ -113,64 +96,6 @@ def test_stateless_tool_call_succeeds_under_each_protocol_header(
     assert result["content"] == [{"type": "text", "text": '{"status":"ok"}'}]
 
 
-async def test_protocol_ping_and_a_compact_json_tool(server: ContractServer) -> None:
-    async with _session(server.url) as session:
-        await session.initialize()
-        await session.send_ping()
-        result = await session.call_tool("ping", {})
-    assert result.isError is False
-    assert result.structuredContent is None
-    assert [(c.type, c.text) for c in result.content if isinstance(c, TextContent)] == [
-        ("text", '{"status":"ok"}')
-    ]
-
-
-async def test_text_mode_tool_returns_one_text_block(server: ContractServer) -> None:
-    async with _session(server.url) as session:
-        await session.initialize()
-        result = await session.call_tool(
-            "search_collection", {"collection_id": COLLECTION_ID, "query": "intro"}
-        )
-    assert result.isError is False
-    assert len(result.content) == 1
-    block = result.content[0]
-    assert isinstance(block, TextContent)
-    assert "Hello world." in block.text
-
-
-async def test_get_blob_returns_an_inline_image(server: ContractServer) -> None:
-    async with _session(server.url) as session:
-        await session.initialize()
-        result = await session.call_tool("get_blob", {"content_hash": IMAGE_BLOB_HASH})
-    assert result.isError is False
-    block = result.content[0]
-    assert isinstance(block, ImageContent)
-    assert block.mimeType == "image/png"
-    assert base64.b64decode(block.data) == PNG_BYTES
-
-
-async def test_sdk_404_is_a_tool_error_carrying_the_api_status(server: ContractServer) -> None:
-    async with _session(server.url) as session:
-        await session.initialize()
-        result = await session.call_tool("get_document", {"document_id": "missing"})
-    assert result.isError is True
-    text = result.content[0]
-    assert isinstance(text, TextContent)
-    assert "DocForge API error 404" in text.text
-    assert "nope" in text.text
-
-
-async def test_unknown_argument_is_rejected_as_extra_forbidden(server: ContractServer) -> None:
-    async with _session(server.url) as session:
-        await session.initialize()
-        result = await session.call_tool("ping", {"bogus": 1})
-    assert result.isError is True
-    text = result.content[0]
-    assert isinstance(text, TextContent)
-    assert "extra_forbidden" in text.text
-    assert server.api.calls == [], "a rejected call never reaches DocForge"
-
-
 def test_missing_bearer_is_401_with_www_authenticate(server: ContractServer) -> None:
     response = httpx.post(
         server.url,
@@ -188,23 +113,6 @@ def test_non_bearer_or_empty_authorization_is_401(
     response = _rpc(server.url, "tools/list", Authorization=authorization)
     assert response.status_code == 401
     assert response.headers["www-authenticate"] == "Bearer"
-
-
-async def test_concurrent_bearers_each_reach_their_own_sdk_client(server: ContractServer) -> None:
-    async def whoami(token: str) -> str:
-        async with _session(server.url, token) as session:
-            await session.initialize()
-            result = await session.call_tool("whoami", {})
-        block = result.content[0]
-        assert isinstance(block, TextContent)
-        collections: list[str] = json.loads(block.text)["collections"]
-        return collections[0]
-
-    tokens = [f"key-{n}" for n in range(8)]
-    seen = await asyncio.gather(*(whoami(token) for token in tokens))
-    assert seen == tokens
-    whoami_auth = sorted(auth for auth, path in server.api.calls if path.endswith("/whoami"))
-    assert whoami_auth == sorted(f"Bearer {token}" for token in tokens)
 
 
 def test_a_5_mib_base64_upload_is_not_413(server: ContractServer) -> None:
@@ -225,3 +133,153 @@ def test_a_5_mib_base64_upload_is_not_413(server: ContractServer) -> None:
     result = response.json()["result"]
     assert result["isError"] is False
     assert json.loads(result["content"][0]["text"])["document_id"] == "d-new"
+
+
+def test_a_remote_host_header_is_served(server: ContractServer) -> None:
+    """DNS-rebinding protection stays off: a non-localhost Host (a published port) is not 421."""
+    response = _rpc(
+        server.url, "tools/call", {"name": "ping", "arguments": {}}, Host="docforge.example:10048"
+    )
+    assert response.status_code == 200
+    assert response.json()["result"]["isError"] is False
+
+
+# ---- Python clients: one report per client, the same assertions for every major and mode ----
+
+
+def _assert_client_report(report: dict[str, Any], server: ContractServer) -> None:
+    """What any Python client sees: identity, catalogue, results, errors, bearer isolation."""
+    assert report["server_name"] == "DocForge"
+    assert report["has_tools_capability"] is True
+    assert report["tool_count"] == 85
+    calls = report["calls"]
+    assert calls["ping"] == {
+        "is_error": False,
+        "structured": False,
+        "content": [{"type": "text", "text": '{"status":"ok"}'}],
+    }
+    # Text-mode tool: one text block.
+    assert calls["search"]["is_error"] is False
+    assert [block["type"] for block in calls["search"]["content"]] == ["text"]
+    assert "Hello world." in calls["search"]["content"][0]["text"]
+    # get_blob: an inline image.
+    assert calls["image"]["is_error"] is False
+    (image,) = calls["image"]["content"]
+    assert (image["type"], image["mime_type"]) == ("image", "image/png")
+    assert base64.b64decode(image["data"]) == PNG_BYTES
+    # An SDK 404 is a tool error carrying the API status and detail.
+    assert calls["missing"]["is_error"] is True
+    assert "DocForge API error 404" in calls["missing"]["content"][0]["text"]
+    assert "nope" in calls["missing"]["content"][0]["text"]
+    # An unknown argument is rejected before DocForge: the valid ping is the one /health call.
+    assert calls["bogus"]["is_error"] is True
+    assert "extra_forbidden" in calls["bogus"]["content"][0]["text"]
+    assert [path for _, path in server.api.calls if path == "/health"] == ["/health"]
+    # Concurrent callers, each with its own bearer, each reach their own SDK client.
+    assert report["whoami"]["seen"] == report["whoami"]["tokens"]
+    whoami_auth = sorted(auth for auth, path in server.api.calls if path.endswith("/whoami"))
+    assert whoami_auth == sorted(f"Bearer {token}" for token in report["whoami"]["tokens"])
+
+
+@pytest.mark.slow
+@pytest.mark.skipif(shutil.which("uv") is None, reason="needs uv to build the client env")
+def test_mcp_1x_client_negotiates_2025_11_25(server: ContractServer) -> None:
+    """A client locked on mcp 1.x keeps the initialize handshake at 2025-11-25, same results."""
+    report = run_client_script(
+        [MCP_1X_REQUIREMENT],
+        "mcp",
+        _MCP1_CLIENT_SCRIPT,
+        server.url,
+        IMAGE_BLOB_HASH,
+        COLLECTION_ID,
+    )
+    assert report["mcp_version"] == "1.29.1"
+    assert report["protocol_version"] == "2025-11-25"
+    _assert_client_report(report, server)
+    first = server.wire[0]
+    assert (first.rpc_method, first.status) == ("initialize", 200)
+    assert "server/discover" not in {record.rpc_method for record in server.wire}
+
+
+def _blocks(result: CallToolResult) -> dict[str, Any]:
+    blocks: list[dict[str, Any]] = []
+    for block in result.content:
+        if isinstance(block, TextContent):
+            blocks.append({"type": "text", "text": block.text})
+        elif isinstance(block, ImageContent):
+            blocks.append({"type": "image", "mime_type": block.mime_type, "data": block.data})
+        else:
+            blocks.append({"type": block.type})
+    return {
+        "is_error": result.is_error,
+        "structured": result.structured_content is not None,
+        "content": blocks,
+    }
+
+
+async def _mcp2_call(client: Client, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+    result = await client.call_tool(name, arguments)
+    assert isinstance(result, CallToolResult)
+    return _blocks(result)
+
+
+async def _mcp2_report(url: str, mode: str) -> dict[str, Any]:
+    """The mcp1_client.py report, built with the mcp 2.x Client this project locks."""
+
+    async def connect(token: str, run: Any) -> Any:
+        headers = {"Authorization": f"Bearer {token}"}
+        async with httpx2.AsyncClient(headers=headers) as http:
+            async with Client(streamable_http_client(url, http_client=http), mode=mode) as client:
+                return await run(client)
+
+    async def main(client: Client) -> dict[str, Any]:
+        tools = await client.list_tools()
+        info = client.server_info
+        assert info is not None
+        return {
+            "protocol_version": client.protocol_version,
+            "server_name": info.name,
+            "server_version": info.version,
+            "has_tools_capability": client.server_capabilities.tools is not None,
+            "tool_count": len(tools.tools),
+            "calls": {
+                "ping": await _mcp2_call(client, "ping", {}),
+                "search": await _mcp2_call(
+                    client, "search_collection", {"collection_id": COLLECTION_ID, "query": "intro"}
+                ),
+                "image": await _mcp2_call(client, "get_blob", {"content_hash": IMAGE_BLOB_HASH}),
+                "missing": await _mcp2_call(client, "get_document", {"document_id": "missing"}),
+                "bogus": await _mcp2_call(client, "ping", {"bogus": 1}),
+            },
+        }
+
+    async def whoami(client: Client) -> str:
+        block = (await _mcp2_call(client, "whoami", {}))["content"][0]
+        collections: list[str] = json.loads(block["text"])["collections"]
+        return collections[0]
+
+    report: dict[str, Any] = await connect("key-a", main)
+    seen = await asyncio.gather(*(connect(token, whoami) for token in _WHOAMI_TOKENS))
+    report["whoami"] = {"tokens": _WHOAMI_TOKENS, "seen": list(seen)}
+    return report
+
+
+@pytest.mark.parametrize(("mode", "negotiated"), [("auto", "2026-07-28"), ("legacy", "2025-11-25")])
+async def test_mcp_2x_client_negotiates_by_mode(
+    server: ContractServer, mode: str, negotiated: str
+) -> None:
+    """
+    mcp 2.x's Client: `auto` discovers protocol 2026-07-28 (`server/discover`, no handshake);
+    `legacy` keeps the initialize handshake at 2025-11-25. Same results either way.
+    """
+    report = await _mcp2_report(server.url, mode)
+    assert report["protocol_version"] == negotiated
+    _assert_client_report(report, server)
+    first = server.wire[0]
+    assert (first.rpc_method, first.status) == (
+        ("server/discover", 200) if mode == "auto" else ("initialize", 200)
+    )
+    # Every request after a handshake (none in auto mode) carries the negotiated version.
+    for record in server.wire:
+        if record.rpc_method != "initialize":
+            assert record.headers.get("mcp-protocol-version") == negotiated, record

@@ -1,8 +1,8 @@
 # ====== Code Summary ======
-# Unit tests for ErrorTranslatingFastMCP / translate_sdk_errors (finding 361): a failed SDK call
+# Unit tests for ErrorTranslatingMCPServer / translate_sdk_errors (finding 361): a failed SDK call
 # must surface the API's own error body — not just the opaque status code — to the calling LLM.
-# Built via build_mcp (not a bare FastMCP) so the real registration path (ErrorTranslatingFastMCP)
-# is exercised, then driven through mcp.call_tool to also cover FastMCP's own wrapping layer.
+# Built via build_mcp (not a bare MCPServer) so the real registration path (ErrorTranslatingMCPServer)
+# is exercised, then driven through mcp.call_tool to also cover MCPServer's own wrapping layer.
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from unittest.mock import AsyncMock
 # ====== Third-Party Library Imports ======
 import pytest
 from docforge_sdk import APIConnectionError, AsyncClient, NotFoundError
-from mcp.server.fastmcp.exceptions import ToolError
+from mcp.server.mcpserver.exceptions import ToolError
 
 # ====== Internal Project Imports ======
 from libs.server import build_mcp
@@ -63,7 +63,7 @@ async def test_pydantic_validation_error_building_a_typed_model_is_translated() 
     """
     A malformed nested dict (here: create_collection's `fields`, built into FieldSpec at the tool
     boundary) raises a bare pydantic ValidationError BEFORE any SDK call — must still surface as
-    an actionable ToolError, not FastMCP's generic unhandled-exception path.
+    an actionable ToolError, not MCPServer's generic unhandled-exception path.
     """
     sdk = AsyncClient("http://localhost:8000")
     mcp = build_mcp(sdk)

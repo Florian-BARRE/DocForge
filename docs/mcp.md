@@ -22,6 +22,9 @@ the published [`docforge-sdk`](python-sdk.md) package. Each MCP tool is a small 
 3. calls the corresponding `docforge-sdk` resource method, and
 4. returns the JSON the SDK gives back (Pydantic models serialized with `model_dump(mode="json")`) as **compact, non-indented JSON text** (token cost) - one serialisation choke point (`libs/compact_json.py`, applied to every tool at registration); `search_collection` is the one tool that defaults to plain text (below).
 
+It is built on the official MCP Python SDK, **`mcp` 2.x** (`MCPServer`, `mcp>=2.3,<3`), and reports
+the DocForge release as its `serverInfo.version`.
+
 Because it never imports the DocForge runtime config, it needs no Postgres/S3/Qdrant secrets — only
 the API URL plus its own transport and auth knobs. An AI connected to it can therefore operate a
 DocForge instance with exactly the capabilities its API key is scoped to.
@@ -40,7 +43,7 @@ The server surfaces a short instruction string to the connected model so it know
 
 All tools are registered over the SDK in `src/mcp/libs/tools/`. Tool inputs are plain dicts/scalars;
 outputs are the (compact, non-indented) JSON returned by the REST API. **Unknown arguments are rejected**: every tool's
-argument model is `extra="forbid"` (FastMCP would otherwise silently drop them), so a wrong
+argument model is `extra="forbid"` (the SDK's `MCPServer` would otherwise silently drop them), so a wrong
 parameter name (e.g. `page=5` on a tool that has no `page`) fails with an explicit validation error
 instead of quietly succeeding; each tool's advertised input schema carries `additionalProperties: false`.
 
@@ -293,12 +296,13 @@ the target instance has auth disabled.)
 
 ### (b) streamable-HTTP — the compose service
 
-The `docforge_mcp` service in `docker-compose.yml` runs the server as a long-lived HTTP
-endpoint (under the `full` profile), pointing at the in-network API (`http://docforge_app:8000`) and
-published on host port **`10048`**:
+The `docforge_mcp` service (defined in `compose/compose.base.yml`, included by every scenario such
+as `compose/compose.prod-cpu.yml`) runs the server as a long-lived HTTP endpoint (under the `full`
+profile), pointing at the in-network API (`http://docforge_app:8000`) and published on host port
+**`10048`**:
 
 ```bash
-docker compose -f docker-compose.yml --profile full up -d docforge_mcp
+docker compose -f compose/compose.prod-cpu.yml --profile full up -d docforge_mcp
 ```
 
 The endpoint is then reachable at `http://<host>:10048/mcp`. There is **no separate MCP-level
@@ -335,7 +339,7 @@ Add an entry to your client's MCP config (`.mcp.json`-style):
 }
 ```
 
-The client launches the process and speaks MCP over stdio; the model can then call any of the 76
+The client launches the process and speaks MCP over stdio; the model can then call any of the 85
 tools. (Use an absolute path to `entrypoint.py` if your client does not run from the repo root, and
 run it through `uv`/the project venv so `docforge_sdk` and `mcp` are importable.)
 
@@ -346,6 +350,29 @@ header `Authorization: Bearer <your-docforge-api-key>` — the caller's own DocF
 separate MCP-level secret (there isn't one; see [Access control](#access-control)). This is the
 deployment to use when the model and the DocForge stack live on different hosts.
 
+### Protocol versions served
+
+The server speaks every MCP protocol version a client may ask for, from the same endpoint:
+
+- **`2026-07-28`** (the stateless protocol of mcp 2.x clients): `server/discover`, then plain
+  `tools/list` / `tools/call` POSTs carrying `Mcp-Protocol-Version: 2026-07-28`, no handshake. An
+  mcp 2.x `Client` (default `mode="auto"`, also what the OpenAI Agents SDK uses on mcp 2.x) lands here.
+- **`2025-11-25`, `2025-06-18`, `2025-03-26`, `2024-11-05`** (handshake era): `initialize` echoes
+  the requested version, or answers `2025-11-25` for an unknown one; a request without an
+  `Mcp-Protocol-Version` header is treated as `2025-03-26`. mcp 1.x clients, mcp 2.x clients in
+  `mode="legacy"` and other SDKs land here.
+
+Either way the HTTP app is stateless (no `Mcp-Session-Id`), answers one JSON body per POST (no SSE
+stream), and accepts request bodies up to the inline-upload ceiling (about 134 MiB by default) rather
+than the SDK's 4 MiB default. The server advertises no subscriptions and no `listChanged`
+notifications: the tool list is static per release.
+
+**Python mcp 2.x clients and large results.** The mcp 2.x client caps one SSE event at 1 MiB by
+default (`max_sse_event_size` of `streamable_http_client`). This server answers JSON, not SSE, so the
+cap does not apply to a direct connection; if a proxy in between turns responses into an SSE stream,
+pass a larger `max_sse_event_size` (or `None`) so a big `get_document_ir` / `get_document_markdown`
+result is not refused.
+
 ### Compatibility contract
 
 `src/mcp/tests/contract/` pins what HTTP clients rely on, against the real server over a real
@@ -353,22 +380,26 @@ socket (`cd src/mcp && uv run pytest tests/contract`; `-m "not slow"` skips the 
 
 - **Tool catalogue**: `tools/list` must equal the committed `tools_snapshot.json` (names,
   descriptions, input schemas with `additionalProperties: false`, annotations; no output schema).
-- **mcp 1.x Python client**: negotiates `2025-11-25`; stateless `tools/call` POSTs succeed with
-  `Mcp-Protocol-Version` `2024-11-05`, `2025-03-26`, `2025-06-18`, `2025-11-25` or none; one JSON body
-  per POST (no SSE, no session id); compact-JSON text, inline `ImageContent` for image blobs; an API
-  404 is `isError` with `DocForge API error 404`; an unknown argument is `extra_forbidden`; no or a
-  non-Bearer `Authorization` is a 401 with `WWW-Authenticate: Bearer`; concurrent callers each
-  reach DocForge with their own key; a 5 MiB base64 upload is not refused with 413.
+- **mcp 1.x Python client** (`mcp==1.29.1`, run in a throwaway `uv` environment): negotiates
+  `2025-11-25`. **mcp 2.x `Client`**: `mode="auto"` negotiates `2026-07-28` through `server/discover`,
+  `mode="legacy"` negotiates `2025-11-25`. For all three: compact-JSON text, inline `ImageContent`
+  for image blobs; an API 404 is `isError` with `DocForge API error 404`; an unknown argument is
+  `extra_forbidden`; concurrent callers each reach DocForge with their own key.
+- **Raw JSON-RPC**: stateless `tools/call` POSTs succeed with `Mcp-Protocol-Version` `2024-11-05`,
+  `2025-03-26`, `2025-06-18`, `2025-11-25` or none; one JSON body per POST (no SSE, no session id);
+  no or a non-Bearer `Authorization` is a 401 with `WWW-Authenticate: Bearer`; a non-localhost
+  `Host` header is served (DNS-rebinding protection is off); a 5 MiB base64 upload is not refused
+  with 413.
 - **OpenAI Agents SDK** (`agents.mcp.MCPServerStreamableHttp`, the in-house chatbot's client), run
   in a throwaway `uv` environment on both mcp majors, every version pinned (`openai-agents==0.24.0`
-  with `mcp==2.3.0`, then `mcp==1.29.1`); skipped, with the reason, when uv cannot reach the
-  package index. The key goes in
+  with `mcp==2.3.0`, then `mcp==1.29.1`) and the resolution frozen (`uv --exclude-newer`); the
+  throwaway environments are skipped, with the reason, when uv cannot reach the package index. The key goes in
   `params={"headers": {"Authorization": "Bearer <key>"}}` and is sent on every request with
   `Accept: application/json, text/event-stream` (JSON responses are accepted, SSE is not required).
   On mcp 1.x it sends `initialize` (latest version, answered `2025-11-25`), `notifications/initialized`,
-  then `tools/list` / `tools/call` with `Mcp-Protocol-Version: 2025-11-25`. On mcp 2.x it first probes
-  `server/discover` at `2026-07-28`, which today's server answers with HTTP 400, then falls back to
-  that same `initialize` sequence. OpenAI's hosted MCP tool (Responses API) calls the server from
+  then `tools/list` / `tools/call` with `Mcp-Protocol-Version: 2025-11-25`. On mcp 2.x it probes
+  `server/discover` at `2026-07-28`, which the server answers, then sends `tools/list` / `tools/call`
+  with `Mcp-Protocol-Version: 2026-07-28` and no handshake. OpenAI's hosted MCP tool (Responses API) calls the server from
   OpenAI's infrastructure with the `authorization` field; it is not covered here.
 
 ---

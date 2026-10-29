@@ -2,7 +2,8 @@
 
 The repo ships every artifact under one unified version (a single ``v*`` tag builds all images AND
 publishes the SDK at that number). This test fails the gate the moment the three version sources drift
-— so a release can never ship, say, docforge 0.13.0 with an SDK still at 0.9.12 again.
+— so a release can never ship, say, docforge 0.13.0 with an SDK still at 0.9.12 again. The MCP server's
+``serverInfo.version`` constant (``src/mcp/libs/_version.py``) is part of the lockstep too.
 
 Deliberately OUT of scope for this lockstep (do not add them here — see scripts/set_version.sh for
 the same note):
@@ -28,7 +29,7 @@ def _toml_version(path: pathlib.Path) -> str:
 
 
 def _sdk_version(path: pathlib.Path) -> str:
-    """Read ``__version__ = "x.y.z"`` from the SDK's _version.py."""
+    """Read ``__version__ = "x.y.z"`` from a ``_version.py`` (the SDK's, the MCP server's)."""
     match = re.search(r'__version__\s*=\s*"([^"]+)"', path.read_text())
     assert match, f"no __version__ in {path}"
     return match.group(1)
@@ -39,7 +40,10 @@ def test_docforge_mcp_sdk_versions_are_aligned() -> None:
     docforge = _toml_version(_ROOT / "docforge" / "pyproject.toml")
     mcp = _toml_version(_ROOT / "mcp" / "pyproject.toml")
     sdk = _sdk_version(_ROOT / "docforge_sdk" / "docforge_sdk" / "_version.py")
-    assert docforge == mcp == sdk, (
-        f"version drift — docforge={docforge}, mcp={mcp}, sdk={sdk}. "
-        "Bump all three together with scripts/set_version.sh before tagging."
+    # What the MCP server reports as serverInfo.version (MCPServer(version=...)).
+    mcp_server = _sdk_version(_ROOT / "mcp" / "libs" / "_version.py")
+    assert docforge == mcp == sdk == mcp_server, (
+        f"version drift — docforge={docforge}, mcp={mcp}, sdk={sdk}, "
+        f"mcp serverInfo={mcp_server}. "
+        "Bump them all together with scripts/set_version.sh before tagging."
     )

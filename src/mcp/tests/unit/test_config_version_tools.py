@@ -17,7 +17,7 @@ from docforge_sdk.models import (
     ConfigVersionRestoreResponse,
     ConfigVersionSummary,
 )
-from mcp.server.fastmcp import FastMCP
+from mcp.server.mcpserver import MCPServer
 
 # ====== Internal Project Imports ======
 from libs.tools import config_versions
@@ -25,7 +25,7 @@ from libs.tools import config_versions
 CID = "11111111-1111-1111-1111-111111111111"
 
 
-def _wired() -> tuple[FastMCP, AsyncClient]:
+def _wired() -> tuple[MCPServer, AsyncClient]:
     sdk = AsyncClient("http://localhost:8000")
     head = ConfigVersionSummary(version=5, created_at=datetime(2026, 10, 7, tzinfo=UTC))
     sdk.config_versions.list = AsyncMock(  # type: ignore[method-assign]
@@ -43,12 +43,12 @@ def _wired() -> tuple[FastMCP, AsyncClient]:
             collection_id=CID, restored_from=2, version=6, needs_reindex=False
         )
     )
-    mcp = FastMCP("t")
+    mcp = MCPServer("t")
     config_versions.register(mcp, sdk)
     return mcp, sdk
 
 
-def _fn(mcp: FastMCP, name: str) -> Any:
+def _fn(mcp: MCPServer, name: str) -> Any:
     tool = mcp._tool_manager.get_tool(name)
     assert tool is not None
     return tool.fn

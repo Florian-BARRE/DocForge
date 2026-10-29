@@ -15,7 +15,7 @@ from typing import Any
 
 # ====== Third-Party Library Imports ======
 from docforge_sdk import AsyncClient
-from mcp.server.fastmcp import FastMCP
+from mcp.server.mcpserver import MCPServer
 
 # ====== Local Project Imports ======
 from ..path_guard import PathGuard
@@ -23,7 +23,7 @@ from ._encoding import DEFAULT_MAX_INLINE_UPLOAD_BYTES, decode_base64_arg
 
 
 def register(
-    mcp: FastMCP,
+    mcp: MCPServer,
     sdk: AsyncClient,
     path_guard: PathGuard,
     max_inline_upload_bytes: int = DEFAULT_MAX_INLINE_UPLOAD_BYTES,
@@ -31,7 +31,7 @@ def register(
     """Register transfer (export/import) tools on the MCP server.
 
     Args:
-        mcp (FastMCP): The MCP server instance.
+        mcp (MCPServer): The MCP server instance.
         sdk (AsyncClient): The DocForge API client.
         path_guard (PathGuard): Resolves/confines `file_path` before it reaches the SDK — a no-op
             on stdio, but on streamable-HTTP it refuses any path outside the configured inbox (or

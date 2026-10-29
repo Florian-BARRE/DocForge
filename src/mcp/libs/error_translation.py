@@ -4,9 +4,9 @@
 # useful REST error body (e.g. "collection name already exists") never reaches the model, so it
 # can't self-correct. Likewise, a bare pydantic `ValidationError` raised while a tool builds a typed
 # SDK model from the LLM's plain-dict arguments (e.g. `FieldSpec(**field)`) would otherwise fall
-# through to FastMCP's generic unhandled-exception path and lose its per-field detail.
-# `ErrorTranslatingFastMCP` wraps every tool at registration time (the ONE place `@mcp.tool()`
-# funnels through — `FastMCP.add_tool`) so no individual tool file needs its own try/except.
+# through to MCPServer's generic unhandled-exception path and lose its per-field detail.
+# `ErrorTranslatingMCPServer` wraps every tool at registration time (the ONE place `@mcp.tool()`
+# funnels through — `MCPServer.add_tool`) so no individual tool file needs its own try/except.
 
 from __future__ import annotations
 
@@ -17,8 +17,8 @@ from typing import Any
 
 # ====== Third-Party Library Imports ======
 from docforge_sdk import APIConnectionError, APIStatusError
-from mcp.server.fastmcp import FastMCP
-from mcp.server.fastmcp.exceptions import ToolError
+from mcp.server.mcpserver import MCPServer
+from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import Icon, ToolAnnotations
 from pydantic import ValidationError
 
@@ -47,7 +47,7 @@ def _status_error_message(exc: APIStatusError) -> str:
 def _validation_error_message(exc: ValidationError) -> str:
     """
     Render a pydantic `ValidationError` into a message naming each offending field and what was
-    wrong with it, instead of FastMCP's generic unhandled-exception path (which loses the
+    wrong with it, instead of MCPServer's generic unhandled-exception path (which loses the
     per-field detail).
 
     The wrapper below applies this to EVERY `ValidationError` raised inside a tool call — which
@@ -81,7 +81,7 @@ def translate_sdk_errors(fn: AnyAsyncTool) -> AnyAsyncTool:
 
     Returns:
         AnyAsyncTool: The wrapped function. `functools.wraps` keeps `__wrapped__` pointed at `fn`,
-            so FastMCP's signature introspection (which follows it) still builds the correct
+            so MCPServer's signature introspection (which follows it) still builds the correct
             argument model.
     """
 
@@ -99,8 +99,8 @@ def translate_sdk_errors(fn: AnyAsyncTool) -> AnyAsyncTool:
     return wrapper
 
 
-class ErrorTranslatingFastMCP(FastMCP):
-    """A `FastMCP` whose every registered tool has SDK API errors translated before they reach FastMCP's own generic exception handling."""
+class ErrorTranslatingMCPServer(MCPServer):
+    """A `MCPServer` whose every registered tool has SDK API errors translated before they reach MCPServer's own generic exception handling."""
 
     def add_tool(
         self,
@@ -113,7 +113,7 @@ class ErrorTranslatingFastMCP(FastMCP):
         meta: dict[str, Any] | None = None,
         structured_output: bool | None = None,
     ) -> None:
-        """Register `fn` wrapped by `translate_sdk_errors` — see `FastMCP.add_tool` for the args."""
+        """Register `fn` wrapped by `translate_sdk_errors` — see `MCPServer.add_tool` for the args."""
         # 1. Register normally (the wrappers keep the original signature for introspection);
         #    compact_result makes every structured return NON-indented JSON text (token cost)
         super().add_tool(
@@ -126,7 +126,7 @@ class ErrorTranslatingFastMCP(FastMCP):
             meta=meta,
             structured_output=structured_output,
         )
-        # 2. Reject unknown arguments: FastMCP's ArgModelBase silently drops extras, so a wrong
+        # 2. Reject unknown arguments: MCPServer's ArgModelBase silently drops extras, so a wrong
         #    argument name (e.g. `page=5` where no `page` exists) would "succeed" unnoticed.
         self._forbid_extra_arguments(name or fn.__name__)
 
@@ -147,4 +147,4 @@ class ErrorTranslatingFastMCP(FastMCP):
         tool.parameters = arg_model.model_json_schema(by_alias=True)
 
 
-__all__ = ["ErrorTranslatingFastMCP", "translate_sdk_errors"]
+__all__ = ["ErrorTranslatingMCPServer", "translate_sdk_errors"]

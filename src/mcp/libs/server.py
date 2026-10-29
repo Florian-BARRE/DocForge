@@ -1,7 +1,7 @@
 # ====== Code Summary ======
-# Server assembly: build the FastMCP instance (registering every tool over the SDK, with
-# DNS-rebinding protection explicitly disabled) and, for the HTTP transport, wrap its
-# streamable-HTTP ASGI app with the bearer-passthrough middleware.
+# Server assembly: build the MCPServer instance (registering every tool over the SDK) and, for the
+# HTTP transport, build its streamable-HTTP ASGI app (stateless, JSON responses, DNS-rebinding
+# protection explicitly disabled) wrapped by the bearer-passthrough middleware.
 
 from __future__ import annotations
 
@@ -11,13 +11,14 @@ from typing import TYPE_CHECKING
 
 # ====== Third-Party Library Imports ======
 from docforge_sdk import AsyncClient
-from mcp.server.fastmcp import FastMCP
+from mcp.server.mcpserver import MCPServer
 from mcp.server.transport_security import TransportSecuritySettings
 from starlette.applications import Starlette
 
 # ====== Local Project Imports ======
+from ._version import __version__
 from .auth import BearerPassthroughMiddleware
-from .error_translation import ErrorTranslatingFastMCP
+from .error_translation import ErrorTranslatingMCPServer
 from .path_guard import PathGuard
 from .tools import DEFAULT_MAX_INLINE_UPLOAD_BYTES, register_all
 
@@ -61,9 +62,9 @@ def build_mcp(
     sdk: AsyncClient,
     path_guard: PathGuard | None = None,
     max_inline_upload_bytes: int = DEFAULT_MAX_INLINE_UPLOAD_BYTES,
-) -> FastMCP:
+) -> MCPServer:
     """
-    Build the FastMCP server with every DocForge tool registered.
+    Build the MCPServer server with every DocForge tool registered.
 
     Args:
         sdk (AsyncClient): The DocForge API client injected into every tool.
@@ -78,63 +79,69 @@ def build_mcp(
             unset here it falls back to the same 100 MiB default as the config's own default.
 
     Returns:
-        FastMCP: The configured MCP server (transport-agnostic).
+        MCPServer: The configured MCP server (transport-agnostic).
     """
     # 1. Fail closed if no guard was supplied — never default to an unrestricted local file read.
     guard = path_guard if path_guard is not None else PathGuard(confine=True, inbox_dir=None)
 
-    # 2. Create the server with DNS-rebinding protection explicitly OFF. FastMCP auto-enables it
-    #    (host restricted to 127.0.0.1/localhost/::1) whenever transport_security is left unset AND
-    #    the default host "127.0.0.1" is in effect AT CONSTRUCTION TIME — but build_http_app() only
-    #    overrides mcp.settings.host to "0.0.0.0" AFTER this call, so without this explicit override
-    #    the protection would silently stay localhost-only and reject every remote Host header. DNS
-    #    rebinding is a browser-CSRF-style threat; this server's clients are programmatic, key-authed
-    #    MCP clients (not browsers), so the Host/Origin check adds no value here.
-    # 3. ErrorTranslatingFastMCP wraps every registered tool so a failed SDK call surfaces the
-    #    API's own error detail (not just an opaque status code) to the connected LLM.
-    mcp = ErrorTranslatingFastMCP(
+    # 2. ErrorTranslatingMCPServer wraps every registered tool so a failed SDK call surfaces the
+    #    API's own error detail (not just an opaque status code) to the connected LLM. `version`
+    #    is docforge's lockstep release (an unversioned 2.x server reports ""). No subscription
+    #    bus: there are no resources and the tool list is static, so there is nothing to notify,
+    #    and a per-process bus would not fit a stateless, horizontally-scaled server.
+    mcp = ErrorTranslatingMCPServer(
         name="DocForge",
         instructions=_INSTRUCTIONS,
-        transport_security=TransportSecuritySettings(enable_dns_rebinding_protection=False),
+        version=__version__,
+        subscriptions=False,
     )
     register_all(mcp, sdk, guard, max_inline_upload_bytes)
     return mcp
 
 
-def build_http_app(mcp: FastMCP, config: type[McpConfig]) -> Starlette:
+def build_http_app(mcp: MCPServer, config: type[McpConfig]) -> Starlette:
     """
     Produce the streamable-HTTP ASGI app, wrapped by the bearer-passthrough middleware.
 
-    Settings are applied BEFORE ``streamable_http_app()`` so the session manager is built in the
-    intended mode. ``stateless_http`` + ``json_response`` keep the service simple and proxy-friendly.
+    The transport settings are ``streamable_http_app()`` kwargs (mcp 2.x no longer reads them off
+    ``mcp.settings``). ``stateless_http`` + ``json_response`` keep the service simple and
+    proxy-friendly.
     BearerPassthroughMiddleware requires a bearer to be present (401 otherwise, before any tool
     runs) and captures it; VALIDATING that token is delegated to DocForge — this app forwards it
     upstream as-is and never checks the token's validity or scope itself.
 
     Args:
-        mcp (FastMCP): The built MCP server.
-        config (type): The McpConfig class (host/port/path).
+        mcp (MCPServer): The built MCP server.
+        config (type): The McpConfig class (host, path, inline-upload ceiling).
 
     Returns:
         Starlette: The ASGI application to serve with uvicorn.
     """
-    # 1. Configure transport settings before the app is materialised
-    mcp.settings.host = config.MCP_HOST
-    mcp.settings.port = config.MCP_PORT
-    mcp.settings.streamable_http_path = config.MCP_HTTP_PATH
-    mcp.settings.stateless_http = True
-    mcp.settings.json_response = True
-    # Raise the transport's raw-HTTP-body ceiling (mcp SDK default: 4 MiB) so it never 413s a
-    # base64 payload that upload_document_bytes/import_collection_bytes would otherwise accept —
-    # derived from MCP_MAX_INLINE_UPLOAD_BYTES rather than its own env var, so the two limits can
-    # never drift apart.
-    mcp.settings.max_request_body_size = (
+    # 1. Raise the transport's raw-HTTP-body ceiling (mcp SDK default: 4 MiB) so it never 413s a
+    #    base64 payload that upload_document_bytes/import_collection_bytes would otherwise accept —
+    #    derived from MCP_MAX_INLINE_UPLOAD_BYTES rather than its own env var, so the two limits
+    #    can never drift apart.
+    max_request_body_size = (
         math.ceil(config.MCP_MAX_INLINE_UPLOAD_BYTES * _BASE64_EXPANSION_FACTOR)
         + _REQUEST_ENVELOPE_MARGIN_BYTES
     )
 
-    # 2. Materialise the streamable-HTTP Starlette app and capture the caller's bearer per request
-    app = mcp.streamable_http_app()
+    # 2. Materialise the streamable-HTTP Starlette app with DNS-rebinding protection explicitly
+    #    OFF: the SDK auto-enables it (Host restricted to 127.0.0.1/localhost/::1) whenever
+    #    transport_security is left unset and `host` is a localhost address — its own default — so
+    #    without this explicit setting every remote Host header would be rejected. DNS rebinding
+    #    is a browser-CSRF-style threat; this server's clients are programmatic, key-authed MCP
+    #    clients (not browsers), so the Host/Origin check adds no value here.
+    app = mcp.streamable_http_app(
+        streamable_http_path=config.MCP_HTTP_PATH,
+        stateless_http=True,
+        json_response=True,
+        max_request_body_size=max_request_body_size,
+        transport_security=TransportSecuritySettings(enable_dns_rebinding_protection=False),
+        host=config.MCP_HOST,
+    )
+    # 3. Capture the caller's bearer per request: raw ASGI, outermost, so a request without one is
+    #    a 401 before the MCP app runs.
     app.add_middleware(BearerPassthroughMiddleware)
     return app
 

@@ -2,7 +2,7 @@
 # Unit tests for the new collections tool wrappers (finding 359): collection_health forwards
 # collection_id straight through to sdk.collections.health, and reingest_collection builds a
 # BulkReingestRequest (document_ids/force) and forwards it to sdk.collections.reingest. The
-# registered tool's raw function is fetched off the FastMCP instance's tool manager so the SDK call
+# registered tool's raw function is fetched off the MCPServer instance's tool manager so the SDK call
 # can be mocked without any network I/O.
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ from docforge_sdk.models import (
     CollectionHealthResponse,
     RebuildIndexAccepted,
 )
-from mcp.server.fastmcp import FastMCP
+from mcp.server.mcpserver import MCPServer
 
 # ====== Internal Project Imports ======
 from libs.tools import collections as collections_tools
@@ -27,9 +27,9 @@ from libs.tools import collections as collections_tools
 CID = "11111111-1111-1111-1111-111111111111"
 
 
-def _register_with_fake_sdk() -> tuple[FastMCP, AsyncMock, AsyncMock]:
-    """Register the collections tools on a bare FastMCP against mocked health/reingest calls."""
-    mcp = FastMCP(name="test")
+def _register_with_fake_sdk() -> tuple[MCPServer, AsyncMock, AsyncMock]:
+    """Register the collections tools on a bare MCPServer against mocked health/reingest calls."""
+    mcp = MCPServer(name="test")
     sdk = AsyncClient("http://localhost:8000")
     health_mock = AsyncMock(
         return_value=CollectionHealthResponse.model_validate(
@@ -65,7 +65,7 @@ def _register_with_fake_sdk() -> tuple[FastMCP, AsyncMock, AsyncMock]:
     return mcp, health_mock, reingest_mock
 
 
-def _tool_fn(mcp: FastMCP, name: str) -> Any:
+def _tool_fn(mcp: MCPServer, name: str) -> Any:
     """Fetch the raw async function backing a registered tool, bypassing MCP wire encoding."""
     tool = mcp._tool_manager.get_tool(name)
     assert tool is not None
@@ -115,7 +115,7 @@ async def test_rebuild_collection_index_forwards_and_returns_the_job() -> None:
     sdk = AsyncClient("http://localhost:8000")
     rebuild_mock = AsyncMock(return_value=RebuildIndexAccepted(collection_id=CID, job_id="job-1"))
     sdk.collections.rebuild_index = rebuild_mock  # type: ignore[method-assign]
-    mcp = FastMCP(name="test")
+    mcp = MCPServer(name="test")
     collections_tools.register(mcp, sdk)
 
     result = await _tool_fn(mcp, "rebuild_collection_index")(collection_id=CID)

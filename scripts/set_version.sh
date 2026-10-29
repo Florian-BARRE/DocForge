@@ -27,13 +27,14 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 sed -i -E "s/^version = \"[0-9]+\.[0-9]+\.[0-9]+\"/version = \"${VERSION}\"/" \
   "${ROOT}/src/docforge/pyproject.toml" "${ROOT}/src/mcp/pyproject.toml"
 
-# 2. sdk — the single __version__ source of truth Hatchling reads.
+# 2. sdk — the single __version__ source of truth Hatchling reads — and the mcp server's
+#    serverInfo.version constant (the mcp app runs as scripts, so it has no package metadata).
 sed -i -E "s/__version__ = \"[0-9]+\.[0-9]+\.[0-9]+\"/__version__ = \"${VERSION}\"/" \
-  "${ROOT}/src/docforge_sdk/docforge_sdk/_version.py"
+  "${ROOT}/src/docforge_sdk/docforge_sdk/_version.py" "${ROOT}/src/mcp/libs/_version.py"
 
 # 3. refresh the uv locks so the Docker `uv sync --frozen` builds don't fail on a stale lock.
 ( cd "${ROOT}/src/docforge" && uv lock >/dev/null )
 ( cd "${ROOT}/src/mcp" && uv lock >/dev/null )
 
-echo "set version ${VERSION} across docforge, mcp, sdk (+ uv locks)."
+echo "set version ${VERSION} across docforge, mcp (+ its serverInfo.version), sdk (+ uv locks)."
 echo "next: git add -A && git commit -m \"chore(release): ${VERSION}\" && git tag v${VERSION} && git push --follow-tags"

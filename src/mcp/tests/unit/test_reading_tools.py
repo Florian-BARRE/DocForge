@@ -1,7 +1,7 @@
 # ====== Code Summary ======
 # Wave D (agent UX, document reading): get_document_outline / get_chunk_context / paginated
 # get_document_chunks / pages on markdown+html / list_documents paging. Calls go through the real
-# FastMCP dispatch; the SDK methods are mocked so forwarding (only-when-set), the text renderings
+# MCPServer dispatch; the SDK methods are mocked so forwarding (only-when-set), the text renderings
 # and the total-count header are asserted without a network.
 
 from __future__ import annotations
@@ -101,8 +101,8 @@ def _server() -> tuple[Any, AsyncClient]:
 
 
 async def _text(mcp: Any, name: str, args: dict[str, Any]) -> str:
-    content = await mcp.call_tool(name, args)
-    return str(content[0].text)
+    result = await mcp.call_tool(name, args)
+    return str(result.content[0].text)
 
 
 async def test_outline_text_rendering() -> None:
@@ -211,5 +211,5 @@ async def test_reading_tool_descriptions_steer_agents() -> None:
     assert "#1 way" in tools["get_chunk_context"].description
     assert "get_chunk_context" in tools["get_document_ir"].description
     assert "get_chunk_context" in tools["get_document_provenance"].description
-    schema = tools["get_document_chunks"].inputSchema["properties"]
+    schema = tools["get_document_chunks"].input_schema["properties"]
     assert schema["limit"]["default"] == 20 and schema["include_geometry"]["default"] is False
