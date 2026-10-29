@@ -47,7 +47,7 @@ gpu = [
     # WITHOUT a video_processor. transformers >=4.57 made video_processor a required non-None arg of
     # that processor (check_argument_for_proper_class) -> `TypeError: Received a NoneType for argument
     # video_processor`. 4.56.1 is the version dots.ocr ships/tests against; do NOT float it.
-    "transformers==4.56.1",
+    "transformers==4.56.2",
     "accelerate>=0.34.0",
     "qwen-vl-utils>=0.0.8",
 ]
