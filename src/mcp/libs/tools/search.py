@@ -9,7 +9,7 @@ from typing import Annotated, Any, Literal
 
 # ====== Third-Party Library Imports ======
 from docforge_sdk import AsyncClient, ChunkBrowseRequest, SearchRequest, SearchTarget
-from mcp.server.fastmcp import FastMCP
+from mcp.server.mcpserver import MCPServer
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 # ====== Local Project Imports ======
@@ -51,7 +51,7 @@ class FilterOperator(BaseModel):
         return self
 
 
-# The documented value forms of one `filters` entry; module-level so FastMCP can resolve it from
+# The documented value forms of one `filters` entry; module-level so MCPServer can resolve it from
 # the (lazy, `from __future__ import annotations`) signature and emit it in the tool's JSON schema.
 FilterValue = _Scalar | list[_Scalar] | FilterOperator
 
@@ -75,11 +75,11 @@ def _plain_filters(filters: dict[str, FilterValue] | None) -> dict[str, Any] | N
     }
 
 
-def register(mcp: FastMCP, sdk: AsyncClient) -> None:
+def register(mcp: MCPServer, sdk: AsyncClient) -> None:
     """Register search tools on the MCP server.
 
     Args:
-        mcp (FastMCP): The MCP server instance.
+        mcp (MCPServer): The MCP server instance.
         sdk (AsyncClient): The DocForge API client.
     """
 

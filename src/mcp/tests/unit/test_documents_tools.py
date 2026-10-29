@@ -3,7 +3,7 @@
 # upload_document (0.14.0 audit fix): on streamable-HTTP the tool must only ever call
 # sdk.documents.upload with a path inside the configured inbox, refusing traversal/absolute-escape
 # and refusing everything when no inbox is configured; on stdio the pre-fix arbitrary-path behaviour
-# is preserved. The registered tool's raw function is fetched off the FastMCP instance's tool
+# is preserved. The registered tool's raw function is fetched off the MCPServer instance's tool
 # manager so the SDK call can be mocked without any network I/O.
 
 from __future__ import annotations
@@ -17,8 +17,8 @@ from unittest.mock import AsyncMock
 # ====== Third-Party Library Imports ======
 import pytest
 from docforge_sdk import AsyncClient, UploadAccepted
-from mcp.server.fastmcp import FastMCP
-from mcp.server.fastmcp.exceptions import ToolError
+from mcp.server.mcpserver import MCPServer
+from mcp.server.mcpserver.exceptions import ToolError
 
 # ====== Internal Project Imports ======
 from libs.path_guard import PathGuard, PathGuardError
@@ -31,9 +31,9 @@ JID = "55555555-5555-5555-5555-555555555555"
 
 def _register(
     path_guard: PathGuard, max_inline_upload_bytes: int | None = None
-) -> tuple[FastMCP, AsyncMock]:
-    """Register the documents tools on a bare FastMCP with a mocked sdk.documents.upload."""
-    mcp = FastMCP(name="test")
+) -> tuple[MCPServer, AsyncMock]:
+    """Register the documents tools on a bare MCPServer with a mocked sdk.documents.upload."""
+    mcp = MCPServer(name="test")
     sdk = AsyncClient("http://localhost:8000")
     upload_mock = AsyncMock(
         return_value=UploadAccepted(document_id=DID, job_id=JID, duplicate=False)
@@ -46,7 +46,7 @@ def _register(
     return mcp, upload_mock
 
 
-def _tool_fn(mcp: FastMCP, name: str) -> Any:
+def _tool_fn(mcp: MCPServer, name: str) -> Any:
     """Fetch the raw async function backing a registered tool, bypassing MCP wire encoding."""
     tool = mcp._tool_manager.get_tool(name)
     assert tool is not None

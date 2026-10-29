@@ -9,7 +9,7 @@ from typing import Annotated, Any, Literal
 
 # ====== Third-Party Library Imports ======
 from docforge_sdk import AsyncClient, BulkChunkEnabledPatch
-from mcp.server.fastmcp import FastMCP
+from mcp.server.mcpserver import MCPServer
 from pydantic import Field
 
 # ====== Local Project Imports ======
@@ -17,11 +17,11 @@ from ..compact_json import compact_json
 from .reading_rendering import ReadingTextRenderer
 
 
-def register(mcp: FastMCP, sdk: AsyncClient) -> None:
+def register(mcp: MCPServer, sdk: AsyncClient) -> None:
     """Register document explorer tools on the MCP server.
 
     Args:
-        mcp (FastMCP): The MCP server instance.
+        mcp (MCPServer): The MCP server instance.
         sdk (AsyncClient): The DocForge API client.
     """
 

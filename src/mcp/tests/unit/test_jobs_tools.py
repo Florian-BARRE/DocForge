@@ -1,7 +1,7 @@
 # ====== Code Summary ======
 # Unit tests for the jobs tool wrappers: cancel_job forwards job_id/force to sdk.jobs.cancel and
 # returns the CancelResult serialised as JSON. The registered tool's raw function is fetched off
-# the FastMCP instance's tool manager so the SDK call can be mocked without any network I/O.
+# the MCPServer instance's tool manager so the SDK call can be mocked without any network I/O.
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from unittest.mock import AsyncMock, patch
 
 # ====== Third-Party Library Imports ======
 from docforge_sdk import AsyncClient, CancelResult, JobEventPayload, JobStatus
-from mcp.server.fastmcp import FastMCP
+from mcp.server.mcpserver import MCPServer
 
 # ====== Internal Project Imports ======
 from libs.tools import jobs as jobs_tools
@@ -21,9 +21,9 @@ JID = "55555555-5555-5555-5555-555555555555"
 EID = "66666666-6666-6666-6666-666666666666"
 
 
-def _register_with_fake_sdk() -> tuple[FastMCP, AsyncMock]:
-    """Register the jobs tools on a bare FastMCP against a mocked sdk.jobs.cancel."""
-    mcp = FastMCP(name="test")
+def _register_with_fake_sdk() -> tuple[MCPServer, AsyncMock]:
+    """Register the jobs tools on a bare MCPServer against a mocked sdk.jobs.cancel."""
+    mcp = MCPServer(name="test")
     sdk = AsyncClient("http://localhost:8000")
     cancel_mock = AsyncMock(
         return_value=CancelResult(
@@ -58,7 +58,7 @@ def _job_status(status: str) -> JobStatus:
     )
 
 
-def _tool_fn(mcp: FastMCP, name: str) -> Any:
+def _tool_fn(mcp: MCPServer, name: str) -> Any:
     """Fetch the raw async function backing a registered tool, bypassing MCP wire encoding."""
     tool = mcp._tool_manager.get_tool(name)
     assert tool is not None
@@ -87,7 +87,7 @@ async def test_cancel_job_forwards_force_true() -> None:
 
 async def test_wait_for_job_returns_immediately_once_terminal() -> None:
     """A job already terminal on the first poll returns without sleeping."""
-    mcp = FastMCP(name="test")
+    mcp = MCPServer(name="test")
     sdk = AsyncClient("http://localhost:8000")
     get_mock = AsyncMock(return_value=_job_status("done"))
     sdk.jobs.get = get_mock  # type: ignore[method-assign]
@@ -104,7 +104,7 @@ async def test_wait_for_job_returns_immediately_once_terminal() -> None:
 
 async def test_wait_for_job_polls_until_terminal() -> None:
     """A non-terminal first poll is followed by a sleep, then a second (terminal) poll."""
-    mcp = FastMCP(name="test")
+    mcp = MCPServer(name="test")
     sdk = AsyncClient("http://localhost:8000")
     get_mock = AsyncMock(side_effect=[_job_status("running"), _job_status("done")])
     sdk.jobs.get = get_mock  # type: ignore[method-assign]
@@ -121,7 +121,7 @@ async def test_wait_for_job_polls_until_terminal() -> None:
 
 async def test_wait_for_job_returns_non_terminal_status_once_timeout_elapses() -> None:
     """timeout_s=0 means the deadline has already passed after the first poll: no sleep, no loop."""
-    mcp = FastMCP(name="test")
+    mcp = MCPServer(name="test")
     sdk = AsyncClient("http://localhost:8000")
     get_mock = AsyncMock(return_value=_job_status("running"))
     sdk.jobs.get = get_mock  # type: ignore[method-assign]
@@ -138,7 +138,7 @@ async def test_wait_for_job_returns_non_terminal_status_once_timeout_elapses() -
 
 async def test_wait_for_job_clamps_sleep_to_remaining_deadline() -> None:
     """The inter-poll sleep is clamped to whatever's left of timeout_s, never overshooting it."""
-    mcp = FastMCP(name="test")
+    mcp = MCPServer(name="test")
     sdk = AsyncClient("http://localhost:8000")
     get_mock = AsyncMock(side_effect=[_job_status("running"), _job_status("done")])
     sdk.jobs.get = get_mock  # type: ignore[method-assign]
@@ -174,7 +174,7 @@ async def test_wait_for_job_clamps_a_timeout_above_the_hard_cap() -> None:
     the deadline is set from _MAX_WAIT_TIMEOUT_S (240s), so a clock jump past that (but nowhere
     near the caller's requested 10_000s) still ends the loop.
     """
-    mcp = FastMCP(name="test")
+    mcp = MCPServer(name="test")
     sdk = AsyncClient("http://localhost:8000")
     get_mock = AsyncMock(return_value=_job_status("running"))
     sdk.jobs.get = get_mock  # type: ignore[method-assign]
@@ -196,7 +196,7 @@ async def test_wait_for_job_clamps_a_timeout_above_the_hard_cap() -> None:
 
 
 async def test_get_job_event_payload_forwards_args_and_defaults_slot_to_output() -> None:
-    mcp = FastMCP(name="test")
+    mcp = MCPServer(name="test")
     sdk = AsyncClient("http://localhost:8000")
     payload_mock = AsyncMock(
         return_value=JobEventPayload(
@@ -220,7 +220,7 @@ async def test_get_job_event_payload_forwards_args_and_defaults_slot_to_output()
 
 
 async def test_get_job_tolerates_a_document_less_rebuild_job() -> None:
-    mcp = FastMCP(name="test")
+    mcp = MCPServer(name="test")
     sdk = AsyncClient("http://localhost:8000")
     rebuild = _job_status("done").model_copy(update={"document_id": None, "kind": "rebuild_index"})
     sdk.jobs.get = AsyncMock(return_value=rebuild)  # type: ignore[method-assign]

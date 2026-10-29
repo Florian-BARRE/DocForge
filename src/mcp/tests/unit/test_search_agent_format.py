@@ -1,6 +1,6 @@
 # ====== Code Summary ======
 # Wave B3 (agent UX): search_collection's agent-default projection, text rendering, compact json
-# format, and the compact-JSON mechanism applied to every other tool. Calls go through real FastMCP
+# format, and the compact-JSON mechanism applied to every other tool. Calls go through real MCPServer
 # dispatch (`mcp.call_tool`).
 
 from __future__ import annotations
@@ -62,10 +62,10 @@ def _server(payload: dict[str, Any] = _PAYLOAD) -> tuple[Any, AsyncMock]:
 
 
 async def _text(mcp: Any, args: dict[str, Any]) -> str:
-    content = await mcp.call_tool(
+    result = await mcp.call_tool(
         "search_collection", {"collection_id": CID, "query": "intro", **args}
     )
-    return str(content[0].text)
+    return str(result.content[0].text)
 
 
 async def test_text_format_renders_header_citation_hints_and_no_geometry() -> None:
@@ -128,8 +128,8 @@ async def test_every_structured_tool_returns_compact_json() -> None:
     )
     sdk.collections.get = AsyncMock(return_value=collection)  # type: ignore[method-assign]
     mcp = build_mcp(sdk)
-    content: Any = await mcp.call_tool("get_collection", {"collection_id": CID})
-    text = str(content[0].text)
+    result: Any = await mcp.call_tool("get_collection", {"collection_id": CID})
+    text = str(result.content[0].text)
     assert "\n" not in text and json.loads(text)["name"] == "docs"
 
 
@@ -152,7 +152,7 @@ def test_compact_wrapper_never_advertises_a_typed_return() -> None:
         return TypedOut(a=1)
 
     wrapped = compact_result(typed_tool)
-    # inspect.signature follows __wrapped__ unless __signature__ is set — FastMCP uses it.
+    # inspect.signature follows __wrapped__ unless __signature__ is set — MCPServer uses it.
     assert inspect.signature(wrapped, eval_str=True).return_annotation is Any
 
 
@@ -171,15 +171,15 @@ def test_text_render_skips_empty_meta_line() -> None:
 
 async def test_typed_return_tool_still_callable_through_the_server() -> None:
     """End to end: a tool typed `-> Model` registered on the real server returns compact JSON
-    instead of failing FastMCP's output-schema validation against the compacted string."""
-    from libs.error_translation import ErrorTranslatingFastMCP  # noqa: PLC0415
+    instead of failing MCPServer's output-schema validation against the compacted string."""
+    from libs.error_translation import ErrorTranslatingMCPServer  # noqa: PLC0415
 
-    server = ErrorTranslatingFastMCP(name="t")
+    server = ErrorTranslatingMCPServer(name="t")
 
     @server.tool()
     async def typed() -> TypedOut:
         return TypedOut(a=1)
 
-    content = await server.call_tool("typed", {})
-    blocks: Any = content[0] if isinstance(content, tuple) else content
-    assert json.loads(blocks[0].text) == {"a": 1}
+    result: Any = await server.call_tool("typed", {})
+    assert result.structured_content is None
+    assert json.loads(result.content[0].text) == {"a": 1}

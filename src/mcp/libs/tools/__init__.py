@@ -3,7 +3,7 @@ from __future__ import annotations
 
 # ====== Third-Party Library Imports ======
 from docforge_sdk import AsyncClient
-from mcp.server.fastmcp import FastMCP
+from mcp.server.mcpserver import MCPServer
 
 # ====== Local Project Imports ======
 from ..path_guard import PathGuard
@@ -51,7 +51,7 @@ _PATH_GUARDED_MODULES = (documents, transfers)
 
 
 def register_all(
-    mcp: FastMCP,
+    mcp: MCPServer,
     sdk: AsyncClient,
     path_guard: PathGuard,
     max_inline_upload_bytes: int = DEFAULT_MAX_INLINE_UPLOAD_BYTES,
@@ -60,7 +60,7 @@ def register_all(
     Register every DocForge tool on the MCP server.
 
     Args:
-        mcp (FastMCP): The MCP server instance.
+        mcp (MCPServer): The MCP server instance.
         sdk (AsyncClient): The DocForge API client injected into every tool.
         path_guard (PathGuard): Confines `file_path` tool arguments — passed only to the modules
             that take one (documents, transfers); every other module's signature is unchanged.

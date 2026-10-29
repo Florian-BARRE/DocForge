@@ -1,7 +1,7 @@
 # ====== Code Summary ======
 # Wave A8 (agent UX): lean get_collection/list_collections, describe_collection, the typed
 # search_collection schema, and unknown-argument rejection on EVERY tool (D6). Calls go through the
-# real FastMCP dispatch (`mcp.call_tool`) so argument validation is exercised, not bypassed.
+# real MCPServer dispatch (`mcp.call_tool`) so argument validation is exercised, not bypassed.
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from unittest.mock import AsyncMock
 import pytest
 from docforge_sdk import AsyncClient
 from docforge_sdk.models import CollectionDescription, CollectionModel, SearchResponse
-from mcp.server.fastmcp.exceptions import ToolError
+from mcp.server.mcpserver.exceptions import ToolError
 
 # ====== Internal Project Imports ======
 from libs.server import build_mcp
@@ -36,9 +36,9 @@ _COLLECTION = CollectionModel.model_validate(
 
 
 async def _call(mcp: Any, name: str, args: dict[str, Any]) -> Any:
-    """Call a tool through FastMCP dispatch and decode its JSON text content."""
-    content = await mcp.call_tool(name, args)
-    return json.loads(content[0].text)
+    """Call a tool through MCPServer dispatch and decode its JSON text content."""
+    result = await mcp.call_tool(name, args)
+    return json.loads(result.content[0].text)
 
 
 def _server() -> tuple[Any, AsyncClient]:
@@ -94,15 +94,15 @@ async def test_search_collection_forwards_typed_filters_and_targets() -> None:
 async def test_search_collection_schema_is_typed() -> None:
     mcp, _ = _server()
     tool = next(t for t in await mcp.list_tools() if t.name == "search_collection")
-    props = tool.inputSchema["properties"]
+    props = tool.input_schema["properties"]
     assert "description" in props["filters"] and "describe_collection" in tool.description
-    assert "SearchTarget" in str(tool.inputSchema)
-    assert tool.inputSchema.get("additionalProperties") is False
+    assert "SearchTarget" in str(tool.input_schema)
+    assert tool.input_schema.get("additionalProperties") is False
 
 
 async def test_unknown_argument_is_rejected_on_every_tool() -> None:
     mcp, _ = _server()
     for tool in await mcp.list_tools():
-        assert tool.inputSchema.get("additionalProperties") is False, tool.name
+        assert tool.input_schema.get("additionalProperties") is False, tool.name
     with pytest.raises(ToolError, match="page"):
         await mcp.call_tool("get_document_markdown", {"document_id": CID, "page": 5})

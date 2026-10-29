@@ -13,7 +13,7 @@ from unittest.mock import AsyncMock
 import pytest
 from docforge_sdk import AsyncClient
 from docforge_sdk.models import ChunkBrowseResponse, SearchResponse
-from mcp.server.fastmcp.exceptions import ToolError
+from mcp.server.mcpserver.exceptions import ToolError
 
 # ====== Internal Project Imports ======
 from libs.server import build_mcp
@@ -111,7 +111,7 @@ async def test_debug_scores_rendered_on_citation_line() -> None:
     out = await mcp.call_tool(
         "search_collection", {"collection_id": CID, "query": "q", "debug": True}
     )
-    assert "fusion 0.500 / rerank 0.900" in str(out)
+    assert "fusion 0.500 / rerank 0.900" in _first_text(out)
 
 
 _PAGE: dict[str, Any] = {
@@ -170,6 +170,5 @@ async def test_browse_json_is_compact() -> None:
 
 
 def _first_text(result: Any) -> str:
-    """Extract the tool's text payload from FastMCP's (content, structured) result shapes."""
-    content = result[0] if isinstance(result, tuple) else result
-    return str(content[0].text)
+    """Extract the tool's text payload from MCPServer's CallToolResult."""
+    return str(result.content[0].text)

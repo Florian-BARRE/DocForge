@@ -1,7 +1,7 @@
 # ====== Code Summary ======
-# The single serialisation choke point for tool results. FastMCP renders every non-str return with
+# The single serialisation choke point for tool results. MCPServer renders every non-str return with
 # `to_json(indent=2)`, which on a hit-heavy payload is mostly whitespace an LLM pays tokens for.
-# `compact_result` wraps every tool at registration (see ErrorTranslatingFastMCP.add_tool) so each
+# `compact_result` wraps every tool at registration (see ErrorTranslatingMCPServer.add_tool) so each
 # structured return goes out as NON-indented JSON text; str / content-block returns pass through.
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ from typing import Any
 
 # ====== Third-Party Library Imports ======
 import pydantic_core
-from mcp.server.fastmcp.utilities.types import Audio, Image
+from mcp.server.mcpserver import Audio, Image
 from mcp.types import ContentBlock
 
 AnyAsyncTool = Callable[..., Awaitable[Any]]
@@ -44,7 +44,7 @@ def compact_result(fn: AnyAsyncTool) -> AnyAsyncTool:
     """
     Wrap an async tool so its structured return is emitted as compact JSON text.
 
-    A list/tuple return keeps FastMCP's one-content-block-per-item shape; only each item is
+    A list/tuple return keeps MCPServer's one-content-block-per-item shape; only each item is
     compacted.
 
     Args:
@@ -62,7 +62,7 @@ def compact_result(fn: AnyAsyncTool) -> AnyAsyncTool:
         return _compact_item(result)
 
     # The wrapper returns compact TEXT, so it must not advertise the wrapped tool's return type:
-    # FastMCP reads `inspect.signature(fn, eval_str=True)` — which FOLLOWS `__wrapped__` — to build an
+    # MCPServer reads `inspect.signature(fn, eval_str=True)` — which FOLLOWS `__wrapped__` — to build an
     # output schema, then validates the returned string against it (a tool typed `-> SomeModel`
     # would fail). An explicit `__signature__` wins over `__wrapped__`; with a return of `Any` no
     # output schema is derived. Parameters are kept so argument validation is unchanged.

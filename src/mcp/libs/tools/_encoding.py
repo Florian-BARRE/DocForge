@@ -15,7 +15,7 @@ import base64
 import binascii
 
 # ====== Third-Party Library Imports ======
-from mcp.server.fastmcp.exceptions import ToolError
+from mcp.server.mcpserver.exceptions import ToolError
 
 # Fallback cap used only when a caller doesn't thread McpConfig.MCP_MAX_INLINE_UPLOAD_BYTES through
 # (e.g. a test building tools directly) — mirrors the config default (100 MiB).

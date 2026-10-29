@@ -12,7 +12,7 @@ from typing import Any, Literal
 
 # ====== Third-Party Library Imports ======
 from docforge_sdk import AsyncClient
-from mcp.server.fastmcp import FastMCP
+from mcp.server.mcpserver import MCPServer
 
 # A job's status is one of these once it stops changing (see JobStatus.status docstring).
 _TERMINAL_JOB_STATUSES = frozenset({"done", "failed", "cancelled"})
@@ -38,11 +38,11 @@ _POLL_MAX_DELAY_S = 5.0
 _POLL_BACKOFF_FACTOR = 1.5
 
 
-def register(mcp: FastMCP, sdk: AsyncClient) -> None:
+def register(mcp: MCPServer, sdk: AsyncClient) -> None:
     """Register job tools on the MCP server.
 
     Args:
-        mcp (FastMCP): The MCP server instance.
+        mcp (MCPServer): The MCP server instance.
         sdk (AsyncClient): The DocForge API client.
     """
 

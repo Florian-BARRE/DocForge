@@ -10,7 +10,7 @@
 #
 # IMPORTANT — rotate_api_key "keep unchanged" semantics:
 # The MCP tool boundary cannot distinguish "argument omitted" from "argument explicitly null" (every
-# FastMCP tool call passes every parameter, using its Python default when the caller didn't set it).
+# MCPServer tool call passes every parameter, using its Python default when the caller didn't set it).
 # So `name` / `permissions` / `expires_at` left at their default `None` are treated as "keep the
 # source key's current value" (mapped to the SDK's Ellipsis sentinel) — there is no way to explicitly
 # clear permissions back to full access or expiry back to never via this tool; issue a new key instead.
@@ -24,15 +24,15 @@ from typing import Any
 
 # ====== Third-Party Library Imports ======
 from docforge_sdk import AsyncClient, KeyPermissions
-from mcp.server.fastmcp import FastMCP
+from mcp.server.mcpserver import MCPServer
 
 
-def register(mcp: FastMCP, sdk: AsyncClient) -> None:
+def register(mcp: MCPServer, sdk: AsyncClient) -> None:
     """
     Register auth tools on the MCP server.
 
     Args:
-        mcp (FastMCP): The MCP server instance.
+        mcp (MCPServer): The MCP server instance.
         sdk (AsyncClient): The DocForge API client.
     """
 

@@ -3,7 +3,7 @@
 # sdk.transfers method and return the model serialised as JSON; get_export_download_ref polls the
 # transfer status and builds the REST download reference WITHOUT touching sdk.transfers.download_export
 # (the bundle bytes are never streamed through an MCP tool result). The registered tool's raw function
-# is fetched off the FastMCP instance's tool manager so the SDK call can be mocked without network I/O.
+# is fetched off the MCPServer instance's tool manager so the SDK call can be mocked without network I/O.
 #
 # import_collection also carries the PathGuard confinement wired in as part of the 0.14.0 audit fix
 # (see test_documents_tools.py for the full path-confinement matrix); the cases here mirror it for
@@ -21,8 +21,8 @@ from unittest.mock import AsyncMock
 # ====== Third-Party Library Imports ======
 import pytest
 from docforge_sdk import AsyncClient, TransferAccepted, TransferStatus
-from mcp.server.fastmcp import FastMCP
-from mcp.server.fastmcp.exceptions import ToolError
+from mcp.server.mcpserver import MCPServer
+from mcp.server.mcpserver.exceptions import ToolError
 
 # ====== Internal Project Imports ======
 from libs.path_guard import PathGuard, PathGuardError
@@ -37,15 +37,15 @@ _UNCONFINED_GUARD = PathGuard(confine=False, inbox_dir=None)
 
 def _register_with_fake_sdk(
     path_guard: PathGuard = _UNCONFINED_GUARD,
-) -> tuple[FastMCP, AsyncClient]:
-    """Register the transfers tools on a bare FastMCP against a bare (unmocked) AsyncClient."""
-    mcp = FastMCP(name="test")
+) -> tuple[MCPServer, AsyncClient]:
+    """Register the transfers tools on a bare MCPServer against a bare (unmocked) AsyncClient."""
+    mcp = MCPServer(name="test")
     sdk = AsyncClient("http://localhost:8000")
     transfers_tools.register(mcp, sdk, path_guard)
     return mcp, sdk
 
 
-def _tool_fn(mcp: FastMCP, name: str) -> Any:
+def _tool_fn(mcp: MCPServer, name: str) -> Any:
     """Fetch the raw async function backing a registered tool, bypassing MCP wire encoding."""
     tool = mcp._tool_manager.get_tool(name)
     assert tool is not None
