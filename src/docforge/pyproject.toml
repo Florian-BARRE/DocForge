@@ -104,7 +104,7 @@ dev = [
     "fakeredis>=2.40.0",
     "psycopg2-binary>=2.9.13",
     "pytest>=8.3.0",
-    "pytest-asyncio>=0.24.0",
+    "pytest-asyncio>=1.4.1",
     "pytest-cov>=6.0.0",
     "ruff>=0.17.2",
 ]
