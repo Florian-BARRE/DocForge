@@ -12,32 +12,32 @@ dependencies = [
     # Upper-bounded at <2: FlagEmbedding 1.3→1.4 silently swallowed the `device=` kwarg into
     # **kwargs (model ran on the wrong device with no error). Cap the major line so an un-gated
     # `uv lock --upgrade` can't reintroduce that class of regression.
-    "FlagEmbedding>=1.2.10,<2",
+    "FlagEmbedding>=1.4.2,<2",
     # Pin transformers to the 4.x line: FlagEmbedding 1.4.0's FlagReranker calls the slow-tokenizer
     # `prepare_for_model` API, which transformers 5.x removed — on transformers 5.x /rerank fails with
     # "XLMRobertaTokenizer has no attribute prepare_for_model" (embedding is unaffected). Cap at <5
     # until FlagEmbedding ships a reranker compatible with transformers 5.
-    "transformers>=4.45,<5",
+    "transformers>=4.57.6,<5",
     # huggingface_hub is already a transitive dep (via FlagEmbedding/transformers), but is now
     # imported DIRECTLY by libs/bge_models/revision.py (snapshot_download for revision pinning),
     # so it must be declared explicitly — a direct import must be a direct dependency.
     # huggingface_hub is pre-1.0: cap below its next major (1.0), which the currently-locked
     # version clears — the direct import in libs/bge_models/revision.py must not silently ride a
     # breaking hub major on a routine lock refresh.
-    "huggingface_hub>=0.24.0,<1",
+    "huggingface_hub>=0.36.2,<1",
     # FastAPI + ASGI server. Upper bounds guardrail a lock refresh away from a breaking major
     # (both are pre-1.0, so the next major is 1.0); both caps clear the locked versions.
-    "fastapi>=0.115.0,<1",
-    "uvicorn[standard]>=0.30.0,<1",
+    "fastapi>=0.162.0,<1",
+    "uvicorn[standard]>=0.54.0,<1",
     # Config & logging (same internal libraries as the rest of the DocForge stack). Left unbounded
     # on purpose: internally-versioned, not steered by an external release cadence.
-    "configplusplus>=0.1.0",
-    "loggerplusplus>=1.0.0",
+    "configplusplus>=0.4.0",
+    "loggerplusplus>=1.2.0",
     # ASCII startup banner printed by the lifespan.
-    "pyfiglet>=1.0.2,<2",
+    "pyfiglet>=1.0.4,<2",
     # Rust-backed JSON encoder used as FastAPI's default response class — cheaper on the event
     # loop than stdlib json.dumps for the large float matrices /embed and /embed_all return.
-    "orjson>=3.10.0,<4",
+    "orjson>=3.13.0,<4",
 ]
 
 # ── Torch variant extras ──────────────────────────────────────────────────────────────────────
@@ -58,11 +58,11 @@ gpu = ["torch"]
 
 [dependency-groups]
 dev = [
-    "pytest>=8.3.0",
-    "pytest-asyncio>=0.24.0",
-    "ruff>=0.8.0",
-    "mypy>=1.13.0",
-    "httpx>=0.28.0",   # For FastAPI TestClient
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+    "ruff>=0.17.2",
+    "mypy>=2.4.0",
+    "httpx>=0.28.1",   # For FastAPI TestClient
 ]
 
 [tool.uv]
