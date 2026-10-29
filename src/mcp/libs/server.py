@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 
 # ====== Third-Party Library Imports ======
 from docforge_sdk import AsyncClient
+from mcp.server import CacheHint
 from mcp.server.mcpserver import MCPServer
 from mcp.server.transport_security import TransportSecuritySettings
 from starlette.applications import Starlette
@@ -37,6 +38,14 @@ _BASE64_EXPANSION_FACTOR = 4 / 3
 # Flat margin absorbing the surrounding JSON-RPC envelope (tool name, other arguments like
 # filename/collection_id/metadata, structural quoting/braces) on top of the base64 string itself.
 _REQUEST_ENVELOPE_MARGIN_BYTES = 1 * 1024 * 1024
+
+# Freshness hint on tools/list (SEP-2549, sent to 2026-07-28 clients only). The catalogue is static
+# per release and the same for every caller (no tool is hidden per API key: the REST API enforces
+# a key's scope at call time), hence "public". With no listChanged notification to evict a cached
+# list, the TTL is the staleness bound after a redeploy: one hour lets a client skip re-listing
+# the 85 schemas for a working session while a new release shows up within the hour (mcp's client
+# caps any TTL at 24 h anyway).
+_TOOLS_LIST_CACHE_HINT = CacheHint(ttl_ms=60 * 60 * 1000, scope="public")
 
 # Instructions surfaced to the connected LLM so it knows what DocForge is and how to start.
 _INSTRUCTIONS = (
@@ -88,12 +97,14 @@ def build_mcp(
     #    API's own error detail (not just an opaque status code) to the connected LLM. `version`
     #    is docforge's lockstep release (an unversioned 2.x server reports ""). No subscription
     #    bus: there are no resources and the tool list is static, so there is nothing to notify,
-    #    and a per-process bus would not fit a stateless, horizontally-scaled server.
+    #    and a per-process bus would not fit a stateless, horizontally-scaled server. The
+    #    tools/list cache hint lets 2026-07-28 clients reuse the catalogue (_TOOLS_LIST_CACHE_HINT).
     mcp = ErrorTranslatingMCPServer(
         name="DocForge",
         instructions=_INSTRUCTIONS,
         version=__version__,
         subscriptions=False,
+        cache_hints={"tools/list": _TOOLS_LIST_CACHE_HINT},
     )
     register_all(mcp, sdk, guard, max_inline_upload_bytes)
     return mcp

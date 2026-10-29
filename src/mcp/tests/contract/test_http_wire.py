@@ -6,7 +6,8 @@
 # 2.x client in auto mode), stateless calls under every handshake-era Mcp-Protocol-Version header
 # (or none), the result shapes (compact text, inline image), the error shapes (SDK 404, unknown
 # argument), the bearer gate (401 + WWW-Authenticate), per-caller bearer isolation, a remote Host
-# header (DNS-rebinding protection off) and the raised request-body ceiling.
+# header (DNS-rebinding protection off), the raised request-body ceiling and the tools/list cache
+# hint (ttlMs/cacheScope on 2026-07-28 responses only).
 
 from __future__ import annotations
 
@@ -37,7 +38,7 @@ _WHOAMI_TOKENS = [f"key-{n}" for n in range(8)]
 
 
 def _rpc(
-    url: str, method: str, params: dict[str, Any] | None = None, **headers: str
+    url: str, method: str, params: dict[str, Any] | None = None, /, **headers: str
 ) -> httpx.Response:
     """One raw stateless JSON-RPC POST (no initialize first), the way a minimal client calls."""
     body: dict[str, Any] = {"jsonrpc": "2.0", "id": 1, "method": method}
@@ -94,6 +95,39 @@ def test_stateless_tool_call_succeeds_under_each_protocol_header(
     result = response.json()["result"]
     assert result["isError"] is False
     assert result["content"] == [{"type": "text", "text": '{"status":"ok"}'}]
+
+
+def test_tools_list_carries_the_cache_hint_at_2026_07_28(server: ContractServer) -> None:
+    """A 2026-07-28 tools/list (envelope in params._meta, Mcp-Method header) gets ttlMs/cacheScope."""
+    headers = {"Mcp-Protocol-Version": "2026-07-28", "Mcp-Method": "tools/list"}
+    response = _rpc(
+        server.url,
+        "tools/list",
+        {
+            "_meta": {
+                "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+                "io.modelcontextprotocol/clientCapabilities": {},
+            }
+        },
+        **headers,
+    )
+    assert response.status_code == 200
+    result = response.json()["result"]
+    assert (result["ttlMs"], result["cacheScope"]) == (3_600_000, "public")
+    assert len(result["tools"]) == 85
+
+
+@pytest.mark.parametrize("header", ["2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25", None])
+def test_tools_list_carries_no_cache_hint_before_2026(
+    server: ContractServer, header: str | None
+) -> None:
+    """Handshake-era responses stay as they were: the 2026-07-28 fields are sieved out."""
+    extra = {"Mcp-Protocol-Version": header} if header else {}
+    response = _rpc(server.url, "tools/list", **extra)
+    assert response.status_code == 200
+    result = response.json()["result"]
+    assert set(result) == {"tools"}
+    assert len(result["tools"]) == 85
 
 
 def test_missing_bearer_is_401_with_www_authenticate(server: ContractServer) -> None:
@@ -234,6 +268,7 @@ async def _mcp2_report(url: str, mode: str) -> dict[str, Any]:
 
     async def main(client: Client) -> dict[str, Any]:
         tools = await client.list_tools()
+        hinted = {"ttl_ms", "cache_scope"} & tools.model_fields_set
         info = client.server_info
         assert info is not None
         return {
@@ -242,6 +277,7 @@ async def _mcp2_report(url: str, mode: str) -> dict[str, Any]:
             "server_version": info.version,
             "has_tools_capability": client.server_capabilities.tools is not None,
             "tool_count": len(tools.tools),
+            "tools_cache_hint": (tools.ttl_ms, tools.cache_scope) if hinted else None,
             "calls": {
                 "ping": await _mcp2_call(client, "ping", {}),
                 "search": await _mcp2_call(
@@ -274,6 +310,8 @@ async def test_mcp_2x_client_negotiates_by_mode(
     """
     report = await _mcp2_report(server.url, mode)
     assert report["protocol_version"] == negotiated
+    # The tools/list cache hint reaches a 2026-07-28 client only.
+    assert report["tools_cache_hint"] == ((3_600_000, "public") if mode == "auto" else None)
     _assert_client_report(report, server)
     first = server.wire[0]
     assert (first.rpc_method, first.status) == (
