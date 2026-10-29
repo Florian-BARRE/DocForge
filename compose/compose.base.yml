@@ -162,6 +162,8 @@ services:
       - docforge_net
 
   # ── PostgreSQL 16 — the tabular source of truth ─────────────────────────────
+  # Postgres, Redis and SeaweedFS mirror the shared production services (postgres 16, redis 7,
+  # seaweedfs 4.38): their versions move only when prod moves (.github/dependabot.yml holds them).
   docforge_postgres:
     image: postgres:16.15-bookworm@sha256:e8a07d2c7579b038938cdba6c539e580e5001caf9ea203d397b5cc83e76bd938
     container_name: docforge-postgres
@@ -204,7 +206,7 @@ services:
 
   # ── Redis 7 — the arq job queue (transport only, no monitoring truth) ───────
   docforge_redis:
-    image: redis:8.2.11-bookworm@sha256:99ffb973380cc2f47bca06bd094f7f8c7138a0879a63cb8939896a22b7a65bba
+    image: redis:7.4.12-bookworm@sha256:b6b6e3dc0c0952737748e55d5d885272840c7e42ba41ab1d5489f693419882f5
     container_name: docforge-redis
     # No host port in prod — internal to docforge_net only (app enqueue / worker listen).
     # Dev re-publishes 10042 via compose/overlays/compose.dev.yml.
@@ -260,7 +262,7 @@ services:
 
   # ── SeaweedFS — S3-compatible blob store (content-addressed objects) ────────
   docforge_seaweedfs:
-    image: chrislusf/seaweedfs:4.50@sha256:c2658820e763294a9e9de7b36c81e59b879e3459148351aee4e31a126ca64860
+    image: chrislusf/seaweedfs:4.38@sha256:e1ee85a3089d96c4f3df699a0944468557813f5df306819c9d368c4039070ddf
     container_name: docforge-seaweedfs
     command: >
       server
