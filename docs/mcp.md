@@ -360,7 +360,9 @@ socket (`cd src/mcp && uv run pytest tests/contract`; `-m "not slow"` skips the 
   non-Bearer `Authorization` is a 401 with `WWW-Authenticate: Bearer`; concurrent callers each
   reach DocForge with their own key; a 5 MiB base64 upload is not refused with 413.
 - **OpenAI Agents SDK** (`agents.mcp.MCPServerStreamableHttp`, the in-house chatbot's client), run
-  in a throwaway `uv` environment on both mcp majors. The key goes in
+  in a throwaway `uv` environment on both mcp majors, every version pinned (`openai-agents==0.24.0`
+  with `mcp==2.3.0`, then `mcp==1.29.1`); skipped, with the reason, when uv cannot reach the
+  package index. The key goes in
   `params={"headers": {"Authorization": "Bearer <key>"}}` and is sent on every request with
   `Accept: application/json, text/event-stream` (JSON responses are accepted, SSE is not required).
   On mcp 1.x it sends `initialize` (latest version, answered `2025-11-25`), `notifications/initialized`,

@@ -155,6 +155,8 @@ class ContractServer:
     url: str
     api: FakeDocForgeApi
     wire: list[WireRecord]
+    # The SDK client class wired to the fake API, patched into scoped_sdk for each test.
+    client_class: type[AsyncClient]
 
 
 def _free_port() -> int:
@@ -163,58 +165,72 @@ def _free_port() -> int:
         return cast(int, sock.getsockname()[1])
 
 
-@pytest.fixture(scope="session")
-def contract_server() -> Iterator[ContractServer]:
-    """
-    Serve the real streamable-HTTP app, wired like entrypoint.py's HTTP mode, on localhost.
-
-    Yields:
-        ContractServer: The endpoint URL (``http://127.0.0.1:<port>/mcp``) and the fakes.
-    """
-    api = FakeDocForgeApi()
-    wire: list[WireRecord] = []
-    mock = httpx.MockTransport(api.handle)
+def _mocked_client_class(mock: httpx.MockTransport) -> type[AsyncClient]:
+    """A docforge_sdk.AsyncClient subclass whose HTTP traffic goes to the fake API."""
 
     class _MockedAsyncClient(AsyncClient):
         """A real docforge_sdk client whose HTTP traffic goes to the fake API."""
 
         def __init__(self, base_url: str, timeout: float = 30.0, api_token: str = "") -> None:
             super().__init__(base_url, timeout=timeout, api_token=api_token)
+            # No public seam: swaps the private AsyncTransport._client of docforge_sdk 0.31.3.
             transport = cast(Any, self._transport)
             transport._client = httpx.AsyncClient(
                 transport=mock, headers=transport._headers, timeout=timeout
             )
 
+    return _MockedAsyncClient
+
+
+@pytest.fixture(scope="session")
+def contract_server() -> Iterator[ContractServer]:
+    """
+    Serve the real streamable-HTTP app, wired like entrypoint.py's HTTP mode, on localhost.
+
+    scoped_sdk's AsyncClient is patched only while the provider is built (its fallback client);
+    the per-token clients, built lazily during a request, get the patch from the ``server``
+    fixture, so it never outlives a contract test.
+
+    Yields:
+        ContractServer: The endpoint URL (``http://127.0.0.1:<port>/mcp``) and the fakes.
+    """
+    api = FakeDocForgeApi()
+    wire: list[WireRecord] = []
+    client_class = _mocked_client_class(httpx.MockTransport(api.handle))
+
     with pytest.MonkeyPatch.context() as patch:
-        patch.setattr(scoped_sdk_module, "AsyncClient", _MockedAsyncClient)
+        patch.setattr(scoped_sdk_module, "AsyncClient", client_class)
         provider = ScopedSdkProvider(
             "http://docforge.test", timeout=10.0, fallback_token="", require_bearer=True
         )
-        sdk = cast(AsyncClient, ScopedSdk(provider))
-        mcp = build_mcp(sdk, PathGuard(confine=True, inbox_dir=None))
-        app = _WireRecorder(build_http_app(mcp, _ContractConfig), wire)  # type: ignore[arg-type]
+    sdk = cast(AsyncClient, ScopedSdk(provider))
+    mcp = build_mcp(sdk, PathGuard(confine=True, inbox_dir=None))
+    app = _WireRecorder(build_http_app(mcp, _ContractConfig), wire)  # type: ignore[arg-type]
 
-        port = _free_port()
-        server = uvicorn.Server(
-            uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning", lifespan="on")
+    port = _free_port()
+    server = uvicorn.Server(
+        uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning", lifespan="on")
+    )
+    thread = threading.Thread(target=server.run, daemon=True)
+    thread.start()
+    deadline = time.monotonic() + 15
+    while not server.started:
+        if time.monotonic() > deadline or not thread.is_alive():
+            raise RuntimeError("the contract MCP server did not start")
+        time.sleep(0.05)
+    try:
+        yield ContractServer(
+            url=f"http://127.0.0.1:{port}/mcp", api=api, wire=wire, client_class=client_class
         )
-        thread = threading.Thread(target=server.run, daemon=True)
-        thread.start()
-        deadline = time.monotonic() + 15
-        while not server.started:
-            if time.monotonic() > deadline or not thread.is_alive():
-                raise RuntimeError("the contract MCP server did not start")
-            time.sleep(0.05)
-        try:
-            yield ContractServer(url=f"http://127.0.0.1:{port}/mcp", api=api, wire=wire)
-        finally:
-            server.should_exit = True
-            thread.join(timeout=10)
+    finally:
+        server.should_exit = True
+        thread.join(timeout=10)
 
 
 @pytest.fixture
-def server(contract_server: ContractServer) -> ContractServer:
-    """The session server with its wire log and API call log emptied for this test."""
+def server(contract_server: ContractServer, monkeypatch: pytest.MonkeyPatch) -> ContractServer:
+    """The session server, its SDK clients on the fake API and its logs emptied, for this test."""
+    monkeypatch.setattr(scoped_sdk_module, "AsyncClient", contract_server.client_class)
     contract_server.wire.clear()
     contract_server.api.calls.clear()
     return contract_server
