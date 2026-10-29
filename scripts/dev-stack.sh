@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # One running dev stack per Orca worktree (template from the AI Dev Kit, ~/.aidk/kit/platforms/linux/templates/project).
 #
-#   scripts/dev-stack.sh prepare           worktree: port block, .env.worktree, images built and pulled;
-#                                          nothing started (aidk stack setup, when .aidk/project.toml has a [stack])
+#   scripts/dev-stack.sh prepare [SERVICE...]  worktree: port block, .env.worktree, the images of these and what
+#                                          they depend on built and pulled (none without a name); nothing started
+#                                          (aidk stack setup names the [stack] services that say autostart)
 #   scripts/dev-stack.sh setup             prepare, then the whole stack up, database copied from main first
 #                                          (main checkout: the whole stack up on the usual ports)
 #   scripts/dev-stack.sh up [SERVICE...]   start these and what they depend on (depends_on), or the whole stack;
@@ -162,7 +163,8 @@ seed() {
   # The target is new and empty: "already exists" errors on the role and the default databases
   # are expected and harmless.
   docker exec "$src" pg_dumpall -U "$SEED_DB_USER" |
-    compose exec -T "$SEED_DB_SERVICE" psql -q -U "$SEED_DB_USER" -d postgres >/dev/null
+    compose exec -T "$SEED_DB_SERVICE" psql -q -U "$SEED_DB_USER" -d postgres 2>&1 >/dev/null |
+    { grep -vE '^ERROR: +(role|database) "[^"]*" already exists$' || true; } >&2
   printf 'SEEDED=1\n' >>"$ENV_FILE"
 }
 
@@ -220,13 +222,19 @@ print("\n".join(sorted(missing)))' "$ROOT" "$@")
   die "$msg"
 }
 
+# The images of SERVICE... and what they depend on, built and pulled; none without a name (a worktree's setup
+# must not wait for images nobody starts: up builds them when the work needs them).
 prepare() {
   ((IS_WORKTREE)) && write_env
-  [[ "$PREPARE_IMAGES" == true ]] || return 0
+  [[ "$PREPARE_IMAGES" == true ]] && (($#)) || return 0
+  local services
+  mapfile -t services < <(deps "$@")
+  ((${#services[@]})) || return 0
   # A broken Dockerfile on a branch must not block the worktree: its agent is the one to fix it.
-  note "building and pulling the images (nothing is started)"
-  compose build --quiet || note "WARNING: an image did not build: up will show why"
-  compose pull --quiet --ignore-buildable 2>/dev/null || note "WARNING: an image could not be pulled: up will try again"
+  note "building and pulling the images of ${services[*]} (nothing is started)"
+  compose --profile '*' build --quiet "${services[@]}" || note "WARNING: an image did not build: up will show why"
+  compose --profile '*' pull --quiet --ignore-buildable "${services[@]}" 2>/dev/null ||
+    note "WARNING: an image could not be pulled: up will try again"
 }
 
 # Starts SERVICE... (all without a name): the worktree's port block first, main's database copied when the
@@ -280,7 +288,7 @@ orca_comment() { # best effort: the address shows in Orca's worktree list
 }
 
 case "${1:-}" in
-  prepare) prepare ;;
+  prepare) shift; prepare "$@" ;;
   setup)
     if ((IS_WORKTREE)); then
       write_env
