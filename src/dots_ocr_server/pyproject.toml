@@ -70,10 +70,9 @@ package = false
 conflicts = [
     [{ extra = "cpu" }, { extra = "gpu" }],
 ]
-# Cap torch/torchvision so the cpu and gpu extras resolve the SAME minor (2.13 / 0.28): cu126 is the
-# last CUDA index with sm_70 kernels for the prod Tesla V100 and tops out at torch 2.13, while the cpu
-# index already ships 2.14; without the cap the two variants drift apart (same cap as bge_server and
-# docforge). Lift it only together with the index, once the target GPU is no longer a V100.
+# Cap torch/torchvision so the cpu and gpu extras resolve the SAME minor (2.13 / 0.28), the one the
+# cu126 / Tesla V100 stack is validated on: cpu and cu126 both offer 2.13 and 2.14, and without the cap
+# the two variants could drift apart (same cap as bge_server and docforge).
 constraint-dependencies = ["torch<2.14", "torchvision<0.29"]
 
 [tool.uv.sources]
