@@ -1,19 +1,19 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.12"
 resolution-markers = [
     "python_full_version >= '3.15' and extra != 'extra-24-docforge-dots-ocr-server-cpu' and extra == 'extra-24-docforge-dots-ocr-server-gpu'",
-    "(python_full_version == '3.14.*' and platform_machine != 'aarch64' and extra != 'extra-24-docforge-dots-ocr-server-cpu' and extra == 'extra-24-docforge-dots-ocr-server-gpu') or (python_full_version == '3.14.*' and platform_python_implementation != 'CPython' and extra != 'extra-24-docforge-dots-ocr-server-cpu' and extra == 'extra-24-docforge-dots-ocr-server-gpu') or (python_full_version == '3.14.*' and sys_platform != 'linux' and extra != 'extra-24-docforge-dots-ocr-server-cpu' and extra == 'extra-24-docforge-dots-ocr-server-gpu')",
-    "(python_full_version == '3.13.*' and platform_machine != 'aarch64' and extra != 'extra-24-docforge-dots-ocr-server-cpu' and extra == 'extra-24-docforge-dots-ocr-server-gpu') or (python_full_version == '3.13.*' and platform_python_implementation != 'CPython' and extra != 'extra-24-docforge-dots-ocr-server-cpu' and extra == 'extra-24-docforge-dots-ocr-server-gpu') or (python_full_version == '3.13.*' and sys_platform != 'linux' and extra != 'extra-24-docforge-dots-ocr-server-cpu' and extra == 'extra-24-docforge-dots-ocr-server-gpu')",
-    "(python_full_version < '3.13' and platform_machine != 'aarch64' and extra != 'extra-24-docforge-dots-ocr-server-cpu' and extra == 'extra-24-docforge-dots-ocr-server-gpu') or (python_full_version < '3.13' and platform_python_implementation != 'CPython' and extra != 'extra-24-docforge-dots-ocr-server-cpu' and extra == 'extra-24-docforge-dots-ocr-server-gpu') or (python_full_version < '3.13' and sys_platform != 'linux' and extra != 'extra-24-docforge-dots-ocr-server-cpu' and extra == 'extra-24-docforge-dots-ocr-server-gpu')",
-    "python_full_version == '3.14.*' and platform_machine == 'aarch64' and platform_python_implementation == 'CPython' and sys_platform == 'linux' and extra != 'extra-24-docforge-dots-ocr-server-cpu' and extra == 'extra-24-docforge-dots-ocr-server-gpu'",
-    "python_full_version == '3.13.*' and platform_machine == 'aarch64' and platform_python_implementation == 'CPython' and sys_platform == 'linux' and extra != 'extra-24-docforge-dots-ocr-server-cpu' and extra == 'extra-24-docforge-dots-ocr-server-gpu'",
-    "python_full_version < '3.13' and platform_machine == 'aarch64' and platform_python_implementation == 'CPython' and sys_platform == 'linux' and extra != 'extra-24-docforge-dots-ocr-server-cpu' and extra == 'extra-24-docforge-dots-ocr-server-gpu'",
     "python_full_version >= '3.15' and sys_platform != 'darwin' and extra == 'extra-24-docforge-dots-ocr-server-cpu' and extra != 'extra-24-docforge-dots-ocr-server-gpu'",
-    "python_full_version < '3.15' and sys_platform != 'darwin' and extra == 'extra-24-docforge-dots-ocr-server-cpu' and extra != 'extra-24-docforge-dots-ocr-server-gpu'",
     "python_full_version >= '3.15' and sys_platform == 'darwin' and extra == 'extra-24-docforge-dots-ocr-server-cpu' and extra != 'extra-24-docforge-dots-ocr-server-gpu'",
-    "python_full_version < '3.15' and sys_platform == 'darwin' and extra == 'extra-24-docforge-dots-ocr-server-cpu' and extra != 'extra-24-docforge-dots-ocr-server-gpu'",
     "python_full_version >= '3.15' and extra != 'extra-24-docforge-dots-ocr-server-cpu' and extra != 'extra-24-docforge-dots-ocr-server-gpu'",
+    "(python_full_version == '3.14.*' and platform_machine != 'aarch64' and extra != 'extra-24-docforge-dots-ocr-server-cpu' and extra == 'extra-24-docforge-dots-ocr-server-gpu') or (python_full_version == '3.14.*' and platform_python_implementation != 'CPython' and extra != 'extra-24-docforge-dots-ocr-server-cpu' and extra == 'extra-24-docforge-dots-ocr-server-gpu') or (python_full_version == '3.14.*' and sys_platform != 'linux' and extra != 'extra-24-docforge-dots-ocr-server-cpu' and extra == 'extra-24-docforge-dots-ocr-server-gpu')",
+    "python_full_version == '3.14.*' and platform_machine == 'aarch64' and platform_python_implementation == 'CPython' and sys_platform == 'linux' and extra != 'extra-24-docforge-dots-ocr-server-cpu' and extra == 'extra-24-docforge-dots-ocr-server-gpu'",
+    "(python_full_version == '3.13.*' and platform_machine != 'aarch64' and extra != 'extra-24-docforge-dots-ocr-server-cpu' and extra == 'extra-24-docforge-dots-ocr-server-gpu') or (python_full_version == '3.13.*' and platform_python_implementation != 'CPython' and extra != 'extra-24-docforge-dots-ocr-server-cpu' and extra == 'extra-24-docforge-dots-ocr-server-gpu') or (python_full_version == '3.13.*' and sys_platform != 'linux' and extra != 'extra-24-docforge-dots-ocr-server-cpu' and extra == 'extra-24-docforge-dots-ocr-server-gpu')",
+    "python_full_version == '3.13.*' and platform_machine == 'aarch64' and platform_python_implementation == 'CPython' and sys_platform == 'linux' and extra != 'extra-24-docforge-dots-ocr-server-cpu' and extra == 'extra-24-docforge-dots-ocr-server-gpu'",
+    "(python_full_version < '3.13' and platform_machine != 'aarch64' and extra != 'extra-24-docforge-dots-ocr-server-cpu' and extra == 'extra-24-docforge-dots-ocr-server-gpu') or (python_full_version < '3.13' and platform_python_implementation != 'CPython' and extra != 'extra-24-docforge-dots-ocr-server-cpu' and extra == 'extra-24-docforge-dots-ocr-server-gpu') or (python_full_version < '3.13' and sys_platform != 'linux' and extra != 'extra-24-docforge-dots-ocr-server-cpu' and extra == 'extra-24-docforge-dots-ocr-server-gpu')",
+    "python_full_version < '3.13' and platform_machine == 'aarch64' and platform_python_implementation == 'CPython' and sys_platform == 'linux' and extra != 'extra-24-docforge-dots-ocr-server-cpu' and extra == 'extra-24-docforge-dots-ocr-server-gpu'",
+    "python_full_version < '3.15' and sys_platform != 'darwin' and extra == 'extra-24-docforge-dots-ocr-server-cpu' and extra != 'extra-24-docforge-dots-ocr-server-gpu'",
+    "python_full_version < '3.15' and sys_platform == 'darwin' and extra == 'extra-24-docforge-dots-ocr-server-cpu' and extra != 'extra-24-docforge-dots-ocr-server-gpu'",
     "python_full_version < '3.15' and extra != 'extra-24-docforge-dots-ocr-server-cpu' and extra != 'extra-24-docforge-dots-ocr-server-gpu'",
 ]
 conflicts = [[
@@ -63,7 +63,7 @@ version = "4.15.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "idna" },
-    { name = "typing-extensions", marker = "python_full_version < '3.15' or (extra == 'extra-24-docforge-dots-ocr-server-cpu' and extra == 'extra-24-docforge-dots-ocr-server-gpu')" },
+    { name = "typing-extensions", marker = "python_full_version < '3.15'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/a9/d2/f4d173e22df740bc37b1db102b386ba719b66e95b0f0d751f556b387e6d2/anyio-4.15.1.tar.gz", hash = "sha256:9f28306018cbd6d329e64a36d58256edff76dd996fe423bc957326e578b82a94", size = 276966, upload-time = "2026-09-05T10:42:39.44Z" }
 wheels = [
@@ -162,11 +162,11 @@ wheels = [
 
 [[package]]
 name = "certifi"
-version = "2026.7.22"
+version = "2026.10.19"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/a3/c2/24167ea9858356b47a87a50d39908bfdb72ceeefe0041586e704e5376b3a/certifi-2026.7.22.tar.gz", hash = "sha256:741e2c3b351ddf169a738da9f2c048608ff7f2c5cc02f1ebc6b118bb090d5d55", size = 138112, upload-time = "2026-07-22T03:35:12.644Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/a6/bd/1436c50cc46699de0230fbaacc1d1de7bfec413176099949e9d5112e88f2/certifi-2026.10.19.tar.gz", hash = "sha256:035c1e85572b141bf1c3a3eff0e33a8eb74917522f2559075ff8d2fea780a1ae", size = 137598, upload-time = "2026-10-20T02:24:16.604Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/0b/a7/71ac2cff56fec219ed242bb11b8efb69fcc4bec75db06fb7bfe35de520e6/certifi-2026.7.22-py3-none-any.whl", hash = "sha256:62f22742b58a1a33014a2b6b706588a8d7e2a88ae7bd1a6ebe8c992928483775", size = 136983, upload-time = "2026-07-22T03:35:11.276Z" },
+    { url = "https://files.pythonhosted.org/packages/c4/51/29046e48f693c54e5b7412216d447a1d8362c9653148d98c02cdf65fa733/certifi-2026.10.19-py3-none-any.whl", hash = "sha256:42d35340cc5b9ba78e818ddbff0c5b1c2b779de448a340fd1b989f5fa8670e1b", size = 136464, upload-time = "2026-10-20T02:24:15.072Z" },
 ]
 
 [[package]]
@@ -357,8 +357,8 @@ gpu = [
     { name = "accelerate" },
     { name = "qwen-vl-utils" },
     { name = "torch", version = "2.9.0+cu126", source = { registry = "https://download.pytorch.org/whl/cu126" } },
-    { name = "torchvision", version = "0.24.0", source = { registry = "https://download.pytorch.org/whl/cu126" }, marker = "(python_full_version < '3.15' and platform_machine == 'aarch64' and platform_python_implementation == 'CPython' and sys_platform == 'linux' and extra == 'extra-24-docforge-dots-ocr-server-gpu') or (python_full_version >= '3.15' and extra == 'extra-24-docforge-dots-ocr-server-cpu' and extra == 'extra-24-docforge-dots-ocr-server-gpu') or (platform_machine != 'aarch64' and extra == 'extra-24-docforge-dots-ocr-server-cpu' and extra == 'extra-24-docforge-dots-ocr-server-gpu') or (platform_python_implementation != 'CPython' and extra == 'extra-24-docforge-dots-ocr-server-cpu' and extra == 'extra-24-docforge-dots-ocr-server-gpu') or (sys_platform != 'linux' and extra == 'extra-24-docforge-dots-ocr-server-cpu' and extra == 'extra-24-docforge-dots-ocr-server-gpu')" },
-    { name = "torchvision", version = "0.24.0+cu126", source = { registry = "https://download.pytorch.org/whl/cu126" }, marker = "(python_full_version >= '3.15' and extra == 'extra-24-docforge-dots-ocr-server-gpu') or (python_full_version < '3.15' and extra == 'extra-24-docforge-dots-ocr-server-cpu' and extra == 'extra-24-docforge-dots-ocr-server-gpu') or (platform_machine != 'aarch64' and extra == 'extra-24-docforge-dots-ocr-server-gpu') or (platform_python_implementation != 'CPython' and extra == 'extra-24-docforge-dots-ocr-server-gpu') or (sys_platform != 'linux' and extra == 'extra-24-docforge-dots-ocr-server-gpu')" },
+    { name = "torchvision", version = "0.24.0", source = { registry = "https://download.pytorch.org/whl/cu126" }, marker = "(python_full_version < '3.15' and platform_machine == 'aarch64' and platform_python_implementation == 'CPython' and sys_platform == 'linux' and extra == 'extra-24-docforge-dots-ocr-server-gpu') or (extra == 'extra-24-docforge-dots-ocr-server-cpu' and extra == 'extra-24-docforge-dots-ocr-server-gpu')" },
+    { name = "torchvision", version = "0.24.0+cu126", source = { registry = "https://download.pytorch.org/whl/cu126" }, marker = "(python_full_version >= '3.15' and extra == 'extra-24-docforge-dots-ocr-server-gpu') or (platform_machine != 'aarch64' and extra == 'extra-24-docforge-dots-ocr-server-gpu') or (platform_python_implementation != 'CPython' and extra == 'extra-24-docforge-dots-ocr-server-gpu') or (sys_platform != 'linux' and extra == 'extra-24-docforge-dots-ocr-server-gpu') or (extra == 'extra-24-docforge-dots-ocr-server-cpu' and extra == 'extra-24-docforge-dots-ocr-server-gpu')" },
     { name = "transformers" },
 ]
 
@@ -687,7 +687,7 @@ source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "colorama" },
     { name = "loguru" },
-    { name = "win32-setctime", marker = "sys_platform == 'win32' or (extra == 'extra-24-docforge-dots-ocr-server-cpu' and extra == 'extra-24-docforge-dots-ocr-server-gpu')" },
+    { name = "win32-setctime", marker = "sys_platform == 'win32'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/84/a4/888ce6ef6df6f0e206c68c4c321124419ffd3d415402ac3573561dd6f276/loggerplusplus-1.1.0.tar.gz", hash = "sha256:c091bf1487b96ce87560a9751326993b461f7704912545405a5bb366dd77f530", size = 51202, upload-time = "2026-09-03T16:34:49.133Z" }
 wheels = [
@@ -699,8 +699,8 @@ name = "loguru"
 version = "0.7.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "colorama", marker = "sys_platform == 'win32' or (extra == 'extra-24-docforge-dots-ocr-server-cpu' and extra == 'extra-24-docforge-dots-ocr-server-gpu')" },
-    { name = "win32-setctime", marker = "sys_platform == 'win32' or (extra == 'extra-24-docforge-dots-ocr-server-cpu' and extra == 'extra-24-docforge-dots-ocr-server-gpu')" },
+    { name = "colorama", marker = "sys_platform == 'win32'" },
+    { name = "win32-setctime", marker = "sys_platform == 'win32'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/3a/05/a1dae3dffd1116099471c643b8924f5aa6524411dc6c63fdae648c4f1aca/loguru-0.7.3.tar.gz", hash = "sha256:19480589e77d47b8d85b2c827ad95d49bf31b0dcde16593892eb51dd18706eb6", size = 63559, upload-time = "2024-12-06T11:20:56.608Z" }
 wheels = [
@@ -785,7 +785,7 @@ version = "2.3.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "ast-serialize" },
-    { name = "librt", marker = "platform_python_implementation != 'PyPy' or (extra == 'extra-24-docforge-dots-ocr-server-cpu' and extra == 'extra-24-docforge-dots-ocr-server-gpu')" },
+    { name = "librt", marker = "platform_python_implementation != 'PyPy'" },
     { name = "mypy-extensions" },
     { name = "pathspec" },
     { name = "typing-extensions" },
@@ -1332,7 +1332,7 @@ name = "pytest"
 version = "9.1.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "colorama", marker = "sys_platform == 'win32' or (extra == 'extra-24-docforge-dots-ocr-server-cpu' and extra == 'extra-24-docforge-dots-ocr-server-gpu')" },
+    { name = "colorama", marker = "sys_platform == 'win32'" },
     { name = "iniconfig" },
     { name = "packaging" },
     { name = "pluggy" },
@@ -1349,7 +1349,7 @@ version = "1.4.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pytest" },
-    { name = "typing-extensions", marker = "python_full_version < '3.13' or (extra == 'extra-24-docforge-dots-ocr-server-cpu' and extra == 'extra-24-docforge-dots-ocr-server-gpu')" },
+    { name = "typing-extensions", marker = "python_full_version < '3.13'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/43/7c/d36d04db312ecf4298932ef77e6e4a9e8ad017906e24e34f0b0c361a2473/pytest_asyncio-1.4.0.tar.gz", hash = "sha256:c6c0d2259945122819f171a32ecea2c349ead889ee28176caaf492143424be42", size = 58514, upload-time = "2026-05-26T09:56:04.083Z" }
 wheels = [
@@ -1609,7 +1609,7 @@ version = "1.6.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyio" },
-    { name = "typing-extensions", marker = "python_full_version < '3.13' or (extra == 'extra-24-docforge-dots-ocr-server-cpu' and extra == 'extra-24-docforge-dots-ocr-server-gpu')" },
+    { name = "typing-extensions", marker = "python_full_version < '3.13'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/b5/b4/205b0d5241d934e8add0c38aa924c4f9fb7330834ff11e5444db964ec3f9/starlette-1.6.0.tar.gz", hash = "sha256:d4e3ac5e546444960c710297a3c9fc3f7ebae1b7e963f3d36173b49da535be9b", size = 2716969, upload-time = "2026-08-08T18:27:57.512Z" }
 wheels = [
@@ -1661,10 +1661,10 @@ source = { registry = "https://download.pytorch.org/whl/cu126" }
 resolution-markers = [
     "python_full_version >= '3.15'",
     "(python_full_version == '3.14.*' and platform_machine != 'aarch64') or (python_full_version == '3.14.*' and platform_python_implementation != 'CPython') or (python_full_version == '3.14.*' and sys_platform != 'linux')",
-    "(python_full_version == '3.13.*' and platform_machine != 'aarch64') or (python_full_version == '3.13.*' and platform_python_implementation != 'CPython') or (python_full_version == '3.13.*' and sys_platform != 'linux')",
-    "(python_full_version < '3.13' and platform_machine != 'aarch64') or (python_full_version < '3.13' and platform_python_implementation != 'CPython') or (python_full_version < '3.13' and sys_platform != 'linux')",
     "python_full_version == '3.14.*' and platform_machine == 'aarch64' and platform_python_implementation == 'CPython' and sys_platform == 'linux'",
+    "(python_full_version == '3.13.*' and platform_machine != 'aarch64') or (python_full_version == '3.13.*' and platform_python_implementation != 'CPython') or (python_full_version == '3.13.*' and sys_platform != 'linux')",
     "python_full_version == '3.13.*' and platform_machine == 'aarch64' and platform_python_implementation == 'CPython' and sys_platform == 'linux'",
+    "(python_full_version < '3.13' and platform_machine != 'aarch64') or (python_full_version < '3.13' and platform_python_implementation != 'CPython') or (python_full_version < '3.13' and sys_platform != 'linux')",
     "python_full_version < '3.13' and platform_machine == 'aarch64' and platform_python_implementation == 'CPython' and sys_platform == 'linux'",
 ]
 dependencies = [
@@ -1959,11 +1959,11 @@ wheels = [
 
 [[package]]
 name = "urllib3"
-version = "2.7.0"
+version = "2.8.0"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/53/0c/06f8b233b8fd13b9e5ee11424ef85419ba0d8ba0b3138bf360be2ff56953/urllib3-2.7.0.tar.gz", hash = "sha256:231e0ec3b63ceb14667c67be60f2f2c40a518cb38b03af60abc813da26505f4c", size = 433602, upload-time = "2026-05-07T16:13:18.596Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/e3/05/b17359e1cefb4f909b5e40b1b90a496d987258916dbbf88e842c729f510e/urllib3-2.8.0.tar.gz", hash = "sha256:63bf2ead4c879426ebf22ef2a781eeb4aa3b4ae798a0435506f8687fd5bb9b63", size = 458972, upload-time = "2026-09-15T19:29:36.253Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/7f/3e/5db95bcf282c52709639744ca2a8b149baccf648e39c8cc87553df9eae0c/urllib3-2.7.0-py3-none-any.whl", hash = "sha256:9fb4c81ebbb1ce9531cce37674bbc6f1360472bc18ca9a553ede278ef7276897", size = 131087, upload-time = "2026-05-07T16:13:17.151Z" },
+    { url = "https://files.pythonhosted.org/packages/92/9d/c4e665119135114480843e7ab388fa94d8480650450e6f8e26b70d323a4c/urllib3-2.8.0-py3-none-any.whl", hash = "sha256:0cf3cae568d36aa9576b28dfb35f11328f1cb974ca7647d9475ebb86c75ac6e3", size = 135717, upload-time = "2026-09-15T19:29:34.577Z" },
 ]
 
 [[package]]
@@ -1984,7 +1984,7 @@ standard = [
     { name = "httptools" },
     { name = "python-dotenv" },
     { name = "pyyaml" },
-    { name = "uvloop", marker = "(platform_python_implementation != 'PyPy' and sys_platform != 'cygwin' and sys_platform != 'win32') or (platform_python_implementation == 'PyPy' and extra == 'extra-24-docforge-dots-ocr-server-cpu' and extra == 'extra-24-docforge-dots-ocr-server-gpu') or (sys_platform == 'cygwin' and extra == 'extra-24-docforge-dots-ocr-server-cpu' and extra == 'extra-24-docforge-dots-ocr-server-gpu') or (sys_platform == 'win32' and extra == 'extra-24-docforge-dots-ocr-server-cpu' and extra == 'extra-24-docforge-dots-ocr-server-gpu')" },
+    { name = "uvloop", marker = "platform_python_implementation != 'PyPy' and sys_platform != 'cygwin' and sys_platform != 'win32'" },
     { name = "watchfiles" },
     { name = "websockets" },
 ]
