@@ -125,7 +125,7 @@ jobs:
 
       - name: Upload report artifact
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: retrieval-quality-report
           path: /tmp/retrieval-quality-report.json
@@ -138,7 +138,7 @@ jobs:
 
       - name: Upload stack logs (failure only — a red run must be debuggable without a re-run)
         if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: retrieval-quality-stack-logs
           path: /tmp/retrieval-quality-stack.log
