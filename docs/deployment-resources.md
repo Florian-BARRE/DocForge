@@ -146,7 +146,7 @@ shared production services):
 |---|---|
 | `docforge-worker` (cpu) | 2.92 GB |
 | `docforge-paddle-server` (cpu) | 2.30 GB |
-| `gotenberg/gotenberg:8.39.0` | 2.46 GB |
+| `gotenberg/gotenberg:8.39.0` | 2.47 GB |
 | `docforge-bge-server` (cpu) | 1.94 GB |
 | `postgres:16.15-bookworm` | 622 MB |
 | `docforge-app` | 612 MB |
