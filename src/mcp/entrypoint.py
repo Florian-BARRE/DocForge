@@ -21,6 +21,7 @@ from loggerplusplus import loggerplusplus
 from config_loader import McpConfig  # MUST be first — registers sys.path + configures logging
 from libs.path_guard import PathGuard
 from libs.scoped_sdk import ScopedSdk, ScopedSdkProvider
+from libs.sdk_logging import route_sdk_logging
 from libs.server import build_http_app, build_mcp
 
 logger = loggerplusplus.bind(identifier="McpServer")
@@ -28,6 +29,8 @@ logger = loggerplusplus.bind(identifier="McpServer")
 
 def main() -> None:
     """Build the MCP server and run it under the configured transport."""
+    # 0. Route the mcp SDK's stdlib logging (tool rejections, crashes) into loggerplusplus.
+    route_sdk_logging()
     # 1. Build the per-token SDK client provider. DOCFORGE_API_TOKEN is the fallback used ONLY by
     #    stdio (require_bearer=False) — no Authorization header exists to forward there. In HTTP
     #    mode (require_bearer=True) every call must carry its own caller token (see scoped_sdk.py);
