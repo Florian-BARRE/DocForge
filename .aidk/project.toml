@@ -6,6 +6,7 @@
 # `cp services/docforge/.env.example services/docforge/.env` (placeholder config, nothing is dialed).
 # Beyond the CI: mineru_server and dots_ocr_server (format, lint, tests on the base sync: their engines are
 # GPU extras the pure code does not need).
+# Beyond the CI too: the *-lock checks (uv lock --check per uv project); gate.yml has none yet (florian's).
 # Left to the CI, on purpose:
 # - gate.yml db-tests: a real Postgres service (tests/db, -m db, TEST_POSTGRES_*), not a worktree's.
 # - gate.yml docker-build: 7 multi-GB image builds (torch, paddle), far over a check's timeout.
@@ -19,36 +20,44 @@
 kind = "code"    # code, docs or research: docs and research need no tests rule, their checks are optional
 
 [checks]
+# Each uv project's uv.lock matches its pyproject.toml (uv sync --frozen would install a stale lock silently).
+docforge-lock = ["uv", "lock", "--check", "--directory", "src/docforge"]
 docforge-deps = ["uv", "sync", "--frozen", "--directory", "src/docforge"]
 docforge-format = ["uv", "run", "--frozen", "--directory", "src/docforge", "ruff", "format", "--check", "."]
 docforge-lint = ["uv", "run", "--frozen", "--directory", "src/docforge", "ruff", "check", "."]
 docforge-tests = ["uv", "run", "--frozen", "--directory", "src/docforge", "pytest", "tests/units", "-q", "--cov=app", "--cov=worker", "--cov=shared", "--cov-report=term-missing"]
 docforge-rag-eval = ["uv", "run", "--frozen", "--directory", "src/docforge", "python", "-m", "pytest", "tests/rag_eval", "-q", "-m", "not live"]
+sdk-lock = ["uv", "lock", "--check", "--directory", "src/docforge_sdk"]
 sdk-deps = ["uv", "sync", "--frozen", "--directory", "src/docforge_sdk"]
 sdk-format = ["uv", "run", "--frozen", "--directory", "src/docforge_sdk", "ruff", "format", "--check", "."]
 sdk-lint = ["uv", "run", "--frozen", "--directory", "src/docforge_sdk", "ruff", "check", "."]
 sdk-types = ["uv", "run", "--frozen", "--directory", "src/docforge_sdk", "mypy", "--strict", "docforge_sdk"]
 sdk-tests = ["uv", "run", "--frozen", "--directory", "src/docforge_sdk", "pytest", "-q", "-m", "not live"]
+mcp-lock = ["uv", "lock", "--check", "--directory", "src/mcp"]
 mcp-deps = ["uv", "sync", "--frozen", "--directory", "src/mcp"]
 mcp-format = ["uv", "run", "--frozen", "--directory", "src/mcp", "ruff", "format", "--check", "."]
 mcp-lint = ["uv", "run", "--frozen", "--directory", "src/mcp", "ruff", "check", "."]
 mcp-types = ["uv", "run", "--frozen", "--directory", "src/mcp", "mypy", "."]
 mcp-tests = ["uv", "run", "--frozen", "--directory", "src/mcp", "pytest", "-q"]
+bge-lock = ["uv", "lock", "--check", "--directory", "src/bge_server"]
 bge-deps = ["uv", "sync", "--frozen", "--directory", "src/bge_server", "--extra", "cpu"]
 bge-format = ["uv", "run", "--no-sync", "--directory", "src/bge_server", "ruff", "format", "--check", "."]
 bge-lint = ["uv", "run", "--no-sync", "--directory", "src/bge_server", "ruff", "check", "."]
 bge-types = ["uv", "run", "--no-sync", "--directory", "src/bge_server", "mypy", "."]
 bge-tests = ["uv", "run", "--no-sync", "--directory", "src/bge_server", "pytest", "-q"]
+paddle-lock = ["uv", "lock", "--check", "--directory", "src/paddle_server"]
 paddle-deps = ["uv", "sync", "--frozen", "--directory", "src/paddle_server", "--extra", "cpu"]
 paddle-format = ["uv", "run", "--no-sync", "--directory", "src/paddle_server", "ruff", "format", "--check", "."]
 paddle-lint = ["uv", "run", "--no-sync", "--directory", "src/paddle_server", "ruff", "check", "."]
 paddle-types = ["uv", "run", "--no-sync", "--directory", "src/paddle_server", "mypy", "."]
 paddle-tests = ["uv", "run", "--no-sync", "--directory", "src/paddle_server", "pytest", "-q"]
+mineru-lock = ["uv", "lock", "--check", "--directory", "src/mineru_server"]
 mineru-deps = ["uv", "sync", "--frozen", "--directory", "src/mineru_server"]
 mineru-format = ["uv", "run", "--frozen", "--directory", "src/mineru_server", "ruff", "format", "--check", "."]
 mineru-lint = ["uv", "run", "--frozen", "--directory", "src/mineru_server", "ruff", "check", "."]
 mineru-types = ["uv", "run", "--frozen", "--directory", "src/mineru_server", "mypy", "."]
 mineru-tests = ["uv", "run", "--frozen", "--directory", "src/mineru_server", "pytest", "-q"]
+dots-ocr-lock = ["uv", "lock", "--check", "--directory", "src/dots_ocr_server"]
 dots-ocr-deps = ["uv", "sync", "--frozen", "--directory", "src/dots_ocr_server"]
 dots-ocr-format = ["uv", "run", "--frozen", "--directory", "src/dots_ocr_server", "ruff", "format", "--check", "."]
 dots-ocr-lint = ["uv", "run", "--frozen", "--directory", "src/dots_ocr_server", "ruff", "check", "."]
@@ -83,11 +92,12 @@ env_from = "services/docforge/.env.example"
 # run at each commit (keep them fast: a few seconds) and before each push.
 # Measured on the dev center (2026-10-27, warm caches): pre_commit 0.2 s together (ruff, cached); pre_push
 # about 76 s (docforge-tests 54 s, sdk-parity 5 s, mcp-tests 5 s, frontend-types 5 s, frontend-lint 3 s,
-# sdk-tests 2 s, the rest under a second each). bge and paddle stay out of both hooks: their checks run
-# --no-sync on the CPU torch/paddle venv, which a worktree only has after aidk verify's bge-deps/paddle-deps.
+# sdk-tests 2 s, the rest under a second each; the seven *-lock checks 0.2 s together, 2026-10-29). bge and
+# paddle stay out of both hooks but for their lock checks (no venv needed): their other checks run --no-sync
+# on the CPU torch/paddle venv, which a worktree only has after aidk verify's bge-deps/paddle-deps.
 [hooks]
 pre_commit = ["docforge-format", "docforge-lint", "sdk-format", "sdk-lint", "mcp-format", "mcp-lint", "mineru-format", "mineru-lint", "dots-ocr-format", "dots-ocr-lint"]
-pre_push = ["sdk-types", "sdk-tests", "mcp-types", "mcp-tests", "mineru-tests", "dots-ocr-tests", "frontend-lint", "frontend-types", "docforge-rag-eval", "sdk-parity", "secrets-files", "docforge-tests"]
+pre_push = ["docforge-lock", "sdk-lock", "mcp-lock", "bge-lock", "paddle-lock", "mineru-lock", "dots-ocr-lock", "sdk-types", "sdk-tests", "mcp-types", "mcp-tests", "mineru-tests", "dots-ocr-tests", "frontend-lint", "frontend-types", "docforge-rag-eval", "sdk-parity", "secrets-files", "docforge-tests"]
 commit_format = "conventional"
 secrets = true
 # src/docforge/uv.lock is ~1.05 MB, over the 1024 KiB default: a lock change would be refused at commit.
