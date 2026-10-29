@@ -15,7 +15,7 @@
 #   (docling, rapidocr-onnxruntime, pypdfium2, pillow) — the app image never carries them
 # - Pre-download the tiktoken BPE cache so an offline/air-gapped worker never fetches at runtime
 ###############################################################################
-FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim AS py-build
+FROM ghcr.io/astral-sh/uv:0.9.30-python3.12-bookworm-slim@sha256:e5b65587bce7de595f299855d7385fe7fca39b8a74baa261ba1b7147afa78e58 AS py-build
 
 WORKDIR /workspace
 
@@ -58,7 +58,7 @@ RUN /opt/venv/bin/python -c "import tiktoken; tiktoken.get_encoding('cl100k_base
 #     /app/worker          -> the worker (entrypoint, config, backend)
 # - Run the long-lived arq queue server as the container's process
 ###############################################################################
-FROM python:3.12-slim-bookworm AS runtime
+FROM python:3.12.16-slim-bookworm@sha256:e697c81897302a4c4333bade000d98038fbb21eb064f8ee1fd42d02ebcd9d337 AS runtime
 
 # OCI image metadata — declares the image's license + source (GPL-3.0 compliance: the
 # full license text lives in the PUBLIC source repo linked here).
