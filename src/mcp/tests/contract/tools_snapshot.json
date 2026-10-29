@@ -1,0 +1,3588 @@
+[
+  {
+    "annotations": null,
+    "description": "\n        Apply a `.dfsnippet` of the given `kind` onto an EXISTING collection (healed/validated like a\n        PATCH; 422 on a version/kind mismatch or an invalid graph/schema). `snippet` is the wrapper\n        returned by export_collection_snippet. Provider secrets from a DIFFERENT collection arrive\n        masked and must be re-entered before the graph can run. Returns {collection_id, kind,\n        needs_reindex}.\n        ",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "collection_id": {
+          "title": "Collection Id",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "pipeline",
+            "search",
+            "schema"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "snippet": {
+          "additionalProperties": true,
+          "title": "Snippet",
+          "type": "object"
+        }
+      },
+      "required": [
+        "collection_id",
+        "kind",
+        "snippet"
+      ],
+      "title": "apply_collection_snippetArguments",
+      "type": "object"
+    },
+    "name": "apply_collection_snippet"
+  },
+  {
+    "annotations": null,
+    "description": "\n        Apply ONE stage action to a collection's stored ingestion pipeline and save it — the safe\n        way to edit a collection's pipeline (no full-blob round-trip). Returns the stage view\n        (secrets masked), validity, issues, notices and `persisted`: nothing is saved when the\n        result is invalid or the action changed nothing (read the notices).\n\n        `action` is ``{\"action\": <kind>, **params}`` (kinds + params_schema in\n        ``palette.mechanics.stage_actions``). A ``set_config`` defaults to ``mode=\"merge\"`` here:\n        only the keys you send change, every other key — the api_key included — is kept; send a\n        key as null to reset it to its default. Pass ``mode=\"replace\"`` explicitly to replace the\n        whole config. An omitted api_key is always kept; an explicit \"\" clears it.\n\n        The embed stage has two independent provider slots, ``dense`` and ``sparse`` (listed in the\n        stage view's ``slots`` with each slot's ``provider``, ``available`` kinds and\n        ``config_schemas``). Set a slot provider with\n        ``{\"action\": \"set_provider\", \"stage\": \"embed\", \"slot\": \"sparse\", \"kind\": \"bm25_local\"}``\n        (dense kinds: bge_server, openai_compatible; sparse kinds: bge_server, bm25_local). Turn a\n        slot off with ``\"kind\": null`` (refused if the other slot is already off). Edit one slot's\n        config with ``{\"action\": \"set_config\", \"stage\": \"embed\", \"slot\": \"dense\",\n        \"config\": {\"base_url\": \"...\", \"api_key\": \"...\"}}``. Changing a provider sets\n        ``needs_reindex``: then run rebuild_index (or reingest when a dense slot was added).\n        ",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "additionalProperties": true,
+          "title": "Action",
+          "type": "object"
+        },
+        "collection_id": {
+          "title": "Collection Id",
+          "type": "string"
+        },
+        "note": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Note"
+        }
+      },
+      "required": [
+        "collection_id",
+        "action"
+      ],
+      "title": "apply_collection_stageArguments",
+      "type": "object"
+    },
+    "name": "apply_collection_stage"
+  },
+  {
+    "annotations": null,
+    "description": "\n        Compile a stage-level action into a pipeline blob you hold — STATELESS, nothing is saved.\n        Returns the recompiled blob (always buildable), its stage view, validity, issues and any\n        compiler notices. To change an EXISTING collection's pipeline, use apply_collection_stage\n        instead: it applies the action to the stored pipeline and persists it, so you never\n        round-trip the full blob (whose secrets come back masked) through update_collection.\n\n        The action is ``{<discriminator>: <kind>, **params}``; get the discriminator key and every\n        kind + params_schema from ``palette.mechanics.stage_actions`` (GET a pipeline with\n        ``full=true``) — the ``discriminator`` field on each card names the tag key to send under.\n        ",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "additionalProperties": true,
+          "title": "Action",
+          "type": "object"
+        },
+        "blob": {
+          "additionalProperties": true,
+          "title": "Blob",
+          "type": "object"
+        },
+        "key": {
+          "title": "Key",
+          "type": "string"
+        }
+      },
+      "required": [
+        "key",
+        "blob",
+        "action"
+      ],
+      "title": "apply_pipeline_stageArguments",
+      "type": "object"
+    },
+    "name": "apply_pipeline_stage"
+  },
+  {
+    "annotations": null,
+    "description": "\n        List a document's / a filter's passages in reading order, without a query.\n\n        Use it to read \"all passages of document X\" (filter on its identifier field) or to walk a\n        process page by page; pass next_cursor back (with the same filters) to continue. Order is\n        document then chunk position. For relevance-ranked retrieval use search_collection.\n        Call describe_collection first for the filterable fields.\n\n        OUTPUT (format=\"text\"): per chunk `[n] <title> | p.<page_number> | <heading > path> | doc\n        <id> | chunk <id>` then the text; then `next_cursor: <token>` (or `end of results`) and\n        `Hint: ...` lines. format=\"json\": the compact {chunks, next_cursor, hints}.\n        ",
+    "inputSchema": {
+      "$defs": {
+        "FilterOperator": {
+          "additionalProperties": false,
+          "description": "One filter operator object: any subset of the backend's operator keys, nothing else.\n\nPer-type validity (e.g. no prefix on a number field) stays the server's call - it answers 422\nwith the valid operators for the field.",
+          "properties": {
+            "contains": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Substring (case-insensitive).",
+              "title": "Contains"
+            },
+            "eq": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Equals this value.",
+              "title": "Eq"
+            },
+            "exists": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "true = value present; false = absent.",
+              "title": "Exists"
+            },
+            "gt": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Range: > (number or ISO datetime).",
+              "title": "Gt"
+            },
+            "gte": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Range: >= (number or ISO datetime).",
+              "title": "Gte"
+            },
+            "in": {
+              "anyOf": [
+                {
+                  "items": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "integer"
+                      },
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "boolean"
+                      }
+                    ]
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Any of these values.",
+              "title": "In"
+            },
+            "lt": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Range: < (number or ISO datetime).",
+              "title": "Lt"
+            },
+            "lte": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Range: <= (number or ISO datetime).",
+              "title": "Lte"
+            },
+            "not": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                },
+                {
+                  "items": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "integer"
+                      },
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "boolean"
+                      }
+                    ]
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Exclude this value (or any of a list).",
+              "title": "Not"
+            },
+            "not_in": {
+              "anyOf": [
+                {
+                  "items": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "integer"
+                      },
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "boolean"
+                      }
+                    ]
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Exclude all of these values.",
+              "title": "Not In"
+            },
+            "prefix": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Prefix (case-insensitive).",
+              "title": "Prefix"
+            }
+          },
+          "title": "FilterOperator",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "collection_id": {
+          "title": "Collection Id",
+          "type": "string"
+        },
+        "cursor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The previous page's next_cursor, with the SAME filters. Omit for the first page.",
+          "title": "Cursor"
+        },
+        "filters": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "items": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "boolean"
+                        }
+                      ]
+                    },
+                    "type": "array"
+                  },
+                  {
+                    "$ref": "#/$defs/FilterOperator"
+                  }
+                ]
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Constraints on FILTERABLE metadata fields, ANDed: {field_name: value}. Value forms: a scalar = equality (strings case-insensitive); a list = any-of; an operator object: {\"eq\"|\"not\": v}, {\"in\"|\"not_in\": [..]}, {\"contains\"|\"prefix\": \"text\"}, {\"exists\": bool}, {\"gte\"|\"gt\"|\"lte\"|\"lt\": number-or-ISO-datetime}. Example: {\"topic\": {\"not\": \"legal\"}, \"title\": {\"contains\": \"audit\"}, \"year\": {\"gte\": 2023}}. Call describe_collection for each field's type and allowed operators (a wrong operator for a type is refused with the valid ones).",
+          "title": "Filters"
+        },
+        "format": {
+          "default": "text",
+          "description": "'text' (default) = one block per chunk; 'json' = compact response.",
+          "enum": [
+            "text",
+            "json"
+          ],
+          "title": "Format",
+          "type": "string"
+        },
+        "limit": {
+          "default": 20,
+          "description": "Chunks per page.",
+          "maximum": 200,
+          "minimum": 1,
+          "title": "Limit",
+          "type": "integer"
+        },
+        "return_fields": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Chunk fields to return (as search_collection, minus score). Omit for the agent default: text, document_title, page_number, heading_path, metadata (+ chunk_id, document_id).",
+          "title": "Return Fields"
+        }
+      },
+      "required": [
+        "collection_id"
+      ],
+      "title": "browse_chunksArguments",
+      "type": "object"
+    },
+    "name": "browse_chunks"
+  },
+  {
+    "annotations": null,
+    "description": "\n        Stop an ingestion job. By default (force=False) a running job is asked to stop\n        cooperatively at its next stage boundary (stays 'running' with cancel_requested=true\n        until it does); a queued job is cancelled immediately either way. Pass force=True to\n        immediately terminate a running or wedged job regardless of worker state. 409 if the\n        job is already terminal (done/failed/cancelled).\n        ",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "force": {
+          "default": false,
+          "title": "Force",
+          "type": "boolean"
+        },
+        "job_id": {
+          "title": "Job Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "job_id"
+      ],
+      "title": "cancel_jobArguments",
+      "type": "object"
+    },
+    "name": "cancel_job"
+  },
+  {
+    "annotations": null,
+    "description": "\n        Probe a collection's operational health on demand — a zero-spend provider reachability\n        sweep across the ingest AND search graphs, plus index/doc stats and a rolled-up verdict\n        (404 when unknown). No job is enqueued and nothing is billed; this is read-only diagnostics.\n        ",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "collection_id": {
+          "title": "Collection Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "collection_id"
+      ],
+      "title": "collection_healthArguments",
+      "type": "object"
+    },
+    "name": "collection_health"
+  },
+  {
+    "annotations": null,
+    "description": "\n        Measure a collection's material footprint per store (404 when unknown). S3 bytes are\n        EXACT (deduped); Postgres and Qdrant bytes are ESTIMATES (each section flags this via\n        its own `estimated`). Includes a per-document breakdown, heaviest first.\n        ",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "collection_id": {
+          "title": "Collection Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "collection_id"
+      ],
+      "title": "collection_storage_footprintArguments",
+      "type": "object"
+    },
+    "name": "collection_storage_footprint"
+  },
+  {
+    "annotations": null,
+    "description": "\n        Create a new root-owned API key.\n\n        IMPORTANT: the plaintext key is returned EXACTLY ONCE in the response (the `key`\n        field) and is never retrievable again — only its hash is stored server-side. Capture\n        the `key` value from the response immediately before discarding it.\n\n        `permissions` scopes the key's capabilities and collections (null/omitted = full\n        access, the root shape): `{\"capabilities\": [...], \"collections\": [\"*\"]}`, or a named\n        preset instead of the list — `{\"profile\": \"agent_reader\", \"collections\": [...]}`.\n        Profiles: agent_reader (read_text + search — a business chatbot), agent_searcher\n        (search only), operator (read_text + read_technical + write), admin (every capability).\n        read_text = documents, markdown/html, outline, lean chunks, describe, job status;\n        read_technical = IR, pages, provenance, pipeline blobs, traces, exports, ops, audit.\n        `expires_at` is an ISO-8601 datetime string; omit for a key that never expires.\n        ",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "expires_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expires At"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "permissions": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Permissions"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "create_api_keyArguments",
+      "type": "object"
+    },
+    "name": "create_api_key"
+  },
+  {
+    "annotations": null,
+    "description": "\n        Create a collection from A to Z. BEFORE calling this, call\n        get_collection_contract_schema() to learn the exact enum values for `supported_formats`\n        (`supported_format_tokens`) and for each field's `field_type`/`origin`/`scope`\n        (`field_schema`) — do not guess them. To discover the available business presets (label +\n        rationale for each), call get_pipeline_design(\"ingest\") / get_pipeline_design(\"search\")\n        and read their `presets` list.\n\n        `fields` is the FULL metadata schema declared up front (each item: field_name,\n        field_type, required, filterable, lexical, semantic, enum_values, origin, scope, and an\n        optional `description` saying what the field means — it is shown to searching agents) — the\n        vector space is fixed at creation and cannot grow later; omit for a schema-free\n        collection. `pipeline` is the ingestion graph blob (opaque dict); omit it AND leave\n        `preset` unset to get the product default ('standard' — all stages wired, thorough but\n        slower/costlier). Ingestion presets (ignored if `pipeline` is also set): `preset=\"light\"`\n        is the fast on-ramp (enrichment-free core, no config); `preset=\"ocr_scan\"` adds a local OCR\n        pass for scanned/image documents; `preset=\"high_precision\"` uses finer chunks for sharper\n        retrieval. `search_preset` selects the collection's SEARCH blob: 'hybrid' (default\n        dense+sparse fusion), 'hybrid_rerank' (hybrid + cross-encoder rerank) or 'dense_only' (pure\n        semantic). `tags` is an optional list of free-form labels for grouping/filtering collections\n        in the UI (omit for untagged). `job_timeout_seconds` overrides the worker's default\n        whole-ingest-job wall-clock timeout for this collection (omit to inherit the server\n        default). `trace_verbosity=\"full\"` additionally stores each pipeline node's raw input/output\n        payload (fetchable via get_job_event_payload) instead of just its cheap shape summary —\n        costs object-store space, use only while debugging a collection's ingestion.\n        `title_field` names a document-scope field whose value becomes each document's display\n        title (hit `document_title`); omit to keep the parser-derived title.\n        ",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "fields": {
+          "anyOf": [
+            {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Fields"
+        },
+        "job_timeout_seconds": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Job Timeout Seconds"
+        },
+        "max_file_size_bytes": {
+          "title": "Max File Size Bytes",
+          "type": "integer"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "pipeline": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Pipeline"
+        },
+        "preset": {
+          "anyOf": [
+            {
+              "enum": [
+                "standard",
+                "light",
+                "ocr_scan",
+                "high_precision"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Preset"
+        },
+        "search_preset": {
+          "anyOf": [
+            {
+              "enum": [
+                "hybrid",
+                "hybrid_rerank",
+                "dense_only"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Search Preset"
+        },
+        "supported_formats": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Supported Formats",
+          "type": "array"
+        },
+        "tags": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tags"
+        },
+        "title_field": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Title Field"
+        },
+        "trace_verbosity": {
+          "anyOf": [
+            {
+              "enum": [
+                "shape",
+                "full"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Trace Verbosity"
+        }
+      },
+      "required": [
+        "name",
+        "supported_formats",
+        "max_file_size_bytes"
+      ],
+      "title": "create_collectionArguments",
+      "type": "object"
+    },
+    "name": "create_collection"
+  },
+  {
+    "annotations": null,
+    "description": "Delete a collection (404 when unknown). Irreversible.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "collection_id": {
+          "title": "Collection Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "collection_id"
+      ],
+      "title": "delete_collectionArguments",
+      "type": "object"
+    },
+    "name": "delete_collection"
+  },
+  {
+    "annotations": null,
+    "description": "Delete a collection alias (the collection itself is untouched). Requires a FULL-ACCESS\n        admin key; refused (409) while live keys are still scoped `alias:<name>` -- re-scope or\n        revoke them first, or re-point the alias instead.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "delete_collection_aliasArguments",
+      "type": "object"
+    },
+    "name": "delete_collection_alias"
+  },
+  {
+    "annotations": null,
+    "description": "Delete a document everywhere (Qdrant points, PG cascade, orphan-only blob purge). Irreversible.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "document_id": {
+          "title": "Document Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "document_id"
+      ],
+      "title": "delete_documentArguments",
+      "type": "object"
+    },
+    "name": "delete_document"
+  },
+  {
+    "annotations": null,
+    "description": "\n        Bulk-delete documents. `selector` is {\"document_ids\": [...]} OR {\"filter\": {...}, \"exclude_ids\":\n        [...]} (exactly one mode). Deletes everywhere (Postgres + Qdrant + S3). Returns matched vs deleted.\n        ",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "collection_id": {
+          "title": "Collection Id",
+          "type": "string"
+        },
+        "selector": {
+          "additionalProperties": true,
+          "title": "Selector",
+          "type": "object"
+        }
+      },
+      "required": [
+        "collection_id",
+        "selector"
+      ],
+      "title": "delete_documentsArguments",
+      "type": "object"
+    },
+    "name": "delete_documents"
+  },
+  {
+    "annotations": null,
+    "description": "\n        Call this FIRST before searching a collection: lists fields (meaning, type, real example\n        values), valid search_in targets, the filter grammar and ready-to-use example requests.\n        Never includes pipeline/search config or secrets.\n        ",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "collection_id": {
+          "title": "Collection Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "collection_id"
+      ],
+      "title": "describe_collectionArguments",
+      "type": "object"
+    },
+    "name": "describe_collection"
+  },
+  {
+    "annotations": null,
+    "description": "Diff two config versions: added/removed/changed paths (graph nodes keyed by id, e.g.\n        `/pipeline/nodes/parse/config/max_pages`) with before/after values, secrets masked.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "collection_id": {
+          "title": "Collection Id",
+          "type": "string"
+        },
+        "from_version": {
+          "title": "From Version",
+          "type": "integer"
+        },
+        "to_version": {
+          "title": "To Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "collection_id",
+        "from_version",
+        "to_version"
+      ],
+      "title": "diff_config_versionsArguments",
+      "type": "object"
+    },
+    "name": "diff_config_versions"
+  },
+  {
+    "annotations": null,
+    "description": "\n        Apply ordered graph operations to a pipeline blob, server-side, then build + validate\n        + describe the result. Returns the edited blob (or the original one when an operation\n        was impossible) plus its validity, issues, described tree and edit_error.\n\n        Each operation is ``{<discriminator>: <kind>, **params}``; get the discriminator key and\n        every kind + params_schema from ``palette.mechanics.edit_operations`` (GET a pipeline with\n        ``full=true``) — the ``discriminator`` field on each card names the tag key to send under.\n        ",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "blob": {
+          "additionalProperties": true,
+          "title": "Blob",
+          "type": "object"
+        },
+        "key": {
+          "title": "Key",
+          "type": "string"
+        },
+        "operations": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Operations",
+          "type": "array"
+        }
+      },
+      "required": [
+        "key",
+        "blob",
+        "operations"
+      ],
+      "title": "edit_pipelineArguments",
+      "type": "object"
+    },
+    "name": "edit_pipeline"
+  },
+  {
+    "annotations": null,
+    "description": "\n        Project a collection's ingestion cost and volume BEFORE spending (404 when unknown). This\n        is an ESTIMATE, not a quote. `scope` picks the whole-collection target — `pending`\n        (uploaded-but-not-yet-ingested, the default preview) or `all` (every document). To scope a\n        SUBSET instead, pass `document_ids` (a specific selection) OR `filter` (the same shape as the\n        documents-grid filter) — either one overrides `scope`; they are mutually exclusive. Returns\n        the per-stage token/call/cost breakdown, projected material volume, totals, the assumptions\n        it rests on, and human-readable caveats. `total_cost_usd` is null whenever any enabled paid\n        stage has no known rate (`cost_complete` false) — then report `total_cost_lower_bound_usd`\n        as a minimum (\"≥ $X\") and relay the caveat naming the unpriced model, its stage and the\n        `estimate_overrides.rates` path to price it; never present the lower bound as the total.\n        ",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "collection_id": {
+          "title": "Collection Id",
+          "type": "string"
+        },
+        "document_ids": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Document Ids"
+        },
+        "filter": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Filter"
+        },
+        "scope": {
+          "default": "pending",
+          "enum": [
+            "pending",
+            "all"
+          ],
+          "title": "Scope",
+          "type": "string"
+        }
+      },
+      "required": [
+        "collection_id"
+      ],
+      "title": "estimate_collection_costArguments",
+      "type": "object"
+    },
+    "name": "estimate_collection_cost"
+  },
+  {
+    "annotations": null,
+    "description": "\n        Open an asynchronous export of a whole collection into a portable `.dcexport` bundle\n        (404 when the collection is unknown). Returns the transfer handle immediately (202) —\n        poll get_transfer with its transfer_id for progress.\n        ",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "collection_id": {
+          "title": "Collection Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "collection_id"
+      ],
+      "title": "export_collectionArguments",
+      "type": "object"
+    },
+    "name": "export_collection"
+  },
+  {
+    "annotations": null,
+    "description": "\n        Export one granular config facet as a portable, secret-masked `.dfsnippet` (config-only,\n        synchronous — contrast the async whole-collection `.dcexport`). `kind` selects the slice:\n        `pipeline` (the ingestion graph), `search` (the search graph), or `schema` (the metadata\n        fields). Returns the versioned snippet (kind, format_version, docforge_version, body).\n        ",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "collection_id": {
+          "title": "Collection Id",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "pipeline",
+            "search",
+            "schema"
+          ],
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "collection_id",
+        "kind"
+      ],
+      "title": "export_collection_snippetArguments",
+      "type": "object"
+    },
+    "name": "export_collection_snippet"
+  },
+  {
+    "annotations": null,
+    "description": "\n        Fetch a content-addressed blob's bytes (page render, figure crop, canonical PDF,\n        original upload). Image blobs are returned as an inline image; every other mime type\n        is returned base64-encoded alongside its mime_type.\n        ",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "content_hash": {
+          "title": "Content Hash",
+          "type": "string"
+        }
+      },
+      "required": [
+        "content_hash"
+      ],
+      "title": "get_blobArguments",
+      "type": "object"
+    },
+    "name": "get_blob"
+  },
+  {
+    "annotations": null,
+    "description": "Report what THIS DocForge deployment can do right now: version, GPU presence, reachable\n        sidecars and available pipeline capabilities.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {},
+      "title": "get_capabilitiesArguments",
+      "type": "object"
+    },
+    "name": "get_capabilities"
+  },
+  {
+    "annotations": null,
+    "description": "\n        A chunk plus its neighbours in the same document - the #1 way to read around a search hit\n        (a hit is often a fragment; its neighbours give the surrounding passage).\n\n        Pass the chunk_id of a search_collection / browse_chunks hit or an outline heading.\n        OUTPUT (format=\"text\"): a title line, then per chunk `[index] p.N | heading > path` and its\n        text; the requested chunk carries a `*` after its index. Disabled (non-searchable)\n        neighbours are skipped, so the window may reach further than before/after. format=\"json\":\n        the compact {document_id, display_title, chunks[]} (each with is_target).\n        ",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "after": {
+          "default": 1,
+          "description": "Chunks to include after.",
+          "maximum": 5,
+          "minimum": 0,
+          "title": "After",
+          "type": "integer"
+        },
+        "before": {
+          "default": 1,
+          "description": "Chunks to include before.",
+          "maximum": 5,
+          "minimum": 0,
+          "title": "Before",
+          "type": "integer"
+        },
+        "chunk_id": {
+          "title": "Chunk Id",
+          "type": "string"
+        },
+        "format": {
+          "default": "text",
+          "description": "'text' (default) = readable window; 'json' = compact.",
+          "enum": [
+            "text",
+            "json"
+          ],
+          "title": "Format",
+          "type": "string"
+        }
+      },
+      "required": [
+        "chunk_id"
+      ],
+      "title": "get_chunk_contextArguments",
+      "type": "object"
+    },
+    "name": "get_chunk_context"
+  },
+  {
+    "annotations": null,
+    "description": "\n        Return one collection's contract: identity, limits, title_field and metadata schema (field\n        descriptions included). The heavy `pipeline` / `search` graph blobs (tens of thousands of\n        characters) are omitted by default; pass include_pipelines=true only when you need to\n        inspect or edit them. To learn HOW to search it (fields, example values, filter grammar,\n        ready-to-use requests), call describe_collection instead.\n        ",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "collection_id": {
+          "title": "Collection Id",
+          "type": "string"
+        },
+        "include_pipelines": {
+          "default": false,
+          "title": "Include Pipelines",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "collection_id"
+      ],
+      "title": "get_collectionArguments",
+      "type": "object"
+    },
+    "name": "get_collection"
+  },
+  {
+    "annotations": null,
+    "description": "The JSON Schema of the collection identity/limits contract (build a valid create/update).",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {},
+      "title": "get_collection_contract_schemaArguments",
+      "type": "object"
+    },
+    "name": "get_collection_contract_schema"
+  },
+  {
+    "annotations": null,
+    "description": "A collection's paid text-gen roll-up — tokens + USD summed over its documents' jobs.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "collection_id": {
+          "title": "Collection Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "collection_id"
+      ],
+      "title": "get_collection_costArguments",
+      "type": "object"
+    },
+    "name": "get_collection_cost"
+  },
+  {
+    "annotations": null,
+    "description": "Read one config version: its {pipeline, search} snapshot with every secret masked.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "collection_id": {
+          "title": "Collection Id",
+          "type": "string"
+        },
+        "version": {
+          "title": "Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "collection_id",
+        "version"
+      ],
+      "title": "get_config_versionArguments",
+      "type": "object"
+    },
+    "name": "get_config_version"
+  },
+  {
+    "annotations": null,
+    "description": "Return one document's full facts and resolved document-level metadata.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "document_id": {
+          "title": "Document Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "document_id"
+      ],
+      "title": "get_documentArguments",
+      "type": "object"
+    },
+    "name": "get_document"
+  },
+  {
+    "annotations": null,
+    "description": "\n        A document's retrieval chunks, one page at a time, in reading order.\n\n        Agent defaults: 20 chunks per call and no geometry. The output starts with\n        `chunks A-B of TOTAL` - page on with offset (offset += limit) until B == TOTAL. For one\n        section prefer get_document_outline then get_chunk_context; for raw page text use\n        get_document_markdown(pages=...).\n\n        OUTPUT (format=\"text\"): per chunk `[index] p.<page_number> | heading > path | N tokens |\n        chunk <id>` then the text. format=\"json\": compact {total, offset, chunks[]} with the full\n        chunk fields (enrichment metadata, role, enabled...).\n        ",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "document_id": {
+          "title": "Document Id",
+          "type": "string"
+        },
+        "format": {
+          "default": "text",
+          "description": "'text' (default) = readable blocks; 'json' = compact.",
+          "enum": [
+            "text",
+            "json"
+          ],
+          "title": "Format",
+          "type": "string"
+        },
+        "include_geometry": {
+          "default": false,
+          "description": "true = also return block_ids and the 0-based page.",
+          "title": "Include Geometry",
+          "type": "boolean"
+        },
+        "limit": {
+          "default": 20,
+          "description": "Chunks per page.",
+          "maximum": 500,
+          "minimum": 1,
+          "title": "Limit",
+          "type": "integer"
+        },
+        "offset": {
+          "default": 0,
+          "description": "Chunks to skip (paging).",
+          "minimum": 0,
+          "title": "Offset",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "document_id"
+      ],
+      "title": "get_document_chunksArguments",
+      "type": "object"
+    },
+    "name": "get_document_chunks"
+  },
+  {
+    "annotations": null,
+    "description": "\n        The document rendered as HTML, generated on the fly from the canonical IR.\n\n        Prefer `pages` (1-based, e.g. '5' or '5-7'): call get_document_outline first to find the\n        pages of a section; the whole document can be ~50k chars. With `pages`, each page is\n        preceded by a citable page marker.\n        ",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "document_id": {
+          "title": "Document Id",
+          "type": "string"
+        },
+        "pages": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "1-based pages to render: '5', '5-7' or '5,7-9'. Omit for the whole document (can be ~50k chars). 422 when malformed or past the last page.",
+          "title": "Pages"
+        }
+      },
+      "required": [
+        "document_id"
+      ],
+      "title": "get_document_htmlArguments",
+      "type": "object"
+    },
+    "name": "get_document_html"
+  },
+  {
+    "annotations": null,
+    "description": "\n        Return the document's full canonical IR - blocks, tables, figures, enrichments. VERY large\n        (it can be hundreds of thousands of characters): to read a document prefer\n        get_document_outline, then get_document_markdown(pages=...), get_document_chunks or\n        get_chunk_context. Use this only to inspect the parse itself.\n        ",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "document_id": {
+          "title": "Document Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "document_id"
+      ],
+      "title": "get_document_irArguments",
+      "type": "object"
+    },
+    "name": "get_document_ir"
+  },
+  {
+    "annotations": null,
+    "description": "\n        The document rendered as Markdown, generated on the fly from the canonical IR.\n\n        Prefer `pages` (1-based, e.g. '5' or '5-7'): call get_document_outline first to find the\n        pages of a section; the whole document can be ~50k chars. With `pages`, each page is\n        preceded by a citable page marker.\n        ",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "document_id": {
+          "title": "Document Id",
+          "type": "string"
+        },
+        "pages": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "1-based pages to render: '5', '5-7' or '5,7-9'. Omit for the whole document (can be ~50k chars). 422 when malformed or past the last page.",
+          "title": "Pages"
+        }
+      },
+      "required": [
+        "document_id"
+      ],
+      "title": "get_document_markdownArguments",
+      "type": "object"
+    },
+    "name": "get_document_markdown"
+  },
+  {
+    "annotations": null,
+    "description": "\n        The document's table of contents - the cheap first step to read a long document.\n\n        OUTPUT (format=\"text\"): a title line, then one line per heading, indented by level:\n        `<text> | p.<page_number> | chunk <chunk_id>` (page_number is 1-based; chunk is the first\n        chunk of that section). Then read the section with get_document_markdown(pages=\"5-7\"),\n        or get_chunk_context(chunk_id) / get_document_chunks. format=\"json\": the compact\n        {document_id, display_title, page_count, headings[]}.\n        ",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "document_id": {
+          "title": "Document Id",
+          "type": "string"
+        },
+        "format": {
+          "default": "text",
+          "description": "'text' (default) = one indented line per heading; 'json' = compact.",
+          "enum": [
+            "text",
+            "json"
+          ],
+          "title": "Format",
+          "type": "string"
+        }
+      },
+      "required": [
+        "document_id"
+      ],
+      "title": "get_document_outlineArguments",
+      "type": "object"
+    },
+    "name": "get_document_outline"
+  },
+  {
+    "annotations": null,
+    "description": "Return a document's pages, in order — geometry, routing and the render blob reference.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "document_id": {
+          "title": "Document Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "document_id"
+      ],
+      "title": "get_document_pagesArguments",
+      "type": "object"
+    },
+    "name": "get_document_pages"
+  },
+  {
+    "annotations": null,
+    "description": "\n        Return a document's ingestion provenance - the parser/model pipeline (per-stage trace) that\n        produced its IR + chunks. It is large and about HOW the document was processed, not what it\n        says: to read content use get_document_outline, get_document_chunks or get_chunk_context.\n        ",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "document_id": {
+          "title": "Document Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "document_id"
+      ],
+      "title": "get_document_provenanceArguments",
+      "type": "object"
+    },
+    "name": "get_document_provenance"
+  },
+  {
+    "annotations": null,
+    "description": "\n        Return how to fetch a completed export's bundle WITHOUT streaming its bytes through this\n        tool (a bundle can be multi-GB). Poll get_transfer first; once status is \"done\" for an\n        export, GET download_path against the DocForge REST API (bearer-authed) — or, from a\n        Python caller, use docforge_sdk's transfers.download_export(transfer_id), which streams\n        the bytes in bounded chunks.\n        ",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "transfer_id": {
+          "title": "Transfer Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "transfer_id"
+      ],
+      "title": "get_export_download_refArguments",
+      "type": "object"
+    },
+    "name": "get_export_download_ref"
+  },
+  {
+    "annotations": null,
+    "description": "Aggregate recent failures — top causes, by stage, by collection — over a look-back window.\n\n        The \"why is it breaking\" roll-up: FAILED jobs created in the last ``window_hours`` (default\n        24, max 720) grouped three ways, each biggest-first and bounded. Omit ``collection_id`` for\n        a fleet-wide breakdown (full-access token only).\n        ",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "collection_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Collection Id"
+        },
+        "window_hours": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Window Hours"
+        }
+      },
+      "title": "get_failure_breakdownArguments",
+      "type": "object"
+    },
+    "name": "get_failure_breakdown"
+  },
+  {
+    "annotations": null,
+    "description": "Fetch one ingestion job's live state — poll this after an upload.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "job_id": {
+          "title": "Job Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "job_id"
+      ],
+      "title": "get_jobArguments",
+      "type": "object"
+    },
+    "name": "get_job"
+  },
+  {
+    "annotations": null,
+    "description": "\n        Fetch one stage-event's FULL raw input or output payload — get_job_events only returns\n        the cheap shape summary (field names/types, not values); this returns the actual data,\n        and is only populated when the collection was created/updated with trace_verbosity=\"full\"\n        (see create_collection). `event_id` comes from one entry of get_job_events' trace.\n        ",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "event_id": {
+          "title": "Event Id",
+          "type": "string"
+        },
+        "job_id": {
+          "title": "Job Id",
+          "type": "string"
+        },
+        "slot": {
+          "default": "output",
+          "enum": [
+            "input",
+            "output"
+          ],
+          "title": "Slot",
+          "type": "string"
+        }
+      },
+      "required": [
+        "job_id",
+        "event_id"
+      ],
+      "title": "get_job_event_payloadArguments",
+      "type": "object"
+    },
+    "name": "get_job_event_payload"
+  },
+  {
+    "annotations": null,
+    "description": "Return the job's per-node execution trace, in order (stage, status, timing, error).",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "job_id": {
+          "title": "Job Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "job_id"
+      ],
+      "title": "get_job_eventsArguments",
+      "type": "object"
+    },
+    "name": "get_job_events"
+  },
+  {
+    "annotations": null,
+    "description": "Lightweight hourly job trends — created/done/failed per hour plus a reconstructed backlog.\n\n        Contiguous hourly buckets over the last ``window_hours`` (default 24, max 168), computed from\n        the job table (no Prometheus). Omit ``collection_id`` for a fleet-wide series (full-access\n        token only).\n        ",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "collection_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Collection Id"
+        },
+        "window_hours": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Window Hours"
+        }
+      },
+      "title": "get_job_timeseriesArguments",
+      "type": "object"
+    },
+    "name": "get_job_timeseries"
+  },
+  {
+    "annotations": null,
+    "description": "Return what every worker is doing right now, grouped by worker (empty when idle).",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {},
+      "title": "get_live_workersArguments",
+      "type": "object"
+    },
+    "name": "get_live_workers"
+  },
+  {
+    "annotations": null,
+    "description": "Count jobs that have FAILED since a cursor — the \"X new failures since you last looked\" signal.\n\n        ``since`` is an ISO-8601 timestamp (your last-seen cursor); only failures finished strictly\n        after it count. Returns the count, the newest failure time (pass it as the next ``since``),\n        and — when ``include_ids`` is true — the bounded list of new-failure ids. Omit\n        ``collection_id`` for a fleet-wide signal (full-access token only).\n        ",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "collection_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Collection Id"
+        },
+        "include_ids": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Include Ids"
+        },
+        "limit": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Limit"
+        },
+        "since": {
+          "title": "Since",
+          "type": "string"
+        }
+      },
+      "required": [
+        "since"
+      ],
+      "title": "get_new_failuresArguments",
+      "type": "object"
+    },
+    "name": "get_new_failures"
+  },
+  {
+    "annotations": null,
+    "description": "\n        Open a pipeline design surface: the block palette, the default blob, the curated\n        creation `presets` (each with a name + label + rationale — the name is what you pass as\n        create_collection's `preset` / `search_preset`), and any validation issues. `key` is\n        \"ingest\" or \"search\"; `full=true` adds the advanced palette blocks (run_inputs, mechanics,\n        artefacts). `mechanics` is self-describing:\n        its `edit_operations` / `stage_actions` cards give the tag + params_schema of every\n        `edit`/`stages.apply` payload variant, so compose those from it rather than guessing.\n        ",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "full": {
+          "default": false,
+          "title": "Full",
+          "type": "boolean"
+        },
+        "key": {
+          "title": "Key",
+          "type": "string"
+        }
+      },
+      "required": [
+        "key"
+      ],
+      "title": "get_pipeline_designArguments",
+      "type": "object"
+    },
+    "name": "get_pipeline_design"
+  },
+  {
+    "annotations": null,
+    "description": "\n        Poll an asynchronous dry-run preview by its id (from `submit_preview_job`). The bounded report\n        appears in `result` once `status` is 'done'; a failed NODE is DATA there (`result.ok` is false),\n        while `status` 'failed' is reserved for the worker job itself crashing/timing out. An\n        unknown/expired id is a 404 (the result TTL elapsed).\n        ",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "collection_id": {
+          "title": "Collection Id",
+          "type": "string"
+        },
+        "preview_id": {
+          "title": "Preview Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "collection_id",
+        "preview_id"
+      ],
+      "title": "get_preview_jobArguments",
+      "type": "object"
+    },
+    "name": "get_preview_job"
+  },
+  {
+    "annotations": null,
+    "description": "Backlog counters (pending/running) — fleet-wide (root token) or for one collection.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "collection_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Collection Id"
+        }
+      },
+      "title": "get_queue_depthArguments",
+      "type": "object"
+    },
+    "name": "get_queue_depth"
+  },
+  {
+    "annotations": null,
+    "description": "\n        Deployment-wide search-runtime health summary (cumulative since process start).\n\n        Search runs inline (no job/fleet surface), so this is the operational snapshot: total_runs,\n        error_rate (0..1), p95_latency_ms, zero_result_rate (0..1) and avg_hits. A process-global\n        aggregate with no per-collection scope.\n        ",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {},
+      "title": "get_search_healthArguments",
+      "type": "object"
+    },
+    "name": "get_search_health"
+  },
+  {
+    "annotations": null,
+    "description": "Average per-stage wall-clock over a collection's done jobs (a running job's ETA basis).",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "collection_id": {
+          "title": "Collection Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "collection_id"
+      ],
+      "title": "get_stage_durationsArguments",
+      "type": "object"
+    },
+    "name": "get_stage_durations"
+  },
+  {
+    "annotations": null,
+    "description": "\n        Poll one transfer's live status — progress, stage, counts, error, and (once a done\n        export) its bundle's size_bytes/expires_at, or (once a done import) the new\n        collection_id/collection_name.\n        ",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "transfer_id": {
+          "title": "Transfer Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "transfer_id"
+      ],
+      "title": "get_transferArguments",
+      "type": "object"
+    },
+    "name": "get_transfer"
+  },
+  {
+    "annotations": null,
+    "description": "\n        Import a `.dcexport` bundle as a brand-new collection (asynchronous, no recompute).\n        `file_path` is read from the MCP SERVER's own filesystem, NOT the caller's local disk. On\n        stdio that is any local path; on streamable-HTTP the operator must stage the bundle inside\n        the configured upload inbox (MCP_UPLOAD_DIR) first (e.g. a shared volume) — a path outside\n        it, or no inbox configured at all, is refused. Returns the transfer handle immediately\n        (202) — poll get_transfer for progress.\n        ",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "file_path": {
+          "title": "File Path",
+          "type": "string"
+        },
+        "target_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Target Name"
+        }
+      },
+      "required": [
+        "file_path"
+      ],
+      "title": "import_collectionArguments",
+      "type": "object"
+    },
+    "name": "import_collection"
+  },
+  {
+    "annotations": null,
+    "description": "\n        Import a `.dcexport` bundle by sending its raw bytes instead of a server-local file path —\n        use this one (never import_collection) when you hold the bundle's content yourself and are\n        connected over streamable-HTTP without a shared MCP_UPLOAD_DIR volume.\n        `content_base64` is the bundle's exact bytes, standard base64-encoded — expect this to be\n        large (a whole collection's export), so only use it for small-to-medium bundles; a\n        multi-GB bundle should instead be staged into MCP_UPLOAD_DIR and imported via the\n        path-based import_collection. Returns the transfer handle immediately (202) — poll\n        get_transfer with its transfer_id for progress.\n        ",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "content_base64": {
+          "title": "Content Base64",
+          "type": "string"
+        },
+        "target_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Target Name"
+        }
+      },
+      "required": [
+        "content_base64"
+      ],
+      "title": "import_collection_bytesArguments",
+      "type": "object"
+    },
+    "name": "import_collection_bytes"
+  },
+  {
+    "annotations": null,
+    "description": "\n        Inspect an edited pipeline blob without saving it: validity, every issue found, and\n        the described tree of the graph (or a build_error when it cannot even be built).\n        ",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "blob": {
+          "additionalProperties": true,
+          "title": "Blob",
+          "type": "object"
+        },
+        "key": {
+          "title": "Key",
+          "type": "string"
+        }
+      },
+      "required": [
+        "key",
+        "blob"
+      ],
+      "title": "inspect_pipelineArguments",
+      "type": "object"
+    },
+    "name": "inspect_pipeline"
+  },
+  {
+    "annotations": null,
+    "description": "\n        List every API key — shows prefixes and metadata, never the plaintext key or hash.\n\n        Includes both active and revoked keys so the full audit trail is visible.\n        ",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {},
+      "title": "list_api_keysArguments",
+      "type": "object"
+    },
+    "name": "list_api_keys"
+  },
+  {
+    "annotations": null,
+    "description": "List one keyset-paginated page of the audit trail, newest first (ROOT/full-access only).\n\n        Records one row per mutating API action (who/what/target/outcome). The page is bounded\n        server-side; pass ``cursor`` (a previous page's ``next_cursor``) to walk the trail. Filter by\n        actor (``actor_user_id``/``actor_key_id``), target (``target_type``+``target_id``),\n        ``correlation_id``, and an ISO-8601 event-time window (``created_from``/``created_to``). A\n        collection-scoped key is rejected 403.\n        ",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "actor_key_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Actor Key Id"
+        },
+        "actor_user_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Actor User Id"
+        },
+        "correlation_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Correlation Id"
+        },
+        "created_from": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Created From"
+        },
+        "created_to": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Created To"
+        },
+        "cursor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cursor"
+        },
+        "limit": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Limit"
+        },
+        "target_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Target Id"
+        },
+        "target_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Target Type"
+        }
+      },
+      "title": "list_auditArguments",
+      "type": "object"
+    },
+    "name": "list_audit"
+  },
+  {
+    "annotations": null,
+    "description": "List collection aliases (stable names like \"chatmop\" → one collection): name, target\n        collection id + name, last re-point time. An alias name works wherever a tool takes\n        `collection_id`, so prefer it over a UUID that changes when a collection is rebuilt.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {},
+      "title": "list_collection_aliasesArguments",
+      "type": "object"
+    },
+    "name": "list_collection_aliases"
+  },
+  {
+    "annotations": null,
+    "description": "\n        List every collection: identity, limits, health and metadata schema (field descriptions\n        included). The heavy `pipeline` / `search` graph blobs are omitted by default; pass\n        include_pipelines=true only when you need to inspect or edit them. To learn HOW to search\n        a collection (fields, example values, filter grammar), call describe_collection.\n        ",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "include_pipelines": {
+          "default": false,
+          "title": "Include Pipelines",
+          "type": "boolean"
+        }
+      },
+      "title": "list_collectionsArguments",
+      "type": "object"
+    },
+    "name": "list_collections"
+  },
+  {
+    "annotations": null,
+    "description": "List a collection's pipeline/search config versions, newest first: version, date, note,\n        author (key name / \"root\" / \"anonymous\") and `changes` (which pipeline nodes / search\n        changed vs the previous version). Page with `limit`/`offset`; `total` is the full count.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "collection_id": {
+          "title": "Collection Id",
+          "type": "string"
+        },
+        "limit": {
+          "default": 20,
+          "title": "Limit",
+          "type": "integer"
+        },
+        "offset": {
+          "default": 0,
+          "title": "Offset",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "collection_id"
+      ],
+      "title": "list_config_versionsArguments",
+      "type": "object"
+    },
+    "name": "list_config_versions"
+  },
+  {
+    "annotations": null,
+    "description": "\n        Return a collection's documents, newest first - the browse catalogue.\n\n        Page with limit/offset on a large collection: exactly `limit` rows back means more may\n        exist. To find documents by metadata, use search_collection / browse_chunks filters.\n        ",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "collection_id": {
+          "title": "Collection Id",
+          "type": "string"
+        },
+        "limit": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Max documents to return (server default 500).",
+          "title": "Limit"
+        },
+        "offset": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Documents to skip (paging).",
+          "title": "Offset"
+        }
+      },
+      "required": [
+        "collection_id"
+      ],
+      "title": "list_documentsArguments",
+      "type": "object"
+    },
+    "name": "list_documents"
+  },
+  {
+    "annotations": null,
+    "description": "List one page of ingestion jobs — a collection's, or (no collection_id) the whole fleet's.\n\n        Omit ``collection_id`` for a FLEET-WIDE listing (full-access token only) — the \"All Jobs\"\n        view. Triage filters (all optional, additive): ``status`` (one or more of pending/running/\n        done/failed/cancelled), ``stage`` (the node the job is in), ``error_type`` (structured\n        failure class), ``search`` (prefix-match the job OR document id), and the\n        ``created_after``/``created_before`` ISO-8601 date range. ``sort`` is the dimension\n        (``created`` default, ``duration`` or ``status``) and ``order`` its direction (``newest``\n        = DESC default, ``oldest`` = ASC — FIFO/\"what runs next\", typically with status=[\"pending\"]).\n        Each job carries ``duration_seconds`` (its run time). The list is bounded server-side;\n        ``total``/``limit``/``offset`` drive pagination and ``jobs`` holds the page.\n        ",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "collection_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Collection Id"
+        },
+        "created_after": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Created After"
+        },
+        "created_before": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Created Before"
+        },
+        "error_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error Type"
+        },
+        "limit": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Limit"
+        },
+        "offset": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Offset"
+        },
+        "order": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Order"
+        },
+        "search": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Search"
+        },
+        "sort": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sort"
+        },
+        "stage": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Stage"
+        },
+        "status": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Status"
+        }
+      },
+      "title": "list_jobsArguments",
+      "type": "object"
+    },
+    "name": "list_jobs"
+  },
+  {
+    "annotations": null,
+    "description": "Discover the available pipeline design surfaces (ingest / search) and their URLs.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {},
+      "title": "list_pipeline_surfacesArguments",
+      "type": "object"
+    },
+    "name": "list_pipeline_surfaces"
+  },
+  {
+    "annotations": null,
+    "description": "Check DocForge connectivity — a static {\"status\": \"ok\"} when the app is serving.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {},
+      "title": "pingArguments",
+      "type": "object"
+    },
+    "name": "ping"
+  },
+  {
+    "annotations": null,
+    "description": "\n        Dry-run the ingestion pipeline on ONE already-ingested document and return a bounded preview —\n        NOTHING is persisted (no document, blob or vector is written). Runs the ingest graph inline on\n        `document_id` (404 when the collection or document is unknown), optionally with a candidate\n        `blob` instead of the collection's stored pipeline. Returns an IR summary, the first N chunks\n        (text truncated; cap with `max_chunks`), the run's ACTUAL metered cost, and the full execution\n        trace. A node that fails is DATA here (`ok` is false + `failed_node_id` + the partial trace),\n        never an error — so this is the way to see what a pipeline change WOULD do before applying it.\n        ",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "blob": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Blob"
+        },
+        "collection_id": {
+          "title": "Collection Id",
+          "type": "string"
+        },
+        "document_id": {
+          "title": "Document Id",
+          "type": "string"
+        },
+        "max_chunks": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Chunks"
+        }
+      },
+      "required": [
+        "collection_id",
+        "document_id"
+      ],
+      "title": "preview_pipelineArguments",
+      "type": "object"
+    },
+    "name": "preview_pipeline"
+  },
+  {
+    "annotations": null,
+    "description": "\n        Reclaim every stored full execution-trace payload of a collection's jobs — the heavy\n        per-node raw input/output bytes the opt-in `trace_verbosity='full'` tier accumulates in the\n        object store. Idempotent: a collection that stored nothing returns zeros (not an error);\n        404 only when the collection itself is unknown. Best-effort — the call always succeeds and\n        reports `purged_jobs` (jobs considered) + `deleted_objects` (object-store objects removed).\n        ",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "collection_id": {
+          "title": "Collection Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "collection_id"
+      ],
+      "title": "purge_collection_trace_payloadsArguments",
+      "type": "object"
+    },
+    "name": "purge_collection_trace_payloads"
+  },
+  {
+    "annotations": null,
+    "description": "\n        Reclaim every stored full execution-trace payload of a single document's jobs — the heavy\n        per-node raw input/output bytes the opt-in `trace_verbosity='full'` tier accumulates in the\n        object store. Idempotent: a document that stored nothing returns zeros (not an error); 404\n        only when the document itself is unknown. Best-effort — always succeeds and reports\n        `purged_jobs` (jobs considered) + `deleted_objects` (object-store objects removed).\n        ",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "document_id": {
+          "title": "Document Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "document_id"
+      ],
+      "title": "purge_document_trace_payloadsArguments",
+      "type": "object"
+    },
+    "name": "purge_document_trace_payloads"
+  },
+  {
+    "annotations": null,
+    "description": "\n        One filtered, sorted, paginated page of a collection's documents + the total match count.\n\n        `filter` is the document-grid filter (e.g. {\"status\": [\"done\"], \"filename\": {\"contains\": \"q3\"}},\n        plus a \"metadata\" list of {field, op, value} predicates); `sort` is {\"field\": ..., \"direction\":\n        \"asc\"|\"desc\"}. Returns {total, limit, offset, rows[]} where each row is the catalogue fields +\n        a {field_name: value} metadata map.\n        ",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "collection_id": {
+          "title": "Collection Id",
+          "type": "string"
+        },
+        "filter": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Filter"
+        },
+        "limit": {
+          "default": 50,
+          "title": "Limit",
+          "type": "integer"
+        },
+        "offset": {
+          "default": 0,
+          "title": "Offset",
+          "type": "integer"
+        },
+        "sort": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sort"
+        }
+      },
+      "required": [
+        "collection_id"
+      ],
+      "title": "query_documentsArguments",
+      "type": "object"
+    },
+    "name": "query_documents"
+  },
+  {
+    "annotations": null,
+    "description": "\n        Rebuild a collection's vector index from its CURRENT schema, without re-embedding content.\n        Use it when search returns a 422 naming a field with no indexed semantic/lexical vector, or\n        reingest_collection returns 409 `rebuild_index_required` (a field was made semantic/lexical\n        after first ingest — Qdrant cannot add a named vector to a live store). Returns `job_id`\n        (202): follow it with wait_for_job — the job's `document_id` is null. Uploads and reingests\n        get 409 `rebuild_index_active` while it runs; 409 `collection_busy` when other jobs are live.\n        ",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "collection_id": {
+          "title": "Collection Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "collection_id"
+      ],
+      "title": "rebuild_collection_indexArguments",
+      "type": "object"
+    },
+    "name": "rebuild_collection_index"
+  },
+  {
+    "annotations": null,
+    "description": "\n        Re-run the full pipeline over a collection's corpus — every document, or an explicit\n        `document_ids` subset (404 when the collection is unknown; 422 on a stale/broken pipeline\n        or a bad subset). Idempotent per document; original bytes are already stored, so this never\n        re-uploads. `force` bypasses the stage cache and recomputes every stage from scratch. A\n        match above the server's fan-out ceiling enqueues only the first N and reports\n        `capped=true` with the full `matched` count — poll each returned job handle for progress.\n        Documents that already have a running job are skipped (`skipped_in_flight`), not re-queued.\n        `replay_from` re-runs only that stage and its downstream on the document's PERSISTED IR (no\n        re-parse, no re-upload) — one of enrich, chunk, metagen_chunk, metagen_document, embed (e.g.\n        `metagen_document` after editing a metagen prompt, `embed` after switching embedder); a stage\n        the pipeline cannot replay is a 422 `replay_unsupported` whose `allowed` lists the valid ones. Documents with no persisted IR are skipped (`skipped_not_replayable`).\n        A LARGE reingest (more documents than the server's confirm threshold) is refused 409\n        `estimate_required`: the error detail carries `matched`, `threshold` and an `estimate`\n        summary (total_cost_usd, tokens, priced_stages, caveats). Show/review that cost, then call\n        this tool AGAIN with the same arguments plus `confirm_estimate=true` to proceed. A 429\n        `queue_saturated` (with Retry-After) means the ingestion queue is full — wait that many\n        seconds and retry; nothing was enqueued.\n        ",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "collection_id": {
+          "title": "Collection Id",
+          "type": "string"
+        },
+        "confirm_estimate": {
+          "default": false,
+          "title": "Confirm Estimate",
+          "type": "boolean"
+        },
+        "document_ids": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Document Ids"
+        },
+        "force": {
+          "default": false,
+          "title": "Force",
+          "type": "boolean"
+        },
+        "replay_from": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Replay From"
+        }
+      },
+      "required": [
+        "collection_id"
+      ],
+      "title": "reingest_collectionArguments",
+      "type": "object"
+    },
+    "name": "reingest_collection"
+  },
+  {
+    "annotations": null,
+    "description": "\n        Re-run the ingestion of a single document (force bypasses the doc cache). Never gated by the\n        bulk cost confirmation. `replay_from` re-runs only that stage and its downstream on the document's PERSISTED IR (no\n        re-parse, no re-upload) — one of enrich, chunk, metagen_chunk, metagen_document, embed (e.g.\n        `metagen_document` after editing a metagen prompt, `embed` after switching embedder); a stage\n        the pipeline cannot replay is a 422 `replay_unsupported` whose `allowed` lists the valid ones.\n        A document with no persisted IR is a 422 — run a full reingest (omit replay_from) first.\n        ",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "document_id": {
+          "title": "Document Id",
+          "type": "string"
+        },
+        "force": {
+          "default": false,
+          "title": "Force",
+          "type": "boolean"
+        },
+        "replay_from": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Replay From"
+        }
+      },
+      "required": [
+        "document_id"
+      ],
+      "title": "reingest_documentArguments",
+      "type": "object"
+    },
+    "name": "reingest_document"
+  },
+  {
+    "annotations": null,
+    "description": "\n        Bulk re-run the full ingestion over the selected documents (capped fan-out). `selector` is the\n        shared id-XOR-filter target. Returns matched/enqueued/capped/skipped_in_flight + one job\n        handle per enqueued run (documents that already had a running job are skipped, not re-queued).\n        `replay_from` re-runs only that stage and its downstream on the document's PERSISTED IR (no\n        re-parse, no re-upload) — one of enrich, chunk, metagen_chunk, metagen_document, embed (e.g.\n        `metagen_document` after editing a metagen prompt, `embed` after switching embedder); a stage\n        the pipeline cannot replay is a 422 `replay_unsupported` whose `allowed` lists the valid ones.\n        A LARGE reingest (more documents than the server's confirm threshold) is refused 409\n        `estimate_required`: the error detail carries `matched`, `threshold` and an `estimate`\n        summary (total_cost_usd, tokens, priced_stages, caveats). Show/review that cost, then call\n        this tool AGAIN with the same arguments plus `confirm_estimate=true` to proceed. A 429\n        `queue_saturated` (with Retry-After) means the ingestion queue is full — wait that many\n        seconds and retry; nothing was enqueued.\n        ",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "collection_id": {
+          "title": "Collection Id",
+          "type": "string"
+        },
+        "confirm_estimate": {
+          "default": false,
+          "title": "Confirm Estimate",
+          "type": "boolean"
+        },
+        "force": {
+          "default": false,
+          "title": "Force",
+          "type": "boolean"
+        },
+        "replay_from": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Replay From"
+        },
+        "selector": {
+          "additionalProperties": true,
+          "title": "Selector",
+          "type": "object"
+        }
+      },
+      "required": [
+        "collection_id",
+        "selector"
+      ],
+      "title": "reingest_documentsArguments",
+      "type": "object"
+    },
+    "name": "reingest_documents"
+  },
+  {
+    "annotations": null,
+    "description": "Restore a config version as a NEW version (history is never rewritten).\n\n        Without `confirm=true` NOTHING is written: the tool returns the diff from the current head to\n        `version` (what the restore would change) — review it, then call again with `confirm=true`.\n        Current same-endpoint provider keys are kept; a provider whose endpoint moved since that\n        version is refused (422 — re-enter its key with a collection PATCH). Write capability.\n        ",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "collection_id": {
+          "title": "Collection Id",
+          "type": "string"
+        },
+        "confirm": {
+          "default": false,
+          "title": "Confirm",
+          "type": "boolean"
+        },
+        "version": {
+          "title": "Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "collection_id",
+        "version"
+      ],
+      "title": "restore_config_versionArguments",
+      "type": "object"
+    },
+    "name": "restore_config_version"
+  },
+  {
+    "annotations": null,
+    "description": "Soft-revoke an API key (idempotent — the record remains for audit).",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "key_id": {
+          "title": "Key Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "key_id"
+      ],
+      "title": "revoke_api_keyArguments",
+      "type": "object"
+    },
+    "name": "revoke_api_key"
+  },
+  {
+    "annotations": null,
+    "description": "\n        Rotate an API key: issue a fresh secret (optionally re-scoped) and revoke the old one.\n\n        IMPORTANT: the replacement plaintext key is returned EXACTLY ONCE in the response.\n        Omit `name` / `permissions` / `expires_at` to keep the source key's current value;\n        `permissions` and `expires_at` use the same shape as `create_api_key`.\n        ",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "expires_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expires At"
+        },
+        "key_id": {
+          "title": "Key Id",
+          "type": "string"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Name"
+        },
+        "permissions": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Permissions"
+        }
+      },
+      "required": [
+        "key_id"
+      ],
+      "title": "rotate_api_keyArguments",
+      "type": "object"
+    },
+    "name": "rotate_api_key"
+  },
+  {
+    "annotations": null,
+    "description": "\n        Hybrid semantic + keyword search over a collection (dense + sparse fusion).\n\n        Call describe_collection(collection_id) FIRST: it lists the fields (meaning, type, real\n        example values), the valid search_in targets, the filter grammar and ready-to-use example\n        requests. Filters only work on FILTERABLE fields and unknown arguments are rejected. The query\n        must not be blank: to list passages by filter without a query, use browse_chunks.\n\n        OUTPUT (format=\"text\", the default): a header `N hits for \"<query>\"`, then per hit\n        `[rank] <title> | p.<page_number> | <heading > path> | score <s> | doc <id> |\n        chunk <id>`, an optional `meta: k=v; ...` line (the document's filterable metadata) and the\n        chunk text, then `Hint: ...` lines. page_number is 1-based - cite it. Cite title + page;\n        doc/chunk ids feed the explorer/document tools. Hints: when a filter value matches no\n        stored value (typo, wrong spelling) a hint names the field and the closest stored values -\n        read them before concluding nothing exists, and retry with a suggestion.\n\n        format=\"json\": the compact (non-indented) response {query, hits, score_kind, cost,\n        debug_info, hints}; each hit holds ONLY the requested return_fields (+ chunk_id,\n        document_id); a key you did not request is absent, a requested key the server sent as\n        null stays null. Geometry (bbox, block_locations - normalised page coordinates, ~70% of a\n        full hit's size) is NOT in the default fields: ask for it with\n        format=\"json\" and return_fields including \"block_locations\" / \"bbox\" / \"page\".\n\n        group_by=\"document\": use it for broad questions or when the top hits are one document\n        repeated - each document contributes at most max_per_document hits (default 1), the next\n        best documents fill the page, so fewer than `limit` hits can come back on a small\n        collection. Leave it off to read several passages of the same document.\n        ",
+    "inputSchema": {
+      "$defs": {
+        "FilterOperator": {
+          "additionalProperties": false,
+          "description": "One filter operator object: any subset of the backend's operator keys, nothing else.\n\nPer-type validity (e.g. no prefix on a number field) stays the server's call - it answers 422\nwith the valid operators for the field.",
+          "properties": {
+            "contains": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Substring (case-insensitive).",
+              "title": "Contains"
+            },
+            "eq": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Equals this value.",
+              "title": "Eq"
+            },
+            "exists": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "true = value present; false = absent.",
+              "title": "Exists"
+            },
+            "gt": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Range: > (number or ISO datetime).",
+              "title": "Gt"
+            },
+            "gte": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Range: >= (number or ISO datetime).",
+              "title": "Gte"
+            },
+            "in": {
+              "anyOf": [
+                {
+                  "items": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "integer"
+                      },
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "boolean"
+                      }
+                    ]
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Any of these values.",
+              "title": "In"
+            },
+            "lt": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Range: < (number or ISO datetime).",
+              "title": "Lt"
+            },
+            "lte": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Range: <= (number or ISO datetime).",
+              "title": "Lte"
+            },
+            "not": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                },
+                {
+                  "items": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "integer"
+                      },
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "boolean"
+                      }
+                    ]
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Exclude this value (or any of a list).",
+              "title": "Not"
+            },
+            "not_in": {
+              "anyOf": [
+                {
+                  "items": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "integer"
+                      },
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "boolean"
+                      }
+                    ]
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Exclude all of these values.",
+              "title": "Not In"
+            },
+            "prefix": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Prefix (case-insensitive).",
+              "title": "Prefix"
+            }
+          },
+          "title": "FilterOperator",
+          "type": "object"
+        },
+        "SearchTarget": {
+          "description": "One field to search and the modalities to search it on.\n\nAttributes:\n    field (str): The field to search — ``\"content\"`` (the chunk body) or a metadata field name.\n    semantic (bool): Query the field's dense vector (semantic similarity).\n    lexical (bool): Query the field's sparse BM25 vector (lexical match).",
+          "properties": {
+            "field": {
+              "default": "content",
+              "description": "Field to search — 'content' (chunk body) or a metadata field name.",
+              "minLength": 1,
+              "title": "Field",
+              "type": "string"
+            },
+            "lexical": {
+              "default": false,
+              "description": "Query the field's sparse BM25 vector (lexical match).",
+              "title": "Lexical",
+              "type": "boolean"
+            },
+            "semantic": {
+              "default": false,
+              "description": "Query the field's dense vector (semantic similarity).",
+              "title": "Semantic",
+              "type": "boolean"
+            }
+          },
+          "title": "SearchTarget",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "collection_id": {
+          "title": "Collection Id",
+          "type": "string"
+        },
+        "debug": {
+          "default": false,
+          "description": "true = also show each hit's fusion_score and rerank_score.",
+          "title": "Debug",
+          "type": "boolean"
+        },
+        "filters": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "items": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "boolean"
+                        }
+                      ]
+                    },
+                    "type": "array"
+                  },
+                  {
+                    "$ref": "#/$defs/FilterOperator"
+                  }
+                ]
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Constraints on FILTERABLE metadata fields, ANDed: {field_name: value}. Value forms: a scalar = equality (strings case-insensitive); a list = any-of; an operator object: {\"eq\"|\"not\": v}, {\"in\"|\"not_in\": [..]}, {\"contains\"|\"prefix\": \"text\"}, {\"exists\": bool}, {\"gte\"|\"gt\"|\"lte\"|\"lt\": number-or-ISO-datetime}. Example: {\"topic\": {\"not\": \"legal\"}, \"title\": {\"contains\": \"audit\"}, \"year\": {\"gte\": 2023}}. Call describe_collection for each field's type and allowed operators (a wrong operator for a type is refused with the valid ones).",
+          "title": "Filters"
+        },
+        "format": {
+          "default": "text",
+          "description": "'text' (default) = one readable block per hit with a citation line; 'json' = the compact structured response.",
+          "enum": [
+            "text",
+            "json"
+          ],
+          "title": "Format",
+          "type": "string"
+        },
+        "fusion": {
+          "anyOf": [
+            {
+              "enum": [
+                "rrf",
+                "dbsf"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override dense/sparse fusion: 'rrf' (rank-based) or 'dbsf' (a confident axis can dominate). Omit = the collection's setting.",
+          "title": "Fusion"
+        },
+        "group_by": {
+          "anyOf": [
+            {
+              "const": "document",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "'document' = at most max_per_document hits per document (diverse sources instead of one document repeated). Omit for plain ranking.",
+          "title": "Group By"
+        },
+        "limit": {
+          "default": 10,
+          "description": "Number of hits to return.",
+          "maximum": 100,
+          "minimum": 1,
+          "title": "Limit",
+          "type": "integer"
+        },
+        "max_per_document": {
+          "anyOf": [
+            {
+              "maximum": 10,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Per-document hit cap (default 1); needs group_by.",
+          "title": "Max Per Document"
+        },
+        "min_score": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Drop hits scoring below this (scale = score_kind; a cross-encoder rerank score is 0..1, raw_dense a cosine similarity, raw_sparse an unbounded BM25/sparse score, fusion scores are only a coarse cut).",
+          "title": "Min Score"
+        },
+        "query": {
+          "description": "Natural-language query.",
+          "minLength": 1,
+          "title": "Query",
+          "type": "string"
+        },
+        "rerank": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "false = skip the reranker for this call (faster); true = require it. Omit = the collection's pipeline decides.",
+          "title": "Rerank"
+        },
+        "return_fields": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Hit fields to return. Omit for the agent default (text, document_title, page_number, heading_path, score, metadata - plus chunk_id and document_id, always returned). Allowed: any hit field (filename, document_title, heading_path, metadata, score, text, chunk_index, token_count, block_ids, page, page_number, bbox, block_locations) or 'metadata.<field>' for one metadata entry. Unknown names are rejected.",
+          "title": "Return Fields"
+        },
+        "search_in": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/SearchTarget"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Fields x modalities to search: [{field: 'content' or a metadata field name, semantic: bool, lexical: bool}]. Omit to search the chunk body ('content') on both semantic and lexical axes. describe_collection lists the valid targets.",
+          "title": "Search In"
+        }
+      },
+      "required": [
+        "collection_id",
+        "query"
+      ],
+      "title": "search_collectionArguments",
+      "type": "object"
+    },
+    "name": "search_collection"
+  },
+  {
+    "annotations": null,
+    "description": "Toggle one chunk's searchability (reversible, no re-embed).",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "chunk_id": {
+          "title": "Chunk Id",
+          "type": "string"
+        },
+        "enabled": {
+          "title": "Enabled",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "chunk_id",
+        "enabled"
+      ],
+      "title": "set_chunk_enabledArguments",
+      "type": "object"
+    },
+    "name": "set_chunk_enabled"
+  },
+  {
+    "annotations": null,
+    "description": "Toggle several chunks' searchability to the same state in one call (multi-select).",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "chunk_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Chunk Ids",
+          "type": "array"
+        },
+        "enabled": {
+          "title": "Enabled",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "chunk_ids",
+        "enabled"
+      ],
+      "title": "set_chunks_enabledArguments",
+      "type": "object"
+    },
+    "name": "set_chunks_enabled"
+  },
+  {
+    "annotations": null,
+    "description": "Create an alias, or re-point (\"switch\") an existing one to another collection.\n\n        `name` is a slug (lowercase, digits, '-', '_'); `collection_id` is the target UUID. Creating\n        a new alias writes immediately. Re-pointing an existing alias moves every key scoped\n        `alias:<name>` and every client using the name: without `confirm=true` NOTHING is written and\n        the tool returns the old → new target — review, then call again with `confirm=true`.\n        Requires a FULL-ACCESS admin key (a collection-scoped key is refused: an alias re-scopes\n        every key bound to it).\n        ",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "collection_id": {
+          "title": "Collection Id",
+          "type": "string"
+        },
+        "confirm": {
+          "default": false,
+          "title": "Confirm",
+          "type": "boolean"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "collection_id"
+      ],
+      "title": "set_collection_aliasArguments",
+      "type": "object"
+    },
+    "name": "set_collection_alias"
+  },
+  {
+    "annotations": null,
+    "description": "Toggle a document's searchability (reversible, no re-ingest).",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "document_id": {
+          "title": "Document Id",
+          "type": "string"
+        },
+        "enabled": {
+          "title": "Enabled",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "document_id",
+        "enabled"
+      ],
+      "title": "set_document_enabledArguments",
+      "type": "object"
+    },
+    "name": "set_document_enabled"
+  },
+  {
+    "annotations": null,
+    "description": "\n        Bulk enable/disable searchability. `selector` is the shared id-XOR-filter target. A toggle is a\n        Postgres flag (no re-index). Returns matched vs updated.\n        ",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "collection_id": {
+          "title": "Collection Id",
+          "type": "string"
+        },
+        "enabled": {
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "selector": {
+          "additionalProperties": true,
+          "title": "Selector",
+          "type": "object"
+        }
+      },
+      "required": [
+        "collection_id",
+        "selector",
+        "enabled"
+      ],
+      "title": "set_documents_enabledArguments",
+      "type": "object"
+    },
+    "name": "set_documents_enabled"
+  },
+  {
+    "annotations": null,
+    "description": "\n        Submit an ASYNCHRONOUS worker-side dry-run preview on one already-ingested document — returns a\n        pollable preview id, NOTHING is persisted. Unlike `preview_pipeline` (inline, API-process), the\n        worker runs the FULL ingest graph with every dependency present (docling included), so it covers\n        ALL pipelines — use it when `preview_pipeline` cannot parse the collection's pipeline. Optionally\n        pass a candidate `blob` instead of the stored pipeline. Poll the returned id with\n        `get_preview_job` until status is 'done' (the report) or 'failed' (the worker job crashed).\n        ",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "blob": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Blob"
+        },
+        "collection_id": {
+          "title": "Collection Id",
+          "type": "string"
+        },
+        "document_id": {
+          "title": "Document Id",
+          "type": "string"
+        },
+        "max_chunks": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Chunks"
+        }
+      },
+      "required": [
+        "collection_id",
+        "document_id"
+      ],
+      "title": "submit_preview_jobArguments",
+      "type": "object"
+    },
+    "name": "submit_preview_job"
+  },
+  {
+    "annotations": null,
+    "description": "\n        Patch identity/limits, the metadata schema, and/or the config blobs (pipeline / search\n        graphs, each validated before storage).\n        Schema edits are explicit `field_ops`, applied in order:\n        {\"op\":\"add\",\"field\":{field_name, field_type, filterable?, semantic?, lexical?, scope?,\n        description?...}} · {\"op\":\"update\",\"field_name\":..,\"changes\":{<attrs to change>}} ·\n        {\"op\":\"remove\",\"field_name\":..} (DELETES the field's stored values) ·\n        {\"op\":\"rename\",\"field_name\":..,\"new_name\":..} (keeps the values; title_field follows).\n        A remove or rename is only applied with `confirm=true` — without it this returns a\n        dry-run `schema_diff` preview (values lost per removed field) and changes nothing.\n        `preview=true` previews any patch without writing. `tags` replaces the labels wholesale.\n        `title_field` sets the document-scope display-title field; `clear_title_field=true`\n        reverts to the parsed title. The result carries the applied `schema_diff`.\n        ",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "clear_title_field": {
+          "default": false,
+          "title": "Clear Title Field",
+          "type": "boolean"
+        },
+        "collection_id": {
+          "title": "Collection Id",
+          "type": "string"
+        },
+        "confirm": {
+          "default": false,
+          "title": "Confirm",
+          "type": "boolean"
+        },
+        "field_ops": {
+          "anyOf": [
+            {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Field Ops"
+        },
+        "max_file_size_bytes": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max File Size Bytes"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Name"
+        },
+        "note": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Note"
+        },
+        "pipeline": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Pipeline"
+        },
+        "preview": {
+          "default": false,
+          "title": "Preview",
+          "type": "boolean"
+        },
+        "search": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Search"
+        },
+        "supported_formats": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Supported Formats"
+        },
+        "tags": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tags"
+        },
+        "title_field": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Title Field"
+        }
+      },
+      "required": [
+        "collection_id"
+      ],
+      "title": "update_collectionArguments",
+      "type": "object"
+    },
+    "name": "update_collection"
+  },
+  {
+    "annotations": null,
+    "description": "\n        Update a document's metadata VALUES in place - document-scope fields only (chunk-scope or\n        unknown fields are rejected 422, as is an empty `values`). `values` maps field name -> new\n        value (scalar, or a list for list-typed fields). Filterable changes are instant;\n        semantic/lexical changes trigger a background re-embed and return a `job_id` to poll with\n        wait_for_job / get_job (`reembedding` / `reembed_fields` tell you which). 404 when the\n        document is unknown.\n        ",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "document_id": {
+          "title": "Document Id",
+          "type": "string"
+        },
+        "values": {
+          "additionalProperties": true,
+          "title": "Values",
+          "type": "object"
+        }
+      },
+      "required": [
+        "document_id",
+        "values"
+      ],
+      "title": "update_document_metadataArguments",
+      "type": "object"
+    },
+    "name": "update_document_metadata"
+  },
+  {
+    "annotations": null,
+    "description": "\n        Upload a local file into a collection and enqueue its ingestion (async — poll\n        get_job(job_id) or get_document(document_id) for status). On stdio, `file_path` must be an\n        absolute path readable by the MCP server; on streamable-HTTP it must resolve inside the\n        operator-configured upload inbox (MCP_UPLOAD_DIR), or the call is refused. `metadata` is\n        validated against the collection's declared schema (unknown field names are rejected).\n        ",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "collection_id": {
+          "title": "Collection Id",
+          "type": "string"
+        },
+        "file_path": {
+          "title": "File Path",
+          "type": "string"
+        },
+        "metadata": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Metadata"
+        }
+      },
+      "required": [
+        "file_path",
+        "collection_id"
+      ],
+      "title": "upload_documentArguments",
+      "type": "object"
+    },
+    "name": "upload_document"
+  },
+  {
+    "annotations": null,
+    "description": "\n        Upload a document by sending its raw bytes instead of a server-local file path — use this\n        one (never upload_document) when you hold the file's content yourself and are connected\n        over streamable-HTTP, since upload_document requires a path already staged inside the\n        operator's MCP_UPLOAD_DIR inbox. `content_base64` is the file's exact bytes, standard\n        base64-encoded. `filename` (e.g. \"report.pdf\") drives format/extension detection\n        server-side, so include the real extension. Same async contract as upload_document: poll\n        wait_for_job(job_id) or get_job(job_id) afterwards. `metadata` is validated against the\n        collection's declared schema (unknown field names are rejected).\n        ",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "collection_id": {
+          "title": "Collection Id",
+          "type": "string"
+        },
+        "content_base64": {
+          "title": "Content Base64",
+          "type": "string"
+        },
+        "filename": {
+          "title": "Filename",
+          "type": "string"
+        },
+        "metadata": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Metadata"
+        }
+      },
+      "required": [
+        "collection_id",
+        "filename",
+        "content_base64"
+      ],
+      "title": "upload_document_bytesArguments",
+      "type": "object"
+    },
+    "name": "upload_document_bytes"
+  },
+  {
+    "annotations": null,
+    "description": "Derive the ordered stage view of a pipeline blob plus its validity verdict.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "blob": {
+          "additionalProperties": true,
+          "title": "Blob",
+          "type": "object"
+        },
+        "key": {
+          "title": "Key",
+          "type": "string"
+        }
+      },
+      "required": [
+        "key",
+        "blob"
+      ],
+      "title": "view_pipeline_stagesArguments",
+      "type": "object"
+    },
+    "name": "view_pipeline_stages"
+  },
+  {
+    "annotations": null,
+    "description": "\n        Block until a job reaches a terminal state (done/failed/cancelled) or timeout_s elapses,\n        then return its current JobStatus either way — check the returned `status` field to tell\n        the two outcomes apart (a non-terminal status means the timeout was hit; call this again,\n        or get_job, to keep watching). Use this right after upload_document,\n        upload_document_bytes, reingest_document, or reingest_collection instead of polling\n        get_job(job_id) yourself in a loop. `timeout_s` is capped at 240 seconds (4 minutes) — kept\n        under a standard MCP client's default 300s read timeout so this call always returns a\n        response before such a client's own connection would time out first. For an ingestion that\n        takes longer than that, call this repeatedly (each call resumes polling from the job's\n        current state; no progress is lost between calls).\n        ",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "job_id": {
+          "title": "Job Id",
+          "type": "string"
+        },
+        "timeout_s": {
+          "default": 120.0,
+          "title": "Timeout S",
+          "type": "number"
+        }
+      },
+      "required": [
+        "job_id"
+      ],
+      "title": "wait_for_jobArguments",
+      "type": "object"
+    },
+    "name": "wait_for_job"
+  },
+  {
+    "annotations": null,
+    "description": "Report THIS token's capabilities, collection scope and usage profile — what it may do.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {},
+      "title": "whoamiArguments",
+      "type": "object"
+    },
+    "name": "whoami"
+  }
+]

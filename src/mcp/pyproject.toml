@@ -52,12 +52,15 @@ ignore = [
 ]
 
 [tool.ruff.lint.isort]
-known-first-party = ["config_loader", "libs"]
+known-first-party = ["config_loader", "conftest", "libs"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
 pythonpath = ["."]
+markers = [
+    "slow: resolves a throwaway client environment with uv (tests/contract); deselect with -m 'not slow'",
+]
 
 [tool.mypy]
 python_version = "3.12"
