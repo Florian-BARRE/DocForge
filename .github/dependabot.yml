@@ -3,7 +3,7 @@
 #
 # One entry per ecosystem x directory that actually holds a manifest Dependabot can parse:
 #   - github-actions : action versions pinned in .github/workflows/*.yml
-#   - uv             : each of the 5 independent Python projects in this monorepo (own
+#   - uv             : each of the 7 independent Python projects in this monorepo (own
 #                       pyproject.toml + uv.lock — mirrors the gate.yml job split)
 #   - npm            : the frontend (package.json + package-lock.json)
 #   - docker         : base images in each Dockerfile (FROM lines), one entry per directory
@@ -137,6 +137,44 @@ updates:
       - dependency-name: "configplusplus"
         versions: [">=0.4"]
 
+  - package-ecosystem: "uv"
+    directory: "/src/mineru_server"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    groups:
+      mineru-server-minor-patch:
+        update-types: ["minor", "patch"]
+    ignore:
+      # torch/torchvision are pinned ==2.13.0/==0.28.0 in the cpu/gpu extras (pyproject.toml): cu126,
+      # the last CUDA index with sm_70 kernels for the prod V100, stops at torch 2.13, and the pair
+      # matches bge_server and the docforge worker. Lift with their caps (prod GPU off Volta).
+      - dependency-name: "torch"
+        versions: [">=2.14"]
+      - dependency-name: "torchvision"
+        versions: [">=0.29"]
+
+  - package-ecosystem: "uv"
+    directory: "/src/dots_ocr_server"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    groups:
+      dots-ocr-server-minor-patch:
+        update-types: ["minor", "patch"]
+    ignore:
+      # torch/torchvision are capped (torch<2.14, torchvision<0.29): cu126, the last CUDA index with
+      # sm_70 kernels for the prod V100, stops at torch 2.13. Lift with the cap.
+      - dependency-name: "torch"
+        versions: [">=2.14"]
+      - dependency-name: "torchvision"
+        versions: [">=0.29"]
+      # transformers is pinned ==4.56.1 (pyproject.toml, `gpu` extra): dots.ocr's remote-code
+      # processor omits video_processor, a required argument since transformers 4.57 (TypeError at
+      # load). So >=4.57 (and the 5.x line with it) is held. Lift when dots.ocr supports a newer one.
+      - dependency-name: "transformers"
+        versions: [">=4.57"]
+
   # --- Frontend (npm: package.json + package-lock.json) ---
   - package-ecosystem: "npm"
     directory: "/src/docforge/app/frontend"
@@ -208,6 +246,30 @@ updates:
 
   - package-ecosystem: "docker"
     directory: "/src/paddle_server"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    ignore:
+      # python 3.12 -> 3.x is a semver-minor tag bump (3.12 -> 3.15). The venv is built in the
+      # ghcr.io/astral-sh/uv:python3.12 stage and copied into this runtime, so bumping the
+      # runtime alone breaks the image. Lift when both stages are moved together by hand.
+      - dependency-name: "python"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+
+  - package-ecosystem: "docker"
+    directory: "/src/mineru_server"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    ignore:
+      # python 3.12 -> 3.x is a semver-minor tag bump (3.12 -> 3.15). The venv is built in the
+      # ghcr.io/astral-sh/uv:python3.12 stage and copied into this runtime, so bumping the
+      # runtime alone breaks the image. Lift when both stages are moved together by hand.
+      - dependency-name: "python"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+
+  - package-ecosystem: "docker"
+    directory: "/src/dots_ocr_server"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
