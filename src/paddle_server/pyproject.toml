@@ -78,6 +78,10 @@ package = false
 # raises DependencyError (PP-StructureV3 pipeline fails to build) if only the headless wheel is
 # present. The GUI wheel + its X11 apt libs (Dockerfile) are required. Reverted after 0.14.52.
 
+# pillow comes transitively (paddlex, paddlepaddle); floor 13.0.0 because the CRITICAL advisories
+# of pillow 12.x are fixed only in 13, so a relock cannot fall back to a vulnerable line.
+constraint-dependencies = ["pillow>=13.0.0"]
+
 # Declare cpu and gpu as mutually exclusive — uv enforces this at lock time.
 conflicts = [
     [{ extra = "cpu" }, { extra = "gpu" }],
