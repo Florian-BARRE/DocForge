@@ -204,7 +204,7 @@ services:
 
   # ── Redis 7 — the arq job queue (transport only, no monitoring truth) ───────
   docforge_redis:
-    image: redis:8.2.11-bookworm@sha256:99ffb973380cc2f47bca06bd094f7f8c7138a0879a63cb8939896a22b7a65bba
+    image: redis:8.4.0-bookworm@sha256:c22af04bb576503bf16b3e34a1fd2fd82de0f765afd866d2e380145e0af30d78
     container_name: docforge-redis
     # No host port in prod — internal to docforge_net only (app enqueue / worker listen).
     # Dev re-publishes 10042 via compose/overlays/compose.dev.yml.
@@ -260,7 +260,7 @@ services:
 
   # ── SeaweedFS — S3-compatible blob store (content-addressed objects) ────────
   docforge_seaweedfs:
-    image: chrislusf/seaweedfs:4.48@sha256:4e61d15fd35994cb1e43e1e553dff106794841fd9a99ade2fc8c8bfce4d7872d
+    image: chrislusf/seaweedfs:4.50@sha256:c2658820e763294a9e9de7b36c81e59b879e3459148351aee4e31a126ca64860
     container_name: docforge-seaweedfs
     command: >
       server
