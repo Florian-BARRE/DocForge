@@ -216,6 +216,41 @@ jobs:
       - name: Unit suite
         run: uv run --no-sync pytest -q
 
+  sidecar-servers:
+    # The GPU-only model hosts. Unlike bge/paddle, their engines (mineru, torch, transformers) sit
+    # in GPU extras the pure code never imports, so the BASE sync (no --extra) is enough for format,
+    # lint, mypy and the mocked units — same commands as the mineru-*/dots-ocr-* checks of
+    # .aidk/project.toml. `--frozen` on every `uv run` keeps it from re-resolving the lock.
+    name: ${{ matrix.name }} — format + lint + mypy + tests
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: mineru_server
+            working-directory: src/mineru_server
+          - name: dots_ocr_server
+            working-directory: src/dots_ocr_server
+    defaults:
+      run:
+        working-directory: ${{ matrix.working-directory }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: Install uv
+        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
+        with:
+          enable-cache: true
+      - name: Sync dependencies (locked, base deps — no GPU extras)
+        run: uv sync --frozen
+      - name: Format check (ruff format --check)
+        run: uv run --frozen ruff format --check .
+      - name: Lint (ruff check)
+        run: uv run --frozen ruff check .
+      - name: Type check (mypy)
+        run: uv run --frozen mypy .
+      - name: Unit suite
+        run: uv run --frozen pytest -q
+
   frontend:
     name: frontend — lint + tsc + test + build
     runs-on: ubuntu-latest
