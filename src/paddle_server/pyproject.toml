@@ -27,9 +27,11 @@ dependencies = [
     # paddle` at runtime with an undefined-symbol ImportError. The variant choice must live
     # EXCLUSIVELY in the cpu/gpu extras below.
     # FastAPI + ASGI server.
-    "fastapi>=0.115.0",
-    "uvicorn[standard]>=0.30.0",
-    # Config & logging (same internal libraries as the rest of the DocForge stack).
+    "fastapi>=0.162.0",
+    "uvicorn[standard]>=0.54.0",
+    # Config & logging (same internal libraries as the rest of the DocForge stack). configplusplus
+    # stays on 0.3 here, unlike the rest of the stack (0.4): 0.4 requires pyyaml>=6.0.3 and
+    # paddlex==3.7.2 pins pyyaml==6.0.2, so the two cannot resolve together.
     "configplusplus>=0.1.0",
     "loggerplusplus>=1.0.0",
     # ASCII startup banner printed by the lifespan.
@@ -64,7 +66,7 @@ gpu = ["paddlepaddle-gpu==3.3.1"]
 dev = [
     "pytest>=8.3.0",
     "pytest-asyncio>=0.24.0",
-    "ruff>=0.8.0",
+    "ruff>=0.17.2",
     "mypy>=1.13.0",
     "httpx>=0.28.0",   # For FastAPI TestClient
 ]
