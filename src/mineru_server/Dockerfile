@@ -18,10 +18,11 @@
 # Goal:
 # - Sync the locked production dependencies from uv.lock into a virtual environment at /opt/venv,
 #   selecting the correct mineru+torch wheel variant via TORCH_VARIANT.
-# - TORCH_VARIANT=cpu  (default) installs mineru[core] + torch CPU (wiring build-test only).
-# - TORCH_VARIANT=gpu installs mineru[core] + torch 2.x+cu126 (CUDA 12.6 — REQUIRED for the Tesla
-#   V100 sm_70 prod GPU; cu129/cu130 drop Volta kernels) + the CUDA runtime libs. Target runtime image
-#   size: multi-GiB. Requires the NVIDIA Container Toolkit on the host.
+# - TORCH_VARIANT=cpu  (default) installs mineru[vlm,pipeline,api] + torch CPU (wiring build-test
+#   only).
+# - TORCH_VARIANT=gpu installs mineru[vlm,pipeline,api] + torch 2.x+cu126 (CUDA 12.6 — REQUIRED for
+#   the Tesla V100 sm_70 prod GPU; cu129/cu130 drop Volta kernels) + the CUDA runtime libs. Target
+#   runtime image size: multi-GiB. Requires the NVIDIA Container Toolkit on the host.
 # - The arg is named TORCH_VARIANT (same as worker/bge_server/paddle_server) so the release-images.yml
 #   matrix + compose build.args need zero per-service special-casing.
 # - Isolating dependency installation from application code means code-only changes do NOT invalidate
@@ -50,7 +51,8 @@ COPY mineru_server/pyproject.toml mineru_server/uv.lock /workspace/mineru_server
 # --no-dev: omit development-only groups (pytest, ruff, mypy, httpx).
 # --no-install-project: the project itself is not a package (package = false in pyproject.toml).
 # --extra ${TORCH_VARIANT}: activates either the `cpu` or `gpu` optional-dependency extra, which gates
-#   the correct torch wheel + mineru[core]. The two extras are mutually exclusive (conflicting).
+#   the correct torch wheel + mineru[vlm,pipeline,api]. The two extras are mutually exclusive
+#   (conflicting).
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev --no-install-project --extra "${TORCH_VARIANT}" --project /workspace/mineru_server
 

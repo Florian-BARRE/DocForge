@@ -153,6 +153,13 @@ with every profile.
 Docker and a private checkout directory, a 600 file is unreadable inside seaweedfs, its S3 gateway
 dies with "permission denied" and the app fails at startup.
 
+**After a store image changes in `compose.base.yml`** (e.g. the switch to prod's redis 7.4 and
+seaweedfs 4.38): an existing stack keeps its volumes, no volume needs dropping (redis 7.4 loads an
+8.2 RDB, seaweedfs 4.38 reads 4.50's blobs with only warnings on the `.vif` files). Recreating redis
+under a running worker kills the arq worker, though, so run `aidk stack down` then `aidk stack up`
+(main checkout: the same, or restart `docforge_worker` after the `up`); `aidk stack release` is only
+for a clean slate.
+
 ## The telemetry stack
 
 Opt-in via `compose/overlays/compose.telemetry.yml`. Four containers, **no `profiles:` gate** (unlike

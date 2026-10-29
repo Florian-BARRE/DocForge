@@ -70,9 +70,10 @@ class MineruServerConfig(EnvConfigLoader):
     # reads the env var MINERU_MODEL_SOURCE directly; declared here to surface it in the boot log.
     MINERU_MODEL_SOURCE: str = env("MINERU_MODEL_SOURCE", default="huggingface")
     # The MinerU VLM backend that runs the parse. "vlm-transformers" is the dependency-light default
-    # (only needs mineru[core]); "vlm-vllm-engine" / "vlm-sglang-engine" are faster but pull the heavy
-    # vllm/sglang stacks — opt into them at deploy time (add the extra + flip this var). GPU-only in
-    # every case: the MinerU2.5-Pro VLM requires CUDA (see the module + Dockerfile notes).
+    # (only needs mineru[vlm,pipeline,api]); "vlm-vllm-engine" / "vlm-sglang-engine" are faster but
+    # pull the heavy vllm/sglang stacks — opt into them at deploy time (add the extra + flip this
+    # var). GPU-only in every case: the MinerU2.5-Pro VLM requires CUDA (see the module + Dockerfile
+    # notes).
     MINERU_BACKEND: str = env("MINERU_BACKEND", default="vlm-transformers")
     # Default OCR/parse language hint forwarded to MinerU ("ch" auto-handles latin scripts too). This
     # only steers MinerU's own text post-processing; the IR language is detected downstream by the

@@ -32,7 +32,7 @@ dependencies = [
 #
 # torch and torchvision are PINNED to a matched pair, BOTH routed to the pytorch-cpu/pytorch-cu126
 # indexes below (see [tool.uv.sources]). Previously only torch was declared here: torchvision was an
-# undeclared transitive dep of mineru[core]/transformers, so uv resolved it from plain PyPI (the
+# undeclared transitive dep of mineru/transformers, so uv resolved it from plain PyPI (the
 # generic/CPU build) while torch resolved +cu126 — an ABI mismatch that crashes at
 # `import torchvision` with "operator torchvision::nms does not exist" (transformers imports
 # torchvision at module load, so the whole `vlm-transformers` backend failed to import). Do NOT let
