@@ -231,6 +231,11 @@ The server dispatches on `MCP_TRANSPORT` (`src/mcp/entrypoint.py`).
 | `MCP_HTTP_PATH` | `/mcp` | URL path the streamable-HTTP endpoint is served on. |
 | `MCP_UPLOAD_DIR` | *(unset)* | **HTTP-only upload inbox.** The one local directory `upload_document`/`import_collection`'s `file_path` may resolve into over `streamable-http` (resolved path, symlinks followed, must stay inside it). Unset (default) refuses both tools outright over HTTP — there is no "read anything the container can see" fallback. Ignored on stdio, where `file_path` is any local path as before. See [Access control](#access-control). |
 
+> **Logs.** The `LOGGING_*` variables drive the server's loggerplusplus sinks (console, optional
+> file). The mcp SDK's own records (logger `mcp.*`: a tool call rejected on its arguments or a tool
+> that failed at `INFO`, a crashing tool at `ERROR` with its traceback) are routed into the same
+> sinks, once each, labelled with their logger name (`src/mcp/libs/sdk_logging.py`).
+
 > There is no `MCP_AUTH_TOKEN` (removed) and no MCP-level auth gate of its own. The MCP is a pure
 > pass-through: it forwards each caller's own DocForge API key, so one token gives the same rights
 > on the REST API and via the MCP — see [Access control](#access-control).
