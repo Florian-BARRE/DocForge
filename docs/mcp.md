@@ -372,6 +372,13 @@ stream), and accepts request bodies up to the inline-upload ceiling (about 134 M
 than the SDK's 4 MiB default. The server advertises no subscriptions and no `listChanged`
 notifications: the tool list is static per release.
 
+**`tools/list` cache hint.** On `2026-07-28`, a `tools/list` result carries `ttlMs: 3600000` and
+`cacheScope: "public"` (SEP-2549), so a client may reuse the 85 tool schemas for an hour instead of
+re-listing them. `public` because the catalogue is the same for every API key (no tool is hidden
+per key; DocForge's REST API checks a key's scope when a tool is called). One hour because nothing
+evicts a cached list (no `listChanged`): it bounds how long a client keeps the previous release's
+catalogue after a redeploy. Handshake-era responses (`2025-11-25` and older) carry neither field.
+
 **Python mcp 2.x clients and large results.** The mcp 2.x client caps one SSE event at 1 MiB by
 default (`max_sse_event_size` of `streamable_http_client`). This server answers JSON, not SSE, so the
 cap does not apply to a direct connection; if a proxy in between turns responses into an SSE stream,
@@ -387,8 +394,9 @@ socket (`cd src/mcp && uv run pytest tests/contract`; `-m "not slow"` skips the 
   descriptions, input schemas with `additionalProperties: false`, annotations; no output schema).
 - **mcp 1.x Python client** (`mcp==1.29.1`, run in a throwaway `uv` environment): negotiates
   `2025-11-25`. **mcp 2.x `Client`**: `mode="auto"` negotiates `2026-07-28` through `server/discover`,
-  `mode="legacy"` negotiates `2025-11-25`. For all three: compact-JSON text, inline `ImageContent`
-  for image blobs; an API 404 is `isError` with `DocForge API error 404`; an unknown argument is
+  `mode="legacy"` negotiates `2025-11-25`; only the `2026-07-28` one receives the `tools/list`
+  cache hint (`ttlMs`/`cacheScope`), which raw handshake-era `tools/list` POSTs never carry. For
+  all three: compact-JSON text, inline `ImageContent` for image blobs; an API 404 is `isError` with `DocForge API error 404`; an unknown argument is
   `extra_forbidden`; concurrent callers each reach DocForge with their own key.
 - **Raw JSON-RPC**: stateless `tools/call` POSTs succeed with `Mcp-Protocol-Version` `2024-11-05`,
   `2025-03-26`, `2025-06-18`, `2025-11-25` or none; one JSON body per POST (no SSE, no session id);
