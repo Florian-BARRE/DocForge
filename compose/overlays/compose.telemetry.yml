@@ -55,7 +55,7 @@
 services:
   # ── Prometheus — scrapes DocForge app metrics ───────────────────────────────
   prometheus:
-    image: prom/prometheus:v3.14.0
+    image: prom/prometheus:v3.14.0@sha256:5ce7540c3c00ef4ab0c9d2c995c6a5b9c421f44b4a115d97a2c7af3b1c21cbb0
     container_name: docforge-prometheus
     # Explicit command so we can enable the remote-write RECEIVER: a REMOTE Grafana Alloy running
     # on another host can `prometheus.remote_write` its metrics INTO this Prometheus (the in-stack
@@ -88,7 +88,7 @@ services:
 
   # ── Loki — log storage/index, receives from promtail ────────────────────────
   loki:
-    image: grafana/loki:3.7.8
+    image: grafana/loki:3.7.8@sha256:1107dd5274e0ada47e42472b7a7e71f3b2a2fe878878108f3e2f9e51528f0193
     container_name: docforge-loki
     command: ["-config.file=/etc/loki/loki-config.yml"]
     volumes:
@@ -116,7 +116,7 @@ services:
   # discovers containers on this host's Docker socket, tails their json-file logs, and writes to
   # loki — same job Promtail did, in Alloy's config language (services/telemetry/alloy/config.alloy).
   alloy:
-    image: grafana/alloy:v1.21.2
+    image: grafana/alloy:v1.21.2@sha256:89a5a320168387336b9ac3c850609c3ba7757eadd4ae5f1d819deb35e9854b18
     container_name: docforge-alloy
     # `run <config>`; `--storage.path` is where Alloy keeps its own WAL/positions (needs a writable
     # volume so log positions survive a restart, like Promtail's positions.yaml did). The HTTP
@@ -151,7 +151,7 @@ services:
 
   # ── Grafana — dashboards over Prometheus + Loki, provisioned on boot ────────
   grafana:
-    image: grafana/grafana:13.2.4
+    image: grafana/grafana:13.2.4@sha256:dbbc38ea21103cefb50396340cd88afec779c7e070b0a7bf5a75b4ce46651d3f
     container_name: docforge-grafana
     # Admin credentials live in services/telemetry/.env (GF_SECURITY_ADMIN_USER / _PASSWORD) —
     # the discoverable per-service config home (like services/caddy, services/docforge). Change

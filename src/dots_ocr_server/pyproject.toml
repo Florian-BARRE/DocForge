@@ -15,7 +15,8 @@ dependencies = [
     # lightweight, no CUDA — a base dependency on purpose (rendering + validation stay CPU-testable).
     "pypdfium2>=4.30.0",
     # Pillow encodes the rendered page bitmaps to PNG bytes for the VLM chat message — a pure, base dep.
-    "pillow>=10.0.0",
+    # Floor 13.0.0: the CRITICAL advisories of pillow 12.x are fixed only in 13.
+    "pillow>=13.0.0",
     # Config & logging (same internal libraries as the rest of the DocForge stack).
     "configplusplus>=0.1.0",
     "loggerplusplus>=1.0.0",

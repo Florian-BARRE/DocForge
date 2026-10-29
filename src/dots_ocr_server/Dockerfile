@@ -31,7 +31,7 @@
 # - Isolating dependency installation from application code means code-only changes do NOT invalidate
 #   this slow dependency layer.
 ###############################################################################
-FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim AS py-build
+FROM ghcr.io/astral-sh/uv:0.9.30-python3.12-bookworm-slim@sha256:e5b65587bce7de595f299855d7385fe7fca39b8a74baa261ba1b7147afa78e58 AS py-build
 
 # ── Build-time argument: torch variant selector ──────────────────────────
 # Default is "cpu" (wiring build-test). Pass --build-arg TORCH_VARIANT=gpu at build time to produce the
@@ -71,7 +71,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 #   (rednote-hilab/dots.ocr) and cached under HF_HOME, mounted as a named volume so they persist
 #   across restarts.
 ###############################################################################
-FROM python:3.12-slim-bookworm AS runtime
+FROM python:3.12.16-slim-bookworm@sha256:e697c81897302a4c4333bade000d98038fbb21eb064f8ee1fd42d02ebcd9d337 AS runtime
 
 # OCI image metadata — declares the image's license (dots.ocr weights are MIT) + source.
 LABEL org.opencontainers.image.title="docforge-dots-ocr-server" \
