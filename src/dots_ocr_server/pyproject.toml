@@ -8,8 +8,8 @@ dependencies = [
     # FastAPI + ASGI server. The dots.ocr model engine (transformers + torch) is NOT a base dependency
     # — it lives in the gpu extra below so the default sync set stays light and offline-installable (the
     # renderer + normalizer + contract are pure and unit-testable without CUDA/torch/transformers).
-    "fastapi>=0.115.0,<1",
-    "uvicorn[standard]>=0.30.0,<1",
+    "fastapi>=0.162.0,<1",
+    "uvicorn[standard]>=0.54.0,<1",
     # pypdfium2 renders each PDF page to an image (the input dots.ocr's VLM consumes) AND is used by
     # libs/validation.py to reject an undecodable PDF as a 422 before the expensive GPU parse. AVX-free,
     # lightweight, no CUDA — a base dependency on purpose (rendering + validation stay CPU-testable).
@@ -18,7 +18,7 @@ dependencies = [
     # Floor 13.0.0: the CRITICAL advisories of pillow 12.x are fixed only in 13.
     "pillow>=13.0.0",
     # Config & logging (same internal libraries as the rest of the DocForge stack).
-    "configplusplus>=0.1.0",
+    "configplusplus>=0.4.0",
     "loggerplusplus>=1.0.0",
     # ASCII startup banner printed by the lifespan.
     "pyfiglet>=1.0.2,<2",
@@ -57,7 +57,7 @@ gpu = [
 dev = [
     "pytest>=8.3.0",
     "pytest-asyncio>=0.24.0",
-    "ruff>=0.8.0",
+    "ruff>=0.17.2",
     "mypy>=1.13.0",
     "httpx>=0.28.0",   # For FastAPI TestClient
 ]
