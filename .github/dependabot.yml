@@ -301,6 +301,12 @@ updates:
     groups:
       compose-images-minor-patch:
         update-types: ["minor", "patch"]
+    ignore:
+      # redis runs the -bookworm variant (compose.base.yml), and Docker Hub stopped publishing
+      # bookworm variants after 8.4.0: 8.4.0-bookworm is a frozen image without the 8.4.x security
+      # fixes. Lift with a deliberate move to a trixie variant (issue #183).
+      - dependency-name: "redis"
+        versions: [">=8.3"]
 
   - package-ecosystem: "docker-compose"
     directory: "/compose/overlays"
