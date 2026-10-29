@@ -15,7 +15,7 @@
 #   rapidocr, pypdfium2, pillow) never enters this image: the app describes and
 #   validates pipelines, it never executes them (lazy imports make that safe)
 ###############################################################################
-FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim AS py-build
+FROM ghcr.io/astral-sh/uv:0.9.30-python3.12-bookworm-slim@sha256:e5b65587bce7de595f299855d7385fe7fca39b8a74baa261ba1b7147afa78e58 AS py-build
 
 WORKDIR /workspace
 
@@ -39,10 +39,10 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # - Build the production UI bundle IN the image, so a fresh `--build` never ships
 #   a missing or stale dist/ (previously relied on a host-built dist/ being present
 #   in the build context — silently absent/stale on a clean checkout or CI runner).
-# - node:22-bookworm-slim matches the version used by the docforge_frontend dev
+# - node:22.23.4-bookworm-slim (same tag and digest) matches the docforge_frontend dev
 #   service (compose/overlays/compose.dev.yml) so dev/prod build with the same Node.
 ###############################################################################
-FROM node:22-bookworm-slim AS ui-build
+FROM node:22.23.4-bookworm-slim@sha256:4b150b48b4116e2a22f2c39cc27025fbf4f153e2078fd3b14d159fdb5c7279da AS ui-build
 
 WORKDIR /workspace/frontend
 
@@ -68,7 +68,7 @@ RUN npm run build
 #     /app/app/frontend/dist  -> the compiled UI bundle, built above (not host state)
 # - Serve the API with uvicorn as the container's process
 ###############################################################################
-FROM python:3.12-slim-bookworm AS runtime
+FROM python:3.12.16-slim-bookworm@sha256:e697c81897302a4c4333bade000d98038fbb21eb064f8ee1fd42d02ebcd9d337 AS runtime
 
 # OCI image metadata — declares the image's license + source (GPL-3.0 compliance: the
 # full license text lives in the PUBLIC source repo linked here).
