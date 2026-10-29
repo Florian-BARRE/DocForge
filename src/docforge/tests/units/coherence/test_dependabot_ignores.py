@@ -8,7 +8,9 @@
 # its entry (else the Dependabot proxy refuses the egress and every update of the project fails).
 # And that every uv project and every Dockerfile of src/ has its entry (python image majors/minors
 # ignored), and every project depending on torch/torchvision holds the V100 bound however it is
-# pinned (`<` constraint or `==` in an extra). Serviceless: parses the TOML/YAML statically.
+# pinned (`<` constraint or `==` in an extra). And that a compose image pinned on a Debian variant
+# its upstream stopped publishing is held below that line (redis: no bookworm tag after 8.4.0).
+# Serviceless: parses the TOML/YAML statically.
 
 # ====== Standard Library Imports ======
 import pathlib
@@ -31,6 +33,11 @@ _PUBLIC_INDEX_HOSTS = ("download.pytorch.org", "pypi.org")
 # The V100 rule (cu126 stops at torch 2.13): the ignore every torch-dependent project must carry.
 _V100_BOUNDS = {"torch": ">=2.14", "torchvision": ">=0.29"}
 _PYTHON_IMAGE_UPDATE_TYPES = {"version-update:semver-major", "version-update:semver-minor"}
+
+# Compose images whose upstream stopped publishing the variant they run: (image, variant, the
+# ignore that holds them). Docker Hub's redis has no -bookworm tag after 8.4.0 (frozen, without the
+# 8.4.x security fixes): lifted by the move to trixie (issue #183).
+_FROZEN_VARIANTS = [("redis", "bookworm", ">=8.3")]
 
 _UPPER_CAP = re.compile(r"^\s*([A-Za-z0-9_.\-]+)\s*<\s*([0-9][0-9A-Za-z.]*)\s*$")
 
@@ -161,3 +168,23 @@ def test_torch_dependent_projects_hold_the_v100_bound(directory: str) -> None:
         if name in names and (name, bound) not in ignored
     ]
     assert not missing, f"{directory}: depends on torch but .github/dependabot.yml misses {missing}"
+
+
+@pytest.mark.parametrize(("image", "variant", "bound"), _FROZEN_VARIANTS)
+def test_compose_images_on_a_frozen_variant_are_held(image: str, variant: str, bound: str) -> None:
+    pattern = re.compile(rf"^\s+image:\s*{re.escape(image)}:\S*-{variant}@", re.MULTILINE)
+    entries = _entries("docker-compose")
+    users = [
+        path
+        for path in sorted((_REPO_ROOT / "compose").glob("**/compose.*.yml"))
+        if pattern.search(path.read_text(encoding="utf-8"))
+    ]
+    missing = [
+        str(path.relative_to(_REPO_ROOT))
+        for path in users
+        if (image, bound) not in _ignored_versions(entries.get(_repo_directory(path), {}))
+    ]
+    assert not missing, (
+        f"{image}:*-{variant} runs in {missing} but its docker-compose entry in "
+        f'.github/dependabot.yml misses the `versions: ["{bound}"]` ignore'
+    )
