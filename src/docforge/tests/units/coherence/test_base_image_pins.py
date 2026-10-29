@@ -26,8 +26,14 @@ _IMAGE = re.compile(r"^\s+image:\s*(\S+)\s*$", re.MULTILINE)
 _PINNED = re.compile(r"^[a-z0-9./_-]+:(?P<tag>[A-Za-z0-9._-]+)@sha256:[0-9a-f]{64}$")
 # The tag's leading version: v1.20.0, 3.12.16-slim-bookworm, 0.9.30-python3.12-bookworm-slim.
 _VERSION = re.compile(r"^v?(\d+(?:\.\d+)*)")
+# In-house images: the GHCR releases (tag ${DOCFORGE_TAG}) and the local dev builds.
+_IN_HOUSE = ("docforge-", "${", "ghcr.io/florian-barre/")
 # Upstreams whose exact release is two numbers (postgres 16.15, seaweedfs 4.48).
 _TWO_PART_RELEASES = ("postgres:", "chrislusf/seaweedfs:")
+
+
+def _is_third_party(ref: str) -> bool:
+    return not ref.startswith(_IN_HOUSE) and "${" not in ref and not ref.endswith(":dev")
 
 
 def _problem(ref: str) -> str | None:
@@ -61,11 +67,7 @@ def test_every_dockerfile_base_image_is_pinned(dockerfile: pathlib.Path) -> None
     "compose_file", _COMPOSE_FILES, ids=lambda p: str(p.relative_to(_REPO_ROOT))
 )
 def test_every_third_party_compose_image_is_pinned(compose_file: pathlib.Path) -> None:
-    refs = [
-        ref
-        for ref in _IMAGE.findall(compose_file.read_text(encoding="utf-8"))
-        if "${" not in ref and not ref.endswith(":dev")
-    ]
+    refs = list(filter(_is_third_party, _IMAGE.findall(compose_file.read_text(encoding="utf-8"))))
     problems = [p for p in map(_problem, refs) if p]
     assert not problems, f"{compose_file.relative_to(_REPO_ROOT)}: {problems}"
 
@@ -84,3 +86,16 @@ def test_every_third_party_compose_image_is_pinned(compose_file: pathlib.Path) -
 )
 def test_the_pin_rule(ref: str, pinned: bool) -> None:
     assert (_problem(ref) is None) is pinned
+
+
+@pytest.mark.parametrize(
+    "ref",
+    [
+        "docforge-app:dev",
+        "${COMPOSE_PROJECT_NAME:-docforge}-worker:dev",
+        "ghcr.io/florian-barre/docforge-app:${DOCFORGE_TAG:-latest}",
+        "ghcr.io/florian-barre/docforge-worker:1.2.3-cpu",
+    ],
+)
+def test_in_house_images_need_no_digest(ref: str) -> None:
+    assert not _is_third_party(ref)
