@@ -21,11 +21,12 @@
 # {gpu,dev,proxy,telemetry}.yml`, `compose/{prod,dev}-{cpu,gpu}.yml` — which did NOT match that
 # glob. They have since been renamed to `compose.*.yml` (e.g. `compose/compose.base.yml`,
 # `compose/overlays/compose.gpu.yml`, `compose/compose.prod-cpu.yml`) specifically so every file
-# fits the glob, so the ~11 third-party `image:` pins living inside them (postgres:16-bookworm,
-# redis:7-bookworm, qdrant/qdrant, chrislusf/seaweedfs, gotenberg/gotenberg:8, prom/prometheus,
-# grafana/{loki,promtail,grafana}, caddy, node:22-bookworm-slim) ARE now auto-updated, via the
-# `/compose` and `/compose/overlays` entries below (plus the root `docker-compose.yml`, which is a
-# pure `include:` with no image pins of its own). The GHCR `ghcr.io/florian-barre/docforge-*`
+# fits the glob, so the third-party `image:` pins living inside them (each `name:tag@sha256:digest`:
+# postgres, redis, qdrant/qdrant, chrislusf/seaweedfs, gotenberg/gotenberg, prom/prometheus,
+# grafana/{loki,promtail,grafana}, caddy, node) ARE now auto-updated, via the `/compose` and
+# `/compose/overlays` entries below (plus the root `docker-compose.yml`, which is a pure `include:`
+# with no image pins of its own). postgres, redis and seaweedfs mirror the shared production
+# services (postgres 16, redis 7.4, seaweedfs 4.38): the `/compose` entry holds them there. The GHCR `ghcr.io/florian-barre/docforge-*`
 # images are first-party (released by release-sdk.yml's `images` job) and are deliberately NOT
 # tracked here.
 # ============================================================================
@@ -153,6 +154,10 @@ updates:
         versions: [">=2.14"]
       - dependency-name: "torchvision"
         versions: [">=0.29"]
+      # mineru is pinned <3 (pyproject.toml): the 3.x line is a major to plan separately (its own
+      # request), not a weekly bump (#194 and #215 closed). Lift when that move is planned.
+      - dependency-name: "mineru"
+        versions: [">=3"]
 
   - package-ecosystem: "uv"
     directory: "/src/dots_ocr_server"
@@ -302,11 +307,14 @@ updates:
       compose-images-minor-patch:
         update-types: ["minor", "patch"]
     ignore:
-      # redis runs the -bookworm variant (compose.base.yml), and Docker Hub stopped publishing
-      # bookworm variants after 8.4.0: 8.4.0-bookworm is a frozen image without the 8.4.x security
-      # fixes. Lift with a deliberate move to a trixie variant (issue #183).
+      # postgres, redis and seaweedfs (compose.base.yml): mirrors the shared production service;
+      # change only when prod changes (prod runs postgres 16, redis 7, seaweedfs 4.38).
+      - dependency-name: "postgres"
+        versions: [">=17"]
       - dependency-name: "redis"
-        versions: [">=8.3"]
+        versions: [">=7.5"]
+      - dependency-name: "chrislusf/seaweedfs"
+        versions: [">4.38"]
 
   - package-ecosystem: "docker-compose"
     directory: "/compose/overlays"
