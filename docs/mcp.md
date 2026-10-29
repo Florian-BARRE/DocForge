@@ -346,6 +346,29 @@ header `Authorization: Bearer <your-docforge-api-key>` — the caller's own DocF
 separate MCP-level secret (there isn't one; see [Access control](#access-control)). This is the
 deployment to use when the model and the DocForge stack live on different hosts.
 
+### Compatibility contract
+
+`src/mcp/tests/contract/` pins what HTTP clients rely on, against the real server over a real
+socket (`cd src/mcp && uv run pytest tests/contract`; `-m "not slow"` skips the Agents SDK runs):
+
+- **Tool catalogue**: `tools/list` must equal the committed `tools_snapshot.json` (names,
+  descriptions, input schemas with `additionalProperties: false`, annotations; no output schema).
+- **mcp 1.x Python client**: negotiates `2025-11-25`; stateless `tools/call` POSTs succeed with
+  `Mcp-Protocol-Version` `2024-11-05`, `2025-03-26`, `2025-06-18`, `2025-11-25` or none; one JSON body
+  per POST (no SSE, no session id); compact-JSON text, inline `ImageContent` for image blobs; an API
+  404 is `isError` with `DocForge API error 404`; an unknown argument is `extra_forbidden`; no or a
+  non-Bearer `Authorization` is a 401 with `WWW-Authenticate: Bearer`; concurrent callers each
+  reach DocForge with their own key; a 5 MiB base64 upload is not refused with 413.
+- **OpenAI Agents SDK** (`agents.mcp.MCPServerStreamableHttp`, the in-house chatbot's client), run
+  in a throwaway `uv` environment on both mcp majors. The key goes in
+  `params={"headers": {"Authorization": "Bearer <key>"}}` and is sent on every request with
+  `Accept: application/json, text/event-stream` (JSON responses are accepted, SSE is not required).
+  On mcp 1.x it sends `initialize` (latest version, answered `2025-11-25`), `notifications/initialized`,
+  then `tools/list` / `tools/call` with `Mcp-Protocol-Version: 2025-11-25`. On mcp 2.x it first probes
+  `server/discover` at `2026-07-28`, which today's server answers with HTTP 400, then falls back to
+  that same `initialize` sequence. OpenAI's hosted MCP tool (Responses API) calls the server from
+  OpenAI's infrastructure with the `authorization` field; it is not covered here.
+
 ---
 
 ## 5. How it relates to the SDK
