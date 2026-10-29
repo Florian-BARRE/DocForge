@@ -70,6 +70,10 @@ package = false
 conflicts = [
     [{ extra = "cpu" }, { extra = "gpu" }],
 ]
+# Cap torch/torchvision so the cpu and gpu extras resolve the SAME minor (2.13 / 0.28), the one the
+# cu126 / Tesla V100 stack is validated on: cpu and cu126 both offer 2.13 and 2.14, and without the cap
+# the two variants could drift apart (same cap as bge_server and docforge).
+constraint-dependencies = ["torch<2.14", "torchvision<0.29"]
 
 [tool.uv.sources]
 # Route torch/torchvision to the correct wheel index depending on the active extra.
