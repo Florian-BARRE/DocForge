@@ -53,8 +53,8 @@ dependencies = [
 # deliberately NOT locked here because vllm/sglang resolution is GPU-host-specific and would bloat the
 # base image. The declared extras are CONFLICTING (see [tool.uv]) so uv enforces mutual exclusivity.
 [project.optional-dependencies]
-cpu = ["mineru[core]>=2.5.0,<3", "torch==2.13.0", "torchvision==0.28.0"]
-gpu = ["mineru[core]>=2.5.0,<3", "torch==2.13.0", "torchvision==0.28.0"]
+cpu = ["mineru[core]>=2.5.0,<5", "torch==2.13.0", "torchvision==0.28.0"]
+gpu = ["mineru[core]>=2.5.0,<5", "torch==2.13.0", "torchvision==0.28.0"]
 
 [dependency-groups]
 dev = [
