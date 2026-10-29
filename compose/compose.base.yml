@@ -163,7 +163,7 @@ services:
 
   # ── PostgreSQL 16 — the tabular source of truth ─────────────────────────────
   docforge_postgres:
-    image: postgres:16-bookworm
+    image: postgres:16.15-bookworm@sha256:e8a07d2c7579b038938cdba6c539e580e5001caf9ea203d397b5cc83e76bd938
     container_name: docforge-postgres
     # No host port in prod — data-plane services are reachable only on docforge_net;
     # operator access is `docker compose exec docforge_postgres psql ...`. Dev re-publishes
@@ -204,7 +204,7 @@ services:
 
   # ── Redis 7 — the arq job queue (transport only, no monitoring truth) ───────
   docforge_redis:
-    image: redis:8-bookworm
+    image: redis:8.2.11-bookworm@sha256:99ffb973380cc2f47bca06bd094f7f8c7138a0879a63cb8939896a22b7a65bba
     container_name: docforge-redis
     # No host port in prod — internal to docforge_net only (app enqueue / worker listen).
     # Dev re-publishes 10042 via compose/overlays/compose.dev.yml.
@@ -232,7 +232,7 @@ services:
 
   # ── Qdrant — vector store (named dense + sparse per collection) ─────────────
   docforge_qdrant:
-    image: qdrant/qdrant:v1.20.0
+    image: qdrant/qdrant:v1.20.0@sha256:9bfc89f9914fc14876a88c05270685921a55b8877b254a98bcc1cc2f0a424cd2
     container_name: docforge-qdrant
     # No host port in prod — REST API internal to docforge_net only. Dev re-publishes
     # 10043 via compose/overlays/compose.dev.yml.
@@ -260,7 +260,7 @@ services:
 
   # ── SeaweedFS — S3-compatible blob store (content-addressed objects) ────────
   docforge_seaweedfs:
-    image: chrislusf/seaweedfs:4.48
+    image: chrislusf/seaweedfs:4.48@sha256:4e61d15fd35994cb1e43e1e553dff106794841fd9a99ade2fc8c8bfce4d7872d
     container_name: docforge-seaweedfs
     command: >
       server
@@ -296,7 +296,7 @@ services:
 
   # ── Gotenberg 8 — office→PDF conversion used by the intake converter node ───
   docforge_gotenberg:
-    image: gotenberg/gotenberg:8
+    image: gotenberg/gotenberg:8.39.0@sha256:13672f317b443c793e972b1bd2155ec62a3e7b6891b411e8196442cc053ee5f5
     container_name: docforge-gotenberg
     # Large office documents convert in ~20-25s warm but exceed the default 30s deadline
     # cold (LibreOffice spin-up) — raise the API timeout so borderline files never 503.
