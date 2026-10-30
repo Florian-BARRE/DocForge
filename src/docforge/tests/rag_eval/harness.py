@@ -22,8 +22,16 @@ from tests.rag_eval.qasper import Paper
 class DocForgeClient:
     """Minimal synchronous REST client for the DocForge API used by the benchmark."""
 
-    def __init__(self, base_url: str, token: str, timeout: float = 120.0) -> None:
-        self._client = httpx.Client(
+    def __init__(
+        self,
+        base_url: str,
+        token: str,
+        timeout: float = 120.0,
+        http: httpx.Client | None = None,
+    ) -> None:
+        # ``http`` injects a ready client (a unit test passes the app's TestClient); the base URL,
+        # token and timeout are then the caller's.
+        self._client = http or httpx.Client(
             base_url=base_url.rstrip("/"),
             headers={"Authorization": f"Bearer {token}"},
             timeout=timeout,
@@ -36,6 +44,14 @@ class DocForgeClient:
         """The stock ingestion pipeline blob (the product default)."""
         return self._client.get("/pipelines/ingest").raise_for_status().json()["blob"]
 
+    @staticmethod
+    def _node_config(blob: dict, stage: str) -> dict:
+        """The current config of a stage node in the blob (``{}`` when absent)."""
+        return next(
+            (node.get("config", {}) for node in blob.get("nodes", []) if node.get("id") == stage),
+            {},
+        )
+
     def _apply(self, blob: dict, stage: str, overrides: dict) -> dict:
         """
         Recompile the blob with a stage node's config MERGED with ``overrides`` (not replaced).
@@ -43,12 +59,11 @@ class DocForgeClient:
         set_config replaces the whole config dict, so we first read the node's current config from the
         blob and merge — otherwise overriding one field (e.g. embed batch_size) would drop the
         provider's required base_url/model and the blob would fail validation at collection creation.
+        The endpoint answers an unbuildable result as data (``valid=false``): raise on it here, so a
+        harness override the node config no longer accepts fails at blob build, naming the error,
+        instead of as a bare 422 at collection creation.
         """
-        current = next(
-            (node.get("config", {}) for node in blob.get("nodes", []) if node.get("id") == stage),
-            {},
-        )
-        merged = {**current, **overrides}
+        merged = {**self._node_config(blob, stage), **overrides}
         response = self._client.post(
             "/pipelines/ingest/stages/apply",
             json={
@@ -56,7 +71,12 @@ class DocForgeClient:
                 "action": {"action": "set_config", "stage": stage, "config": merged},
             },
         )
-        return response.raise_for_status().json()["blob"]
+        payload = response.raise_for_status().json()
+        if payload.get("build_error"):
+            raise ValueError(
+                f"the {stage} override {overrides} breaks the blob: {payload['build_error']}"
+            )
+        return payload["blob"]
 
     def chunk_blob(self, min_tokens: int | None, target_tokens: int | None) -> dict:
         """
@@ -65,7 +85,9 @@ class DocForgeClient:
         The stock embed batch (32 texts / 60 s) can breach its own timeout on a CPU-hosted BGE-M3
         when a long paper yields many chunks — a deployment reality, not a pipeline bug. The benchmark
         collection therefore embeds in smaller batches with a generous timeout so ingestion is robust
-        on this stack; on a GPU host the product defaults are fine.
+        on this stack; on a GPU host the product defaults are fine. ``batch_size`` is a knob of the
+        embed node; ``timeout_seconds`` belongs to the dense provider slot, whose policy also drives
+        the combined dense+sparse call when both slots name the same bge_server.
         """
         blob = self.default_ingest_blob()
         chunk_config: dict = {}
@@ -75,7 +97,11 @@ class DocForgeClient:
             chunk_config["target_tokens"] = target_tokens
         if chunk_config:
             blob = self._apply(blob, "chunk", chunk_config)
-        return self._apply(blob, "embed", {"batch_size": 8, "timeout_seconds": 180.0})
+        embed_overrides: dict = {"batch_size": 8}
+        dense = self._node_config(blob, "embed").get("dense")
+        if dense:
+            embed_overrides["dense"] = {**dense, "timeout_seconds": 180.0}
+        return self._apply(blob, "embed", embed_overrides)
 
     def list_collections(self) -> list[tuple[str, str]]:
         """(id, name) for every collection — used to purge prior benchmark runs before a new one."""
