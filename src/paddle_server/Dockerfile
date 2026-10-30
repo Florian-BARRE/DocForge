@@ -117,10 +117,14 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 # uvicorn targets `entrypoint:app` (a flat module name, not a package path).
 WORKDIR /app/paddle_server
 
-# Non-root runtime user (fixed uid/gid). --no-create-home: PADDLE_PDX_CACHE_HOME above is an
-# absolute path (/models), not home-relative, so this service needs no home directory of its own.
+# Non-root runtime user (fixed uid/gid) WITH its home directory (/home/appuser, owned by it).
+# The model weights go to PADDLE_PDX_CACHE_HOME (/models), but the hubs paddlex downloads them
+# through write their own cache and lock files under $HOME (huggingface_hub ~/.cache/huggingface,
+# modelscope ~/.cache/modelscope): without a home every download failed with Permission denied
+# and paddlex fell back to the bcebos mirror (issue #224).
 RUN groupadd --gid 10001 appuser \
-    && useradd --uid 10001 --gid appuser --no-create-home --shell /usr/sbin/nologin appuser
+    && useradd --uid 10001 --gid appuser --create-home --home-dir /home/appuser \
+       --shell /usr/sbin/nologin appuser
 
 # WORKDIR above created /app/paddle_server as root (it predates the COPYs below, so their
 # --chown never touches it) — chown the directory itself too, or appuser can read everything
