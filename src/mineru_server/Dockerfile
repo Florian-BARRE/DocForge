@@ -123,10 +123,13 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 # uvicorn targets `entrypoint:app` (a flat module name, not a package path).
 WORKDIR /app/mineru_server
 
-# Non-root runtime user (fixed uid/gid). --no-create-home: MINERU_MODEL_CACHE_HOME above is an
-# absolute path (/models), not home-relative, so this service needs no home directory of its own.
+# Non-root runtime user (fixed uid/gid) WITH its home directory (/home/appuser, owned by it).
+# The model weights go to MINERU_MODEL_CACHE_HOME (/models), but the hubs MinerU downloads them
+# through write their own cache and lock files under $HOME (modelscope ~/.cache/modelscope,
+# huggingface_hub ~/.cache/huggingface): without a home they fail with Permission denied (issue #227).
 RUN groupadd --gid 10001 appuser \
-    && useradd --uid 10001 --gid appuser --no-create-home --shell /usr/sbin/nologin appuser
+    && useradd --uid 10001 --gid appuser --create-home --home-dir /home/appuser \
+       --shell /usr/sbin/nologin appuser
 
 # WORKDIR above created /app/mineru_server as root — chown it so appuser can create NEW entries
 # (e.g. `logs/`) directly under it.

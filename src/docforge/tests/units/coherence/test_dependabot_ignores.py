@@ -8,8 +8,9 @@
 # its entry (else the Dependabot proxy refuses the egress and every update of the project fails).
 # And that every uv project and every Dockerfile of src/ has its entry (python image majors/minors
 # ignored), and every project depending on torch/torchvision holds the V100 bound however it is
-# pinned (`<` constraint or `==` in an extra). And that a compose image pinned on a Debian variant
-# its upstream stopped publishing is held below that line (redis: no bookworm tag after 8.4.0).
+# pinned (`<` constraint or `==` in an extra). And that the compose images mirroring the shared
+# production services (postgres 16, redis 7.4, seaweedfs 4.38) run that version and are held there,
+# and that a dependency major planned separately (mineru 3) is capped and held together.
 # Serviceless: parses the TOML/YAML statically.
 
 # ====== Standard Library Imports ======
@@ -34,10 +35,18 @@ _PUBLIC_INDEX_HOSTS = ("download.pytorch.org", "pypi.org")
 _V100_BOUNDS = {"torch": ">=2.14", "torchvision": ">=0.29"}
 _PYTHON_IMAGE_UPDATE_TYPES = {"version-update:semver-major", "version-update:semver-minor"}
 
-# Compose images whose upstream stopped publishing the variant they run: (image, variant, the
-# ignore that holds them). Docker Hub's redis has no -bookworm tag after 8.4.0 (frozen, without the
-# 8.4.x security fixes): lifted by the move to trixie (issue #183).
-_FROZEN_VARIANTS = [("redis", "bookworm", ">=8.3")]
+# Compose images that mirror florian's shared production services (prod runs them, never
+# upgraded): (image, the version prod runs, the ignore that holds the dev pin there). Change a row
+# only when prod changes.
+_PROD_MIRRORS = [
+    ("postgres", "16", ">=17"),
+    ("redis", "7.4", ">=7.5"),
+    ("chrislusf/seaweedfs", "4.38", ">4.38"),
+]
+
+# Dependency majors planned in their own request: (uv project, package, the `<X` cap of its
+# pyproject.toml that the `>=X` ignore mirrors). mineru 3 (Dependabot #194/#215 closed).
+_HELD_MAJORS = [("/src/mineru_server", "mineru", "3")]
 
 _UPPER_CAP = re.compile(r"^\s*([A-Za-z0-9_.\-]+)\s*<\s*([0-9][0-9A-Za-z.]*)\s*$")
 
@@ -170,21 +179,47 @@ def test_torch_dependent_projects_hold_the_v100_bound(directory: str) -> None:
     assert not missing, f"{directory}: depends on torch but .github/dependabot.yml misses {missing}"
 
 
-@pytest.mark.parametrize(("image", "variant", "bound"), _FROZEN_VARIANTS)
-def test_compose_images_on_a_frozen_variant_are_held(image: str, variant: str, bound: str) -> None:
-    pattern = re.compile(rf"^\s+image:\s*{re.escape(image)}:\S*-{variant}@", re.MULTILINE)
-    entries = _entries("docker-compose")
-    users = [
-        path
+def _compose_refs(image: str) -> dict[pathlib.Path, list[str]]:
+    pattern = re.compile(rf"^\s+image:\s*{re.escape(image)}:(\S+)$", re.MULTILINE)
+    found = {
+        path: pattern.findall(path.read_text(encoding="utf-8"))
         for path in sorted((_REPO_ROOT / "compose").glob("**/compose.*.yml"))
-        if pattern.search(path.read_text(encoding="utf-8"))
-    ]
+    }
+    return {path: tags for path, tags in found.items() if tags}
+
+
+@pytest.mark.parametrize(("image", "prod", "bound"), _PROD_MIRRORS)
+def test_compose_images_mirror_the_prod_service(image: str, prod: str, bound: str) -> None:
+    refs = _compose_refs(image)
+    assert refs, f"{image}: no compose file runs it"
+    # The tag's version must be prod's or a patch of it: 16 → 16.15-bookworm, 4.38 → 4.38.
+    version = re.compile(rf"^{re.escape(prod)}(?:[.-]|@|$)")
+    wrong = [f"{image}:{tag}" for tags in refs.values() for tag in tags if not version.match(tag)]
+    assert not wrong, f"{wrong}: the shared production service runs {image} {prod}"
+    entries = _entries("docker-compose")
     missing = [
         str(path.relative_to(_REPO_ROOT))
-        for path in users
-        if (image, bound) not in _ignored_versions(entries.get(_repo_directory(path), {}))
+        for path in refs
+        if (_normalize(image), bound)
+        not in _ignored_versions(entries.get(_repo_directory(path), {}))
     ]
     assert not missing, (
-        f"{image}:*-{variant} runs in {missing} but its docker-compose entry in "
-        f'.github/dependabot.yml misses the `versions: ["{bound}"]` ignore'
+        f"{image} runs in {missing} but its docker-compose entry in .github/dependabot.yml misses "
+        f'the `versions: ["{bound}"]` ignore (mirrors the shared production service)'
+    )
+
+
+@pytest.mark.parametrize(("directory", "package", "major"), _HELD_MAJORS)
+def test_held_majors_are_capped_and_ignored(directory: str, package: str, major: str) -> None:
+    project = _pyproject(directory).get("project", {})
+    requirements = list(project.get("dependencies", []))
+    for extra in project.get("optional-dependencies", {}).values():
+        requirements.extend(extra)
+    cap = re.compile(rf"^{re.escape(package)}(\[[^\]]*\])?\s*[^;]*<\s*{re.escape(major)}\s*(,|;|$)")
+    assert any(cap.match(req) for req in requirements), (
+        f"{directory}: {package} not capped <{major}"
+    )
+    ignored = _ignored_versions(_uv_entries()[directory])
+    assert (_normalize(package), f">={major}") in ignored, (
+        f'{directory}: .github/dependabot.yml misses the {package} `versions: [">={major}"]` ignore'
     )

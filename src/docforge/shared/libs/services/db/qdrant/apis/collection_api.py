@@ -10,8 +10,12 @@
 # modifier follow the embedder's config-derived VectorLayout: a required content vector the store
 # lacks, or a sparse vector whose modifier disagrees with the configured sparse provider, is reported
 # missing the same way (index rebuild required).
+# A collection another job is still creating is listed before it can be read (Qdrant 1.20 answers
+# its get_collection with a 500 "0 of 0 read operations failed"): that read is retried, bounded,
+# until the collection is ready — concurrent first ingests into a new collection never fail on it.
 
 # ====== Standard Library Imports ======
+import asyncio
 from collections.abc import Mapping, Sequence
 
 # ====== Third-Party Library Imports ======
@@ -27,12 +31,19 @@ from .alias_api import QdrantAliasApi
 
 # The field label a missing CONTENT vector is reported under (the search target name of the body).
 CONTENT_LABEL = "content"
+# Qdrant's answer to a read on a collection listed but not created yet (no shard to read from).
+NOT_READY_ERROR = "0 of 0 read operations failed"
 
 
 class QdrantCollectionApi:
     """Static collection-lifecycle operations (ensure / drop) for the vector store."""
 
     CONTENT_LABEL = CONTENT_LABEL
+    # The bounded wait on a collection still being created: up to ~10 s (first backoff doubled,
+    # capped at 1 s, over the attempts) before the not-ready 500 propagates.
+    NOT_READY_ATTEMPTS = 15
+    NOT_READY_BACKOFF_SECONDS = 0.05
+    NOT_READY_BACKOFF_CAP_SECONDS = 1.0
 
     # A filterable field's type → its Qdrant payload index schema.
     _PAYLOAD_SCHEMA: dict[PayloadType, models.PayloadSchemaType] = {
@@ -124,6 +135,38 @@ class QdrantCollectionApi:
         return set()
 
     @classmethod
+    async def info(cls, client: AsyncQdrantClient, name: str) -> models.CollectionInfo:
+        """
+        Read a collection's info, waiting while another job is still creating it.
+
+        ``collection_exists`` → ``create_collection`` is not atomic and Qdrant lists a collection
+        before its shards are ready: a concurrent first ingest that reads it in that window gets a
+        500 "0 of 0 read operations failed". That means "not ready yet", so the read is retried
+        with a capped backoff; any other error, or a collection still not ready after
+        ``NOT_READY_ATTEMPTS`` reads, propagates.
+
+        Args:
+            client (AsyncQdrantClient): The connection from QdrantClient.raw.
+            name (str): The Qdrant collection name.
+
+        Returns:
+            models.CollectionInfo: The collection's info.
+        """
+        # 1. Retry only the not-ready 500, with a capped backoff; any other error propagates.
+        delay = cls.NOT_READY_BACKOFF_SECONDS
+        for _ in range(cls.NOT_READY_ATTEMPTS - 1):
+            try:
+                return await client.get_collection(name)
+            except UnexpectedResponse as error:
+                body = (error.content or b"").decode(errors="replace")
+                if error.status_code != 500 or NOT_READY_ERROR not in body:
+                    raise
+            await asyncio.sleep(delay)
+            delay = min(delay * 2, cls.NOT_READY_BACKOFF_CAP_SECONDS)
+        # 2. The last attempt: still not ready → the 500 propagates (a stuck creation fails loudly).
+        return await client.get_collection(name)
+
+    @classmethod
     async def reconcile(
         cls,
         client: AsyncQdrantClient,
@@ -156,7 +199,7 @@ class QdrantCollectionApi:
                 mismatched and cannot be fixed live (the collection must be reindexed).
         """
         # 1. The payload indexes already on the collection — only the missing ones are created.
-        info = await client.get_collection(name)
+        info = await cls.info(client, name)
         existing_indexes = set((info.payload_schema or {}).keys())
         for field_name, payload_type in (filterable_fields or {}).items():
             if field_name not in existing_indexes:
@@ -239,8 +282,8 @@ class QdrantCollectionApi:
         ]
         return sorted(missing)
 
-    @staticmethod
-    async def declared(client: AsyncQdrantClient, name: str) -> DeclaredVectors:
+    @classmethod
+    async def declared(cls, client: AsyncQdrantClient, name: str) -> DeclaredVectors:
         """
         Return what an existing collection declares (named vectors + IDF-declared sparse ones).
 
@@ -253,7 +296,7 @@ class QdrantCollectionApi:
         """
         if not await QdrantAliasApi.resolve_or_adopt(client, name):
             return DeclaredVectors()
-        return DeclaredVectors.from_params((await client.get_collection(name)).config.params)
+        return DeclaredVectors.from_params((await cls.info(client, name)).config.params)
 
     @staticmethod
     async def declared_vectors(client: AsyncQdrantClient, name: str) -> tuple[set[str], set[str]]:

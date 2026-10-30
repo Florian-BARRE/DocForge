@@ -138,20 +138,22 @@ box, ~12 GiB available. `nproc` = 8 cores, no CPU pinning applied to any DocForg
 
 ## 4. Disk — images + first-boot model downloads
 
-**Image sizes** (measured with `docker images` on this VM; CPU-tier images, current tags):
+**Image sizes** (measured with `docker images` on this VM; CPU-tier images; the third-party tags
+are those pinned in `compose/compose.base.yml`, where postgres, redis and seaweedfs mirror the
+shared production services):
 
 | Image | Size |
 |---|---|
 | `docforge-worker` (cpu) | 2.92 GB |
 | `docforge-paddle-server` (cpu) | 2.30 GB |
-| `gotenberg/gotenberg:8` | 2.44 GB |
+| `gotenberg/gotenberg:8.39.0` | 2.47 GB |
 | `docforge-bge-server` (cpu) | 1.94 GB |
-| `postgres:16-bookworm` | 622 MB |
+| `postgres:16.15-bookworm` | 622 MB |
 | `docforge-app` | 612 MB |
 | `chrislusf/seaweedfs:4.38` | 360 MB |
-| `qdrant/qdrant:v1.18.2` | 270 MB |
+| `qdrant/qdrant:v1.20.0` | 281 MB |
 | `docforge-mcp` | 265 MB |
-| `redis:7-bookworm` | 170 MB |
+| `redis:7.4.12-bookworm` | 167 MB |
 
 - **Minimal profile images (no `paddle_server`): ≈ 9.6 GB.**
 - **Full CPU profile images (incl. `paddle_server`): ≈ 11.9 GB.**

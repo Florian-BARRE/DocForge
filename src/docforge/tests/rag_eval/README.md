@@ -33,6 +33,8 @@ of a long document.
 - `harness.py` — thin REST client + the eval loop (`run_eval`, `compare_configs`, `client_from_env`).
 - `runner.py` — CLI: run/compare chunk configs against the live stack and print hit@k + MRR.
 - `test_metrics.py`, `test_synthetic.py` — unit tests (`python -m pytest tests/rag_eval/test_*.py`).
+- `test_harness_blob.py` — the harness's benchmark blob through the real app's stage routes and the
+  collection-creation validation (no stack): an override the node configs reject fails here.
 - `test_rag_eval_live.py` — a `live`-marked smoke test (tiny end-to-end against the running stack).
 - `data/` — **git-ignored** cache of downloaded rows.
 
