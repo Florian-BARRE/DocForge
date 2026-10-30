@@ -1,12 +1,12 @@
 # AI Dev Kit: what aidk verify checks before a task is declared done (agents and the Stop hook).
 # Each check is the command as a list of arguments, run from the repository root, in this order.
 # The CI gate's commands (.github/workflows/gate.yml, run by ci.yml and by release-sdk.yml's gate), job by
-# job: docforge, docforge_sdk, mcp, bge_server, paddle_server (CPU wheels, then never re-synced), frontend,
-# sdk-parity; then ci.yml's secrets job. env_from below plays the gate's
+# job: docforge, docforge_sdk, mcp, bge_server, paddle_server (CPU wheels, then never re-synced),
+# mineru_server and dots_ocr_server (gate.yml sidecar-servers: format, lint, mypy, tests on the base sync,
+# their engines are GPU extras the pure code does not need), frontend, sdk-parity; then ci.yml's secrets
+# job. env_from below plays the gate's
 # `cp services/docforge/.env.example services/docforge/.env` (placeholder config, nothing is dialed).
-# Beyond the CI: mineru_server and dots_ocr_server (format, lint, tests on the base sync: their engines are
-# GPU extras the pure code does not need).
-# Beyond the CI too: the *-lock checks (uv lock --check per uv project); gate.yml has none yet (florian's).
+# Beyond the CI: the *-lock checks (uv lock --check per uv project); gate.yml has none yet (florian's).
 # Left to the CI, on purpose:
 # - gate.yml db-tests: a real Postgres service (tests/db, -m db, TEST_POSTGRES_*), not a worktree's.
 # - gate.yml docker-build: 7 multi-GB image builds (torch, paddle), far over a check's timeout.

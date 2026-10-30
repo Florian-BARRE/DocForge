@@ -21,6 +21,18 @@ def test_extras_do_not_request_mineru_core() -> None:
         assert all("core" not in r and "gradio" not in r for r in mineru), (extra, mineru)
 
 
+def test_docs_do_not_name_mineru_core_as_the_extra() -> None:
+    """The comments describing the install name the extras the server locks, not `mineru[core]`."""
+    files = [
+        _ROOT / "Dockerfile",
+        _ROOT / "config_loader.py",
+        _ROOT / "pyproject.toml",
+        _ROOT.parent.parent / "services" / "mineru_server" / ".env.example",
+    ]
+    stale = [path.name for path in files if "mineru[core]" in path.read_text(encoding="utf-8")]
+    assert not stale, stale
+
+
 def test_lock_has_no_gradio() -> None:
     """The HTTP server never imports gradio: neither it nor gradio-pdf is locked."""
     versions = _locked_versions()
