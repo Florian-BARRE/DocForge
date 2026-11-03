@@ -48,6 +48,18 @@ _PROD_MIRRORS = [
 # pyproject.toml that the `>=X` ignore mirrors). mineru 3 (Dependabot #194/#215 closed).
 _HELD_MAJORS = [("/src/mineru_server", "mineru", "3")]
 
+# The docling family moves only in its own request, never inside a weekly dependency round
+# (florian's rule: break nothing, docling least of all, with a before/after conversion check).
+# So the /src/docforge minor+patch group must exclude the whole family, which makes Dependabot
+# open a separate PR for each docling bump instead of folding it into the weekly batch.
+_DOCLING_FAMILY = (
+    "docling",
+    "docling-slim",
+    "docling-core",
+    "docling-parse",
+    "docling-ibm-models",
+)
+
 _UPPER_CAP = re.compile(r"^\s*([A-Za-z0-9_.\-]+)\s*<\s*([0-9][0-9A-Za-z.]*)\s*$")
 
 
@@ -206,6 +218,17 @@ def test_compose_images_mirror_the_prod_service(image: str, prod: str, bound: st
     assert not missing, (
         f"{image} runs in {missing} but its docker-compose entry in .github/dependabot.yml misses "
         f'the `versions: ["{bound}"]` ignore (mirrors the shared production service)'
+    )
+
+
+def test_docling_family_is_excluded_from_the_docforge_group() -> None:
+    group = _uv_entries()["/src/docforge"]["groups"]["docforge-minor-patch"]
+    excluded = {_normalize(pattern) for pattern in group.get("exclude-patterns", [])}
+    missing = [pkg for pkg in _DOCLING_FAMILY if _normalize(pkg) not in excluded]
+    assert not missing, (
+        "/src/docforge: the docling family moves only in its own request (florian's rule) but "
+        ".github/dependabot.yml's docforge-minor-patch group does not exclude these from the "
+        f"weekly minor/patch batch (add them to `exclude-patterns`): {missing}"
     )
 
 
