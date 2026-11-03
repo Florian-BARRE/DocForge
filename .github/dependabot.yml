@@ -63,6 +63,17 @@ updates:
     groups:
       docforge-minor-patch:
         update-types: ["minor", "patch"]
+        # The docling family moves only in its own request, never inside a weekly dependency
+        # round: florian's rule — break nothing, docling least of all, so every docling bump
+        # lands alone with a before/after conversion check. Excluding the family from the group
+        # makes Dependabot open a separate PR for each of these updates instead of folding them
+        # into the weekly minor/patch batch.
+        exclude-patterns:
+          - "docling"
+          - "docling-slim"
+          - "docling-core"
+          - "docling-parse"
+          - "docling-ibm-models"
     ignore:
       # transformers is pinned <5 on purpose (pyproject.toml, `worker` group): 5.x breaks
       # docling's AutoProcessor use. Lift when docling supports transformers 5.
