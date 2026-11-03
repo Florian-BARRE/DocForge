@@ -306,7 +306,7 @@ jobs:
       - name: Install uv
         # No inputs: since setup-uv v10 the default `enable-cache: auto` is off on a tag push, so the
         # publishing job never restores a cache another run could have written; `uv build` needs none.
-        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
 
       - name: Verify tag matches the package version
         # Fail fast if the pushed tag disagrees with _version.py, so a mistagged release can never
