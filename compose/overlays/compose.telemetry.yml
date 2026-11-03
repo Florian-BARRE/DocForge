@@ -116,7 +116,7 @@ services:
   # discovers containers on this host's Docker socket, tails their json-file logs, and writes to
   # loki — same job Promtail did, in Alloy's config language (services/telemetry/alloy/config.alloy).
   alloy:
-    image: grafana/alloy:v1.21.2@sha256:89a5a320168387336b9ac3c850609c3ba7757eadd4ae5f1d819deb35e9854b18
+    image: grafana/alloy:v1.21.3@sha256:8ab871206bd2d8f89277f53abffee5f452a293980788d52f85fa183a87a505a4
     container_name: docforge-alloy
     # `run <config>`; `--storage.path` is where Alloy keeps its own WAL/positions (needs a writable
     # volume so log positions survive a restart, like Promtail's positions.yaml did). The HTTP
@@ -151,7 +151,7 @@ services:
 
   # ── Grafana — dashboards over Prometheus + Loki, provisioned on boot ────────
   grafana:
-    image: grafana/grafana:13.2.4@sha256:dbbc38ea21103cefb50396340cd88afec779c7e070b0a7bf5a75b4ce46651d3f
+    image: grafana/grafana:13.3.0@sha256:488984b716c0862639f91a698adbe2862677a5a07bad42da5f03f3030883b205
     container_name: docforge-grafana
     # Admin credentials live in services/telemetry/.env (GF_SECURITY_ADMIN_USER / _PASSWORD) —
     # the discoverable per-service config home (like services/caddy, services/docforge). Change
