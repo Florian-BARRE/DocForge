@@ -57,7 +57,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 #     /opt/venv          → prebuilt virtual environment
 #     /app/mcp  → MCP application source code
 ###############################################################################
-FROM python:3.12.16-slim-bookworm@sha256:e697c81897302a4c4333bade000d98038fbb21eb064f8ee1fd42d02ebcd9d337 AS runtime
+FROM python:3.12.16-slim-bookworm@sha256:935c3c5b12357a7e10caa9c1e6ca5692344d97cf229832ef584be2cec9fc03df AS runtime
 
 # OCI image metadata — declares the image's license + source (GPL-3.0 compliance: the
 # full license text lives in the PUBLIC source repo linked here).
