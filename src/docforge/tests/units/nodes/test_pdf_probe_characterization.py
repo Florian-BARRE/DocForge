@@ -11,8 +11,8 @@
 # (2 image-only pages, no text operators) and three encrypted copies of the 3-page one.
 #
 # ``cryptography`` is NOT a project dependency, so an AES-encrypted PDF is unreadable here today
-# (pypdf raises DependencyError, wrapped as "unreadable PDF"); those cases pin that state. They are
-# skipped-by-design when ``cryptography`` happens to be installed (see ``_HAS_CRYPTOGRAPHY``).
+# (pypdf raises DependencyError, wrapped as "unreadable PDF"); the AES cases pin that state and also
+# the behaviour when ``cryptography`` happens to be installed (see ``_HAS_CRYPTOGRAPHY``).
 
 # ====== Standard Library Imports ======
 import importlib.util
@@ -76,26 +76,30 @@ async def test_probe_ceiling_message_on_a_real_document() -> None:
 # ── PdfProbeNode: encrypted PDFs ─────────────────────────────────────────────────────────────────
 
 
-@pytest.mark.skipif(_HAS_CRYPTOGRAPHY, reason="AES needs `cryptography`; absent from the lock")
-@pytest.mark.parametrize(
-    "name", ["encrypted_empty_user_password_aes256.pdf", "encrypted_user_password_aes256.pdf"]
-)
-async def test_probe_aes_pdf_is_unreadable_without_the_cryptography_package(name: str) -> None:
+async def test_probe_aes_pdf_with_empty_user_password() -> None:
+    # Without `cryptography` (the project's state today) pypdf cannot decrypt AES and the probe
+    # reports "unreadable PDF"; with it installed the empty user password opens the document.
+    content = _read("encrypted_empty_user_password_aes256.pdf")
+    if _HAS_CRYPTOGRAPHY:
+        assert await _probe(content) == 3
+        return
+
     with pytest.raises(ValueError, match=r"^unreadable PDF: cryptography>=.* is required for AES"):
-        await _probe(_read(name))
+        await _probe(content)
 
 
-@pytest.mark.skipif(not _HAS_CRYPTOGRAPHY, reason="AES decryption needs `cryptography`")
-async def test_probe_aes_pdf_with_empty_user_password_opens_when_cryptography_is_present() -> None:
-    assert await _probe(_read("encrypted_empty_user_password_aes256.pdf")) == 3
+async def test_probe_pdf_with_a_user_password_is_never_opened() -> None:
+    content = _read("encrypted_user_password_aes256.pdf")
+    expected = (
+        "the PDF is password-protected and cannot be read"
+        if _HAS_CRYPTOGRAPHY
+        else "unreadable PDF: cryptography>=3.1 is required for AES algorithm"
+    )
 
-
-@pytest.mark.skipif(not _HAS_CRYPTOGRAPHY, reason="AES decryption needs `cryptography`")
-async def test_probe_pdf_with_a_user_password_is_rejected_as_password_protected() -> None:
     with pytest.raises(ValueError) as excinfo:
-        await _probe(_read("encrypted_user_password_aes256.pdf"))
+        await _probe(content)
 
-    assert str(excinfo.value) == "the PDF is password-protected and cannot be read"
+    assert str(excinfo.value) == expected
 
 
 # ── PdfProbeNode: corrupt PDFs never leak a traceback ───────────────────────────────────────────
@@ -133,8 +137,19 @@ def test_native_pdf_has_a_text_layer_and_its_metadata() -> None:
     assert not reader.is_encrypted
     assert len(reader.pages) == 12
     assert [len((page.extract_text() or "").strip()) for page in reader.pages] == [
-        601, 1688, 2285, 566, 2138, 715, 2158, 1014, 122, 280, 481, 714,
-    ]  # fmt: skip
+        601,
+        1688,
+        2285,
+        566,
+        2138,
+        715,
+        2158,
+        1014,
+        122,
+        280,
+        481,
+        714,
+    ]
     assert dict(reader.metadata) == {
         "/Author": "python-docx",
         "/CreationDate": "D:20260624080904Z'",
