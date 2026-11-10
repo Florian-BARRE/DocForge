@@ -165,7 +165,7 @@ services:
   # Postgres, Redis and SeaweedFS mirror the shared production services (postgres 16, redis 7,
   # seaweedfs 4.38): their versions move only when prod moves (.github/dependabot.yml holds them).
   docforge_postgres:
-    image: postgres:16.15-bookworm@sha256:e8a07d2c7579b038938cdba6c539e580e5001caf9ea203d397b5cc83e76bd938
+    image: postgres:16.15-bookworm@sha256:5264710be20f409750ac6dc4e5706dcef929c87e241605463f0f9aefa932a8d9
     container_name: docforge-postgres
     # No host port in prod — data-plane services are reachable only on docforge_net;
     # operator access is `docker compose exec docforge_postgres psql ...`. Dev re-publishes
@@ -206,7 +206,7 @@ services:
 
   # ── Redis 7 — the arq job queue (transport only, no monitoring truth) ───────
   docforge_redis:
-    image: redis:7.4.12-bookworm@sha256:b6b6e3dc0c0952737748e55d5d885272840c7e42ba41ab1d5489f693419882f5
+    image: redis:7.4.12-bookworm@sha256:2e3eb11462c4e3759e6972678dd051d150ff54b1e60714b3c33b701260172a90
     container_name: docforge-redis
     # No host port in prod — internal to docforge_net only (app enqueue / worker listen).
     # Dev re-publishes 10042 via compose/overlays/compose.dev.yml.
