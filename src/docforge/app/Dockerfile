@@ -42,7 +42,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # - node:22.23.4-bookworm-slim (same tag and digest) matches the docforge_frontend dev
 #   service (compose/overlays/compose.dev.yml) so dev/prod build with the same Node.
 ###############################################################################
-FROM node:22.23.4-bookworm-slim@sha256:4b150b48b4116e2a22f2c39cc27025fbf4f153e2078fd3b14d159fdb5c7279da AS ui-build
+FROM node:22.23.4-bookworm-slim@sha256:5ec23b7c622b00547753bc6ffd78085dd868a68aeb41c8e0a1418f033e13d96d AS ui-build
 
 WORKDIR /workspace/frontend
 
