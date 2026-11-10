@@ -109,7 +109,7 @@ dev = [
     "ruff>=0.17.4",
 ]
 worker = [
-    "docling>=2.145.0,<3",
+    "docling>=2.148.0,<3",
     # docling pulls transformers transitively with NO upper bound; uv resolves the latest (5.x),
     # whose AutoProcessor API breaks docling 2.108 (ModuleNotFoundError at parse). Pin to 4.x.
     # The <5 cap is also CVE-relevant (a deliberate security pin), not only an API-compat guard.
