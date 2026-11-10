@@ -298,7 +298,7 @@ services:
 
   # ── Gotenberg 8 — office→PDF conversion used by the intake converter node ───
   docforge_gotenberg:
-    image: gotenberg/gotenberg:8.39.0@sha256:13672f317b443c793e972b1bd2155ec62a3e7b6891b411e8196442cc053ee5f5
+    image: gotenberg/gotenberg:9.1.0@sha256:150c1dec38ccb51905f6bd29442706668f2442fb5d290d9eb234708dc054dd1a
     container_name: docforge-gotenberg
     # Large office documents convert in ~20-25s warm but exceed the default 30s deadline
     # cold (LibreOffice spin-up) — raise the API timeout so borderline files never 503.
