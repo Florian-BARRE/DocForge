@@ -109,7 +109,7 @@ services:
       - ../services/docforge/.env
     environment:
       # Same override mechanism as docforge_app — see comment there.
-      POSTGRES_DSN: ${POSTGRES_DSN:-postgresql+asyncpg://docforge:docforge@docforge_postgres:5432/docforge}
+      POSTGRES_DSN: ${POSTGRES_DSN:-postgresql+asyncpg://docforge:docforge@docforge_postgres:5432/docforge}  # pragma: allowlist secret
       REDIS_URL: redis://docforge_redis:6379/0
       QDRANT_URL: http://docforge_qdrant:6333
       # botocore rejects '_' in hostnames — the hyphenated container_name resolves on the network
