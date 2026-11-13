@@ -5,7 +5,8 @@
 # branch protection: there aidk merge reads this check before it merges, and nothing else enforces it.
 name: aidk-checks
 on:
-  pull_request:
+  pull_request:   # edited: a description fixed (its owns: line) is judged again, not left red
+    types: [opened, synchronize, reopened, edited]
 permissions:
   contents: read
 jobs:
@@ -15,4 +16,5 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1   # v7.0.1
         with:
           fetch-depth: 0
-      - run: python3 .aidk/ci/aidk_checks.py
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78   # v7.6.0
+      - run: uv run --no-project --python 3.14 .aidk/ci/aidk.pyz rules run ci   # --no-project: not the project's env
