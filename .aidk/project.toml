@@ -18,76 +18,20 @@
 
 [project]
 kind = "code"    # code, docs or research: docs and research need no tests rule, their checks are optional
-
-[checks]
-# Each uv project's uv.lock matches its pyproject.toml (uv sync --frozen would install a stale lock silently).
-docforge-lock = ["uv", "lock", "--check", "--directory", "src/docforge"]
-docforge-deps = ["uv", "sync", "--frozen", "--directory", "src/docforge"]
-docforge-format = ["uv", "run", "--frozen", "--directory", "src/docforge", "ruff", "format", "--check", "."]
-docforge-lint = ["uv", "run", "--frozen", "--directory", "src/docforge", "ruff", "check", "."]
-docforge-tests = ["uv", "run", "--frozen", "--directory", "src/docforge", "pytest", "tests/units", "-q", "--cov=app", "--cov=worker", "--cov=shared", "--cov-report=term-missing"]
-docforge-rag-eval = ["uv", "run", "--frozen", "--directory", "src/docforge", "python", "-m", "pytest", "tests/rag_eval", "-q", "-m", "not live"]
-sdk-lock = ["uv", "lock", "--check", "--directory", "src/docforge_sdk"]
-sdk-deps = ["uv", "sync", "--frozen", "--directory", "src/docforge_sdk"]
-sdk-format = ["uv", "run", "--frozen", "--directory", "src/docforge_sdk", "ruff", "format", "--check", "."]
-sdk-lint = ["uv", "run", "--frozen", "--directory", "src/docforge_sdk", "ruff", "check", "."]
-sdk-types = ["uv", "run", "--frozen", "--directory", "src/docforge_sdk", "mypy", "--strict", "docforge_sdk"]
-sdk-tests = ["uv", "run", "--frozen", "--directory", "src/docforge_sdk", "pytest", "-q", "-m", "not live"]
-mcp-lock = ["uv", "lock", "--check", "--directory", "src/mcp"]
-mcp-deps = ["uv", "sync", "--frozen", "--directory", "src/mcp"]
-mcp-format = ["uv", "run", "--frozen", "--directory", "src/mcp", "ruff", "format", "--check", "."]
-mcp-lint = ["uv", "run", "--frozen", "--directory", "src/mcp", "ruff", "check", "."]
-mcp-types = ["uv", "run", "--frozen", "--directory", "src/mcp", "mypy", "."]
-mcp-tests = ["uv", "run", "--frozen", "--directory", "src/mcp", "pytest", "-q"]
-bge-lock = ["uv", "lock", "--check", "--directory", "src/bge_server"]
-bge-deps = ["uv", "sync", "--frozen", "--directory", "src/bge_server", "--extra", "cpu"]
-bge-format = ["uv", "run", "--no-sync", "--directory", "src/bge_server", "ruff", "format", "--check", "."]
-bge-lint = ["uv", "run", "--no-sync", "--directory", "src/bge_server", "ruff", "check", "."]
-bge-types = ["uv", "run", "--no-sync", "--directory", "src/bge_server", "mypy", "."]
-bge-tests = ["uv", "run", "--no-sync", "--directory", "src/bge_server", "pytest", "-q"]
-paddle-lock = ["uv", "lock", "--check", "--directory", "src/paddle_server"]
-paddle-deps = ["uv", "sync", "--frozen", "--directory", "src/paddle_server", "--extra", "cpu"]
-paddle-format = ["uv", "run", "--no-sync", "--directory", "src/paddle_server", "ruff", "format", "--check", "."]
-paddle-lint = ["uv", "run", "--no-sync", "--directory", "src/paddle_server", "ruff", "check", "."]
-paddle-types = ["uv", "run", "--no-sync", "--directory", "src/paddle_server", "mypy", "."]
-paddle-tests = ["uv", "run", "--no-sync", "--directory", "src/paddle_server", "pytest", "-q"]
-mineru-lock = ["uv", "lock", "--check", "--directory", "src/mineru_server"]
-mineru-deps = ["uv", "sync", "--frozen", "--directory", "src/mineru_server"]
-mineru-format = ["uv", "run", "--frozen", "--directory", "src/mineru_server", "ruff", "format", "--check", "."]
-mineru-lint = ["uv", "run", "--frozen", "--directory", "src/mineru_server", "ruff", "check", "."]
-mineru-types = ["uv", "run", "--frozen", "--directory", "src/mineru_server", "mypy", "."]
-mineru-tests = ["uv", "run", "--frozen", "--directory", "src/mineru_server", "pytest", "-q"]
-dots-ocr-lock = ["uv", "lock", "--check", "--directory", "src/dots_ocr_server"]
-dots-ocr-deps = ["uv", "sync", "--frozen", "--directory", "src/dots_ocr_server"]
-dots-ocr-format = ["uv", "run", "--frozen", "--directory", "src/dots_ocr_server", "ruff", "format", "--check", "."]
-dots-ocr-lint = ["uv", "run", "--frozen", "--directory", "src/dots_ocr_server", "ruff", "check", "."]
-dots-ocr-types = ["uv", "run", "--frozen", "--directory", "src/dots_ocr_server", "mypy", "."]
-dots-ocr-tests = ["uv", "run", "--frozen", "--directory", "src/dots_ocr_server", "pytest", "-q"]
-frontend-deps = ["npm", "ci", "--prefix", "src/docforge/app/frontend", "--no-audit", "--no-fund"]
-frontend-lint = ["npm", "--prefix", "src/docforge/app/frontend", "run", "lint"]
-frontend-types = ["npm", "--prefix", "src/docforge/app/frontend", "exec", "--", "tsc", "--noEmit", "-p", "src/docforge/app/frontend"]
-frontend-tests = ["npm", "--prefix", "src/docforge/app/frontend", "run", "test"]
-frontend-build = ["npm", "--prefix", "src/docforge/app/frontend", "run", "build"]
-# The sdk-parity job: the backend's current OpenAPI (dumped serviceless) against the SDK's models and snapshot.
-sdk-parity = ["sh", "-c", "set -e; f=$(mktemp); trap 'rm -f \"$f\"' EXIT; LOGGING_ENABLE_CONSOLE=false LOGGING_ENABLE_FILE=false uv run --frozen --directory src/docforge python app/scripts/dump_openapi.py > \"$f\"; uv run --frozen --directory src/docforge_sdk python tests/check_schema_drift.py \"$f\""]
-# ci.yml's secrets job: no tracked secret file (the same pattern), then gitleaks on the branch's commits when
-# it is installed here (the CI downloads it; the kit's commit hook scans each commit anyway, [hooks] secrets).
-secrets-files = ["sh", "-c", '''hits=$(git ls-files | grep -E '(^|/)\.env$|(^|/)[^/]*\.env$|(^|/)\.env\.worktree$|(^|/)s3_config\.json$|\.(pem|key|p12|pfx)$|(^|/)id_(rsa|ed25519|ecdsa)$' | grep -v '\.example$' || true); if [ -n "$hits" ]; then echo "Tracked secret file(s):"; echo "$hits"; exit 1; fi; echo "No tracked secret file."''']
-gitleaks = ["sh", "-c", 'command -v gitleaks >/dev/null 2>&1 || { echo "gitleaks not installed: left to the CI secrets job"; exit 0; }; gitleaks git --config .gitleaks.toml --redact --no-banner --exit-code 1 --log-opts="origin/main..HEAD" .']
-
-[rules]
-base = "origin/main"
+base = "main"
 # A change to source files needs a change to test files (globs, relative to the repository).
 # src/*_server covers bge, paddle, mineru and dots_ocr. Left out on purpose: the migrations (tests/db, CI only),
 # src/docforge/app/scripts (dump_openapi.py, checked by sdk-parity), scripts/ (set_version.sh and the kit's
 # dev-stack.sh, guarded by test_version_alignment.py and test_worktree_compose_overlay.py), build and config files.
 source = ["src/docforge/app/backend/**", "src/docforge/app/config/**", "src/docforge/app/entrypoint.py", "src/docforge/app/frontend/src/**", "src/docforge/worker/backend/**", "src/docforge/worker/config/**", "src/docforge/worker/entrypoint.py", "src/docforge/shared/libs/**", "src/docforge_sdk/docforge_sdk/**", "src/mcp/libs/**", "src/mcp/entrypoint.py", "src/mcp/config_loader.py", "src/*_server/backend/**", "src/*_server/libs/**", "src/*_server/entrypoint.py", "src/*_server/config_loader.py"]
 tests = ["src/docforge/tests/**", "src/docforge_sdk/tests/**", "src/mcp/tests/**", "src/*_server/tests/**", "src/docforge/app/frontend/src/**/*.test.ts", "src/docforge/app/frontend/src/**/*.test.tsx", "src/docforge/app/frontend/src/test/**"]
-require_tests = true
-timeout = 900
-# The checks run with the CI's variables, never with the real environment (shared database...).
-env_from = "services/docforge/.env.example"
 
+# Each uv project's uv.lock matches its pyproject.toml (uv sync --frozen would install a stale lock silently).
+# The sdk-parity job: the backend's current OpenAPI (dumped serviceless) against the SDK's models and snapshot.
+# ci.yml's secrets job: no tracked secret file (the same pattern), then gitleaks on the branch's commits when
+# it is installed here (the CI downloads it; the kit's commit hook scans each commit anyway, [hooks] secrets).
+
+# The checks run with the CI's variables, never with the real environment (shared database...).
 # The kit's git hooks (every commit and every push, whatever the agent's tool): the names of [checks]
 # run at each commit (keep them fast: a few seconds) and before each push.
 # Measured on the dev center (2026-10-27, warm caches): pre_commit 0.2 s together (ruff, cached); pre_push
@@ -95,15 +39,9 @@ env_from = "services/docforge/.env.example"
 # sdk-tests 2 s, the rest under a second each; the seven *-lock checks 0.2 s together, 2026-10-29). bge and
 # paddle stay out of both hooks but for their lock checks (no venv needed): their other checks run --no-sync
 # on the CPU torch/paddle venv, which a worktree only has after aidk verify's bge-deps/paddle-deps.
-[hooks]
-pre_commit = ["docforge-format", "docforge-lint", "sdk-format", "sdk-lint", "mcp-format", "mcp-lint", "mineru-format", "mineru-lint", "dots-ocr-format", "dots-ocr-lint"]
-pre_push = ["docforge-lock", "sdk-lock", "mcp-lock", "bge-lock", "paddle-lock", "mineru-lock", "dots-ocr-lock", "sdk-types", "sdk-tests", "mcp-types", "mcp-tests", "mineru-tests", "dots-ocr-tests", "frontend-lint", "frontend-types", "docforge-rag-eval", "sdk-parity", "secrets-files", "docforge-tests"]
-commit_format = "conventional"
-secrets = true
 # src/docforge/uv.lock is ~1.05 MB, over the 1024 KiB default: a lock change would be refused at commit.
-max_file_kb = 2048
-
 # Never merged without florian: the CI and release, the version, the database schema, production compose, gitleaks.
+
 [merge]
 never_alone = [".github/workflows/**", ".github/dependabot.yml", "scripts/set_version.sh", "src/docforge/shared/migrations/**", "compose/compose.prod-*.yml", ".gitleaks.toml"]
 # The kit no longer adopts bot PRs by default (kit #284): keep reviewing and merging Dependabot's PRs here.
@@ -149,3 +87,627 @@ compose = "docforge_qdrant"
 
 [stack.gotenberg]
 compose = "docforge_gotenberg"
+
+
+[[on.commit]]
+rule = "aidk.base_branch"
+
+[[on.commit]]
+rule = "aidk.secret"
+
+[[on.commit]]
+rule = "aidk.env_file"
+
+[[on.commit]]
+rule = "aidk.file_size"
+max_kb = 2048
+
+[[on.commit]]
+rule = "aidk.conflict_marker"
+
+[[on.commit]]
+rule = "aidk.command"
+name = "docforge-format"
+run = ["uv", "run", "--frozen", "--directory", "src/docforge", "ruff", "format", "--check", "."]
+timeout = 900
+env_from = "services/docforge/.env.example"
+
+[[on.commit]]
+rule = "aidk.command"
+name = "docforge-lint"
+run = ["uv", "run", "--frozen", "--directory", "src/docforge", "ruff", "check", "."]
+timeout = 900
+env_from = "services/docforge/.env.example"
+
+[[on.commit]]
+rule = "aidk.command"
+name = "sdk-format"
+run = ["uv", "run", "--frozen", "--directory", "src/docforge_sdk", "ruff", "format", "--check", "."]
+timeout = 900
+env_from = "services/docforge/.env.example"
+
+[[on.commit]]
+rule = "aidk.command"
+name = "sdk-lint"
+run = ["uv", "run", "--frozen", "--directory", "src/docforge_sdk", "ruff", "check", "."]
+timeout = 900
+env_from = "services/docforge/.env.example"
+
+[[on.commit]]
+rule = "aidk.command"
+name = "mcp-format"
+run = ["uv", "run", "--frozen", "--directory", "src/mcp", "ruff", "format", "--check", "."]
+timeout = 900
+env_from = "services/docforge/.env.example"
+
+[[on.commit]]
+rule = "aidk.command"
+name = "mcp-lint"
+run = ["uv", "run", "--frozen", "--directory", "src/mcp", "ruff", "check", "."]
+timeout = 900
+env_from = "services/docforge/.env.example"
+
+[[on.commit]]
+rule = "aidk.command"
+name = "mineru-format"
+run = ["uv", "run", "--frozen", "--directory", "src/mineru_server", "ruff", "format", "--check", "."]
+timeout = 900
+env_from = "services/docforge/.env.example"
+
+[[on.commit]]
+rule = "aidk.command"
+name = "mineru-lint"
+run = ["uv", "run", "--frozen", "--directory", "src/mineru_server", "ruff", "check", "."]
+timeout = 900
+env_from = "services/docforge/.env.example"
+
+[[on.commit]]
+rule = "aidk.command"
+name = "dots-ocr-format"
+run = ["uv", "run", "--frozen", "--directory", "src/dots_ocr_server", "ruff", "format", "--check", "."]
+timeout = 900
+env_from = "services/docforge/.env.example"
+
+[[on.commit]]
+rule = "aidk.command"
+name = "dots-ocr-lint"
+run = ["uv", "run", "--frozen", "--directory", "src/dots_ocr_server", "ruff", "check", "."]
+timeout = 900
+env_from = "services/docforge/.env.example"
+
+[[on.push]]
+rule = "aidk.forge_required"
+
+[[on.push]]
+rule = "aidk.base_branch"
+
+[[on.push]]
+rule = "aidk.scope"
+
+[[on.push]]
+rule = "aidk.drift.asserts_removed"
+
+[[on.push]]
+rule = "aidk.drift.test_disabled"
+
+[[on.push]]
+rule = "aidk.drift.test_deleted"
+
+[[on.push]]
+rule = "aidk.drift.sensitive"
+severity = "warn"
+
+[[on.push]]
+rule = "aidk.command"
+name = "docforge-lock"
+run = ["uv", "lock", "--check", "--directory", "src/docforge"]
+timeout = 900
+env_from = "services/docforge/.env.example"
+
+[[on.push]]
+rule = "aidk.command"
+name = "sdk-lock"
+run = ["uv", "lock", "--check", "--directory", "src/docforge_sdk"]
+timeout = 900
+env_from = "services/docforge/.env.example"
+
+[[on.push]]
+rule = "aidk.command"
+name = "mcp-lock"
+run = ["uv", "lock", "--check", "--directory", "src/mcp"]
+timeout = 900
+env_from = "services/docforge/.env.example"
+
+[[on.push]]
+rule = "aidk.command"
+name = "bge-lock"
+run = ["uv", "lock", "--check", "--directory", "src/bge_server"]
+timeout = 900
+env_from = "services/docforge/.env.example"
+
+[[on.push]]
+rule = "aidk.command"
+name = "paddle-lock"
+run = ["uv", "lock", "--check", "--directory", "src/paddle_server"]
+timeout = 900
+env_from = "services/docforge/.env.example"
+
+[[on.push]]
+rule = "aidk.command"
+name = "mineru-lock"
+run = ["uv", "lock", "--check", "--directory", "src/mineru_server"]
+timeout = 900
+env_from = "services/docforge/.env.example"
+
+[[on.push]]
+rule = "aidk.command"
+name = "dots-ocr-lock"
+run = ["uv", "lock", "--check", "--directory", "src/dots_ocr_server"]
+timeout = 900
+env_from = "services/docforge/.env.example"
+
+[[on.push]]
+rule = "aidk.command"
+name = "sdk-types"
+run = ["uv", "run", "--frozen", "--directory", "src/docforge_sdk", "mypy", "--strict", "docforge_sdk"]
+timeout = 900
+env_from = "services/docforge/.env.example"
+
+[[on.push]]
+rule = "aidk.command"
+name = "sdk-tests"
+run = ["uv", "run", "--frozen", "--directory", "src/docforge_sdk", "pytest", "-q", "-m", "not live"]
+timeout = 900
+env_from = "services/docforge/.env.example"
+
+[[on.push]]
+rule = "aidk.command"
+name = "mcp-types"
+run = ["uv", "run", "--frozen", "--directory", "src/mcp", "mypy", "."]
+timeout = 900
+env_from = "services/docforge/.env.example"
+
+[[on.push]]
+rule = "aidk.command"
+name = "mcp-tests"
+run = ["uv", "run", "--frozen", "--directory", "src/mcp", "pytest", "-q"]
+timeout = 900
+env_from = "services/docforge/.env.example"
+
+[[on.push]]
+rule = "aidk.command"
+name = "mineru-tests"
+run = ["uv", "run", "--frozen", "--directory", "src/mineru_server", "pytest", "-q"]
+timeout = 900
+env_from = "services/docforge/.env.example"
+
+[[on.push]]
+rule = "aidk.command"
+name = "dots-ocr-tests"
+run = ["uv", "run", "--frozen", "--directory", "src/dots_ocr_server", "pytest", "-q"]
+timeout = 900
+env_from = "services/docforge/.env.example"
+
+[[on.push]]
+rule = "aidk.command"
+name = "frontend-lint"
+run = ["npm", "--prefix", "src/docforge/app/frontend", "run", "lint"]
+timeout = 900
+env_from = "services/docforge/.env.example"
+
+[[on.push]]
+rule = "aidk.command"
+name = "frontend-types"
+run = ["npm", "--prefix", "src/docforge/app/frontend", "exec", "--", "tsc", "--noEmit", "-p", "src/docforge/app/frontend"]
+timeout = 900
+env_from = "services/docforge/.env.example"
+
+[[on.push]]
+rule = "aidk.command"
+name = "docforge-rag-eval"
+run = ["uv", "run", "--frozen", "--directory", "src/docforge", "python", "-m", "pytest", "tests/rag_eval", "-q", "-m", "not live"]
+timeout = 900
+env_from = "services/docforge/.env.example"
+
+[[on.push]]
+rule = "aidk.command"
+name = "sdk-parity"
+run = ["sh", "-c", "set -e; f=$(mktemp); trap 'rm -f \"$f\"' EXIT; LOGGING_ENABLE_CONSOLE=false LOGGING_ENABLE_FILE=false uv run --frozen --directory src/docforge python app/scripts/dump_openapi.py > \"$f\"; uv run --frozen --directory src/docforge_sdk python tests/check_schema_drift.py \"$f\""]
+timeout = 900
+env_from = "services/docforge/.env.example"
+
+[[on.push]]
+rule = "aidk.command"
+name = "secrets-files"
+run = ["sh", "-c", "hits=$(git ls-files | grep -E '(^|/)\\.env$|(^|/)[^/]*\\.env$|(^|/)\\.env\\.worktree$|(^|/)s3_config\\.json$|\\.(pem|key|p12|pfx)$|(^|/)id_(rsa|ed25519|ecdsa)$' | grep -v '\\.example$' || true); if [ -n \"$hits\" ]; then echo \"Tracked secret file(s):\"; echo \"$hits\"; exit 1; fi; echo \"No tracked secret file.\""]
+timeout = 900
+env_from = "services/docforge/.env.example"
+
+[[on.push]]
+rule = "aidk.command"
+name = "docforge-tests"
+run = ["uv", "run", "--frozen", "--directory", "src/docforge", "pytest", "tests/units", "-q", "--cov=app", "--cov=worker", "--cov=shared", "--cov-report=term-missing"]
+timeout = 900
+env_from = "services/docforge/.env.example"
+
+[[on.done]]
+rule = "aidk.committed"
+
+[[on.done]]
+rule = "aidk.tests_changed"
+
+[[on.done]]
+rule = "aidk.project_files"
+
+[[on.done]]
+rule = "aidk.scope"
+
+[[on.done]]
+rule = "aidk.drift.asserts_removed"
+
+[[on.done]]
+rule = "aidk.drift.test_disabled"
+
+[[on.done]]
+rule = "aidk.drift.test_deleted"
+
+[[on.done]]
+rule = "aidk.drift.sensitive"
+severity = "warn"
+
+[[on.done]]
+rule = "aidk.agents_md_size"
+severity = "warn"
+
+[[on.done]]
+rule = "aidk.secrets_baseline"
+
+[[on.done]]
+rule = "aidk.command"
+name = "docforge-lock"
+run = ["uv", "lock", "--check", "--directory", "src/docforge"]
+timeout = 900
+env_from = "services/docforge/.env.example"
+
+[[on.done]]
+rule = "aidk.command"
+name = "docforge-deps"
+run = ["uv", "sync", "--frozen", "--directory", "src/docforge"]
+timeout = 900
+env_from = "services/docforge/.env.example"
+
+[[on.done]]
+rule = "aidk.command"
+name = "docforge-format"
+run = ["uv", "run", "--frozen", "--directory", "src/docforge", "ruff", "format", "--check", "."]
+timeout = 900
+env_from = "services/docforge/.env.example"
+
+[[on.done]]
+rule = "aidk.command"
+name = "docforge-lint"
+run = ["uv", "run", "--frozen", "--directory", "src/docforge", "ruff", "check", "."]
+timeout = 900
+env_from = "services/docforge/.env.example"
+
+[[on.done]]
+rule = "aidk.command"
+name = "docforge-tests"
+run = ["uv", "run", "--frozen", "--directory", "src/docforge", "pytest", "tests/units", "-q", "--cov=app", "--cov=worker", "--cov=shared", "--cov-report=term-missing"]
+timeout = 900
+env_from = "services/docforge/.env.example"
+
+[[on.done]]
+rule = "aidk.command"
+name = "docforge-rag-eval"
+run = ["uv", "run", "--frozen", "--directory", "src/docforge", "python", "-m", "pytest", "tests/rag_eval", "-q", "-m", "not live"]
+timeout = 900
+env_from = "services/docforge/.env.example"
+
+[[on.done]]
+rule = "aidk.command"
+name = "sdk-lock"
+run = ["uv", "lock", "--check", "--directory", "src/docforge_sdk"]
+timeout = 900
+env_from = "services/docforge/.env.example"
+
+[[on.done]]
+rule = "aidk.command"
+name = "sdk-deps"
+run = ["uv", "sync", "--frozen", "--directory", "src/docforge_sdk"]
+timeout = 900
+env_from = "services/docforge/.env.example"
+
+[[on.done]]
+rule = "aidk.command"
+name = "sdk-format"
+run = ["uv", "run", "--frozen", "--directory", "src/docforge_sdk", "ruff", "format", "--check", "."]
+timeout = 900
+env_from = "services/docforge/.env.example"
+
+[[on.done]]
+rule = "aidk.command"
+name = "sdk-lint"
+run = ["uv", "run", "--frozen", "--directory", "src/docforge_sdk", "ruff", "check", "."]
+timeout = 900
+env_from = "services/docforge/.env.example"
+
+[[on.done]]
+rule = "aidk.command"
+name = "sdk-types"
+run = ["uv", "run", "--frozen", "--directory", "src/docforge_sdk", "mypy", "--strict", "docforge_sdk"]
+timeout = 900
+env_from = "services/docforge/.env.example"
+
+[[on.done]]
+rule = "aidk.command"
+name = "sdk-tests"
+run = ["uv", "run", "--frozen", "--directory", "src/docforge_sdk", "pytest", "-q", "-m", "not live"]
+timeout = 900
+env_from = "services/docforge/.env.example"
+
+[[on.done]]
+rule = "aidk.command"
+name = "mcp-lock"
+run = ["uv", "lock", "--check", "--directory", "src/mcp"]
+timeout = 900
+env_from = "services/docforge/.env.example"
+
+[[on.done]]
+rule = "aidk.command"
+name = "mcp-deps"
+run = ["uv", "sync", "--frozen", "--directory", "src/mcp"]
+timeout = 900
+env_from = "services/docforge/.env.example"
+
+[[on.done]]
+rule = "aidk.command"
+name = "mcp-format"
+run = ["uv", "run", "--frozen", "--directory", "src/mcp", "ruff", "format", "--check", "."]
+timeout = 900
+env_from = "services/docforge/.env.example"
+
+[[on.done]]
+rule = "aidk.command"
+name = "mcp-lint"
+run = ["uv", "run", "--frozen", "--directory", "src/mcp", "ruff", "check", "."]
+timeout = 900
+env_from = "services/docforge/.env.example"
+
+[[on.done]]
+rule = "aidk.command"
+name = "mcp-types"
+run = ["uv", "run", "--frozen", "--directory", "src/mcp", "mypy", "."]
+timeout = 900
+env_from = "services/docforge/.env.example"
+
+[[on.done]]
+rule = "aidk.command"
+name = "mcp-tests"
+run = ["uv", "run", "--frozen", "--directory", "src/mcp", "pytest", "-q"]
+timeout = 900
+env_from = "services/docforge/.env.example"
+
+[[on.done]]
+rule = "aidk.command"
+name = "bge-lock"
+run = ["uv", "lock", "--check", "--directory", "src/bge_server"]
+timeout = 900
+env_from = "services/docforge/.env.example"
+
+[[on.done]]
+rule = "aidk.command"
+name = "bge-deps"
+run = ["uv", "sync", "--frozen", "--directory", "src/bge_server", "--extra", "cpu"]
+timeout = 900
+env_from = "services/docforge/.env.example"
+
+[[on.done]]
+rule = "aidk.command"
+name = "bge-format"
+run = ["uv", "run", "--no-sync", "--directory", "src/bge_server", "ruff", "format", "--check", "."]
+timeout = 900
+env_from = "services/docforge/.env.example"
+
+[[on.done]]
+rule = "aidk.command"
+name = "bge-lint"
+run = ["uv", "run", "--no-sync", "--directory", "src/bge_server", "ruff", "check", "."]
+timeout = 900
+env_from = "services/docforge/.env.example"
+
+[[on.done]]
+rule = "aidk.command"
+name = "bge-types"
+run = ["uv", "run", "--no-sync", "--directory", "src/bge_server", "mypy", "."]
+timeout = 900
+env_from = "services/docforge/.env.example"
+
+[[on.done]]
+rule = "aidk.command"
+name = "bge-tests"
+run = ["uv", "run", "--no-sync", "--directory", "src/bge_server", "pytest", "-q"]
+timeout = 900
+env_from = "services/docforge/.env.example"
+
+[[on.done]]
+rule = "aidk.command"
+name = "paddle-lock"
+run = ["uv", "lock", "--check", "--directory", "src/paddle_server"]
+timeout = 900
+env_from = "services/docforge/.env.example"
+
+[[on.done]]
+rule = "aidk.command"
+name = "paddle-deps"
+run = ["uv", "sync", "--frozen", "--directory", "src/paddle_server", "--extra", "cpu"]
+timeout = 900
+env_from = "services/docforge/.env.example"
+
+[[on.done]]
+rule = "aidk.command"
+name = "paddle-format"
+run = ["uv", "run", "--no-sync", "--directory", "src/paddle_server", "ruff", "format", "--check", "."]
+timeout = 900
+env_from = "services/docforge/.env.example"
+
+[[on.done]]
+rule = "aidk.command"
+name = "paddle-lint"
+run = ["uv", "run", "--no-sync", "--directory", "src/paddle_server", "ruff", "check", "."]
+timeout = 900
+env_from = "services/docforge/.env.example"
+
+[[on.done]]
+rule = "aidk.command"
+name = "paddle-types"
+run = ["uv", "run", "--no-sync", "--directory", "src/paddle_server", "mypy", "."]
+timeout = 900
+env_from = "services/docforge/.env.example"
+
+[[on.done]]
+rule = "aidk.command"
+name = "paddle-tests"
+run = ["uv", "run", "--no-sync", "--directory", "src/paddle_server", "pytest", "-q"]
+timeout = 900
+env_from = "services/docforge/.env.example"
+
+[[on.done]]
+rule = "aidk.command"
+name = "mineru-lock"
+run = ["uv", "lock", "--check", "--directory", "src/mineru_server"]
+timeout = 900
+env_from = "services/docforge/.env.example"
+
+[[on.done]]
+rule = "aidk.command"
+name = "mineru-deps"
+run = ["uv", "sync", "--frozen", "--directory", "src/mineru_server"]
+timeout = 900
+env_from = "services/docforge/.env.example"
+
+[[on.done]]
+rule = "aidk.command"
+name = "mineru-format"
+run = ["uv", "run", "--frozen", "--directory", "src/mineru_server", "ruff", "format", "--check", "."]
+timeout = 900
+env_from = "services/docforge/.env.example"
+
+[[on.done]]
+rule = "aidk.command"
+name = "mineru-lint"
+run = ["uv", "run", "--frozen", "--directory", "src/mineru_server", "ruff", "check", "."]
+timeout = 900
+env_from = "services/docforge/.env.example"
+
+[[on.done]]
+rule = "aidk.command"
+name = "mineru-types"
+run = ["uv", "run", "--frozen", "--directory", "src/mineru_server", "mypy", "."]
+timeout = 900
+env_from = "services/docforge/.env.example"
+
+[[on.done]]
+rule = "aidk.command"
+name = "mineru-tests"
+run = ["uv", "run", "--frozen", "--directory", "src/mineru_server", "pytest", "-q"]
+timeout = 900
+env_from = "services/docforge/.env.example"
+
+[[on.done]]
+rule = "aidk.command"
+name = "dots-ocr-lock"
+run = ["uv", "lock", "--check", "--directory", "src/dots_ocr_server"]
+timeout = 900
+env_from = "services/docforge/.env.example"
+
+[[on.done]]
+rule = "aidk.command"
+name = "dots-ocr-deps"
+run = ["uv", "sync", "--frozen", "--directory", "src/dots_ocr_server"]
+timeout = 900
+env_from = "services/docforge/.env.example"
+
+[[on.done]]
+rule = "aidk.command"
+name = "dots-ocr-format"
+run = ["uv", "run", "--frozen", "--directory", "src/dots_ocr_server", "ruff", "format", "--check", "."]
+timeout = 900
+env_from = "services/docforge/.env.example"
+
+[[on.done]]
+rule = "aidk.command"
+name = "dots-ocr-lint"
+run = ["uv", "run", "--frozen", "--directory", "src/dots_ocr_server", "ruff", "check", "."]
+timeout = 900
+env_from = "services/docforge/.env.example"
+
+[[on.done]]
+rule = "aidk.command"
+name = "dots-ocr-types"
+run = ["uv", "run", "--frozen", "--directory", "src/dots_ocr_server", "mypy", "."]
+timeout = 900
+env_from = "services/docforge/.env.example"
+
+[[on.done]]
+rule = "aidk.command"
+name = "dots-ocr-tests"
+run = ["uv", "run", "--frozen", "--directory", "src/dots_ocr_server", "pytest", "-q"]
+timeout = 900
+env_from = "services/docforge/.env.example"
+
+[[on.done]]
+rule = "aidk.command"
+name = "frontend-deps"
+run = ["npm", "ci", "--prefix", "src/docforge/app/frontend", "--no-audit", "--no-fund"]
+timeout = 900
+env_from = "services/docforge/.env.example"
+
+[[on.done]]
+rule = "aidk.command"
+name = "frontend-lint"
+run = ["npm", "--prefix", "src/docforge/app/frontend", "run", "lint"]
+timeout = 900
+env_from = "services/docforge/.env.example"
+
+[[on.done]]
+rule = "aidk.command"
+name = "frontend-types"
+run = ["npm", "--prefix", "src/docforge/app/frontend", "exec", "--", "tsc", "--noEmit", "-p", "src/docforge/app/frontend"]
+timeout = 900
+env_from = "services/docforge/.env.example"
+
+[[on.done]]
+rule = "aidk.command"
+name = "frontend-tests"
+run = ["npm", "--prefix", "src/docforge/app/frontend", "run", "test"]
+timeout = 900
+env_from = "services/docforge/.env.example"
+
+[[on.done]]
+rule = "aidk.command"
+name = "frontend-build"
+run = ["npm", "--prefix", "src/docforge/app/frontend", "run", "build"]
+timeout = 900
+env_from = "services/docforge/.env.example"
+
+[[on.done]]
+rule = "aidk.command"
+name = "sdk-parity"
+run = ["sh", "-c", "set -e; f=$(mktemp); trap 'rm -f \"$f\"' EXIT; LOGGING_ENABLE_CONSOLE=false LOGGING_ENABLE_FILE=false uv run --frozen --directory src/docforge python app/scripts/dump_openapi.py > \"$f\"; uv run --frozen --directory src/docforge_sdk python tests/check_schema_drift.py \"$f\""]
+timeout = 900
+env_from = "services/docforge/.env.example"
+
+[[on.done]]
+rule = "aidk.command"
+name = "secrets-files"
+run = ["sh", "-c", "hits=$(git ls-files | grep -E '(^|/)\\.env$|(^|/)[^/]*\\.env$|(^|/)\\.env\\.worktree$|(^|/)s3_config\\.json$|\\.(pem|key|p12|pfx)$|(^|/)id_(rsa|ed25519|ecdsa)$' | grep -v '\\.example$' || true); if [ -n \"$hits\" ]; then echo \"Tracked secret file(s):\"; echo \"$hits\"; exit 1; fi; echo \"No tracked secret file.\""]
+timeout = 900
+env_from = "services/docforge/.env.example"
+
+[[on.done]]
+rule = "aidk.command"
+name = "gitleaks"
+run = ["sh", "-c", "command -v gitleaks >/dev/null 2>&1 || { echo \"gitleaks not installed: left to the CI secrets job\"; exit 0; }; gitleaks git --config .gitleaks.toml --redact --no-banner --exit-code 1 --log-opts=\"origin/main..HEAD\" ."]
+timeout = 900
+env_from = "services/docforge/.env.example"
