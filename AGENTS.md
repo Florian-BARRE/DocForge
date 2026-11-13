@@ -1,16 +1,16 @@
 # DocForge — rules for coding agents
 
-<!-- aidk:begin · the AI Dev Kit's block: aidk project upgrade rewrites it; edit the rest of this file -->
+<!-- aidk:begin · the AI Dev Kit's block: aidk projects upgrade rewrites it; edit the rest of this file -->
 ## AI Dev Kit
 
 This project runs on the AI Dev Kit and Orca, with any agent. **Before anything else, and again after a
-context compaction, run `aidk guide`**: it prints your role here (the project-leader in the main checkout,
+context compaction, run `aidk toolbox guide`**: it prints your role here (the project-leader in the main checkout,
 a worker in a worktree) and its method.
 
-- Memory: `aidk memory search "<words>"` before deciding; `aidk memory save` for what lasts.
-- A task ends with `aidk done` (checks, push, request), never by declaring it done.
-- A question only the user can settle: `aidk inbox ask "<question>"`.
-- Skills: `aidk skill list` (the kit's; this project has none of its own yet).
+- Memory: `aidk toolbox memory search "<words>"` before deciding; `aidk toolbox memory save` for what lasts.
+- A task ends with `aidk work done` (checks, push, request), never by declaring it done.
+- A question only the user can settle: `aidk communication inbox ask "<question>"`.
+- Skills: `aidk toolbox skills list` (the kit's; this project has none of its own yet).
 <!-- aidk:end -->
 
 Read by every agent session (Claude Code through `CLAUDE.md`, Codex directly). Project-specific
