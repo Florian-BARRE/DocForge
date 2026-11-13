@@ -54,7 +54,7 @@ services:
       # docforge/docforge bootstrap) so nothing changes for local dev; a real deployment overrides it via
       # a shell-exported POSTGRES_DSN or a root .env — ONE place to change instead of editing this
       # literal in both docforge_app and docforge_worker.
-      POSTGRES_DSN: ${POSTGRES_DSN:-postgresql+asyncpg://docforge:docforge@docforge_postgres:5432/docforge}
+      POSTGRES_DSN: ${POSTGRES_DSN:-postgresql+asyncpg://docforge:docforge@docforge_postgres:5432/docforge}  # pragma: allowlist secret
       REDIS_URL: redis://docforge_redis:6379/0
       QDRANT_URL: http://docforge_qdrant:6333
       # botocore rejects '_' in hostnames — the hyphenated container_name resolves on the network
