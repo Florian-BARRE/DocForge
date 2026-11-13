@@ -24,13 +24,15 @@ describe("SearchQueryCard — active segment is always accent", () => {
     );
     const off = screen.getByRole("radio", { name: "Off" });
     expect(off).toHaveAttribute("aria-checked", "true");
-    // jsdom's toHaveStyle does not match the background shorthand: read the inline style.
+    // jsdom's toHaveStyle resolves var() to a computed colour (jsdom 31) and does not match the
+    // background shorthand: read the inline style, which holds the CSS variable the component sets.
     expect(off.style.background).toBe(theme.color.accent);
-    expect(off).toHaveStyle({ color: theme.color.onAccent });
+    expect(off.style.color).toBe(theme.color.onAccent);
 
     const rewrite = screen.getByRole("radio", { name: "Rewrite" });
     expect(rewrite).toHaveAttribute("aria-checked", "false");
-    expect(rewrite.style.background).toBe("transparent");
+    // jsdom 31 serialises the `background: transparent` shorthand as "none": read the longhand.
+    expect(rewrite.style.backgroundColor).toBe("transparent");
   });
 
   it("paints the selected 'Rewrite' option with the same accent background", () => {
@@ -46,6 +48,6 @@ describe("SearchQueryCard — active segment is always accent", () => {
     const rewrite = screen.getByRole("radio", { name: "Rewrite" });
     expect(rewrite).toHaveAttribute("aria-checked", "true");
     expect(rewrite.style.background).toBe(theme.color.accent);
-    expect(rewrite).toHaveStyle({ color: theme.color.onAccent });
+    expect(rewrite.style.color).toBe(theme.color.onAccent);
   });
 });
