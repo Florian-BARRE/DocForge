@@ -20,7 +20,7 @@ from heartbeat import HeartbeatWriter
 from sqlalchemy.dialects import postgresql
 
 from shared_libs.services.db.facades import JobsFacade
-from shared_libs.services.db.facades import jobs_facade as facade_module
+from shared_libs.services.db.postgresql import apis as facade_module
 
 
 def _postgres_yielding(session: MagicMock) -> MagicMock:

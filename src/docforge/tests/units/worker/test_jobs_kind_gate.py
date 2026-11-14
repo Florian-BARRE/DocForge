@@ -15,7 +15,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from shared_libs.services.db.facades import JobsFacade
-from shared_libs.services.db.facades import jobs_facade as facade_module
+from shared_libs.services.db.postgresql import apis as facade_module
 from shared_libs.services.db.postgresql.tables import DocumentStatus, JobKind, JobStatus
 
 
