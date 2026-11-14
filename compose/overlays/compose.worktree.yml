@@ -6,9 +6,9 @@
 # ports below (UI 10046, API 10040, mcp 10048); a worktree reads .env.worktree, written by the
 # script (COMPOSE_PROJECT_NAME, BIND_ADDR, APP_PORT, API_PORT, MCP_PORT):
 #
-#   aidk stack setup          # Orca's setup (dev-stack.sh prepare): port block + .env.worktree + images, nothing up
-#   aidk stack up frontend    # what the work needs ([stack] of .aidk/project.toml), DB copied from main first
-#   aidk stack up mcp         # a service behind a profile (see PROFILES below) starts when named
+#   aidk projects stacks setup          # Orca's setup (dev-stack.sh prepare): port block + .env.worktree + images, nothing up
+#   aidk projects stacks up frontend    # what the work needs ([stack] of .aidk/project.toml), DB copied from main first
+#   aidk projects stacks up mcp         # a service behind a profile (see PROFILES below) starts when named
 #   scripts/dev-stack.sh up [SERVICE...]   # the same by hand, with compose service names
 #
 # The UI a browser opens is the Vite dev server (docforge_frontend, APP_PORT, hot reload), which

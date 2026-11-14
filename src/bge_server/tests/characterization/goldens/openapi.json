@@ -1,0 +1,491 @@
+{
+  "components": {
+    "schemas": {
+      "EmbedAllResponse": {
+        "description": "Combined dense + sparse response for POST /embed_all.\n\nReturned when a caller needs BOTH representations for the same texts: the two sub-shapes are\nidentical to what POST /embed and POST /embed_sparse return separately, but a single\nforward pass produces them. Not part of the TEI contract — an internal DocForge convention;\ncallers fall back to /embed + /embed_sparse when this route is unavailable.\n\nAttributes:\n    dense (list[list[float]]): One 1024-dim dense vector per input text (as POST /embed).\n    sparse (list[list[SparseToken]]): Per text, a list of token index/weight pairs\n        (as POST /embed_sparse).",
+        "properties": {
+          "dense": {
+            "description": "One 1024-dim dense vector per input text.",
+            "items": {
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "title": "Dense",
+            "type": "array"
+          },
+          "sparse": {
+            "description": "Per text, a list of sparse token index/weight pairs.",
+            "items": {
+              "items": {
+                "$ref": "#/components/schemas/SparseToken"
+              },
+              "type": "array"
+            },
+            "title": "Sparse",
+            "type": "array"
+          }
+        },
+        "required": [
+          "dense",
+          "sparse"
+        ],
+        "title": "EmbedAllResponse",
+        "type": "object"
+      },
+      "EmbedRequest": {
+        "description": "TEI-compatible request body for POST /embed and POST /embed_sparse.\n\nAttributes:\n    inputs (list[str] | str): One text or a list of texts to embed.\n    normalize (bool): L2-normalize dense vectors (kept for TEI parity; FlagEmbedding\n        always normalizes dense output, so this flag is accepted but not forwarded).\n    truncate (bool): Truncate inputs to the model's max token length.",
+        "properties": {
+          "inputs": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "description": "One text or a list of texts to embed.",
+            "title": "Inputs"
+          },
+          "normalize": {
+            "default": true,
+            "description": "L2-normalize dense vectors (TEI parity).",
+            "title": "Normalize",
+            "type": "boolean"
+          },
+          "truncate": {
+            "default": true,
+            "description": "Truncate inputs to the model max length.",
+            "title": "Truncate",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "inputs"
+        ],
+        "title": "EmbedRequest",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "HealthResponse": {
+        "description": "Response model for the GET /health liveness probe.\n\nMirrors the TEI /health response shape so DocForge and external callers can probe the\nservice without any client-side changes. When models are still loading the response carries\nstatus=\"loading\" and ready=False — callers should treat HTTP 503 as transient.\n\nAttributes:\n    status (str): \"ok\" when models are loaded and ready; \"loading\" while startup is in progress.\n    ready (bool): True only when both models are loaded and inference requests will be served.\n    embed_model (str): HuggingFace model ID of the embedding model (from config).\n    rerank_model (str): HuggingFace model ID of the reranking model (from config).\n    device (str): Runtime compute device — \"cuda\" when a GPU is present, else \"cpu\". Read by the\n        DocForge app's GET /capabilities probe to decide whether this sidecar runs on a GPU.",
+        "properties": {
+          "device": {
+            "description": "Runtime compute device: 'cuda' when a GPU is present, else 'cpu'.",
+            "title": "Device",
+            "type": "string"
+          },
+          "embed_model": {
+            "description": "HuggingFace model ID of the embed model.",
+            "title": "Embed Model",
+            "type": "string"
+          },
+          "ready": {
+            "description": "True when both models are loaded and inference is available.",
+            "title": "Ready",
+            "type": "boolean"
+          },
+          "rerank_model": {
+            "description": "HuggingFace model ID of the rerank model.",
+            "title": "Rerank Model",
+            "type": "string"
+          },
+          "status": {
+            "description": "'ok' when ready, 'loading' during startup.",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "ready",
+          "embed_model",
+          "rerank_model",
+          "device"
+        ],
+        "title": "HealthResponse",
+        "type": "object"
+      },
+      "RerankRequest": {
+        "description": "TEI-compatible request body for POST /rerank.\n\nAttributes:\n    query (str): The search query to score candidates against.\n    texts (list[str]): Candidate texts to score.\n    truncate (bool): Truncate inputs to the model's max token length.",
+        "properties": {
+          "query": {
+            "description": "The search query.",
+            "maxLength": 16384,
+            "title": "Query",
+            "type": "string"
+          },
+          "texts": {
+            "description": "Candidate texts to score against the query.",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 512,
+            "title": "Texts",
+            "type": "array"
+          },
+          "truncate": {
+            "default": true,
+            "description": "Truncate inputs to the model max length.",
+            "title": "Truncate",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "query",
+          "texts"
+        ],
+        "title": "RerankRequest",
+        "type": "object"
+      },
+      "RerankResult": {
+        "description": "A single scored candidate in the POST /rerank response.\n\nAttributes:\n    index (int): Position of this candidate in the original ``texts`` list.\n    score (float): Sigmoid-normalized cross-encoder score in [0, 1].",
+        "properties": {
+          "index": {
+            "description": "Position of this candidate in the input texts list.",
+            "title": "Index",
+            "type": "integer"
+          },
+          "score": {
+            "description": "Sigmoid-normalized reranking score in [0, 1].",
+            "title": "Score",
+            "type": "number"
+          }
+        },
+        "required": [
+          "index",
+          "score"
+        ],
+        "title": "RerankResult",
+        "type": "object"
+      },
+      "SparseToken": {
+        "description": "A single token in a TEI sparse embedding response.\n\nAttributes:\n    index (int): Token ID in the model vocabulary.\n    value (float): Lexical weight assigned to this token.",
+        "properties": {
+          "index": {
+            "description": "Token ID in the model vocabulary.",
+            "title": "Index",
+            "type": "integer"
+          },
+          "value": {
+            "description": "Lexical weight for this token.",
+            "title": "Value",
+            "type": "number"
+          }
+        },
+        "required": [
+          "index",
+          "value"
+        ],
+        "title": "SparseToken",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "title": "BGE model-suite (embed dense+sparse + rerank)",
+    "version": "2.0.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/embed": {
+      "post": {
+        "description": "Dense embeddings -- mirrors TEI's POST /embed.\n\nEncodes each input text into a 1024-dimensional L2-normalized float vector using\nBGE-M3's dense head. FlagEmbedding always normalizes dense output, so the ``normalize``\nfield is accepted for TEI parity but has no additional effect.\n\nConcurrency: requests are submitted to the batching engine's dense queue. Multiple\nconcurrent requests are coalesced into single batches to maximize GPU/CPU utilization.\nWhen the queue is full, HTTP 503 + Retry-After is returned immediately.\n\nArgs:\n    req (EmbedRequest): Request body with texts to embed.\n\nReturns:\n    ORJSONResponse: One 1024-dim dense vector per input text (``list[list[float]]``),\n        serialized directly with orjson — no Pydantic re-validation of the float matrix.",
+        "operationId": "embed_embed_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmbedRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "items": {
+                      "type": "number"
+                    },
+                    "type": "array"
+                  },
+                  "title": "Response Embed Embed Post",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Embed"
+      }
+    },
+    "/embed_all": {
+      "post": {
+        "description": "Combined dense + sparse embeddings in ONE forward pass.\n\nA caller needing both representations would otherwise hit /embed and /embed_sparse and pay\ntwo BGE-M3 forward passes; this route requests both heads from a single pass and returns the\ntwo sub-shapes unchanged (``dense`` identical to POST /embed, ``sparse`` identical to POST\n/embed_sparse). Not part of the TEI contract — the DocForge app falls back to the two\nseparate routes when this one is unavailable.\n\nLike /embed and /embed_sparse, this route is submitted to its own BatchQueueWorker so\nconcurrent callers are coalesced into a single model call (cross-request batching), and it\nis still serialised on the shared embed lock, so it never overlaps a dense or sparse batch\non the shared model instance. Request-size ceilings are enforced by EmbedRequest (HTTP 422),\nexactly as for /embed and /embed_sparse. Back-pressure: QueueFullError from the engine's\nembed_all worker queue is translated to HTTP 503 + Retry-After here, exactly like the\nother queued routes.\n\nArgs:\n    req (EmbedRequest): Request body with texts to embed.\n\nReturns:\n    ORJSONResponse: ``{dense, sparse}`` for the input texts, serialized directly with orjson\n        — no Pydantic re-validation of the ``EmbedAllResponse`` model / float matrix.",
+        "operationId": "embed_all_embed_all_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmbedRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmbedAllResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Embed All"
+      }
+    },
+    "/embed_colbert": {
+      "post": {
+        "description": "ColBERT multi-vector embeddings -- BGE-M3 native, NOT part of the TEI contract.\n\nEncodes each input text into a variable-length list of per-token 1024-dim\nL2-normalized float vectors using BGE-M3's colbert head. Internal DocForge\nconvention only; no upstream TEI endpoint to mirror.\n\nConcurrency: requests are submitted to the batching engine's colbert queue.\n\nArgs:\n    req (EmbedRequest): Request body with texts to embed.\n\nReturns:\n    list[list[list[float]]]: Per input text, a list of per-token 1024-dim vectors.",
+        "operationId": "embed_colbert_embed_colbert_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmbedRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "items": {
+                      "items": {
+                        "type": "number"
+                      },
+                      "type": "array"
+                    },
+                    "type": "array"
+                  },
+                  "title": "Response Embed Colbert Embed Colbert Post",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Embed Colbert"
+      }
+    },
+    "/embed_sparse": {
+      "post": {
+        "description": "Sparse (lexical) embeddings -- mirrors TEI's POST /embed_sparse response shape.\n\nBGE-M3's ``lexical_weights`` dict is re-shaped to TEI's\n``[[{\"index\": int, \"value\": float}, ...], ...]`` format so the DocForge ``tei`` provider\nparses it unchanged.\n\nConcurrency: requests are submitted to the batching engine's sparse queue.\n\nArgs:\n    req (EmbedRequest): Request body with texts to embed.\n\nReturns:\n    list[list[SparseToken]]: Per text, a list of token index/weight pairs.",
+        "operationId": "embed_sparse_embed_sparse_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmbedRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "items": {
+                      "$ref": "#/components/schemas/SparseToken"
+                    },
+                    "type": "array"
+                  },
+                  "title": "Response Embed Sparse Embed Sparse Post",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Embed Sparse"
+      }
+    },
+    "/health": {
+      "get": {
+        "description": "Liveness + readiness probe — mirrors TEI's GET /health.\n\nReturns HTTP 200 with status=\"ok\" and ready=True once both BGE models are fully loaded.\nReturns HTTP 503 with status=\"loading\" and ready=False while startup is in progress, so\ncompose healthchecks and clients can distinguish a booting container from a healthy one.\n\nArgs:\n    response (Response): FastAPI response object used to set the HTTP status code.\n\nReturns:\n    HealthResponse: Service status, readiness flag, and model identities.",
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Health"
+      }
+    },
+    "/rerank": {
+      "post": {
+        "description": "Cross-encoder rerank -- mirrors TEI's POST /rerank.\n\nScores each candidate text against the query using BGE-reranker-v2-m3. Scores are\nsigmoid-normalized to [0, 1]. Results are returned score-descending, matching TEI's own\n/rerank response order. The DocForge ``bge_reranker`` provider maps each result back onto\nits candidate by ``index`` and does not depend on response order, so this ordering is a\nTEI-parity concern, not a correctness one.\n\nConcurrency: requests are submitted to the batching engine's rerank queue.\n\nArgs:\n    req (RerankRequest): Request body with query and candidate texts.\n\nReturns:\n    list[RerankResult]: One ``{\"index\": i, \"score\": s}`` per candidate text, sorted\n        score-descending (best match first).\n\nRaises:\n    HTTPException: HTTP 503 when the reranker was never loaded (BGE_LOAD_RERANKER=false —\n        an embed-only deployment). Checked BEFORE touching the batching engine so the\n        failure is a clean, explicit 503 rather than a RuntimeError surfacing from deep\n        inside BgeModelsService.reranker.",
+        "operationId": "rerank_rerank_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RerankRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RerankResult"
+                  },
+                  "title": "Response Rerank Rerank Post",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Rerank"
+      }
+    }
+  }
+}

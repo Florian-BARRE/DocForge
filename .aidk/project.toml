@@ -1,4 +1,4 @@
-# AI Dev Kit: what aidk verify checks before a task is declared done (agents and the Stop hook).
+# AI Dev Kit: what aidk rules run done checks before a task is declared done (agents and the Stop hook).
 # Each check is the command as a list of arguments, run from the repository root, in this order.
 # The CI gate's commands (.github/workflows/gate.yml, run by ci.yml and by release-sdk.yml's gate), job by
 # job: docforge, docforge_sdk, mcp, bge_server, paddle_server (CPU wheels, then never re-synced),
@@ -13,7 +13,7 @@
 # - release-sdk.yml version-guard, images, publish, security-scan: on a pushed tag only (tests/units'
 #   test_version_alignment.py keeps the three versions in lockstep locally).
 # - retrieval-quality.yml: workflow_dispatch only, ingests a corpus through the whole dev-cpu stack with bge.
-# - aidk-checks.yml: the kit's drift rules, which aidk verify itself runs before these checks.
+# - aidk-checks.yml: the kit's drift rules, which aidk rules run done itself runs before these checks.
 # - live tests (-m live): a running stack.
 
 [project]
@@ -38,7 +38,7 @@ tests = ["src/docforge/tests/**", "src/docforge_sdk/tests/**", "src/mcp/tests/**
 # about 76 s (docforge-tests 54 s, sdk-parity 5 s, mcp-tests 5 s, frontend-types 5 s, frontend-lint 3 s,
 # sdk-tests 2 s, the rest under a second each; the seven *-lock checks 0.2 s together, 2026-10-29). bge and
 # paddle stay out of both hooks but for their lock checks (no venv needed): their other checks run --no-sync
-# on the CPU torch/paddle venv, which a worktree only has after aidk verify's bge-deps/paddle-deps.
+# on the CPU torch/paddle venv, which a worktree only has after aidk rules run done's bge-deps/paddle-deps.
 # src/docforge/uv.lock is ~1.05 MB, over the 1024 KiB default: a lock change would be refused at commit.
 # Never merged without florian: the CI and release, the version, the database schema, production compose, gitleaks.
 
@@ -48,7 +48,7 @@ never_alone = [".github/workflows/**", ".github/dependabot.yml", "scripts/set_ve
 bots = ["dependabot[bot]"]
 
 # The dev stack of a worktree (scripts/dev-stack.sh: compose/compose.dev-cpu.yml + compose/overlays/compose.worktree.yml).
-# Nothing starts at setup; aidk stack up NAME starts a service with what it needs (needs, and the compose
+# Nothing starts at setup; aidk projects stacks up NAME starts a service with what it needs (needs, and the compose
 # file's depends_on: postgres, redis and seaweedfs come with the app and the worker). A service behind a
 # compose profile (models, extras) starts when named.
 [stack.frontend]

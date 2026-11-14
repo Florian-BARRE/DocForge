@@ -1,0 +1,154 @@
+{
+  "engine": {
+    "backend": "vlm-transformers",
+    "mineru": "9.9.9-test",
+    "pipeline": "MinerU2.5-Pro-2605-1.2B"
+  },
+  "n_pages": 2,
+  "pages": [
+    {
+      "blocks": [
+        {
+          "bbox": [
+            100,
+            80,
+            900,
+            140
+          ],
+          "html": null,
+          "label": "title",
+          "latex": null,
+          "reading_order": 0,
+          "text": "Attention Is All You Need"
+        },
+        {
+          "bbox": [
+            100,
+            160,
+            900,
+            220
+          ],
+          "html": null,
+          "label": "text",
+          "latex": null,
+          "reading_order": 1,
+          "text": "The dominant sequence transduction models are based on complex recurrent networks."
+        },
+        {
+          "bbox": [
+            100,
+            240,
+            500,
+            280
+          ],
+          "html": null,
+          "label": "paragraph_title",
+          "latex": null,
+          "reading_order": 2,
+          "text": "3.1 Encoder and Decoder Stacks"
+        },
+        {
+          "bbox": [
+            120,
+            300,
+            880,
+            520
+          ],
+          "html": "<table><tr><th>Layer</th><th>Complexity</th></tr><tr><td>Self-Attention</td><td>O(n^2)</td></tr><tr><td rowspan=\"2\">Recurrent</td><td>O(n)</td></tr><tr><td>O(1)</td></tr></table>",
+          "label": "table",
+          "latex": null,
+          "reading_order": 3,
+          "text": null
+        },
+        {
+          "bbox": [
+            120,
+            300,
+            880,
+            520
+          ],
+          "html": null,
+          "label": "caption",
+          "latex": null,
+          "reading_order": 4,
+          "text": "Table 1: Maximum path lengths."
+        }
+      ],
+      "image_height": 1000,
+      "image_width": 1000,
+      "page_index": 0
+    },
+    {
+      "blocks": [
+        {
+          "bbox": [
+            200,
+            100,
+            800,
+            180
+          ],
+          "html": null,
+          "label": "formula",
+          "latex": "\\mathrm{Attention}(Q, K, V) = \\mathrm{softmax}\\left(\\frac{QK^T}{\\sqrt{d_k}}\\right)V",
+          "reading_order": 0,
+          "text": null
+        },
+        {
+          "bbox": [
+            150,
+            220,
+            850,
+            700
+          ],
+          "html": null,
+          "label": "image",
+          "latex": null,
+          "reading_order": 1,
+          "text": ""
+        },
+        {
+          "bbox": [
+            150,
+            220,
+            850,
+            700
+          ],
+          "html": null,
+          "label": "caption",
+          "latex": null,
+          "reading_order": 2,
+          "text": "Figure 1: The Transformer architecture."
+        },
+        {
+          "bbox": [
+            100,
+            720,
+            900,
+            820
+          ],
+          "html": null,
+          "label": "list",
+          "latex": null,
+          "reading_order": 3,
+          "text": "First point.\nSecond point.\nThird point."
+        },
+        {
+          "bbox": [
+            100,
+            840,
+            700,
+            880
+          ],
+          "html": null,
+          "label": "subsection",
+          "latex": null,
+          "reading_order": 4,
+          "text": "3.2.1 Scaled Dot-Product Attention"
+        }
+      ],
+      "image_height": 1000,
+      "image_width": 1000,
+      "page_index": 1
+    }
+  ]
+}

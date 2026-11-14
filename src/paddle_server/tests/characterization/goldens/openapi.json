@@ -1,0 +1,497 @@
+{
+  "components": {
+    "schemas": {
+      "EngineInfoResponse": {
+        "description": "Engine/provenance metadata for a `POST /layout-parsing` response.\n\nAttributes:\n    paddleocr (str): Installed `paddleocr` package version.\n    pipeline (str): The sidecar pipeline that produced this response — \"PP-StructureV3\"\n        (/layout-parsing) or \"PaddleOCR-VL-v1.6\" (/vl-parse).\n    sub_pipelines (dict): PaddleX's own `model_settings` — which optional sub-pipelines\n        actually ran for this request (table/formula/seal/chart/doc-preprocessor/...).",
+        "properties": {
+          "paddleocr": {
+            "description": "Installed paddleocr package version.",
+            "title": "Paddleocr",
+            "type": "string"
+          },
+          "pipeline": {
+            "default": "PP-StructureV3",
+            "description": "Sidecar pipeline: 'PP-StructureV3' or 'PaddleOCR-VL-v1.6'.",
+            "title": "Pipeline",
+            "type": "string"
+          },
+          "sub_pipelines": {
+            "additionalProperties": true,
+            "description": "Which optional sub-pipelines actually ran.",
+            "title": "Sub Pipelines",
+            "type": "object"
+          }
+        },
+        "required": [
+          "paddleocr",
+          "sub_pipelines"
+        ],
+        "title": "EngineInfoResponse",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "HealthResponse": {
+        "description": "Response model for the GET /health liveness probe.\n\nAttributes:\n    status (str): \"ok\" when both pipelines are built and ready; \"loading\" during startup;\n        \"unhealthy\" when the host cannot serve inference at all (e.g. a CPU without AVX, on\n        which PaddlePaddle SIGILLs at the first inference).\n    ready (bool): True only when BOTH the PP-StructureV3 layout pipeline and the PaddleOCR\n        pipeline are built AND the host can actually run inference.\n    detail (str | None): Human-readable reason when not ready (diagnostics only); None on \"ok\".\n    device (str): Runtime compute device — \"cuda\" when a GPU is present, else \"cpu\". Read by the\n        DocForge app's GET /capabilities probe to decide whether this sidecar runs on a GPU.",
+        "properties": {
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Reason the service is not ready; None when status is 'ok'.",
+            "title": "Detail"
+          },
+          "device": {
+            "description": "Runtime compute device: 'cuda' when a GPU is present, else 'cpu'.",
+            "title": "Device",
+            "type": "string"
+          },
+          "ready": {
+            "description": "True when both pipelines are built and the host can run inference.",
+            "title": "Ready",
+            "type": "boolean"
+          },
+          "status": {
+            "description": "'ok' when ready, 'loading' during startup, 'unhealthy' when unserviceable.",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "ready",
+          "device"
+        ],
+        "title": "HealthResponse",
+        "type": "object"
+      },
+      "LayoutBlockResponse": {
+        "description": "One reading-order block within a page.\n\nExactly one of `text` / `html` / `latex` is populated, selected by `label`:\n`table` -> `html` (the recognized table's HTML structure), `formula` -> `latex` (raw LaTeX\nsource), everything else -> `text` (recognized/joined OCR text; empty for a plain `image`\nblock with no in-region text — the DocForge FigureRenderNode crops it from the bbox instead).\n\nAttributes:\n    label (str): layout label from the sidecar pipeline that produced this response\n        (PP-StructureV3 or PaddleOCR-VL-v1.6) — e.g. \"doc_title\", \"paragraph_title\", \"text\",\n        \"table\", \"formula\", \"image\", \"chart\", \"header\", \"footer\", \"seal\", ...).\n    bbox (list[int]): `[x1, y1, x2, y2]` in PIXELS, top-left origin — the same pixel space\n        as `image_width`/`image_height` on the parent page.\n    reading_order (int): 0-based position of this block within the page's block list, in\n        reading order (PaddleX's own layout-ordering pass).\n    text (str | None): Recognized/joined text — set for every label except table/formula.\n    html (str | None): Recognized table HTML — set only for `label == \"table\"`.\n    latex (str | None): Recognized formula LaTeX — set only for `label == \"formula\"`.",
+        "properties": {
+          "bbox": {
+            "description": "[x1, y1, x2, y2] in pixels, top-left origin.",
+            "items": {
+              "type": "integer"
+            },
+            "title": "Bbox",
+            "type": "array"
+          },
+          "html": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Recognized table HTML (label=='table').",
+            "title": "Html"
+          },
+          "label": {
+            "description": "Layout label from the sidecar pipeline (PP-StructureV3 or PaddleOCR-VL-v1.6).",
+            "title": "Label",
+            "type": "string"
+          },
+          "latex": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Recognized formula LaTeX (label=='formula').",
+            "title": "Latex"
+          },
+          "reading_order": {
+            "description": "0-based position in this page's reading order.",
+            "title": "Reading Order",
+            "type": "integer"
+          },
+          "text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Recognized/joined text (non table/formula).",
+            "title": "Text"
+          }
+        },
+        "required": [
+          "label",
+          "bbox",
+          "reading_order"
+        ],
+        "title": "LayoutBlockResponse",
+        "type": "object"
+      },
+      "LayoutPageResponse": {
+        "description": "One page's normalized layout-parsing result.\n\nAttributes:\n    page_index (int): 0-based page index within the input PDF.\n    image_width (int): Pixel width of the rendered page image — the normalization divisor\n        every block's `bbox` was measured against.\n    image_height (int): Pixel height of the rendered page image.\n    blocks (list[LayoutBlockResponse]): Reading-ordered blocks for this page.",
+        "properties": {
+          "blocks": {
+            "description": "Reading-ordered blocks.",
+            "items": {
+              "$ref": "#/components/schemas/LayoutBlockResponse"
+            },
+            "title": "Blocks",
+            "type": "array"
+          },
+          "image_height": {
+            "description": "Rendered page-image pixel height.",
+            "title": "Image Height",
+            "type": "integer"
+          },
+          "image_width": {
+            "description": "Rendered page-image pixel width.",
+            "title": "Image Width",
+            "type": "integer"
+          },
+          "page_index": {
+            "description": "0-based page index within the input PDF.",
+            "title": "Page Index",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "page_index",
+          "image_width",
+          "image_height",
+          "blocks"
+        ],
+        "title": "LayoutPageResponse",
+        "type": "object"
+      },
+      "LayoutParsingResponse": {
+        "description": "Full response body of `POST /layout-parsing`.\n\nAttributes:\n    pages (list[LayoutPageResponse]): One entry per PDF page, in page order.\n    n_pages (int): Number of pages parsed (== len(pages)).\n    engine (EngineInfoResponse): Provenance metadata.",
+        "properties": {
+          "engine": {
+            "$ref": "#/components/schemas/EngineInfoResponse",
+            "description": "Provenance metadata."
+          },
+          "n_pages": {
+            "description": "Number of pages parsed.",
+            "title": "N Pages",
+            "type": "integer"
+          },
+          "pages": {
+            "description": "One entry per PDF page.",
+            "items": {
+              "$ref": "#/components/schemas/LayoutPageResponse"
+            },
+            "title": "Pages",
+            "type": "array"
+          }
+        },
+        "required": [
+          "pages",
+          "n_pages",
+          "engine"
+        ],
+        "title": "LayoutParsingResponse",
+        "type": "object"
+      },
+      "OcrResponse": {
+        "description": "Full response body of `POST /ocr`.\n\nAttributes:\n    text (str): The newline-joined recognized text of the image (empty when nothing was read).\n    confidence (float): Mean per-line recognition confidence in [0, 1] (0.0 when empty) — the\n        value a DocForge ScoreBelow transition escalates on.",
+        "properties": {
+          "confidence": {
+            "description": "Mean per-line recognition confidence in [0, 1] (0.0 when empty).",
+            "title": "Confidence",
+            "type": "number"
+          },
+          "text": {
+            "description": "Newline-joined recognized text (empty when nothing read).",
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text",
+          "confidence"
+        ],
+        "title": "OcrResponse",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "title": "PaddleOCR PP-StructureV3 layout-parsing service",
+    "version": "1.0.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/health": {
+      "get": {
+        "description": "Liveness + readiness probe.\n\nReturns HTTP 200 with status=\"ok\" and ready=True once BOTH the PP-StructureV3 layout pipeline\nand the PaddleOCR pipeline are built AND the host can actually run inference. Returns HTTP 503\nwith status=\"unhealthy\" when the CPU lacks AVX (PaddlePaddle would SIGILL on the first real\ninference — pipelines build fine, so this is the ONLY thing that stops the container advertising\na readiness it cannot honor), or status=\"loading\" while either pipeline is still starting up.\n\nArgs:\n    response (Response): FastAPI response object used to set the HTTP status code.\n\nReturns:\n    HealthResponse: Service status and readiness flag.",
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Health"
+      }
+    },
+    "/layout-parsing": {
+      "post": {
+        "description": "Parse a PDF's layout with PP-StructureV3 -- our own contract, not PaddleX's `paddlex --serve`\nshape (see the research plan §B.4): no base64 wrapping, explicit per-page pixel dims, no\nheavy `outputImages`/`inputImage` on the wire.\n\nArgs:\n    request (Request): Raw request — the body IS the PDF bytes (Content-Type: application/pdf).\n    use_table_recognition (bool | None): Per-request override of the pipeline default.\n    use_formula_recognition (bool | None): Per-request override of the pipeline default.\n    use_seal_recognition (bool | None): Per-request override of the pipeline default.\n    use_doc_orientation_classify (bool | None): Per-request override of the pipeline default.\n\nReturns:\n    LayoutParsingResponse: `{pages, n_pages, engine}` — see models.py.",
+        "operationId": "layout_parsing_layout_parsing_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "use_table_recognition",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Use Table Recognition"
+            }
+          },
+          {
+            "in": "query",
+            "name": "use_formula_recognition",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Use Formula Recognition"
+            }
+          },
+          {
+            "in": "query",
+            "name": "use_seal_recognition",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Use Seal Recognition"
+            }
+          },
+          {
+            "in": "query",
+            "name": "use_doc_orientation_classify",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Use Doc Orientation Classify"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LayoutParsingResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Layout Parsing"
+      }
+    },
+    "/ocr": {
+      "post": {
+        "description": "OCR a single image with PaddleOCR (text detection + recognition) — the OCR-only capability,\ndistinct from POST /layout-parsing (full layout). No base64 wrapping: the body IS the image.\n\nArgs:\n    request (Request): Raw request — the body IS the image bytes (Content-Type: image/png).\n\nReturns:\n    OcrResponse: `{text, confidence}` — see models.py.",
+        "operationId": "ocr_ocr_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OcrResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Ocr"
+      }
+    },
+    "/vl-parse": {
+      "post": {
+        "description": "Parse a PDF's layout with PaddleOCR-VL 1.6 — same contract shape as /layout-parsing (no base64\nwrapping, explicit per-page pixel dims, tables as HTML, formulas as LaTeX already inlined).\n\nThe pipeline is built on demand: the FIRST request downloads + loads the PP-DocLayoutV3 and\nPaddleOCR-VL-1.6-0.9B models (minutes on a cold cache), so it can be slow; subsequent requests\nreuse the warm pipeline.\n\nArgs:\n    request (Request): Raw request — the body IS the PDF bytes (Content-Type: application/pdf).\n    use_chart_recognition (bool | None): Per-request override of the pipeline default (OFF).\n    use_seal_recognition (bool | None): Per-request override of the pipeline default (OFF).\n    use_ocr_for_image_block (bool | None): Per-request override of the pipeline default (OFF).\n\nReturns:\n    LayoutParsingResponse: `{pages, n_pages, engine}` — the shared sidecar contract.",
+        "operationId": "vl_parse_vl_parse_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "use_chart_recognition",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Use Chart Recognition"
+            }
+          },
+          {
+            "in": "query",
+            "name": "use_seal_recognition",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Use Seal Recognition"
+            }
+          },
+          {
+            "in": "query",
+            "name": "use_ocr_for_image_block",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Use Ocr For Image Block"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LayoutParsingResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Vl Parse"
+      }
+    }
+  }
+}

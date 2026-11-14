@@ -1,0 +1,248 @@
+{
+  "components": {
+    "schemas": {
+      "HealthResponse": {
+        "description": "Response model for the GET /health liveness probe.\n\nAttributes:\n    status (str): \"ok\" when the host can serve MinerU inference; \"unhealthy\" when it cannot (no\n        CUDA GPU visible while MINERU_REQUIRE_GPU is set — the MinerU2.5-Pro VLM requires CUDA).\n    ready (bool): True when the host can run inference (the model itself loads lazily on the first\n        /parse, so readiness is gated on the GPU, not on the model being pre-loaded).\n    detail (str | None): Human-readable reason when not ready (diagnostics only); None on \"ok\".\n    device (str): Runtime compute device — \"cuda\" when a GPU is present, else \"cpu\". Read by the\n        DocForge app's GET /capabilities probe to decide whether this sidecar runs on a GPU.",
+        "properties": {
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Reason the service is not ready; None when status is 'ok'.",
+            "title": "Detail"
+          },
+          "device": {
+            "description": "Runtime compute device: 'cuda' when a GPU is present, else 'cpu'.",
+            "title": "Device",
+            "type": "string"
+          },
+          "ready": {
+            "description": "True when the host can run MinerU inference.",
+            "title": "Ready",
+            "type": "boolean"
+          },
+          "status": {
+            "description": "'ok' when serviceable, 'unhealthy' when no CUDA GPU is available.",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "ready",
+          "device"
+        ],
+        "title": "HealthResponse",
+        "type": "object"
+      },
+      "ParseBlockResponse": {
+        "description": "One reading-order block within a page.\n\nExactly one of `text` / `html` / `latex` is populated, selected by `label`:\n`table` -> `html` (the recognized table's HTML structure), `formula` -> `latex` (raw LaTeX\nsource), everything else -> `text` (recognized text; empty for a plain `image`/`chart` block with\nno in-region text — the DocForge FigureRenderNode crops it from the bbox instead).\n\nAttributes:\n    label (str): pp_structure-style layout label (e.g. \"title\", \"paragraph_title\", \"text\",\n        \"table\", \"formula\", \"image\", \"chart\", \"list\", \"caption\") normalized from MinerU's `type` +\n        `text_level`.\n    bbox (list[int]): `[x0, y0, x1, y1]` in the page's pixel space (top-left origin) — the same\n        space as `image_width`/`image_height` on the parent page (both are 1000: the normalized\n        0–1000 basis MinerU's content_list uses, so the DocForge mapper's divide-by-dims yields\n        [0, 1]).\n    reading_order (int): 0-based position of this block within the page's block list.\n    text (str | None): Recognized text — set for every label except table/formula.\n    html (str | None): Recognized table HTML — set only for `label == \"table\"`.\n    latex (str | None): Recognized formula LaTeX — set only for `label == \"formula\"`.",
+        "properties": {
+          "bbox": {
+            "description": "[x0, y0, x1, y1] in the page's 0–1000 pixel space.",
+            "items": {
+              "type": "integer"
+            },
+            "title": "Bbox",
+            "type": "array"
+          },
+          "html": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Recognized table HTML (label=='table').",
+            "title": "Html"
+          },
+          "label": {
+            "description": "pp_structure-style layout label normalized from MinerU.",
+            "title": "Label",
+            "type": "string"
+          },
+          "latex": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Recognized formula LaTeX (label=='formula').",
+            "title": "Latex"
+          },
+          "reading_order": {
+            "description": "0-based position in this page's reading order.",
+            "title": "Reading Order",
+            "type": "integer"
+          },
+          "text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Recognized text (non table/formula).",
+            "title": "Text"
+          }
+        },
+        "required": [
+          "label",
+          "bbox",
+          "reading_order"
+        ],
+        "title": "ParseBlockResponse",
+        "type": "object"
+      },
+      "ParseEngineResponse": {
+        "description": "Engine/provenance metadata for a `POST /parse` response.\n\nAttributes:\n    mineru (str): Installed `mineru` package version.\n    pipeline (str): The MinerU model id that produced this response (MinerU2.5-Pro-2605-1.2B).\n    backend (str): The MinerU VLM backend id used (e.g. \"vlm-transformers\").",
+        "properties": {
+          "backend": {
+            "description": "MinerU VLM backend id used for this parse.",
+            "title": "Backend",
+            "type": "string"
+          },
+          "mineru": {
+            "description": "Installed mineru package version.",
+            "title": "Mineru",
+            "type": "string"
+          },
+          "pipeline": {
+            "default": "MinerU2.5-Pro-2605-1.2B",
+            "description": "MinerU model id that produced this response.",
+            "title": "Pipeline",
+            "type": "string"
+          }
+        },
+        "required": [
+          "mineru",
+          "backend"
+        ],
+        "title": "ParseEngineResponse",
+        "type": "object"
+      },
+      "ParsePageResponse": {
+        "description": "One page's normalized parse result.\n\nAttributes:\n    page_index (int): 0-based page index within the input PDF.\n    image_width (int): Pixel width of the page's normalization space — the x divisor every block's\n        `bbox` was measured against (always 1000: MinerU's normalized bbox basis).\n    image_height (int): Pixel height of the page's normalization space (always 1000).\n    blocks (list[ParseBlockResponse]): Reading-ordered blocks for this page.",
+        "properties": {
+          "blocks": {
+            "description": "Reading-ordered blocks.",
+            "items": {
+              "$ref": "#/components/schemas/ParseBlockResponse"
+            },
+            "title": "Blocks",
+            "type": "array"
+          },
+          "image_height": {
+            "description": "Page normalization height (the bbox y divisor).",
+            "title": "Image Height",
+            "type": "integer"
+          },
+          "image_width": {
+            "description": "Page normalization width (the bbox x divisor).",
+            "title": "Image Width",
+            "type": "integer"
+          },
+          "page_index": {
+            "description": "0-based page index within the input PDF.",
+            "title": "Page Index",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "page_index",
+          "image_width",
+          "image_height",
+          "blocks"
+        ],
+        "title": "ParsePageResponse",
+        "type": "object"
+      },
+      "ParseResponse": {
+        "description": "Full response body of `POST /parse`.\n\nAttributes:\n    pages (list[ParsePageResponse]): One entry per PDF page, in page order.\n    n_pages (int): Number of pages parsed.\n    engine (ParseEngineResponse): Provenance metadata.",
+        "properties": {
+          "engine": {
+            "$ref": "#/components/schemas/ParseEngineResponse",
+            "description": "Provenance metadata."
+          },
+          "n_pages": {
+            "description": "Number of pages parsed.",
+            "title": "N Pages",
+            "type": "integer"
+          },
+          "pages": {
+            "description": "One entry per PDF page.",
+            "items": {
+              "$ref": "#/components/schemas/ParsePageResponse"
+            },
+            "title": "Pages",
+            "type": "array"
+          }
+        },
+        "required": [
+          "pages",
+          "n_pages",
+          "engine"
+        ],
+        "title": "ParseResponse",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "title": "MinerU2.5-Pro VLM parse service",
+    "version": "1.0.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/health": {
+      "get": {
+        "description": "Liveness + readiness probe.\n\nReturns HTTP 200 (status=\"ok\", ready=True) once the host can serve MinerU inference. Returns HTTP\n503 (status=\"unhealthy\") when MINERU_REQUIRE_GPU is set and no CUDA GPU is visible — MinerU's VLM\nbackend requires CUDA, so the container never advertises a readiness it cannot honor.\n\nArgs:\n    response (Response): FastAPI response object used to set the HTTP status code.\n\nReturns:\n    HealthResponse: Service status and readiness flag.",
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Health"
+      }
+    },
+    "/parse": {
+      "post": {
+        "description": "Parse a PDF's layout with MinerU2.5-Pro — the shared sidecar contract (no base64 wrapping,\nexplicit per-page normalized dims, tables as HTML, formulas as LaTeX already inlined).\n\nThe model is built on demand: the FIRST request downloads + loads MinerU2.5-Pro-2605-1.2B on CUDA\n(minutes on a cold cache), so it can be slow; subsequent requests reuse the warm model.\n\nArgs:\n    request (Request): Raw request — the body IS the PDF bytes (Content-Type: application/pdf).\n\nReturns:\n    ParseResponse: `{pages, n_pages, engine}` — the shared sidecar contract.",
+        "operationId": "parse_parse_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ParseResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Parse"
+      }
+    }
+  }
+}
