@@ -275,7 +275,7 @@ async def test_run_failure_persists_the_partial_tree_then_marks_both_failed_and_
     harness.fail_on(
         "runner.run",
         PipelineRunError(
-            "pipeline run failed: provider https://user:s3cret@llm.example/v1 down",
+            "pipeline run failed: provider https://user:s3cret@llm.example/v1 down",  # pragma: allowlist secret
             breadcrumb=breadcrumb,
             record=partial,
         ),
@@ -316,7 +316,7 @@ async def test_run_failure_stamps_the_breadcrumb_columns_and_redacts_the_error(
     harness.fail_on(
         "runner.run",
         PipelineRunError(
-            "pipeline run failed: provider https://user:s3cret@llm.example/v1 down",
+            "pipeline run failed: provider https://user:s3cret@llm.example/v1 down",  # pragma: allowlist secret
             breadcrumb=breadcrumb,
         ),
     )
