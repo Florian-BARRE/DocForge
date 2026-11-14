@@ -3,7 +3,8 @@
 # and embeds each FIGURE block's cropped image into the IR itself (Block.figure.crop), so the IR
 # leaves parse "ultra complet" — every figure carries its bytes, ready for the enrich stage to
 # classify/OCR/describe per block. Also emits the page renders (highlight-on-page UI; the worker
-# stores them as blobs). pypdfium2 is lazy-imported (native lib, worker image); the CPU-bound
+# stores them as blobs). pypdfium2 is lazy-imported by PdfiumRenderer (native lib, worker image),
+# which serialises every PDFium call process-wide (PDFium is not thread-safe); the CPU-bound
 # rendering runs off the event loop. Degrades to a pass-through when there is no PDF view.
 
 # ====== Standard Library Imports ======
@@ -23,6 +24,9 @@ from shared_libs.public_models import (
     PageRender,
     PageRenders,
 )
+
+# ====== Local Project Imports ======
+from ..pdfium import PdfiumRenderer
 
 
 class FigureRenderConfig(NodeConfig):
@@ -79,12 +83,10 @@ class FigureRenderNode(ActionNode):
         the IR's figure bboxes describe the native parse, not the preview raster, so cropping them
         out of the preview would yield misaligned garbage — only the page renders are kept.
         """
-        # 1. Lazy import — pypdfium2 is a native lib shipped in the worker image only.
-        import pypdfium2 as pdfium
-
+        # 1. Every PDFium call goes through PdfiumRenderer, which serialises them process-wide
+        #    (PDFium is not thread-safe; two concurrent renders crash the worker, issue #242).
         config: FigureRenderConfig = self.config
-        document = pdfium.PdfDocument(pdf_bytes)
-        try:
+        with PdfiumRenderer(pdf_bytes, config.scale) as renderer:
             # 2. Group figures by their page so each page's crops happen while that page's image is
             #    alive, then the image is dropped before the next — peak PIL RAM is O(1 page), not
             #    O(all pages) (a 100-page A4 doc at 144 dpi is ~600 MB if all held at once).
@@ -95,8 +97,8 @@ class FigureRenderNode(ActionNode):
             # 3. Stream page by page: rasterize → (optionally) emit its render → crop its figures →
             #    let the PIL image fall out of scope so the GC can reclaim it before the next page.
             renders: list[PageRender] = []
-            for index in range(len(document)):
-                image = document[index].render(scale=config.scale).to_pil()
+            for index in range(len(renderer)):
+                image = renderer.render_page(index)
                 if config.render_pages:
                     buffer = io.BytesIO()
                     image.save(buffer, format="PNG")
@@ -127,8 +129,6 @@ class FigureRenderNode(ActionNode):
                         block.figure = FigureEnrichment()
                     block.figure.crop = buffer.getvalue()
             return PageRenders(pages=renders)
-        finally:
-            document.close()
 
     async def run(self, data: FigureRenderConsumes) -> FigureRenderProduces:
         """Render off the event loop; pass the IR through untouched without any PDF."""
