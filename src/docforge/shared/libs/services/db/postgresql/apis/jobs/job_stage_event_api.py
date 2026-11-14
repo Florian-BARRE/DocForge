@@ -17,13 +17,11 @@ from sqlalchemy.orm import defer
 # ====== Internal Project Imports ======
 from shared_libs.pipelines.base import NodeExecutionRecord
 from shared_libs.public_models import TextSanitizer
+from shared_libs.services.db.trace import ExecutionTreeFlattener, TraceRefs
 
 from ...tables import (
     JobStageEvent,
 )
-
-# ====== Local Project Imports ======
-from ..execution_tree import ExecutionTreeFlattener, TraceRefs
 
 
 class JobStageEventApi:

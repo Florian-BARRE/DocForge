@@ -11,7 +11,7 @@ from shared_libs.pipelines.base import NodeExecutionRecord, NodeStatus
 from shared_libs.pipelines.ingest.estimate import RateTable
 from shared_libs.pipelines.usage import UsageSummer
 from shared_libs.public_models import RunBundle
-from shared_libs.services.db.postgresql.apis.execution_tree import ExecutionTreeFlattener
+from shared_libs.services.db.trace import ExecutionTreeFlattener
 
 # ====== Local Project Imports ======
 from .models import (

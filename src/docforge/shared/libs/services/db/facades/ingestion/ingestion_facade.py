@@ -23,10 +23,10 @@ from loggerplusplus import LoggerClass
 from shared_libs.pipelines.base import NodeExecutionRecord
 from shared_libs.public_models import VectorLayout
 from shared_libs.services.db.postgresql import PostgresClient
-from shared_libs.services.db.postgresql.apis.execution_tree import TraceRefs
 from shared_libs.services.db.postgresql.tables import Blob, Document, DocumentMetadata, Job
 from shared_libs.services.db.qdrant import QdrantClient, QdrantPoint
 from shared_libs.services.db.s3 import S3Client, S3Object
+from shared_libs.services.db.trace import TraceRefs
 
 # ====== Local Project Imports ======
 from ..payloads import AdmissionResult, IngestionPayload, ReingestResult
