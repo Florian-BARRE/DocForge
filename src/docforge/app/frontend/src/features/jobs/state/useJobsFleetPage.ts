@@ -4,8 +4,10 @@
 // "always-live fleet monitor" pattern rather than JobsPage's settle-and-stop poll, since the fleet
 // view has no notion of a settled batch (jobs keep arriving from every collection).
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { listJobsPage, type JobOrder, type JobPage, type JobSort, type JobStatus, type JobStatusValue } from "../../../api/jobs";
+import { errorMessage } from "../../../hooks/errorMessage";
+import { usePolling } from "../../../hooks/usePolling";
 
 const POLL_MS = 4000;
 
@@ -35,31 +37,18 @@ export function useJobsFleetPage({
   const [page, setPage] = useState<JobPage | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    let timer: number | undefined;
-    // A tab/page/filter change must show its OWN loading state, not the previous page's stale rows.
-    setPage(null);
-
-    const load = () => {
-      listJobsPage({ status, order, sort, limit, offset, collectionId, stage, errorType, search, createdAfter, createdBefore })
-        .then((data) => {
-          if (cancelled) return;
-          setPage(data);
-          setError(null);
-          timer = window.setTimeout(load, POLL_MS);
-        })
-        .catch((e) => {
-          if (cancelled) return;
-          setError(e instanceof Error ? e.message : String(e));
-          timer = window.setTimeout(load, POLL_MS);
-        });
-    };
-    load();
-
-    return () => { cancelled = true; window.clearTimeout(timer); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- `status` is a fresh array each render; join it into a stable key instead.
-  }, [status?.join(","), order, sort, limit, offset, collectionId, stage, errorType, search, createdAfter, createdBefore]);
+  usePolling(
+    () => listJobsPage({ status, order, sort, limit, offset, collectionId, stage, errorType, search, createdAfter, createdBefore }),
+    {
+      intervalMs: POLL_MS,
+      // A tab/page/filter change must show its OWN loading state, not the previous page's stale rows.
+      onReset: () => setPage(null),
+      onData: (data) => { setPage(data); setError(null); },
+      onError: (e) => setError(errorMessage(e)),
+    },
+    // `status` is a fresh array each render; join it into a stable key instead.
+    [status?.join(","), order, sort, limit, offset, collectionId, stage, errorType, search, createdAfter, createdBefore],
+  );
 
   const patchJob = (jobId: string, patch: Partial<JobStatus>) => {
     setPage((prev) =>

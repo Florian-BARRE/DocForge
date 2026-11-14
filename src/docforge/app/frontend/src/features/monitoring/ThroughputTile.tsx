@@ -4,9 +4,10 @@
 // how many finished within the trailing window client-side — an approximation, not an exact rate,
 // documented here rather than silently presented as precise.
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { listJobsPage } from "../../api/jobs";
 import { StatTile } from "../../components/StatTile";
+import { usePolling } from "../../hooks/usePolling";
 
 const POLL_MS = 5000;
 const WINDOW_MINUTES = 60;
@@ -22,25 +23,11 @@ function countWithinWindow(finishedAtValues: (string | null)[], windowMinutes: n
 export function ThroughputTile() {
   const [count, setCount] = useState<number | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    let timer: number | undefined;
-
-    const load = () => {
-      listJobsPage({ status: ["done"], order: "newest", limit: SCAN_LIMIT })
-        .then((page) => {
-          if (cancelled) return;
-          setCount(countWithinWindow(page.jobs.map((j) => j.finished_at), WINDOW_MINUTES));
-          timer = window.setTimeout(load, POLL_MS);
-        })
-        .catch(() => {
-          if (!cancelled) timer = window.setTimeout(load, POLL_MS);
-        });
-    };
-    load();
-
-    return () => { cancelled = true; window.clearTimeout(timer); };
-  }, []);
+  usePolling(
+    () => listJobsPage({ status: ["done"], order: "newest", limit: SCAN_LIMIT }),
+    { intervalMs: POLL_MS, onData: (page) => setCount(countWithinWindow(page.jobs.map((j) => j.finished_at), WINDOW_MINUTES)) },
+    [],
+  );
 
   return (
     <StatTile

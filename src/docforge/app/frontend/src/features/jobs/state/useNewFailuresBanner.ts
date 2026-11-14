@@ -4,8 +4,9 @@
 // the page. First-ever visit seeds the cursor at "now" so a brand-new deployment doesn't dump its
 // entire failure history as "new"; every visit after that only counts failures past the last dismiss.
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { getNewFailures } from "../../../api/jobs";
+import { usePolling } from "../../../hooks/usePolling";
 
 const STORAGE_KEY = "docforge_jobs_last_seen_failures_at";
 const POLL_MS = 30000;
@@ -43,27 +44,14 @@ export function useNewFailuresBanner(): NewFailuresBannerState {
   const [count, setCount] = useState(0);
   const [latestFailedAt, setLatestFailedAt] = useState<string | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    let timer: number | undefined;
-
-    const load = () => {
-      getNewFailures({ since: cursor })
-        .then((next) => {
-          if (cancelled) return;
-          setCount(next.count);
-          setLatestFailedAt(next.latest_failed_at);
-          timer = window.setTimeout(load, POLL_MS);
-        })
-        .catch(() => {
-          if (cancelled) return;
-          timer = window.setTimeout(load, POLL_MS);
-        });
-    };
-    load();
-
-    return () => { cancelled = true; window.clearTimeout(timer); };
-  }, [cursor]);
+  usePolling(
+    () => getNewFailures({ since: cursor }),
+    {
+      intervalMs: POLL_MS,
+      onData: (next) => { setCount(next.count); setLatestFailedAt(next.latest_failed_at); },
+    },
+    [cursor],
+  );
 
   const dismiss = () => {
     const next = latestFailedAt ?? new Date().toISOString();

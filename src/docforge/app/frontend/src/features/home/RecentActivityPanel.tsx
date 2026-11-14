@@ -4,11 +4,12 @@
 // full Activity ▸ Jobs table; self-contained fetch+poll so one failing probe never blocks a sibling
 // Overview panel/tile.
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { jobDisplayName, listJobsPage, type JobStatus } from "../../api/jobs";
 import { JobStatusChip } from "../../components/trace/JobStatusChip";
 import type { Navigate } from "../../shell/view";
 import { theme } from "../../theme";
+import { usePolling } from "../../hooks/usePolling";
 
 const POLL_MS = 10000;
 const MAX_ROWS = 6;
@@ -62,25 +63,11 @@ interface RecentActivityPanelProps {
 export function RecentActivityPanel({ onNavigate }: RecentActivityPanelProps) {
   const [jobs, setJobs] = useState<JobStatus[] | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    let timer: number | undefined;
-
-    const load = () => {
-      listJobsPage({ limit: MAX_ROWS, order: "newest" })
-        .then((page) => {
-          if (cancelled) return;
-          setJobs(page.jobs);
-          timer = window.setTimeout(load, POLL_MS);
-        })
-        .catch(() => {
-          if (!cancelled) timer = window.setTimeout(load, POLL_MS);
-        });
-    };
-    load();
-
-    return () => { cancelled = true; window.clearTimeout(timer); };
-  }, []);
+  usePolling(
+    () => listJobsPage({ limit: MAX_ROWS, order: "newest" }),
+    { intervalMs: POLL_MS, onData: (page) => setJobs(page.jobs) },
+    [],
+  );
 
   return (
     <div
