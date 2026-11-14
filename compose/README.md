@@ -35,7 +35,7 @@ before this reorg.
 | Prod GPU | `docker compose -f compose/compose.prod-gpu.yml --profile full up -d` | Production/staging on a GPU host (NVIDIA Container Toolkit required). |
 | Dev CPU | `docker compose -f compose/compose.dev-cpu.yml --profile full up -d --build` | Local development, CPU machine (the common case). |
 | Dev GPU | `docker compose -f compose/compose.dev-gpu.yml --profile full up -d --build` | Local development on a GPU-equipped machine. |
-| Dev-center dev stack | `aidk stack up NAME` / `rebuild` / `down` through `scripts/dev-stack.sh` (layers `compose/overlays/compose.worktree.yml` on `compose.dev-cpu.yml`) | The dev center: the main checkout and each git worktree, side by side on one shared CPU host. **Never prod.** See [the per-worktree dev stack](#the-per-worktree-dev-stack). |
+| Dev-center dev stack | `aidk projects stacks up NAME` / `rebuild` / `down` through `scripts/dev-stack.sh` (layers `compose/overlays/compose.worktree.yml` on `compose.dev-cpu.yml`) | The dev center: the main checkout and each git worktree, side by side on one shared CPU host. **Never prod.** See [the per-worktree dev stack](#the-per-worktree-dev-stack). |
 
 `--profile full` is mandatory in every Makefile/scenario command (the dev-center stack resets
 profiles, see below) — app/worker/frontend/mcp live under it (omitting it starts only the
@@ -78,9 +78,9 @@ project) on one shared host. It is layered with a plain `-f` on top of `compose.
 (main checkout or worktree): they use the fixed project `docforge` and fixed container names, so
 they would take over main's stack — `scripts/dev-stack.sh` only.
 
-A new worktree starts nothing: Orca's setup (`aidk stack setup`, i.e. `scripts/dev-stack.sh prepare`)
+A new worktree starts nothing: Orca's setup (`aidk projects stacks setup`, i.e. `scripts/dev-stack.sh prepare`)
 only writes its port block and `.env.worktree` (seconds: no image is built or pulled). The first
-`aidk stack up` of a worktree builds the images it needs, so the first start of `app`, `worker`,
+`aidk projects stacks up` of a worktree builds the images it needs, so the first start of `app`, `worker`,
 `mcp`, `bge` or `paddle` is slow (several GB, minutes); later starts reuse them. Each stack names
 the images it builds after its compose project, `${COMPOSE_PROJECT_NAME:-docforge}-<name>:dev`: main
 keeps `docforge-app:dev` and the like, a worktree gets `docforge-<slug>-app:dev`, so a rebuild in one
@@ -91,13 +91,13 @@ compose service, its `needs` and its code `paths`), and a worktree copies main's
 time postgres starts:
 
 ```bash
-aidk stack status                                 # declared services, what runs, what would start
-aidk stack up frontend                            # docforge_frontend + docforge_app + qdrant + postgres/redis/seaweedfs
-aidk stack up worker                              # docforge_worker + qdrant + gotenberg + the stores
-aidk stack up mcp                                 # docforge_mcp (profile extras) + the app
-aidk stack up bge paddle                          # bge_server / paddle_server (profile models)
-aidk stack rebuild NAME | browse | down           # rebuild an image, open the UI in Orca, stop (volumes, images kept)
-aidk stack release                                # worktree removal (Orca's archive): containers, volumes, images, ports
+aidk projects stacks status                                 # declared services, what runs, what would start
+aidk projects stacks up frontend                            # docforge_frontend + docforge_app + qdrant + postgres/redis/seaweedfs
+aidk projects stacks up worker                              # docforge_worker + qdrant + gotenberg + the stores
+aidk projects stacks up mcp                                 # docforge_mcp (profile extras) + the app
+aidk projects stacks up bge paddle                          # bge_server / paddle_server (profile models)
+aidk projects stacks rebuild NAME | browse | down           # rebuild an image, open the UI in Orca, stop (volumes, images kept)
+aidk projects stacks release                                # worktree removal (Orca's archive): containers, volumes, images, ports
 ```
 
 `scripts/dev-stack.sh up SERVICE...` (compose names) and `setup` (everything not behind a profile)
@@ -111,7 +111,7 @@ image's built UI. The frontend has no healthcheck, so `up --wait` only waits for
 its first start runs `npm ci` in the container (a few minutes) before Vite answers.
 
 **Profiles** (no `--profile full` here — the overlay resets app/worker's profile). Naming a service
-behind a profile starts it (`aidk stack up mcp`); `COMPOSE_PROFILES` in the environment is honoured too:
+behind a profile starts it (`aidk projects stacks up mcp`); `COMPOSE_PROFILES` in the environment is honoured too:
 
 | Profile | Services |
 |---|---|
@@ -156,8 +156,8 @@ dies with "permission denied" and the app fails at startup.
 **After a store image changes in `compose.base.yml`** (e.g. the switch to prod's redis 7.4 and
 seaweedfs 4.38): an existing stack keeps its volumes, no volume needs dropping (redis 7.4 loads an
 8.2 RDB, seaweedfs 4.38 reads 4.50's blobs with only warnings on the `.vif` files). Recreating redis
-under a running worker kills the arq worker, though, so run `aidk stack down` then `aidk stack up`
-(main checkout: the same, or restart `docforge_worker` after the `up`); `aidk stack release` is only
+under a running worker kills the arq worker, though, so run `aidk projects stacks down` then `aidk projects stacks up`
+(main checkout: the same, or restart `docforge_worker` after the `up`); `aidk projects stacks release` is only
 for a clean slate.
 
 ## The telemetry stack

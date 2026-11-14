@@ -10,12 +10,13 @@ a worker in a worktree) and its method.
 - Memory: `aidk toolbox memory search "<words>"` before deciding; `aidk toolbox memory save` for what lasts.
 - A task ends with `aidk work done` (checks, push, request), never by declaring it done.
 - A question only the user can settle: `aidk communication inbox ask "<question>"`.
-- Skills: `aidk toolbox skills list` (the kit's; this project has none of its own yet).
+- Skills of this project (read the one that fits: `aidk toolbox skills show <name>`):
+  - `dependency-round`: Handles docforge's weekly Dependabot round (the minor/patch PRs per lock file, the majors, the docker and compose bumps). Use when Dependabot PRs are open, when a dependency update, relock or `uv lock` is asked, or before touching a held package (docling, rapidocr, transformers, torch, postgres, red
 <!-- aidk:end -->
 
 Read by every agent session (Claude Code through `CLAUDE.md`, Codex directly). Project-specific
 facts only; generic agent rules (planning, delegation, commits, review, memory, definition of done)
-come from the dev center's managed layer. All checks: `aidk verify` from the repository root (they
+come from the dev center's managed layer. All checks: `aidk rules run done` from the repository root (they
 live in `.aidk/project.toml`).
 
 ## General
@@ -70,7 +71,7 @@ Public repository.
 | an API route | `docs/rest-api.md` | `test_doc_coherence.py` |
 | an env var of the app or worker config | `docs/configuration.md` | `test_doc_coherence.py` |
 | a repo path named in backticks in the top-level docs | the doc (the path must exist) | `test_doc_coherence.py` |
-| a compose file | keep the `compose.*.yml` name; run `make config-check-all` (Docker, not in `aidk verify`) | `test_doc_coherence.py` |
+| a compose file | keep the `compose.*.yml` name; run `make config-check-all` (Docker, not in `aidk rules run done`) | `test_doc_coherence.py` |
 | a service in `compose/compose.base.yml` or `compose/overlays/compose.dev.yml` | `compose/overlays/compose.worktree.yml` (container name, ports, profile) | `test_worktree_compose_overlay.py` |
 | the version | `scripts/set_version.sh X.Y.Z` (docforge, mcp and SDK in lockstep; bge and paddle version on their own) | `test_version_alignment.py` |
 
@@ -89,7 +90,7 @@ These tests live under `src/docforge/tests/units/` (`coherence/` for the first o
 ## Merging (assisted mode)
 
 The team-leader merges a request once it is green (`aidk-checks` and the CI) and reviewed, through
-`aidk merge`. A request touching a path of `[merge] never_alone` in `.aidk/project.toml` (the workflows,
+`aidk requests merge`. A request touching a path of `[merge] never_alone` in `.aidk/project.toml` (the workflows,
 `dependabot.yml`, `scripts/set_version.sh`, the migrations, the prod compose files, `.gitleaks.toml`) goes
 to florian, who merges it.
 
@@ -99,7 +100,7 @@ to florian, who merges it.
   re-resolves torch/paddle to the multi-GB CUDA build.
 - `tests/rag_eval` runs as `python -m pytest` (it imports `tests.rag_eval.*`; `tests/` has no `__init__`).
 - `tests/db` (`-m db`) needs a real Postgres (`TEST_POSTGRES_*`): only the CI's `db-tests` job runs it.
-- The `src/docforge` suite reads `services/docforge/.env` at import; `aidk verify` uses the
+- The `src/docforge` suite reads `services/docforge/.env` at import; `aidk rules run done` uses the
   `.env.example` instead, as the CI does.
 
 ## Release and publication (florian's, untouched by agents)
@@ -116,21 +117,21 @@ to florian, who merges it.
 ## Dev stack (dev center: main checkout and each worktree)
 
 Each worktree runs its own copy of `compose/compose.dev-cpu.yml` + `compose/overlays/compose.worktree.yml`
-(own containers, database copied from main, own ports), driven by `aidk stack` through
+(own containers, database copied from main, own ports), driven by `aidk projects stacks` through
 `scripts/dev-stack.sh` (details in `compose/README.md`). The services are declared in `[stack]` of
 `.aidk/project.toml`; nothing starts or builds at setup, start only what the work needs. The first `up`
 of a worktree builds its images: slow for app, worker, mcp, bge and paddle (several GB, minutes).
 
 ```bash
-aidk stack status            # what is declared, what runs, what would start and why
-aidk stack up frontend       # the UI (Vite, hot reload) + the app + qdrant, postgres, redis, seaweedfs
-aidk stack up worker         # the ingestion worker (+ qdrant, gotenberg and the stores)
-aidk stack up mcp            # the MCP server (compose profile extras) and the app
-aidk stack up bge paddle     # the CPU models (compose profile models): check `free -h` first
-aidk stack rebuild NAME      # after a change to an image (Dockerfile, dependencies), data kept
-aidk stack browse            # open the UI in this worktree's Orca browser; give florian its URL
-aidk stack down              # stop what you started: the volumes (data) and the images stay
-aidk stack release           # remove everything: containers, volumes, built images, port block
+aidk projects stacks status             # what is declared, what runs, what would start and why
+aidk projects stacks up frontend        # the UI (Vite, hot reload) + the app + qdrant, postgres, redis, seaweedfs
+aidk projects stacks up worker          # the ingestion worker (+ qdrant, gotenberg and the stores)
+aidk projects stacks up mcp             # the MCP server (compose profile extras) and the app
+aidk projects stacks up bge paddle      # the CPU models (compose profile models): check `free -h` first
+aidk projects stacks rebuild NAME       # after a change to an image (Dockerfile, dependencies), data kept
+aidk projects stacks browse             # open the UI in this worktree's Orca browser; give florian its URL
+aidk projects stacks down               # stop what you started: the volumes (data) and the images stay
+aidk projects stacks release            # remove everything: containers, volumes, built images, port block
 ```
 
 - The UI is the Vite frontend at the first port of the worktree's block (`scripts/dev-stack.sh url`;

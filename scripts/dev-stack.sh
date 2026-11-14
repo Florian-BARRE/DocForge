@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# One running dev stack per Orca worktree (template from the AI Dev Kit, ~/.aidk/kit/platforms/linux/templates/project).
+# One running dev stack per Orca worktree (template from the AI Dev Kit, ~/.aidk/kit/content/templates/project/linux).
 #
 #   scripts/dev-stack.sh prepare [SERVICE...]  worktree: port block, .env.worktree, the images of these and what
 #                                          they depend on built and pulled (none without a name); nothing started
-#                                          (aidk stack setup names the [stack] services that say autostart)
+#                                          (aidk projects stacks setup names the [stack] services that say autostart)
 #   scripts/dev-stack.sh setup             prepare, then the whole stack up, database copied from main first
 #                                          (main checkout: the whole stack up on the usual ports)
 #   scripts/dev-stack.sh up [SERVICE...]   start these and what they depend on (depends_on), or the whole stack;
@@ -17,22 +17,22 @@
 #   scripts/dev-stack.sh url               print the address of the app
 #   scripts/dev-stack.sh ps                the address and the containers
 #   scripts/dev-stack.sh status            the same, then follows the logs (Orca "Stack" tab)
-#   scripts/dev-stack.sh teardown          worktree only: stop, delete its containers, volumes and built
-#                                          images, free the ports
+#   scripts/dev-stack.sh teardown          worktree only: stop, delete its containers, volumes and the images it
+#                                          built, free the ports
 #
 # In a worktree, the app is at http://localhost:<first port of the block>, in Orca's browser of that
 # worktree (Orca routes its traffic through the server). Published ports listen on 127.0.0.1 only.
 # The compose files must read the variables below and must not set container_name or volume names.
-# Which services a worktree starts, and when, is declared in .aidk/project.toml ([stack]: aidk stack up NAME).
+# Which services a worktree starts, and when, is declared in .aidk/project.toml ([stack]: aidk projects stacks up NAME).
 #
 # DocForge: the main checkout and every worktree run compose/compose.dev-cpu.yml +
 # compose/overlays/compose.worktree.yml (no container names). Main is project "docforge" on the
 # overlay's default ports (UI 10046, API 10040, mcp 10048, on 127.0.0.1); a worktree reads its
 # project and ports from .env.worktree (UI = first port of the block, API = +1, mcp = +8). The UI
 # is the Vite dev server (hot reload) proxying to the app; the API docs are at <API>/scalar.
-# A worktree starts nothing at setup (prepare); `aidk stack up frontend` starts the UI, the app and
+# A worktree starts nothing at setup (prepare); `aidk projects stacks up frontend` starts the UI, the app and
 # the stores. A service behind a compose profile (bge_server / paddle_server: models, mcp: extras)
-# starts when named (`up docforge_mcp`, `aidk stack up mcp`); a COMPOSE_PROFILES set in the
+# starts when named (`up docforge_mcp`, `aidk projects stacks up mcp`); a COMPOSE_PROFILES set in the
 # environment is honoured too, e.g. COMPOSE_PROFILES=models scripts/dev-stack.sh up.
 # The first start runs `npm ci` in the frontend container (a few minutes); `up --wait` only waits
 # for it to be running (no healthcheck), so the page may need a moment after `up` returns.
@@ -46,7 +46,7 @@ COMPOSE_FILES=(-f compose/compose.dev-cpu.yml -f compose/overlays/compose.worktr
 APP_SERVICE="docforge_frontend"      # service that serves the app (Vite UI), and its container port
 APP_CONTAINER_PORT=5173
 APP_PATH="/"                         # path of the page to open
-# false: a worktree builds its images on its first `aidk stack up` (several GB for app, worker, mcp,
+# false: a worktree builds its images on its first `aidk projects stacks up` (several GB for app, worker, mcp,
 # bge and paddle: built at prepare, they made Orca's setup outlast the agent's start).
 PREPARE_IMAGES=false                 # true: prepare builds and pulls the images, so a first start is quick
 # Database copied from main's stack into a new worktree (Postgres). Empty SEED_DB_SERVICE: no copy.
@@ -161,7 +161,7 @@ seed() {
   fi
   note "copying main's database into this worktree (read-only on main)"
   # The target is new and empty: "already exists" errors on the role and the default databases
-  # are expected and harmless.
+  # are expected and harmless, so not shown; any other error is.
   docker exec "$src" pg_dumpall -U "$SEED_DB_USER" |
     compose exec -T "$SEED_DB_SERVICE" psql -q -U "$SEED_DB_USER" -d postgres 2>&1 >/dev/null |
     { grep -vE '^ERROR: +(role|database) "[^"]*" already exists$' || true; } >&2
@@ -301,7 +301,7 @@ case "${1:-}" in
   up) shift; bring_up 0 "$@" ;;
   rebuild)
     shift
-    if (($# == 0)); then  # the running services only, a profiled one (models, extras) included
+    if (($# == 0)); then  # the running services only, a profiled one included
       mapfile -t running < <(compose --profile '*' ps --services --status running)
       ((${#running[@]})) || { note "nothing runs: up SERVICE... first"; exit 0; }
       set -- "${running[@]}"
@@ -326,11 +326,12 @@ case "${1:-}" in
     ((IS_WORKTREE)) || die "teardown never runs in the main checkout (it would delete main's data)"
     # --profile '*': services behind a compose profile (pgAdmin…) and their volumes go too. Orca gives the
     # archive script 120 s and keeps the worktree when it fails: 5 s for the containers to stop, a kill
-    # when that is not enough, everything bounded well under the limit.
+    # when that is not enough, everything bounded well under the limit. aidk projects stacks release bounds
+    # the whole teardown (after a cut, it keeps the port block and .env.worktree).
     if [[ -f "$ENV_FILE" ]]; then
       if ! timeout 60 docker compose "${BASE_ENV_ARGS[@]}" --env-file "$ENV_FILE" "${COMPOSE_FILES[@]}" --profile '*' down -v \
           --remove-orphans --timeout 5; then
-        note "the stack did not stop in time: killing it"
+        note "the stack did not go down: killing it"
         timeout 15 docker compose "${BASE_ENV_ARGS[@]}" --env-file "$ENV_FILE" "${COMPOSE_FILES[@]}" --profile '*' kill || true
         timeout 20 docker compose "${BASE_ENV_ARGS[@]}" --env-file "$ENV_FILE" "${COMPOSE_FILES[@]}" --profile '*' down -v \
           --remove-orphans --timeout 0 || die "the stack is still there: docker compose ps, then teardown again"
