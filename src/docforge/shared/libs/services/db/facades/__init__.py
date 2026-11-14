@@ -68,7 +68,7 @@ from .metadata_edit_facade import (
 )
 from .schema_change_facade import FieldPurgeOutcome, SchemaChangeFacade
 from .search_facade import SearchFacade
-from .jobs_facade import JobsFacade
+from .jobs import JobsFacade
 from .trace_payload_facade import TracePayloadFacade
 from .auth_facade import AuthFacade
 from .storage_footprint_facade import StorageFootprintFacade
