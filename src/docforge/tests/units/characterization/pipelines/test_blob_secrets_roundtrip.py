@@ -70,16 +70,18 @@ def _chain_blob() -> dict:
                         "ocr",
                         "openai_compatible",
                         base_url="https://a.example",
-                        api_key="sk-a",
+                        api_key="sk-a",  # pragma: allowlist secret
                     ),
                     _node(
                         "ocr_1",
                         "ocr",
                         "openai_compatible",
                         base_url="https://b.example",
-                        api_key="sk-b",
+                        api_key="sk-b",  # pragma: allowlist secret
                     ),
-                    _node("ocr_2", "ocr", "mistral", api_key="sk-mistral"),
+                    _node(
+                        "ocr_2", "ocr", "mistral", api_key="sk-mistral"
+                    ),  # pragma: allowlist secret
                 ],
             },
             {
@@ -98,7 +100,11 @@ def _chain_blob() -> dict:
                 },
             },
             _node(
-                "gotenberg", "convert", "gotenberg", base_url="http://gotenberg:3000", password="pw"
+                "gotenberg",
+                "convert",
+                "gotenberg",
+                base_url="http://gotenberg:3000",
+                password="pw",  # pragma: allowlist secret
             ),
         ],
     }
@@ -186,7 +192,7 @@ def test_redact_snapshot_wraps_pipeline_and_search_and_keeps_other_keys() -> Non
     assert "sk-" not in str(masked["pipeline"]) and "sk-" not in str(masked["search"])
     assert _config(masked["pipeline"], "ocr_0")["api_key"] == MASK
     assert _config(masked["search"], "prep")["targets"][0]["api_key"] == MASK
-    assert masked["note"] == {"api_key": "kept"}
+    assert masked["note"] == {"api_key": "kept"}  # pragma: allowlist secret
     assert snapshot["pipeline"] == _chain_blob()
     assert redact_config_snapshot(None) is None
     assert redact_config_snapshot({"pipeline": None, "x": 1}) == {"pipeline": None, "x": 1}
@@ -259,7 +265,7 @@ def test_omitted_secret_is_kept_explicit_empty_clears_a_new_key_is_verbatim() ->
     incoming = redact_blob_secrets(stored)
     del _config(incoming, "ocr_2")["api_key"]  # omitted
     _config(incoming, "ocr_0")["api_key"] = ""  # cleared
-    _config(incoming, "ocr_1")["api_key"] = "sk-new"  # genuinely new
+    _config(incoming, "ocr_1")["api_key"] = "sk-new"  # genuinely new  # pragma: allowlist secret
 
     healed = restore_blob_secrets(incoming, stored)
 
