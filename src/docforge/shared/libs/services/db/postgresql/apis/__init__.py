@@ -10,7 +10,7 @@ from .ir_api import IRApi
 from .chunk_api import ChunkApi
 from .job_api import JobApi
 from .rebuild_job_api import RebuildJobApi
-from .execution_tree import ExecutionTreeFlattener, FlatNode
+from shared_libs.services.db.trace import ExecutionTreeFlattener, FlatNode
 from .auth_api import AuthApi
 from .storage_footprint_api import StorageFootprintApi
 from .transfer_api import TransferApi

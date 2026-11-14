@@ -7,13 +7,13 @@
 # for born-digital PDFs, each toggle overridable per collection without a sidecar rebuild.
 
 # ====== Third-Party Library Imports ======
-from pydantic import Field, field_validator
+from pydantic import Field
 
-# ====== Internal Project Imports ======
-from shared_libs.pipelines.base import TimeoutRetryConfig
+# ====== Local Project Imports ======
+from ..sidecar_base import SidecarParserConfig
 
 
-class ParserPpStructureConfig(TimeoutRetryConfig):
+class ParserPpStructureConfig(SidecarParserConfig):
     """PP-StructureV3 sidecar endpoint + the sub-pipeline toggles forwarded per request.
 
     Timeout/retry come from ``TimeoutRetryConfig`` (``timeout_seconds`` overridden to 300 s — layout
@@ -26,7 +26,6 @@ class ParserPpStructureConfig(TimeoutRetryConfig):
         "chain escalation step added to a collection is reachable out of the box; override per "
         "collection to point at a remote sidecar.",
     )
-    api_key: str = Field(default="", description="Bearer token when the sidecar requires one.")
     timeout_seconds: float = Field(
         default=300.0,
         gt=0,
@@ -56,12 +55,6 @@ class ParserPpStructureConfig(TimeoutRetryConfig):
         description="Geometrically unwarp distorted (photographed) pages before layout. OFF by "
         "default — only helps camera captures, not born-digital PDFs.",
     )
-
-    @field_validator("base_url", mode="before")
-    @classmethod
-    def _strip_whitespace(cls, value: object) -> object:
-        """Strip pasted whitespace — a trailing newline breaks the HTTP request line."""
-        return value.strip() if isinstance(value, str) else value
 
 
 __all__ = ["ParserPpStructureConfig"]
