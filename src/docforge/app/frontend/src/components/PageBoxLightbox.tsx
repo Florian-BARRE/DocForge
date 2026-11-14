@@ -12,8 +12,7 @@
 // A portal sidesteps the whole containing-block class of bug regardless of what ancestors do.
 
 import { useId } from "react";
-import { createPortal } from "react-dom";
-import { useFocusTrap } from "../shell/useFocusTrap";
+import { Dialog } from "./dialog/Dialog";
 import { PageBoxOverlay, type OverlayBox } from "./PageBoxOverlay";
 import { theme } from "../theme";
 
@@ -40,74 +39,42 @@ const navButtonStyle: React.CSSProperties = {
 
 export function PageBoxLightbox({ renderBlobHash, width, height, boxes, caption, onClose, onPrev, onNext }: PageBoxLightboxProps) {
   const captionId = useId();
-  // Replaces the primitive's own window-level Escape listener — `useFocusTrap` covers Escape plus
-  // Tab-cycling and focus restore in one place.
-  const figureRef = useFocusTrap<HTMLElement>(onClose);
 
-  return createPortal(
-    <div
-      onClick={onClose}
+  return (
+    <Dialog
+      onClose={onClose}
+      labelledBy={captionId}
+      panelAs="figure"
+      showClose
       onKeyDown={(e) => {
         if (e.key === "ArrowLeft" && onPrev) { e.preventDefault(); onPrev(); }
         else if (e.key === "ArrowRight" && onNext) { e.preventDefault(); onNext(); }
       }}
-      style={{
-        position: "fixed", inset: 0, background: theme.color.overlay, backdropFilter: "blur(2px)", zIndex: 100,
-        display: "flex", alignItems: "center", justifyContent: "center", padding: theme.space.l,
+      panelStyle={{
+        margin: 0, maxWidth: "90vw", maxHeight: "90vh", width: undefined, gap: theme.space.s, padding: theme.space.m,
       }}
     >
-      <figure
-        ref={figureRef}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={captionId}
-        tabIndex={-1}
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          position: "relative", margin: 0, maxWidth: "90vw", maxHeight: "90vh",
-          display: "flex", flexDirection: "column", gap: theme.space.s,
-          background: theme.color.panel, border: `1px solid ${theme.color.line}`, borderRadius: theme.radius.l,
-          padding: theme.space.m, boxShadow: theme.shadow.pop,
-        }}
-      >
-        <button
-          type="button"
-          onClick={onClose}
-          title="Close"
-          aria-label="Close"
-          style={{
-            position: "absolute", top: -12, right: -12, width: 28, height: 28,
-            display: "flex", alignItems: "center", justifyContent: "center",
-            background: theme.color.panel, color: theme.color.text,
-            border: `1px solid ${theme.color.line}`, borderRadius: theme.radius.pill,
-            fontSize: theme.font.size.l, lineHeight: 1, cursor: "pointer", boxShadow: theme.shadow.pop,
-          }}
-        >
-          ×
+      {onPrev && (
+        <button type="button" onClick={onPrev} title="Previous page" aria-label="Previous page" style={{ ...navButtonStyle, left: -18 }}>
+          ‹
         </button>
-        {onPrev && (
-          <button type="button" onClick={onPrev} title="Previous page" aria-label="Previous page" style={{ ...navButtonStyle, left: -18 }}>
-            ‹
-          </button>
-        )}
-        {onNext && (
-          <button type="button" onClick={onNext} title="Next page" aria-label="Next page" style={{ ...navButtonStyle, right: -18 }}>
-            ›
-          </button>
-        )}
-        <PageBoxOverlay
-          renderBlobHash={renderBlobHash}
-          width={width}
-          height={height}
-          boxes={boxes}
-          alt={caption}
-          style={{ maxWidth: "86vw", maxHeight: "76vh" }}
-        />
-        <figcaption id={captionId} style={{ textAlign: "center", color: theme.color.dim, fontSize: theme.font.size.s }}>
-          {caption}
-        </figcaption>
-      </figure>
-    </div>,
-    document.body,
+      )}
+      {onNext && (
+        <button type="button" onClick={onNext} title="Next page" aria-label="Next page" style={{ ...navButtonStyle, right: -18 }}>
+          ›
+        </button>
+      )}
+      <PageBoxOverlay
+        renderBlobHash={renderBlobHash}
+        width={width}
+        height={height}
+        boxes={boxes}
+        alt={caption}
+        style={{ maxWidth: "86vw", maxHeight: "76vh" }}
+      />
+      <figcaption id={captionId} style={{ textAlign: "center", color: theme.color.dim, fontSize: theme.font.size.s }}>
+        {caption}
+      </figcaption>
+    </Dialog>
   );
 }
