@@ -6,11 +6,13 @@
 # delete time against document.source_hash, document.pdf_blob_hash, page.render_blob_hash and
 # block_figure.crop_blob_hash) and RETURNS exactly the removed hashes, so only those get their S3
 # object deleted — a concurrent ingest re-referencing a hash between snapshot and commit can never
-# strand it.
+# strand it. The stage-artifact cache's orphan sweep reads (`orphan_stage_artifacts`) and deletes
+# (`delete_stage_artifacts`) its STAGE_ARTIFACT blobs through here too.
 
 # ====== Standard Library Imports ======
 import uuid
 from collections.abc import Sequence
+from datetime import datetime
 
 # ====== Third-Party Library Imports ======
 from sqlalchemy import delete, exists, or_, select
@@ -18,7 +20,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # ====== Internal Project Imports ======
-from ..tables import Blob, Block, BlockFigure, Document, Page
+from ..tables import ArtifactCache, Blob, BlobKind, Block, BlockFigure, Document, Page
 
 
 class BlobApi:
@@ -262,6 +264,44 @@ class BlobApi:
         )
         result = await session.execute(statement)
         return list(result.scalars().all())
+
+    @staticmethod
+    async def orphan_stage_artifacts(
+        session: AsyncSession, grace_cutoff: datetime | None
+    ) -> list[str]:
+        """
+        The content hashes of every STAGE_ARTIFACT blob no artifact_cache pointer references anymore.
+
+        A stage-artifact blob is referenced ONLY by artifact_cache rows, so "no cache row points at
+        this content_hash" is the complete orphan test.
+
+        Args:
+            session (AsyncSession): The unit of work.
+            grace_cutoff (datetime | None): When set, only blobs created strictly before it count —
+                the guard against a concurrent store whose pointer row is still in flight; None
+                disables the filter.
+
+        Returns:
+            list[str]: The orphan blobs' content hashes (empty when none).
+        """
+        referenced = select(ArtifactCache.content_hash)
+        conditions = [
+            Blob.kind == BlobKind.STAGE_ARTIFACT,
+            Blob.content_hash.notin_(referenced),
+        ]
+        if grace_cutoff is not None:
+            conditions.append(Blob.created_at < grace_cutoff)
+        result = await session.execute(select(Blob.content_hash).where(*conditions))
+        return list(result.scalars().all())
+
+    @staticmethod
+    async def delete_stage_artifacts(session: AsyncSession, content_hashes: Sequence[str]) -> None:
+        """Delete the STAGE_ARTIFACT registry rows of the given hashes (the S3 bytes go first, elsewhere)."""
+        await session.execute(
+            delete(Blob).where(
+                Blob.content_hash.in_(content_hashes), Blob.kind == BlobKind.STAGE_ARTIFACT
+            )
+        )
 
 
 __all__ = ["BlobApi"]

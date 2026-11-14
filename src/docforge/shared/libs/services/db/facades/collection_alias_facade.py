@@ -14,6 +14,7 @@ from loggerplusplus import LoggerClass
 from sqlalchemy.exc import IntegrityError
 
 # ====== Internal Project Imports ======
+from shared_libs.services.db.bricks import ConstraintViolation
 from shared_libs.services.db.postgresql import PostgresClient
 from shared_libs.services.db.postgresql.apis import AuthApi, CollectionAliasApi, CollectionApi
 from shared_libs.services.db.postgresql.tables import CollectionAlias
@@ -49,11 +50,7 @@ class CollectionAliasFacade(LoggerClass):
     @staticmethod
     def _is_pk_race(error: IntegrityError) -> bool:
         """True when the IntegrityError is the alias-name primary-key violation (a lost create race)."""
-        # 1. asyncpg carries the violated constraint name on the native error nested as __cause__.
-        for candidate in (error.orig, getattr(error.orig, "__cause__", None)):
-            if getattr(candidate, "constraint_name", None) == _PK_CONSTRAINT:
-                return True
-        return False
+        return ConstraintViolation.matches(error, _PK_CONSTRAINT)
 
     async def get(self, name: str) -> CollectionAlias | None:
         """One alias by exact name, or None."""

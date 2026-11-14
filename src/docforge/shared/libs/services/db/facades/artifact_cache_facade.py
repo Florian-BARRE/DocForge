@@ -12,7 +12,6 @@ from datetime import UTC, datetime, timedelta
 
 # ====== Third-Party Library Imports ======
 from loggerplusplus import LoggerClass
-from sqlalchemy import delete, select
 
 from shared_libs.services.db.postgresql import PostgresClient
 from shared_libs.services.db.postgresql.apis import ArtifactCacheApi, BlobApi
@@ -189,27 +188,15 @@ class ArtifactCacheFacade(LoggerClass):
             grace_cutoff (datetime | None): When set, only blobs created strictly before it are swept.
         """
         # 1. Find orphans: (aged) stage-artifact blobs whose content_hash is absent from artifact_cache.
-        referenced = select(ArtifactCache.content_hash)
-        conditions = [
-            Blob.kind == BlobKind.STAGE_ARTIFACT,
-            Blob.content_hash.notin_(referenced),
-        ]
-        if grace_cutoff is not None:
-            conditions.append(Blob.created_at < grace_cutoff)
         async with self._postgres.session() as session:
-            result = await session.execute(select(Blob.content_hash).where(*conditions))
-            hashes = list(result.scalars().all())
+            hashes = await BlobApi.orphan_stage_artifacts(session, grace_cutoff)
         if not hashes:
             return 0
         # 2. S3 objects first, then the registry rows (a leftover row with no bytes would be worse).
         async with self._s3.client() as client:
             await S3ObjectApi.delete_many(client, self._s3.bucket, hashes)
         async with self._postgres.session() as session:
-            await session.execute(
-                delete(Blob).where(
-                    Blob.content_hash.in_(hashes), Blob.kind == BlobKind.STAGE_ARTIFACT
-                )
-            )
+            await BlobApi.delete_stage_artifacts(session, hashes)
         return len(hashes)
 
 
