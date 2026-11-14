@@ -272,7 +272,7 @@ def test_omitted_secret_is_kept_explicit_empty_clears_a_new_key_is_verbatim() ->
 
     healed = restore_blob_secrets(incoming, stored)
 
-    assert _config(healed, "ocr_2")["api_key"] == "sk-mistral"
+    assert _config(healed, "ocr_2")["api_key"] == "sk-mistral"  # pragma: allowlist secret
     assert _config(healed, "ocr_0")["api_key"] == ""
     assert _config(healed, "ocr_1")["api_key"] == "sk-new"  # pragma: allowlist secret
 
@@ -288,13 +288,13 @@ def test_chain_reorder_of_same_kind_steps_follows_the_endpoint() -> None:
 
     assert _config(healed, "ocr_0") == {
         "base_url": "https://b.example",
-        "api_key": "sk-b",
+        "api_key": "sk-b",  # pragma: allowlist secret
     }  # pragma: allowlist secret
     assert _config(healed, "ocr_1") == {
         "base_url": "https://a.example",
-        "api_key": "sk-a",
+        "api_key": "sk-a",  # pragma: allowlist secret
     }  # pragma: allowlist secret
-    assert _config(healed, "ocr_2")["api_key"] == "sk-mistral"
+    assert _config(healed, "ocr_2")["api_key"] == "sk-mistral"  # pragma: allowlist secret
 
 
 def test_chain_reorder_across_kinds_never_cross_restores() -> None:
@@ -309,7 +309,10 @@ def test_chain_reorder_across_kinds_never_cross_restores() -> None:
     # mistral (no endpoint) landed on ocr_0: its stored key lives under ocr_2 of another kind → blanked
     assert _config(healed, "ocr_0")["api_key"] == ""
     # the openai_compatible step landed on ocr_2: a same-kind sibling at that endpoint is the source
-    assert _config(healed, "ocr_2") == {"base_url": "https://a.example", "api_key": "sk-a"}
+    assert _config(healed, "ocr_2") == {
+        "base_url": "https://a.example",
+        "api_key": "sk-a",  # pragma: allowlist secret
+    }  # pragma: allowlist secret
 
 
 def test_endpoint_edit_in_place_is_refused_and_names_the_node_not_the_key() -> None:
