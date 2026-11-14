@@ -1,5 +1,6 @@
 # ====== Code Summary ======
-# MCP tools for the collections domain — thin wrappers over sdk.collections.
+# MCP tools for the collection lifecycle — read (list / get / describe), create, update and
+# delete. Thin wrappers over sdk.collections; the collections package registers them first.
 
 from __future__ import annotations
 
@@ -8,11 +9,10 @@ from typing import Any, Literal
 
 # ====== Third-Party Library Imports ======
 from docforge_sdk import AsyncClient, CreateCollectionRequest, FieldSpec, UpdateCollectionRequest
-from docforge_sdk.models import BulkReingestRequest, CollectionSnippet, DocumentFilter
 from mcp.server.mcpserver import MCPServer
 
 # ====== Local Project Imports ======
-from .schema_diff_rendering import CONFIRM_HINT, SchemaDiffRenderer
+from ..schema_diff_rendering import CONFIRM_HINT, SchemaDiffRenderer
 
 # Heavy server-shaped graph blobs dropped from the default (lean) collection view.
 _PIPELINE_BLOB_KEYS = ("pipeline", "search")
@@ -34,8 +34,8 @@ def _lean(collection: dict[str, Any], include_pipelines: bool) -> dict[str, Any]
     return {key: value for key, value in collection.items() if key not in _PIPELINE_BLOB_KEYS}
 
 
-def register(mcp: MCPServer, sdk: AsyncClient) -> None:
-    """Register collection tools on the MCP server.
+def register_lifecycle_tools(mcp: MCPServer, sdk: AsyncClient) -> None:
+    """Register the collection lifecycle tools (list, get, describe, create, update, delete).
 
     Args:
         mcp (MCPServer): The MCP server instance.
@@ -216,203 +216,3 @@ def register(mcp: MCPServer, sdk: AsyncClient) -> None:
         """Delete a collection (404 when unknown). Irreversible."""
         await sdk.collections.delete(collection_id)
         return {}
-
-    @mcp.tool()
-    async def collection_storage_footprint(collection_id: str) -> Any:
-        """
-        Measure a collection's material footprint per store (404 when unknown). S3 bytes are
-        EXACT (deduped); Postgres and Qdrant bytes are ESTIMATES (each section flags this via
-        its own `estimated`). Includes a per-document breakdown, heaviest first.
-        """
-        storage = await sdk.collections.storage(collection_id)
-        return storage.model_dump(mode="json")
-
-    @mcp.tool()
-    async def estimate_collection_cost(
-        collection_id: str,
-        scope: Literal["pending", "all"] = "pending",
-        document_ids: list[str] | None = None,
-        filter: dict[str, Any] | None = None,
-    ) -> Any:
-        """
-        Project a collection's ingestion cost and volume BEFORE spending (404 when unknown). This
-        is an ESTIMATE, not a quote. `scope` picks the whole-collection target — `pending`
-        (uploaded-but-not-yet-ingested, the default preview) or `all` (every document). To scope a
-        SUBSET instead, pass `document_ids` (a specific selection) OR `filter` (the same shape as the
-        documents-grid filter) — either one overrides `scope`; they are mutually exclusive. Returns
-        the per-stage token/call/cost breakdown, projected material volume, totals, the assumptions
-        it rests on, and human-readable caveats. `total_cost_usd` is null whenever any enabled paid
-        stage has no known rate (`cost_complete` false) — then report `total_cost_lower_bound_usd`
-        as a minimum ("≥ $X") and relay the caveat naming the unpriced model, its stage and the
-        `estimate_overrides.rates` path to price it; never present the lower bound as the total.
-        """
-        estimate = await sdk.collections.estimate(
-            collection_id,
-            scope=scope,
-            document_ids=document_ids,
-            filter=DocumentFilter(**filter) if filter is not None else None,
-        )
-        return estimate.model_dump(mode="json")
-
-    @mcp.tool()
-    async def preview_pipeline(
-        collection_id: str,
-        document_id: str,
-        blob: dict[str, Any] | None = None,
-        max_chunks: int | None = None,
-    ) -> Any:
-        """
-        Dry-run the ingestion pipeline on ONE already-ingested document and return a bounded preview —
-        NOTHING is persisted (no document, blob or vector is written). Runs the ingest graph inline on
-        `document_id` (404 when the collection or document is unknown), optionally with a candidate
-        `blob` instead of the collection's stored pipeline. Returns an IR summary, the first N chunks
-        (text truncated; cap with `max_chunks`), the run's ACTUAL metered cost, and the full execution
-        trace. A node that fails is DATA here (`ok` is false + `failed_node_id` + the partial trace),
-        never an error — so this is the way to see what a pipeline change WOULD do before applying it.
-        """
-        preview = await sdk.collections.preview_pipeline(
-            collection_id,
-            document_id=document_id,
-            blob=blob,
-            max_chunks=max_chunks,
-        )
-        return preview.model_dump(mode="json")
-
-    @mcp.tool()
-    async def submit_preview_job(
-        collection_id: str,
-        document_id: str,
-        blob: dict[str, Any] | None = None,
-        max_chunks: int | None = None,
-    ) -> Any:
-        """
-        Submit an ASYNCHRONOUS worker-side dry-run preview on one already-ingested document — returns a
-        pollable preview id, NOTHING is persisted. Unlike `preview_pipeline` (inline, API-process), the
-        worker runs the FULL ingest graph with every dependency present (docling included), so it covers
-        ALL pipelines — use it when `preview_pipeline` cannot parse the collection's pipeline. Optionally
-        pass a candidate `blob` instead of the stored pipeline. Poll the returned id with
-        `get_preview_job` until status is 'done' (the report) or 'failed' (the worker job crashed).
-        """
-        accepted = await sdk.collections.submit_preview_job(
-            collection_id,
-            document_id=document_id,
-            blob=blob,
-            max_chunks=max_chunks,
-        )
-        return accepted.model_dump(mode="json")
-
-    @mcp.tool()
-    async def get_preview_job(collection_id: str, preview_id: str) -> Any:
-        """
-        Poll an asynchronous dry-run preview by its id (from `submit_preview_job`). The bounded report
-        appears in `result` once `status` is 'done'; a failed NODE is DATA there (`result.ok` is false),
-        while `status` 'failed' is reserved for the worker job itself crashing/timing out. An
-        unknown/expired id is a 404 (the result TTL elapsed).
-        """
-        poll = await sdk.collections.get_preview_job(collection_id, preview_id)
-        return poll.model_dump(mode="json")
-
-    @mcp.tool()
-    async def export_collection_snippet(
-        collection_id: str, kind: Literal["pipeline", "search", "schema"]
-    ) -> Any:
-        """
-        Export one granular config facet as a portable, secret-masked `.dfsnippet` (config-only,
-        synchronous — contrast the async whole-collection `.dcexport`). `kind` selects the slice:
-        `pipeline` (the ingestion graph), `search` (the search graph), or `schema` (the metadata
-        fields). Returns the versioned snippet (kind, format_version, docforge_version, body).
-        """
-        snippet = await sdk.snippets.export(collection_id, kind)
-        return snippet.model_dump(mode="json")
-
-    @mcp.tool()
-    async def apply_collection_snippet(
-        collection_id: str,
-        kind: Literal["pipeline", "search", "schema"],
-        snippet: dict[str, Any],
-    ) -> Any:
-        """
-        Apply a `.dfsnippet` of the given `kind` onto an EXISTING collection (healed/validated like a
-        PATCH; 422 on a version/kind mismatch or an invalid graph/schema). `snippet` is the wrapper
-        returned by export_collection_snippet. Provider secrets from a DIFFERENT collection arrive
-        masked and must be re-entered before the graph can run. Returns {collection_id, kind,
-        needs_reindex}.
-        """
-        result = await sdk.snippets.apply(collection_id, kind, CollectionSnippet(**snippet))
-        return result.model_dump(mode="json")
-
-    @mcp.tool()
-    async def get_collection_contract_schema() -> Any:
-        """The JSON Schema of the collection identity/limits contract (build a valid create/update)."""
-        return (await sdk.collections.contract_schema()).model_dump(mode="json")
-
-    @mcp.tool()
-    async def collection_health(collection_id: str) -> Any:
-        """
-        Probe a collection's operational health on demand — a zero-spend provider reachability
-        sweep across the ingest AND search graphs, plus index/doc stats and a rolled-up verdict
-        (404 when unknown). No job is enqueued and nothing is billed; this is read-only diagnostics.
-        """
-        health = await sdk.collections.health(collection_id)
-        return health.model_dump(mode="json")
-
-    @mcp.tool()
-    async def reingest_collection(
-        collection_id: str,
-        document_ids: list[str] | None = None,
-        force: bool = False,
-        replay_from: str | None = None,
-        confirm_estimate: bool = False,
-    ) -> Any:
-        """
-        Re-run the full pipeline over a collection's corpus — every document, or an explicit
-        `document_ids` subset (404 when the collection is unknown; 422 on a stale/broken pipeline
-        or a bad subset). Idempotent per document; original bytes are already stored, so this never
-        re-uploads. `force` bypasses the stage cache and recomputes every stage from scratch. A
-        match above the server's fan-out ceiling enqueues only the first N and reports
-        `capped=true` with the full `matched` count — poll each returned job handle for progress.
-        Documents that already have a running job are skipped (`skipped_in_flight`), not re-queued.
-        `replay_from` re-runs only that stage and its downstream on the document's PERSISTED IR (no
-        re-parse, no re-upload) — one of enrich, chunk, metagen_chunk, metagen_document, embed (e.g.
-        `metagen_document` after editing a metagen prompt, `embed` after switching embedder); a stage
-        the pipeline cannot replay is a 422 `replay_unsupported` whose `allowed` lists the valid ones. Documents with no persisted IR are skipped (`skipped_not_replayable`).
-        A LARGE reingest (more documents than the server's confirm threshold) is refused 409
-        `estimate_required`: the error detail carries `matched`, `threshold` and an `estimate`
-        summary (total_cost_usd, tokens, priced_stages, caveats). Show/review that cost, then call
-        this tool AGAIN with the same arguments plus `confirm_estimate=true` to proceed. A 429
-        `queue_saturated` (with Retry-After) means the ingestion queue is full — wait that many
-        seconds and retry; nothing was enqueued.
-        """
-        request = BulkReingestRequest(
-            document_ids=document_ids,
-            force=force,
-            replay_from=replay_from,
-            confirm_estimate=confirm_estimate,
-        )
-        accepted = await sdk.collections.reingest(collection_id, request)
-        return accepted.model_dump(mode="json")
-
-    @mcp.tool()
-    async def rebuild_collection_index(collection_id: str) -> Any:
-        """
-        Rebuild a collection's vector index from its CURRENT schema, without re-embedding content.
-        Use it when search returns a 422 naming a field with no indexed semantic/lexical vector, or
-        reingest_collection returns 409 `rebuild_index_required` (a field was made semantic/lexical
-        after first ingest — Qdrant cannot add a named vector to a live store). Returns `job_id`
-        (202): follow it with wait_for_job — the job's `document_id` is null. Uploads and reingests
-        get 409 `rebuild_index_active` while it runs; 409 `collection_busy` when other jobs are live.
-        """
-        accepted = await sdk.collections.rebuild_index(collection_id)
-        return accepted.model_dump(mode="json")
-
-    @mcp.tool()
-    async def purge_collection_trace_payloads(collection_id: str) -> Any:
-        """
-        Reclaim every stored full execution-trace payload of a collection's jobs — the heavy
-        per-node raw input/output bytes the opt-in `trace_verbosity='full'` tier accumulates in the
-        object store. Idempotent: a collection that stored nothing returns zeros (not an error);
-        404 only when the collection itself is unknown. Best-effort — the call always succeeds and
-        reports `purged_jobs` (jobs considered) + `deleted_objects` (object-store objects removed).
-        """
-        result = await sdk.collections.purge_trace_payloads(collection_id)
-        return result.model_dump(mode="json")
