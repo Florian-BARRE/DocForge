@@ -1,12 +1,11 @@
 // ====== Code Summary ======
 // A modal confirm for a bulk operation — always names the affected count before committing,
-// since delete/re-ingest are expensive or destructive at grid scale. Same overlay shape as
-// features/auth/CreatedKeyModal.tsx (feature-local duplicate, not shared — see feature-slice
-// isolation convention).
+// since delete/re-ingest are expensive or destructive at grid scale. The overlay shell is the
+// shared `ConfirmDialog`; this one stays in-tree (no portal) and ignores backdrop clicks, as before.
 
-import { useId, type ReactNode } from "react";
-import { Button, type ButtonVariant } from "../../components/Button";
-import { useFocusTrap } from "../../shell/useFocusTrap";
+import type { ReactNode } from "react";
+import type { ButtonVariant } from "../../components/Button";
+import { ConfirmDialog } from "../../components/dialog/ConfirmDialog";
 import { theme } from "../../theme";
 
 interface BulkConfirmDialogProps {
@@ -23,41 +22,25 @@ interface BulkConfirmDialogProps {
 }
 
 export function BulkConfirmDialog({ title, description, count, confirmLabel, variant, pending, onConfirm, onCancel, children }: BulkConfirmDialogProps) {
-  const titleId = useId();
-  const panelRef = useFocusTrap<HTMLDivElement>(onCancel);
-
   return (
-    <div
-      style={{
-        position: "fixed", inset: 0, background: theme.color.overlay, backdropFilter: "blur(2px)", zIndex: 100,
-        display: "flex", alignItems: "center", justifyContent: "center", padding: theme.space.l,
-      }}
+    <ConfirmDialog
+      title={title}
+      tone="accent"
+      maxWidth={440}
+      portal={false}
+      closeOnBackdrop={false}
+      confirmVariant={variant}
+      confirmLabel={confirmLabel}
+      pendingLabel="working…"
+      pending={pending}
+      onConfirm={onConfirm}
+      onCancel={onCancel}
     >
-      <div
-        ref={panelRef}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        tabIndex={-1}
-        style={{
-          background: theme.color.panel, border: `1px solid ${theme.color.accentLine}`, borderRadius: theme.radius.l,
-          boxShadow: theme.shadow.pop, padding: theme.space.l, maxWidth: 440, width: "100%",
-          display: "flex", flexDirection: "column", gap: theme.space.m,
-        }}
-      >
-        <h2 id={titleId} style={{ fontFamily: theme.font.display, fontSize: theme.font.size.xl, fontWeight: 700, color: theme.color.text, margin: 0 }}>
-          {title}
-        </h2>
-        <div style={{ color: theme.color.dim, fontSize: theme.font.size.m, lineHeight: 1.5 }}>{description}</div>
-        <div style={{ fontFamily: theme.font.mono, fontSize: theme.font.size.xl, color: theme.color.accentSafe, fontWeight: 700 }}>
-          {count.toLocaleString()} document{count === 1 ? "" : "s"}
-        </div>
-        {children}
-        <div style={{ display: "flex", gap: theme.space.s, justifyContent: "flex-end" }}>
-          <Button size="sm" disabled={pending} onClick={onCancel}>Cancel</Button>
-          <Button variant={variant} size="sm" disabled={pending} onClick={onConfirm}>{pending ? "working…" : confirmLabel}</Button>
-        </div>
+      <div style={{ color: theme.color.dim, fontSize: theme.font.size.m, lineHeight: 1.5 }}>{description}</div>
+      <div style={{ fontFamily: theme.font.mono, fontSize: theme.font.size.xl, color: theme.color.accentSafe, fontWeight: 700 }}>
+        {count.toLocaleString()} document{count === 1 ? "" : "s"}
       </div>
-    </div>
+      {children}
+    </ConfirmDialog>
   );
 }

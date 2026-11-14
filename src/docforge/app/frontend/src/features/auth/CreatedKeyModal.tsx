@@ -6,7 +6,8 @@
 import { useId, useState } from "react";
 import type { CreatedApiKey } from "../../api/auth";
 import { Button } from "../../components/Button";
-import { useFocusTrap } from "../../shell/useFocusTrap";
+import { Dialog } from "../../components/dialog/Dialog";
+import { DialogTitle } from "../../components/dialog/DialogTitle";
 import { theme } from "../../theme";
 
 /** A minimal key glyph, `currentColor`-only — brand.md bans emoji everywhere in the UI. */
@@ -31,7 +32,6 @@ interface CreatedKeyModalProps {
 export function CreatedKeyModal({ createdKey, onClose, rotated }: CreatedKeyModalProps) {
   const [copied, setCopied] = useState(false);
   const titleId = useId();
-  const panelRef = useFocusTrap<HTMLDivElement>(onClose);
 
   const copy = async () => {
     try {
@@ -43,61 +43,50 @@ export function CreatedKeyModal({ createdKey, onClose, rotated }: CreatedKeyModa
   };
 
   return (
-    <div
-      style={{
-        position: "fixed", inset: 0, background: theme.color.overlay, backdropFilter: "blur(2px)", zIndex: 100,
-        display: "flex", alignItems: "center", justifyContent: "center", padding: theme.space.l,
-      }}
+    <Dialog
+      onClose={onClose}
+      labelledBy={titleId}
+      tone="accent"
+      closeOnBackdrop={false}
+      portal={false}
+      panelStyle={{ width: undefined }}
     >
+      <div style={{ display: "flex", alignItems: "center", gap: theme.space.s }}>
+        <span
+          style={{
+            width: 32, height: 32, borderRadius: theme.radius.pill, flexShrink: 0, display: "grid", placeItems: "center",
+            background: theme.color.accentSoft, color: theme.color.accentSafe, fontSize: theme.font.size.l,
+          }}
+        >
+          <KeyGlyph />
+        </span>
+        <DialogTitle id={titleId}>
+          {rotated ? "Key rotated" : "Key created"} — "{createdKey.name}"
+        </DialogTitle>
+      </div>
       <div
-        ref={panelRef}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        tabIndex={-1}
         style={{
-          background: theme.color.panel, border: `1px solid ${theme.color.accentLine}`,
-          borderRadius: theme.radius.l, boxShadow: theme.shadow.pop, padding: theme.space.l, maxWidth: 480,
-          display: "flex", flexDirection: "column", gap: theme.space.m,
+          background: theme.color.errorSoft, borderLeft: `3px solid ${theme.color.error}`,
+          borderRadius: theme.radius.s, padding: `${theme.space.s}px ${theme.space.m}px`,
+          fontSize: theme.font.size.s, color: theme.color.error,
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: theme.space.s }}>
-          <span
-            style={{
-              width: 32, height: 32, borderRadius: theme.radius.pill, flexShrink: 0, display: "grid", placeItems: "center",
-              background: theme.color.accentSoft, color: theme.color.accentSafe, fontSize: theme.font.size.l,
-            }}
-          >
-            <KeyGlyph />
-          </span>
-          <h2 id={titleId} style={{ fontFamily: theme.font.display, fontSize: theme.font.size.xl, fontWeight: 700, color: theme.color.text, margin: 0 }}>
-            {rotated ? "Key rotated" : "Key created"} — "{createdKey.name}"
-          </h2>
-        </div>
-        <div
-          style={{
-            background: theme.color.errorSoft, borderLeft: `3px solid ${theme.color.error}`,
-            borderRadius: theme.radius.s, padding: `${theme.space.s}px ${theme.space.m}px`,
-            fontSize: theme.font.size.s, color: theme.color.error,
-          }}
-        >
-          This is the only time the full key is shown. Copy it now — it cannot be retrieved again.
-        </div>
-        <code
-          style={{
-            background: theme.color.bg, border: `1px solid ${theme.color.line}`,
-            borderRadius: theme.radius.s, padding: theme.space.s,
-            fontSize: theme.font.size.m, fontFamily: theme.font.mono, color: theme.color.text,
-            wordBreak: "break-all",
-          }}
-        >
-          {createdKey.key}
-        </code>
-        <div style={{ display: "flex", gap: theme.space.s }}>
-          <Button onClick={copy}>{copied ? "copied ✓" : "Copy"}</Button>
-          <Button variant="primary" onClick={onClose}>I've saved it — close</Button>
-        </div>
+        This is the only time the full key is shown. Copy it now — it cannot be retrieved again.
       </div>
-    </div>
+      <code
+        style={{
+          background: theme.color.bg, border: `1px solid ${theme.color.line}`,
+          borderRadius: theme.radius.s, padding: theme.space.s,
+          fontSize: theme.font.size.m, fontFamily: theme.font.mono, color: theme.color.text,
+          wordBreak: "break-all",
+        }}
+      >
+        {createdKey.key}
+      </code>
+      <div style={{ display: "flex", gap: theme.space.s }}>
+        <Button onClick={copy}>{copied ? "copied ✓" : "Copy"}</Button>
+        <Button variant="primary" onClick={onClose}>I've saved it — close</Button>
+      </div>
+    </Dialog>
   );
 }
