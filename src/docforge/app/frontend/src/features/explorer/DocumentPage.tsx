@@ -1,45 +1,24 @@
 // ====== Code Summary ======
-// A single document's explorer: header (filename, status, facts) plus four tabs — Overview,
-// Pages, IR and Chunks. Per-tab fetch/cache lives in `useDocumentTabs`; the header's action
-// cluster (toggle/re-ingest/delete) lives in `DocumentPageActions` — this component owns just the
-// document's own identity load + tab switching.
+// A single document's explorer: header (filename, status, facts) plus six tabs — Overview, Pages,
+// Layout, IR, Chunks and Trace. The document's own identity load + tab switching live in
+// `useDocumentPage` (per-tab fetch/cache in `useDocumentTabs`), the active tab's body in
+// `DocumentTabContent`, and the header's action cluster (toggle/re-ingest/delete) in
+// `DocumentPageActions` — this component only lays the page out.
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import type { FieldSpec } from "../../api/collections";
-import { getDocument, type DocumentDetail } from "../../api/explorer";
-import type { BreadcrumbItem } from "../../components/Breadcrumb";
 import { Chip } from "../../components/Chip";
 import { ErrorState } from "../../components/ErrorState";
 import { LoadingState } from "../../components/LoadingState";
 import { PageBoxLightbox } from "../../components/PageBoxLightbox";
 import { PageHeader } from "../../components/PageHeader";
 import { TabNav, tabButtonId } from "../../components/TabNav";
-import { useCollectionBreadcrumbExtra } from "../../shell/collectionBreadcrumbExtra";
 import type { Navigate } from "../../shell/view";
 import { theme } from "../../theme";
-import { ChunksTab } from "./chunks/ChunksTab";
 import { DocumentPageActions } from "./DocumentPageActions";
 import { DocumentStatusChip } from "./DocumentStatusChip";
+import { DocumentTabContent } from "./DocumentTabContent";
 import { documentDisplayName, formatBytes, formatDateTime } from "./format";
-import { IRTab } from "./ir/IRTab";
-import { mergeSavedMetadata, type DraftValues } from "./metadata/edit/metadataDraft";
-import { LayoutTab } from "./layout/LayoutTab";
-import { OverviewTab } from "./overview/OverviewTab";
-import { PagesTab } from "./pages/PagesTab";
-import { TraceTab } from "./trace/TraceTab";
-import { useDocumentTabs, type DocumentTabKey } from "./state/useDocumentTabs";
-
-// The former "Overview"/collection-shell-tab collision is gone (collection nav now lives in the
-// persistent rail, not in this shell), so the document's own landing tab can be "Overview" again
-// (still the same facts+metadata content; see OverviewTab.tsx).
-const TABS: { key: DocumentTabKey; label: string }[] = [
-  { key: "overview", label: "Overview" },
-  { key: "pages", label: "Pages" },
-  { key: "layout", label: "Layout" },
-  { key: "ir", label: "IR" },
-  { key: "chunks", label: "Chunks" },
-  { key: "trace", label: "Trace" },
-];
+import { pageMaxWidthOf, TABS } from "./state/documentPageModel";
+import { useDocumentPage } from "./state/useDocumentPage";
 
 interface DocumentPageProps {
   collectionId: string;
@@ -48,49 +27,16 @@ interface DocumentPageProps {
 }
 
 export function DocumentPage({ collectionId, documentId, onNavigate }: DocumentPageProps) {
-  const [document, setDocument] = useState<DocumentDetail | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<DocumentTabKey>("overview");
-  const [focusBlockId, setFocusBlockId] = useState<string | null>(null);
-
-  const load = () => {
-    setError(null);
-    getDocument(documentId)
-      .then(setDocument)
-      .catch((e) => setError(e instanceof Error ? e.message : String(e)));
-  };
-  useEffect(load, [documentId]);
-
-  const tabs = useDocumentTabs(documentId, activeTab);
-
-  // Grows the enclosing CollectionShell's own "Collections / {collection}" breadcrumb into this
-  // page's full trail (see useCollectionBreadcrumbExtra) — memoized so the context effect below
-  // doesn't refire every render. Contributed only once the filename is known; cleared (via the
-  // hook's own cleanup) on unmount or while `document` is still loading.
-  const breadcrumbExtra = useMemo<BreadcrumbItem[]>(() => [
-    { label: "Documents", view: { name: "collection-documents", collectionId } },
-    { label: document ? documentDisplayName(document) : "" },
-  ], [collectionId, document]);
-  useCollectionBreadcrumbExtra(document ? breadcrumbExtra : null);
-
-  const jumpToBlock = (blockId: string) => {
-    setFocusBlockId(blockId);
-    setActiveTab("ir");
-  };
-
-  const handleDocumentEnabledChanged = (enabled: boolean) => {
-    setDocument((prev) => (prev ? { ...prev, enabled } : prev));
-  };
-
-  const handleMetadataSaved = useCallback((updated: DraftValues, specs: FieldSpec[]) => {
-    setDocument((prev) => (prev ? { ...prev, metadata: mergeSavedMetadata(prev.metadata, updated, specs) } : prev));
-  }, []);
+  const {
+    document, error, load, activeTab, setActiveTab, focusBlockId, tabs,
+    jumpToBlock, handleDocumentEnabledChanged, handleMetadataSaved,
+  } = useDocumentPage(collectionId, documentId);
 
   if (error) return <ErrorState message={error} onRetry={load} />;
   if (!document) return <LoadingState label="loading document…" />;
 
   return (
-    <div className="df-rise" style={{ padding: `${theme.space.m}px ${theme.space.xl}px ${theme.space.xl}px`, overflowY: "auto", height: "100%", display: "flex", flexDirection: "column", maxWidth: activeTab === "layout" ? 1560 : 1200, margin: "0 auto", width: "100%" }}>
+    <div className="df-rise" style={{ padding: `${theme.space.m}px ${theme.space.xl}px ${theme.space.xl}px`, overflowY: "auto", height: "100%", display: "flex", flexDirection: "column", maxWidth: pageMaxWidthOf(activeTab), margin: "0 auto", width: "100%" }}>
       <PageHeader
         compact
         title={<span style={{ wordBreak: "break-word" }}>{documentDisplayName(document)}</span>}
@@ -137,65 +83,17 @@ export function DocumentPage({ collectionId, documentId, onNavigate }: DocumentP
         aria-labelledby={tabButtonId("document-tabs", activeTab)}
         style={{ marginTop: theme.space.m, flex: 1, minHeight: 0 }}
       >
-        {activeTab === "overview" && (
-          <OverviewTab document={document} pages={tabs.pages} collectionId={collectionId} onNavigate={onNavigate} onMetadataSaved={handleMetadataSaved} />
-        )}
-        {activeTab === "pages" &&
-          (tabs.pagesError ? (
-            <ErrorState message={tabs.pagesError} onRetry={tabs.loadPages} />
-          ) : tabs.pages ? (
-            <PagesTab pages={tabs.pages} />
-          ) : (
-            <LoadingState label="loading pages…" />
-          ))}
-        {activeTab === "layout" && (
-          <LayoutTab
-            ir={tabs.ir}
-            pages={tabs.pages}
-            chunks={tabs.chunks}
-            provenance={tabs.provenance}
-            // Only IR/pages are load-bearing for the page↔block view — a chunks fetch failure
-            // degrades to a non-blocking notice (chunk grouping/provenance unavailable) rather
-            // than blanking the whole tab, per the tab's own degrade-without-chunks design.
-            error={tabs.irError ?? tabs.pagesError}
-            chunksError={tabs.chunksError}
-            onRetry={() => {
-              tabs.loadIr();
-              tabs.loadPages();
-              tabs.loadProvenance();
-            }}
-            onRetryChunks={tabs.loadChunks}
-          />
-        )}
-        {activeTab === "ir" &&
-          (tabs.irError ? (
-            <ErrorState message={tabs.irError} onRetry={tabs.loadIr} />
-          ) : tabs.ir ? (
-            <IRTab ir={tabs.ir} focusBlockId={focusBlockId} />
-          ) : (
-            <LoadingState label="loading IR…" />
-          ))}
-        {activeTab === "chunks" &&
-          (tabs.chunksError ? (
-            <ErrorState message={tabs.chunksError} onRetry={tabs.loadChunks} />
-          ) : tabs.chunks ? (
-            <ChunksTab
-              chunks={tabs.chunks}
-              onJumpToBlock={jumpToBlock}
-              onChunkEnabledChanged={tabs.handleChunkEnabledChanged}
-              onShowChunkOnPage={tabs.chunkLocator}
-            />
-          ) : (
-            <LoadingState label="loading chunks…" />
-          ))}
-        {activeTab === "trace" && (
-          <TraceTab
-            documentId={documentId}
-            provenance={tabs.provenance}
-            error={tabs.provenanceError}
-            onRetry={tabs.loadProvenance}
-          />
-        )}
+        <DocumentTabContent
+          activeTab={activeTab}
+          document={document}
+          documentId={documentId}
+          collectionId={collectionId}
+          tabs={tabs}
+          focusBlockId={focusBlockId}
+          onNavigate={onNavigate}
+          onJumpToBlock={jumpToBlock}
+          onMetadataSaved={handleMetadataSaved}
+        />
       </div>
 
       {tabs.boxLightbox && (
