@@ -6,7 +6,7 @@ can never prove a partial-index predicate; only a real DB evaluates ``WHERE stat
 
 Covered, end to end:
   * A second live (pending/running) job for the SAME document is REFUSED by the DB — the INSERT raises,
-    and ``IngestionFacade._is_active_job_conflict`` recognises it (so the enqueue paths resolve it to
+    and ``IngestionAdmission._is_active_job_conflict`` recognises it (so the enqueue paths resolve it to
     the existing active job instead of a 500).
   * A TERMINAL job leaves the active set — once the first job is DONE/FAILED/CANCELLED a fresh live job
     for the same document is admitted, so finishing a run frees the document for re-ingest.
@@ -31,7 +31,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 # ====== Internal Project Imports ======
 from shared_libs.services.db.facades import ReingestOutcome
-from shared_libs.services.db.facades.ingestion_facade import IngestionFacade
+from shared_libs.services.db.facades.ingestion import IngestionFacade
+from shared_libs.services.db.facades.ingestion.ingestion_admission import IngestionAdmission
 from shared_libs.services.db.postgresql import PostgresClient
 from shared_libs.services.db.postgresql.apis import JobApi
 from shared_libs.services.db.postgresql.tables import (
@@ -127,7 +128,7 @@ async def test_second_active_job_is_refused_by_the_partial_unique_index(
     with pytest.raises(IntegrityError) as excinfo:
         await _add_job(session, document_id, second_status)
 
-    assert IngestionFacade._is_active_job_conflict(excinfo.value) is True
+    assert IngestionAdmission._is_active_job_conflict(excinfo.value) is True
     await session.rollback()
 
 

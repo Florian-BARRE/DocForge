@@ -11,7 +11,7 @@ Proven end to end, the exact cases the sticky flag got wrong:
   * (c) a ``filterable``-only toggle keeps it False (its payload index is reconciled live, no reindex).
   * (e) after the worker edge re-advances the baseline, the flag is False again.
 
-Uses the PG-only facade paths (``apply_update`` / ``IngestionFacade._advance_indexed_baseline``), so
+Uses the PG-only facade paths (``apply_update`` / ``IngestionIndexer._advance_indexed_baseline``), so
 qdrant/s3 are never touched (passed as None); every read is id-scoped, so the tests are order-free.
 """
 
@@ -26,7 +26,7 @@ import pytest
 from shared_libs.public_models import FieldOrigin, FieldScope, FieldType
 from shared_libs.services.db.facades import CollectionUpdateSpec
 from shared_libs.services.db.facades.collections_facade import CollectionsFacade
-from shared_libs.services.db.facades.ingestion_facade import IngestionFacade
+from shared_libs.services.db.facades.ingestion.ingestion_indexer import IngestionIndexer
 from shared_libs.services.db.postgresql import PostgresClient
 from shared_libs.services.db.postgresql.apis import CollectionApi
 from shared_libs.services.db.postgresql.tables import Collection, MetadataField
@@ -116,7 +116,7 @@ async def _current_schema(client: PostgresClient, collection_id: uuid.UUID) -> l
 async def test_needs_reindex_full_lifecycle(client: PostgresClient) -> None:
     collection_id = await _seed_collection(client)
     collections = CollectionsFacade(client, None, None)
-    ingestion = IngestionFacade(client, None, None)
+    ingestion = IngestionIndexer(client, None)
 
     # (d) NEVER indexed: a semantic-surface change must NOT flag needs_reindex (nothing is stale).
     await collections.apply_update(
