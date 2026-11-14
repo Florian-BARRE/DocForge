@@ -24,6 +24,7 @@ from loggerplusplus import LoggerClass
 # ====== Internal Project Imports ======
 from shared_libs.pipelines.nodes.embed.blob import EmbedBlobResolver
 from shared_libs.public_models import VectorLayout
+from shared_libs.services.db.bricks import VectorSpaceProvisioner
 from shared_libs.services.db.index_embed_baseline import EmbedBaseline
 from shared_libs.services.db.postgresql import PostgresClient
 from shared_libs.services.db.postgresql.apis import CollectionApi
@@ -168,18 +169,8 @@ class StoreRebuildFacade(LoggerClass):
         #    creates a guessed schema); the dense size is the OLD content vector's (content is copied,
         #    not re-embedded) — none without a dense provider.
         layout = EmbedBlobResolver.layout_or_raise(getattr(collection, "pipeline", None))
-        await QdrantCollectionApi.ensure(
-            client,
-            temp,
-            dense_dim=await self.__dense_dim(old, layout.dense),
-            semantic_fields=[f.field_name for f in schema if f.semantic],
-            lexical_fields=[f.field_name for f in schema if f.lexical],
-            filterable_fields={
-                f.field_name: DatabaseHelpers.payload_type_for(f.field_type)
-                for f in schema
-                if f.filterable
-            },
-            layout=layout,
+        await VectorSpaceProvisioner.ensure(
+            client, temp, schema, await self.__dense_dim(old, layout.dense), layout
         )
         await QdrantStoreCopyApi.copy_missing_indexes(client, old, temp)
         # 2. Copy batch by batch, keeping only declared non-meta-BM25 vectors; a content sparse

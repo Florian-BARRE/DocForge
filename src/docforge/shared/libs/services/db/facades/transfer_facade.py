@@ -18,6 +18,7 @@ from typing import Any
 from loggerplusplus import LoggerClass
 
 from shared_libs.pipelines.nodes.embed.blob import EmbedBlobResolver
+from shared_libs.services.db.bricks import VectorSpaceProvisioner
 from shared_libs.services.db.postgresql import PostgresClient
 from shared_libs.services.db.postgresql.apis import (
     BlobApi,
@@ -37,7 +38,6 @@ from shared_libs.services.db.postgresql.tables import (
 from shared_libs.services.db.qdrant import (
     QdrantAliasApi,
     QdrantClient,
-    QdrantCollectionApi,
     QdrantIndexApi,
     QdrantPoint,
     VectorNames,
@@ -303,19 +303,7 @@ class CollectionTransferFacade(LoggerClass):
                 "provider — the bundle's vectors cannot fill a dense vector space"
             )
         name = DatabaseHelpers.qdrant_collection_name(collection_id)
-        await QdrantCollectionApi.ensure(
-            self._qdrant.raw,
-            name,
-            dense_dim=dense_dim,
-            semantic_fields=[f.field_name for f in schema if f.semantic],
-            lexical_fields=[f.field_name for f in schema if f.lexical],
-            filterable_fields={
-                f.field_name: DatabaseHelpers.payload_type_for(f.field_type)
-                for f in schema
-                if f.filterable
-            },
-            layout=layout,
-        )
+        await VectorSpaceProvisioner.ensure(self._qdrant.raw, name, schema, dense_dim, layout)
 
     async def upsert_points(self, collection_id: uuid.UUID, points: Sequence[QdrantPoint]) -> None:
         """Upsert points VERBATIM by id (= chunk id) into the (already ensured) vector space."""

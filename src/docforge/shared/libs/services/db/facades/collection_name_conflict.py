@@ -7,6 +7,9 @@
 from loggerplusplus import loggerplusplus
 from sqlalchemy.exc import IntegrityError
 
+# ====== Internal Project Imports ======
+from shared_libs.services.db.bricks import ConstraintViolation
+
 # The collection-name UNIQUE constraint two concurrent creates race on. Name is stable via the schema
 # naming convention (uq_<table>_<column>) → the ``unique=True`` on ``collection.name``. asyncpg carries
 # the violated constraint name on its native error, nested as the SQLAlchemy wrapper's ``__cause__``.
@@ -44,14 +47,8 @@ class CollectionNameConflict:
         Returns:
             bool: True only when the violated constraint is ``uq_collection_name``.
         """
-        # 1. Walk the driver error and its __cause__ (the asyncpg native error carrying constraint_name)
-        #    and match the name guard — so an unrelated integrity failure still surfaces as a real error.
-        orig = getattr(error, "orig", None)
-        candidates = (orig, getattr(orig, "__cause__", None))
-        return any(
-            getattr(candidate, "constraint_name", None) == _NAME_UNIQUE_CONSTRAINT
-            for candidate in candidates
-        )
+        # 1. Match the name guard — so an unrelated integrity failure still surfaces as a real error.
+        return ConstraintViolation.matches(error, _NAME_UNIQUE_CONSTRAINT)
 
 
 __all__ = ["CollectionNameConflict", "DuplicateCollectionNameError"]
