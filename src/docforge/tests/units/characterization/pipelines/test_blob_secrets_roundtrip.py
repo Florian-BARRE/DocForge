@@ -80,7 +80,10 @@ def _chain_blob() -> dict:
                         api_key="sk-b",  # pragma: allowlist secret
                     ),
                     _node(
-                        "ocr_2", "ocr", "mistral", api_key="sk-mistral"
+                        "ocr_2",
+                        "ocr",
+                        "mistral",
+                        api_key="sk-mistral",  # pragma: allowlist secret
                     ),  # pragma: allowlist secret
                 ],
             },
@@ -271,7 +274,7 @@ def test_omitted_secret_is_kept_explicit_empty_clears_a_new_key_is_verbatim() ->
 
     assert _config(healed, "ocr_2")["api_key"] == "sk-mistral"
     assert _config(healed, "ocr_0")["api_key"] == ""
-    assert _config(healed, "ocr_1")["api_key"] == "sk-new"
+    assert _config(healed, "ocr_1")["api_key"] == "sk-new"  # pragma: allowlist secret
 
 
 def test_chain_reorder_of_same_kind_steps_follows_the_endpoint() -> None:
@@ -283,8 +286,14 @@ def test_chain_reorder_of_same_kind_steps_follows_the_endpoint() -> None:
 
     healed = restore_blob_secrets(incoming, stored)
 
-    assert _config(healed, "ocr_0") == {"base_url": "https://b.example", "api_key": "sk-b"}
-    assert _config(healed, "ocr_1") == {"base_url": "https://a.example", "api_key": "sk-a"}
+    assert _config(healed, "ocr_0") == {
+        "base_url": "https://b.example",
+        "api_key": "sk-b",
+    }  # pragma: allowlist secret
+    assert _config(healed, "ocr_1") == {
+        "base_url": "https://a.example",
+        "api_key": "sk-a",
+    }  # pragma: allowlist secret
     assert _config(healed, "ocr_2")["api_key"] == "sk-mistral"
 
 
