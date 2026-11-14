@@ -6,21 +6,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { issuesFromBuildError } from "../../../api/http";
 import { getDesign, inspect, listPipelineDesigns } from "../../../api/pipelines";
-import type { GroupBlob, Palette, ValidationIssue } from "../../../api/types";
+import type { GroupBlob, Palette } from "../../../api/types";
 import { useToast } from "../../../shell/toast";
 import type { QueryTransformKind } from "./blobOps";
-import { isActionBlob, queryTransformKind, setNodeConfigField, setQueryTransform, setRerankEnabled } from "./blobOps";
+import { setNodeConfigField, setQueryTransform, setRerankEnabled } from "./blobOps";
+import {
+  QUERY_ANCHOR_ID, RERANK_ANCHOR_ID, hasRailNode, queryConfigOf, queryKindOf, railNodesOf,
+} from "./searchRailModel";
+import { useSearchInspectLoop } from "./useSearchInspectLoop";
 
-const DEBOUNCE_MS = 400;
-// The read-only step the toggleable reranking card is rendered right after (matches the backend's
-// retrieve → rerank → hydrate splice in blobOps). Exported — `SearchPipelineRail` splices its card
-// at the same anchor.
-export const RERANK_ANCHOR_ID = "retrieve";
-// The query-transform card is rendered right after `normalize` — the point its rewrite/HyDE node is
-// spliced in (normalize → transform → encode, see blobOps.setQueryTransform). Exported for the same
-// reason as `RERANK_ANCHOR_ID`.
-export const QUERY_ANCHOR_ID = "normalize";
-
+// Re-exported: the rail and the minimap import the anchors from here.
+export { QUERY_ANCHOR_ID, RERANK_ANCHOR_ID };
 export interface UseSearchPipelineEditorProps {
   /** Seed blob (e.g. a collection's stored search graph). Omitted → the product default. */
   initialBlob?: GroupBlob | null;
@@ -37,10 +33,6 @@ export function useSearchPipelineEditor({ initialBlob, onSave, onResetToDefault 
   const [inspectUrl, setInspectUrl] = useState<string | null>(null);
   const [blob, setBlob] = useState<GroupBlob | null>(null);
   const [savedBlob, setSavedBlob] = useState<GroupBlob | null>(null);
-  const [valid, setValid] = useState(true);
-  const [issues, setIssues] = useState<ValidationIssue[]>([]);
-  const [checking, setChecking] = useState(false);
-  const [debouncePending, setDebouncePending] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [resetting, setResetting] = useState(false);
@@ -62,8 +54,7 @@ export function useSearchPipelineEditor({ initialBlob, onSave, onResetToDefault 
         setInspectUrl(descriptor.inspect_url);
         setBlob(seedBlob);
         setSavedBlob(seedBlob);
-        setValid(result.valid);
-        setIssues(result.build_error ? issuesFromBuildError(result.build_error) : result.issues);
+        seedVerdict(result.valid, result.build_error ? issuesFromBuildError(result.build_error) : result.issues);
       })
       .catch((error) => {
         // Discovery / initial load is fatal (nothing to edit yet) — the whole chain, including the
@@ -80,46 +71,8 @@ export function useSearchPipelineEditor({ initialBlob, onSave, onResetToDefault 
   //    synchronously so a rapid sequence of keystrokes never sends a stale snapshot.
   const blobLatestRef = useRef<GroupBlob | null>(null);
   blobLatestRef.current = blob;
-  const inspectUrlRef = useRef<string | null>(null);
-  inspectUrlRef.current = inspectUrl;
-  const abortRef = useRef<AbortController | undefined>(undefined);
-  const debounceRef = useRef<number | undefined>(undefined);
-
-  const runInspect = useCallback((target: GroupBlob) => {
-    const url = inspectUrlRef.current;
-    if (!url) return;
-    abortRef.current?.abort();
-    const controller = new AbortController();
-    abortRef.current = controller;
-    setChecking(true);
-    inspect(url, target, controller.signal)
-      .then((result) => {
-        if (blobLatestRef.current !== target) return; // a newer edit already superseded this check
-        setValid(result.valid);
-        setIssues(result.build_error ? issuesFromBuildError(result.build_error) : result.issues);
-      })
-      .catch((error) => {
-        if (error instanceof DOMException && error.name === "AbortError") return;
-        if (blobLatestRef.current !== target) return; // a newer edit already superseded this check
-        // A transient background verify blip must NOT tear down the editor (that would drop the
-        // user's unsaved edits). Keep the draft mounted, mark it unverified (blocks Save) and show
-        // the reason inline — a successful re-verify on the next keystroke clears it.
-        setValid(false);
-        setIssues([{
-          code: "verify_failed",
-          location: "inspect",
-          message: error instanceof Error ? error.message : String(error),
-        }]);
-      })
-      .finally(() => setChecking(false));
-  }, []);
-
-  // Tear down a pending debounce + any in-flight verify on unmount (the runtime path has no
-  // per-render cleanup of its own, unlike the cancelled-flag guard on the initial load).
-  useEffect(() => () => {
-    window.clearTimeout(debounceRef.current);
-    abortRef.current?.abort();
-  }, []);
+  const { valid, issues, checking, debouncePending, seedVerdict, verifyDebounced, verifyNow, cancelDebounce } =
+    useSearchInspectLoop(inspectUrl, blobLatestRef);
 
   // 3. Typing a node's config field: mutate the local blob immediately, debounce the /inspect.
   //    `debouncePending` tracks that armed-but-not-yet-sent window so Save can be blocked — the
@@ -130,27 +83,19 @@ export function useSearchPipelineEditor({ initialBlob, onSave, onResetToDefault 
     const next = setNodeConfigField(current, nodeId, field, value);
     blobLatestRef.current = next;
     setBlob(next);
-    window.clearTimeout(debounceRef.current);
-    setDebouncePending(true);
-    debounceRef.current = window.setTimeout(() => {
-      setDebouncePending(false);
-      const settled = blobLatestRef.current;
-      if (settled) runInspect(settled);
-    }, DEBOUNCE_MS);
-  }, [runInspect]);
+    verifyDebounced();
+  }, [verifyDebounced]);
 
   // 4. Toggling rerank is a discrete action (not a keystroke stream) — mutate + verify immediately,
   //    no debounce needed.
   const toggleRerank = useCallback((next: boolean) => {
     const current = blobLatestRef.current;
     if (!current) return;
-    window.clearTimeout(debounceRef.current);
-    setDebouncePending(false);
     const updated = setRerankEnabled(current, next);
     blobLatestRef.current = updated;
     setBlob(updated);
-    runInspect(updated);
-  }, [runInspect]);
+    verifyNow(updated);
+  }, [verifyNow]);
 
   // Selecting the query transform (Off/Rewrite/HyDE) is a discrete topology edit like the rerank
   // toggle — mutate + verify immediately, no debounce. Its provider config fields reuse the
@@ -158,13 +103,11 @@ export function useSearchPipelineEditor({ initialBlob, onSave, onResetToDefault 
   const selectQueryTransform = useCallback((next: QueryTransformKind | null) => {
     const current = blobLatestRef.current;
     if (!current) return;
-    window.clearTimeout(debounceRef.current);
-    setDebouncePending(false);
     const updated = setQueryTransform(current, next);
     blobLatestRef.current = updated;
     setBlob(updated);
-    runInspect(updated);
-  }, [runInspect]);
+    verifyNow(updated);
+  }, [verifyNow]);
 
   // 5. Reset: PATCHes the `{}` sentinel server-side (the caller then remounts this editor with the
   //    refreshed, sentinel-backed collection — see CollectionSearchPage). Not a local blob swap:
@@ -172,7 +115,7 @@ export function useSearchPipelineEditor({ initialBlob, onSave, onResetToDefault 
   //    changes" behaviour the sentinel gives.
   const handleReset = useCallback(async () => {
     if (!onResetToDefault) return;
-    window.clearTimeout(debounceRef.current);
+    cancelDebounce();
     setResetting(true);
     setSaveError(null);
     try {
@@ -185,7 +128,7 @@ export function useSearchPipelineEditor({ initialBlob, onSave, onResetToDefault 
     } finally {
       setResetting(false);
     }
-  }, [onResetToDefault, toast]);
+  }, [onResetToDefault, toast, cancelDebounce]);
 
   // 6. Save: PATCH the current blob back. Only offered when the caller wants persistence here.
   const handleSave = useCallback(async () => {
@@ -207,26 +150,12 @@ export function useSearchPipelineEditor({ initialBlob, onSave, onResetToDefault 
 
   const dirty = useMemo(() => JSON.stringify(blob) !== JSON.stringify(savedBlob), [blob, savedBlob]);
 
-  // The rail's read-only/config steps — rerank AND the query transform are drawn as their own
-  // toggleable cards, so both are filtered out here to avoid rendering them twice. `normalize` stays
-  // (it shares the `query` family but is the fixed first step, not a transform).
-  const railNodes = useMemo(
-    () =>
-      blob
-        ? blob.nodes
-            .filter(isActionBlob)
-            .filter((node) => node.family !== "rerank")
-            .filter((node) => !(node.family === "query" && node.kind !== "normalize"))
-        : [],
-    [blob],
-  );
-  const hasAnchor = useMemo(() => railNodes.some((node) => node.id === RERANK_ANCHOR_ID), [railNodes]);
-  const hasQueryAnchor = useMemo(() => railNodes.some((node) => node.id === QUERY_ANCHOR_ID), [railNodes]);
-  const queryKind = useMemo(() => (blob ? queryTransformKind(blob) : null), [blob]);
-  const queryConfig = useMemo(
-    () => blob?.nodes.find((node) => isActionBlob(node) && node.id === queryKind) as { config: Record<string, unknown> } | undefined,
-    [blob, queryKind],
-  );
+  // The rail's read-only/config steps (see railNodesOf) and the query-transform card's state.
+  const railNodes = useMemo(() => railNodesOf(blob), [blob]);
+  const hasAnchor = useMemo(() => hasRailNode(railNodes, RERANK_ANCHOR_ID), [railNodes]);
+  const hasQueryAnchor = useMemo(() => hasRailNode(railNodes, QUERY_ANCHOR_ID), [railNodes]);
+  const queryKind = useMemo(() => queryKindOf(blob), [blob]);
+  const queryConfig = useMemo(() => queryConfigOf(blob, queryKind), [blob, queryKind]);
 
   return {
     palette, blob, valid, issues, checking, debouncePending, loadError, saving, resetting, saveError, dirty,
