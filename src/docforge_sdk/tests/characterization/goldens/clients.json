@@ -1,0 +1,50 @@
+{
+  "AsyncClient": {
+    "init": "(self, base_url: str, timeout: float = 30.0, api_token: str = '') -> None",
+    "methods": {
+      "aclose": "(self) -> None"
+    },
+    "resources": {
+      "audit": "docforge_sdk.resources.audit.AsyncAudit",
+      "auth": "docforge_sdk.resources.auth.AsyncAuth",
+      "blobs": "docforge_sdk.resources.blobs.AsyncBlobs",
+      "capabilities": "docforge_sdk.resources.capabilities.AsyncCapabilities",
+      "collection_aliases": "docforge_sdk.resources.collection_aliases.AsyncCollectionAliases",
+      "collections": "docforge_sdk.resources.collections.AsyncCollections",
+      "config_versions": "docforge_sdk.resources.config_versions.AsyncConfigVersions",
+      "corpus": "docforge_sdk.resources.corpus.AsyncCorpus",
+      "documents": "docforge_sdk.resources.documents.AsyncDocuments",
+      "explorer": "docforge_sdk.resources.explorer.AsyncExplorer",
+      "health": "docforge_sdk.resources.health.AsyncHealth",
+      "jobs": "docforge_sdk.resources.jobs.AsyncJobs",
+      "pipelines": "docforge_sdk.resources.pipelines.AsyncPipelines",
+      "search": "docforge_sdk.resources.search.AsyncSearch",
+      "snippets": "docforge_sdk.resources.snippets.AsyncSnippets",
+      "transfers": "docforge_sdk.resources.transfers.AsyncTransfers"
+    }
+  },
+  "Client": {
+    "init": "(self, base_url: str, timeout: float = 30.0, api_token: str = '') -> None",
+    "methods": {
+      "close": "(self) -> None"
+    },
+    "resources": {
+      "audit": "docforge_sdk.resources.audit.SyncAudit",
+      "auth": "docforge_sdk.resources.auth.SyncAuth",
+      "blobs": "docforge_sdk.resources.blobs.SyncBlobs",
+      "capabilities": "docforge_sdk.resources.capabilities.SyncCapabilities",
+      "collection_aliases": "docforge_sdk.resources.collection_aliases.SyncCollectionAliases",
+      "collections": "docforge_sdk.resources.collections.SyncCollections",
+      "config_versions": "docforge_sdk.resources.config_versions.SyncConfigVersions",
+      "corpus": "docforge_sdk.resources.corpus.SyncCorpus",
+      "documents": "docforge_sdk.resources.documents.SyncDocuments",
+      "explorer": "docforge_sdk.resources.explorer.SyncExplorer",
+      "health": "docforge_sdk.resources.health.SyncHealth",
+      "jobs": "docforge_sdk.resources.jobs.SyncJobs",
+      "pipelines": "docforge_sdk.resources.pipelines.SyncPipelines",
+      "search": "docforge_sdk.resources.search.SyncSearch",
+      "snippets": "docforge_sdk.resources.snippets.SyncSnippets",
+      "transfers": "docforge_sdk.resources.transfers.SyncTransfers"
+    }
+  }
+}
