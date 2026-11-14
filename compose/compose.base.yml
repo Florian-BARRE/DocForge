@@ -54,7 +54,7 @@ services:
       # docforge/docforge bootstrap) so nothing changes for local dev; a real deployment overrides it via
       # a shell-exported POSTGRES_DSN or a root .env — ONE place to change instead of editing this
       # literal in both docforge_app and docforge_worker.
-      POSTGRES_DSN: ${POSTGRES_DSN:-postgresql+asyncpg://docforge:docforge@docforge_postgres:5432/docforge}
+      POSTGRES_DSN: ${POSTGRES_DSN:-postgresql+asyncpg://docforge:docforge@docforge_postgres:5432/docforge}  # pragma: allowlist secret
       REDIS_URL: redis://docforge_redis:6379/0
       QDRANT_URL: http://docforge_qdrant:6333
       # botocore rejects '_' in hostnames — the hyphenated container_name resolves on the network
@@ -109,7 +109,7 @@ services:
       - ../services/docforge/.env
     environment:
       # Same override mechanism as docforge_app — see comment there.
-      POSTGRES_DSN: ${POSTGRES_DSN:-postgresql+asyncpg://docforge:docforge@docforge_postgres:5432/docforge}
+      POSTGRES_DSN: ${POSTGRES_DSN:-postgresql+asyncpg://docforge:docforge@docforge_postgres:5432/docforge}  # pragma: allowlist secret
       REDIS_URL: redis://docforge_redis:6379/0
       QDRANT_URL: http://docforge_qdrant:6333
       # botocore rejects '_' in hostnames — the hyphenated container_name resolves on the network
@@ -298,7 +298,7 @@ services:
 
   # ── Gotenberg 8 — office→PDF conversion used by the intake converter node ───
   docforge_gotenberg:
-    image: gotenberg/gotenberg:8.39.0@sha256:13672f317b443c793e972b1bd2155ec62a3e7b6891b411e8196442cc053ee5f5
+    image: gotenberg/gotenberg:8.40.0@sha256:53073e798c8ef39ea2187e44cb67bab77894ea2509100b94c4fe3b461f7b2996
     container_name: docforge-gotenberg
     # Large office documents convert in ~20-25s warm but exceed the default 30s deadline
     # cold (LibreOffice spin-up) — raise the API timeout so borderline files never 503.
