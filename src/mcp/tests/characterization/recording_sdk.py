@@ -10,7 +10,7 @@
 from __future__ import annotations
 
 # ====== Standard Library Imports ======
-import hashlib
+import zlib
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from pathlib import Path
@@ -31,7 +31,7 @@ def to_plain(value: Any) -> Any:
 
     A pydantic model keeps its class name and only the fields the tool set explicitly (so the
     golden pins what the tool shaped, not the SDK's defaults); bytes are summarised by size and
-    digest; paths, datetimes and the `...` sentinel get an explicit tag so they cannot be confused
+    CRC-32 (a hex digest would trip the secret scanners); paths, datetimes and the `...` sentinel get an explicit tag so they cannot be confused
     with a plain string.
 
     Args:
@@ -50,7 +50,7 @@ def to_plain(value: Any) -> Any:
     if isinstance(value, list | tuple):
         return [to_plain(item) for item in value]
     if isinstance(value, bytes):
-        return {"$bytes": len(value), "sha256": hashlib.sha256(value).hexdigest()}
+        return {"$bytes": len(value), "crc32": zlib.crc32(value)}
     if isinstance(value, Path):
         return {"$path": str(value)}
     if isinstance(value, datetime | date):

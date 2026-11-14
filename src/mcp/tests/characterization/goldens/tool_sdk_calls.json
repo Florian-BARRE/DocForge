@@ -1640,7 +1640,7 @@
         "args": [
           {
             "$bytes": 20,
-            "sha256": "c14fb8633f69a2299821e2e4b2d219609819f0e6acb98495f154acefb0a932f5"
+            "crc32": 3469958819
           }
         ],
         "call": "transfers.import_collection",
@@ -3274,7 +3274,7 @@
           "11111111-1111-1111-1111-111111111111",
           {
             "$bytes": 20,
-            "sha256": "1b6f07174c37b072032a8af61c53abef82a96eca95bef0cd7caa2c0248f924a3"
+            "crc32": 1834910251
           }
         ],
         "call": "documents.upload",
