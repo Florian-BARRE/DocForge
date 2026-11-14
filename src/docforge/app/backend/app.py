@@ -8,12 +8,12 @@ from fastapi import FastAPI
 # ====== Internal Project Imports ======
 # Import config FIRST — it registers the `shared_libs` alias + sys.path. The local imports below
 # (auth principal, routers) import `shared_libs.*` at module load, so the alias must exist already.
-from config import RUNTIME_CONFIG  # noqa: F401 — side-effect import (path registration)
+from config import RUNTIME_CONFIG  # path registration + the composition root's config source
 
 # ====== Local Project Imports ======
 from .libs.audit import AuditMiddleware
 from .libs.auth import AuthMiddleware
-from .libs.idempotency import IdempotencyMiddleware
+from .libs.idempotency import IdempotencyMiddleware, IdempotencySettings
 from .libs.metrics import HttpMetricsMiddleware
 from .libs.ratelimit import RateLimitMiddleware
 from .libs.requestid import RequestIdMiddleware
@@ -82,7 +82,15 @@ def create_app(
     #    Auth; it sits INNER to RateLimit so a replay still costs the caller budget (no replay-spam
     #    bypass); it sits OUTER to Audit so a replay is not re-audited (see above). ON by default but
     #    only ever engages when the header is present on an allow-listed endpoint → otherwise passthrough.
-    app.add_middleware(IdempotencyMiddleware)
+    app.add_middleware(
+        IdempotencyMiddleware,
+        settings=IdempotencySettings(
+            enabled=RUNTIME_CONFIG.IDEMPOTENCY_ENABLED,
+            ttl_hours=RUNTIME_CONFIG.IDEMPOTENCY_TTL_HOURS,
+            inprogress_ttl_seconds=RUNTIME_CONFIG.IDEMPOTENCY_INPROGRESS_TTL_SECONDS,
+            max_body_bytes=RUNTIME_CONFIG.IDEMPOTENCY_MAX_BODY_BYTES,
+        ),
+    )
 
     # 3. Rate limiter (added → inner of Auth, outer of Idempotency). It runs AFTER AuthMiddleware has
     #    resolved the principal, so it can key by the caller's API key when auth is on (else by client

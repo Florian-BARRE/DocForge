@@ -24,7 +24,6 @@ from loggerplusplus import loggerplusplus
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 # ====== Internal Project Imports ======
-from config import RUNTIME_CONFIG
 from shared_libs.services.db.facades import IdempotencyRecord
 from shared_libs.services.db.postgresql.tables import IdempotencyState
 
@@ -35,6 +34,7 @@ from .actor import IdempotencyActorScope
 from .eligibility import IdempotencyEligibility
 from .request_buffer import IdempotencyRequestBuffer
 from .response_buffer import IdempotencyResponseBuffer
+from .settings import IdempotencySettings
 
 logger = loggerplusplus.bind(identifier="Idempotency")
 
@@ -52,15 +52,17 @@ _SERVER_ERROR_FLOOR = 500
 class IdempotencyMiddleware:
     """Pure ASGI middleware providing Idempotency-Key dedup on eligible mutating endpoints."""
 
-    def __init__(self, app: ASGIApp) -> None:
+    def __init__(self, app: ASGIApp, settings: IdempotencySettings) -> None:
         """
         Wrap the downstream ASGI application.
 
         Args:
             app (ASGIApp): The next ASGI application in the stack.
+            settings (IdempotencySettings): The injected, frozen idempotency configuration.
         """
-        # 1. Hold the wrapped app; the store lives in Postgres via the idempotency façade.
+        # 1. Hold the wrapped app + settings; the store lives in Postgres via the idempotency façade.
         self.app = app
+        self._settings = settings
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         """
@@ -72,7 +74,7 @@ class IdempotencyMiddleware:
             send (Send): The ASGI send channel.
         """
         # 1. Cheap passthrough gates: non-HTTP, feature off, or a non-mutating verb.
-        if scope["type"] != "http" or not RUNTIME_CONFIG.IDEMPOTENCY_ENABLED:
+        if scope["type"] != "http" or not self._settings.enabled:
             await self.app(scope, receive, send)
             return
         if scope["method"] not in _MUTATING_METHODS:
@@ -99,14 +101,12 @@ class IdempotencyMiddleware:
 
         # 4. Buffer the body to fingerprint it (and to re-feed the handler). An over-cap body skips
         #    idempotency entirely — the already-read + remaining bytes stream through, never buffered.
-        buffer = await IdempotencyRequestBuffer.read(
-            receive, RUNTIME_CONFIG.IDEMPOTENCY_MAX_BODY_BYTES
-        )
+        buffer = await IdempotencyRequestBuffer.read(receive, self._settings.max_body_bytes)
         replay_receive = buffer.replay_receive(receive)
         if buffer.over_cap:
             logger.warning(
                 f"Request body over the idempotency cap "
-                f"({RUNTIME_CONFIG.IDEMPOTENCY_MAX_BODY_BYTES}B) on {scope['method']} {template}; "
+                f"({self._settings.max_body_bytes}B) on {scope['method']} {template}; "
                 f"skipping idempotency (passthrough)."
             )
             await self.app(scope, replay_receive, send)
@@ -137,7 +137,7 @@ class IdempotencyMiddleware:
         """
         # 1. Resolve the never-null actor scope + the TTL horizon for a fresh record.
         actor_scope = IdempotencyActorScope.resolve(scope.get("state", {}).get("principal"))
-        expires_at = datetime.now(UTC) + timedelta(hours=RUNTIME_CONFIG.IDEMPOTENCY_TTL_HOURS)
+        expires_at = datetime.now(UTC) + timedelta(hours=self._settings.ttl_hours)
 
         # 2. Attempt the guard INSERT — created means THIS request won and must run the handler.
         begin = await CONTEXT.database.idempotency.begin(
@@ -189,9 +189,7 @@ class IdempotencyMiddleware:
         ):
             return False
         # 2. Stale iff it started before the bounded in-progress window.
-        cutoff = datetime.now(UTC) - timedelta(
-            seconds=RUNTIME_CONFIG.IDEMPOTENCY_INPROGRESS_TTL_SECONDS
-        )
+        cutoff = datetime.now(UTC) - timedelta(seconds=self._settings.inprogress_ttl_seconds)
         return record.created_at < cutoff
 
     async def _reclaim(
@@ -229,10 +227,9 @@ class IdempotencyMiddleware:
                 path=template,
                 idempotency_key=key,
                 request_fingerprint=fingerprint,
-                expires_at=now + timedelta(hours=RUNTIME_CONFIG.IDEMPOTENCY_TTL_HOURS),
+                expires_at=now + timedelta(hours=self._settings.ttl_hours),
                 claimed_at=now,
-                stale_before=now
-                - timedelta(seconds=RUNTIME_CONFIG.IDEMPOTENCY_INPROGRESS_TTL_SECONDS),
+                stale_before=now - timedelta(seconds=self._settings.inprogress_ttl_seconds),
             )
         except Exception as error:
             logger.warning(
@@ -310,7 +307,7 @@ class IdempotencyMiddleware:
         cacheable = (
             status is not None
             and status < _SERVER_ERROR_FLOOR
-            and not buffer.exceeds(RUNTIME_CONFIG.IDEMPOTENCY_MAX_BODY_BYTES)
+            and not buffer.exceeds(self._settings.max_body_bytes)
         )
         if cacheable:
             await self._safe_complete(actor_scope, scope["method"], template, key, buffer)
@@ -318,7 +315,7 @@ class IdempotencyMiddleware:
             if status is not None and status < _SERVER_ERROR_FLOOR:
                 logger.warning(
                     f"Idempotency response over the cache cap "
-                    f"({RUNTIME_CONFIG.IDEMPOTENCY_MAX_BODY_BYTES}B) on {scope['method']} {template}; "
+                    f"({self._settings.max_body_bytes}B) on {scope['method']} {template}; "
                     f"not cached (a retry re-executes)."
                 )
             await self._safe_drop(actor_scope, scope["method"], template, key)

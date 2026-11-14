@@ -8,7 +8,6 @@
     "app/backend/libs/auth/middleware.py": 2,
     "app/backend/libs/describe/cache.py": 1,
     "app/backend/libs/estimate/service.py": 1,
-    "app/backend/libs/idempotency/middleware.py": 9,
     "app/backend/libs/ratelimit/engine.py": 1,
     "app/backend/libs/ratelimit/middleware.py": 2,
     "app/backend/libs/search/chunk_browser.py": 1,
