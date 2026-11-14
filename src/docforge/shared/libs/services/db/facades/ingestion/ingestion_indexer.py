@@ -14,6 +14,7 @@ from loggerplusplus import LoggerClass
 
 # ====== Internal Project Imports ======
 from shared_libs.public_models import VectorLayout
+from shared_libs.services.db.bricks import VectorSpaceProvisioner
 from shared_libs.services.db.index_signature import CollectionIndexSignature
 from shared_libs.services.db.postgresql import PostgresClient
 from shared_libs.services.db.postgresql.apis import ChunkApi, CollectionApi
@@ -71,18 +72,8 @@ class IngestionIndexer(LoggerClass):
             schema = await CollectionApi.get_schema(session, collection_id)
         DatabaseHelpers.validate_vector_slugs(schema)
         name = DatabaseHelpers.qdrant_collection_name(collection_id)
-        missing_fields = await QdrantCollectionApi.ensure(
-            self._qdrant.raw,
-            name,
-            dense_dim=dense_dim,
-            semantic_fields=[f.field_name for f in schema if f.semantic],
-            lexical_fields=[f.field_name for f in schema if f.lexical],
-            filterable_fields={
-                f.field_name: DatabaseHelpers.payload_type_for(f.field_type)
-                for f in schema
-                if f.filterable
-            },
-            layout=layout,
+        missing_fields = await VectorSpaceProvisioner.ensure(
+            self._qdrant.raw, name, schema, dense_dim, layout
         )
         # 2. Refuse points carrying a named vector the store never declared, or a sparse vector the
         #    store declares under another IDF modifier (another encoder's space), before any purge —

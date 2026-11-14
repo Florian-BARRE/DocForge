@@ -15,6 +15,7 @@ from loggerplusplus import LoggerClass
 from sqlalchemy.exc import IntegrityError
 
 # ====== Internal Project Imports ======
+from shared_libs.services.db.bricks import ConstraintViolation
 from shared_libs.services.db.postgresql import PostgresClient
 from shared_libs.services.db.postgresql.apis import IdempotencyApi
 
@@ -51,16 +52,9 @@ class IdempotencyFacade(LoggerClass):
         Returns:
             bool: True only when the violated constraint is ``uq_idempotency_key_scope``.
         """
-        # 1. Walk the driver error and its __cause__ (the SQLAlchemy asyncpg adapter nests the native
-        #    asyncpg error, which is the one carrying constraint_name) and match the guard's name.
-        #    Matching the name is precise (this table has exactly one UNIQUE constraint) and avoids
-        #    treating an unrelated integrity failure as a benign conflict.
-        orig = getattr(error, "orig", None)
-        candidates = (orig, getattr(orig, "__cause__", None))
-        return any(
-            getattr(candidate, "constraint_name", None) == _SCOPE_CONSTRAINT
-            for candidate in candidates
-        )
+        # 1. Match the guard's name. Matching the name is precise (this table has exactly one UNIQUE
+        #    constraint) and avoids treating an unrelated integrity failure as a benign conflict.
+        return ConstraintViolation.matches(error, _SCOPE_CONSTRAINT)
 
     async def begin(
         self,
