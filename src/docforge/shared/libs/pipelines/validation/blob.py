@@ -8,6 +8,9 @@
 # so a malformed or hostile bundle's graph blobs are rejected BEFORE the new collection is persisted,
 # exactly like every other write path, instead of being stored verbatim to brick the collection.
 
+# ====== Standard Library Imports ======
+from typing import Protocol
+
 # ====== Third-Party Library Imports ======
 from loggerplusplus import LoggerClass
 
@@ -19,6 +22,20 @@ from .issues import ValidationIssue
 from .palette import PaletteScopeValidator
 from .search_contract import SearchResultContract
 from .validator import GraphValidator
+
+
+class PipelinePalettes(Protocol):
+    """
+    The palette scopes of the pipeline kinds, injected into the validator.
+
+    ``PipelineRegistry`` satisfies it (the class itself, its ``allowed_kinds`` is a classmethod).
+    Declaring the port here keeps this package free of any import of the ingest/search facades,
+    which themselves import this package (the former validation <-> ingest/search cycle).
+    """
+
+    def allowed_kinds(self, pipeline_key: str) -> dict[str, set[str]]:
+        """Return the (family → allowed kinds) map of the pipeline kind ``pipeline_key``."""
+        ...
 
 
 class BlobValidationError(Exception):
@@ -44,24 +61,47 @@ class BlobStructureValidator(LoggerClass):
     """
     Store-agnostic structural validator for a pipeline blob (build + graph validation + terminal).
 
-    Stateless across calls: it holds a ``PipelineBuilder`` and a ``GraphValidator`` (both stateless,
-    reading the process-global NodeRegistry). ``validate_ingest`` checks build + structure; a valid
-    search blob must additionally terminate on a SearchResult-producing node (``validate_search``).
+    Stateless across calls: it holds a ``PipelineBuilder``, a ``GraphValidator`` (both stateless,
+    reading the process-global NodeRegistry) and the injected pipeline palettes. ``validate_ingest``
+    checks build + structure; a valid search blob must additionally terminate on a
+    SearchResult-producing node (``validate_search``).
     """
 
     def __init__(
         self,
         builder: PipelineBuilder | None = None,
         validator: GraphValidator | None = None,
+        palettes: PipelinePalettes | None = None,
     ) -> None:
         """
         Args:
             builder (PipelineBuilder | None): The blob→graph builder (a fresh one when omitted).
             validator (GraphValidator | None): The structural validator (a fresh one when omitted).
+            palettes (PipelinePalettes | None): Where the per-pipeline palette scope comes from
+                (the ``PipelineRegistry`` when omitted, resolved on first use).
         """
         LoggerClass.__init__(self)
         self._builder = builder or PipelineBuilder()
         self._validator = validator or GraphValidator()
+        self._palettes = palettes
+
+    def __palettes(self) -> PipelinePalettes:
+        """
+        Return the injected palettes, defaulting to the PipelineRegistry on first use.
+
+        The default is the ONE place this package reaches the composition root. It stays a lazy
+        import because the registry imports the ingest/search facades, which import this package;
+        resolving it also registers every node family before the blob is built. A caller that
+        injects ``palettes`` never triggers it.
+
+        Returns:
+            PipelinePalettes: The palette source used by ``validate_ingest`` / ``validate_search``.
+        """
+        if self._palettes is None:
+            from shared_libs.pipelines.pipeline_registry import PipelineRegistry
+
+            self._palettes = PipelineRegistry
+        return self._palettes
 
     def __build_and_validate(self, blob: dict):
         """
@@ -117,13 +157,11 @@ class BlobStructureValidator(LoggerClass):
             BlobValidationError: When the blob cannot be built, fails structural validation, or
                 contains a kind foreign to the ingestion pipeline's palette.
         """
-        # 1. Build + structural validation, then reject any kind foreign to the ingestion palette.
-        #    The facade is imported lazily: importing IngestPipeline at module load would cycle
-        #    (facade -> validation package -> this module) and eagerly register the whole node graph.
-        from shared_libs.pipelines.ingest import IngestPipeline
-
+        # 1. Resolve the ingestion palette first (this also registers the node families the build
+        #    needs), then build + validate, then reject any kind foreign to that palette.
+        allowed_kinds = self.__palettes().allowed_kinds("ingest")
         group = self.__build_and_validate(blob)
-        self.__enforce_palette(group, IngestPipeline.allowed_kinds())
+        self.__enforce_palette(group, allowed_kinds)
 
     def validate_search(self, blob: dict) -> None:
         """
@@ -137,14 +175,13 @@ class BlobStructureValidator(LoggerClass):
                 contains a kind foreign to the search palette, or does not terminate on a
                 ``deliver/hits`` node producing a SearchResult.
         """
-        # 1. Structural validation first (build + graph validator). The facade is imported lazily
-        #    to avoid a module-load import cycle (see validate_ingest).
-        from shared_libs.pipelines.search import SearchPipeline
-
+        # 1. Resolve the search palette first (see validate_ingest), then structural validation
+        #    (build + graph validator).
+        allowed_kinds = self.__palettes().allowed_kinds("search")
         group = self.__build_and_validate(blob)
 
         # 2. Reject any kind that does not belong to the SEARCH pipeline's palette.
-        self.__enforce_palette(group, SearchPipeline.allowed_kinds())
+        self.__enforce_palette(group, allowed_kinds)
 
         # 3. Terminal contract — a non-search graph is rejected here, mirroring the runner's assert.
         if not SearchResultContract.terminates_on_search_result(group):
@@ -154,4 +191,4 @@ class BlobStructureValidator(LoggerClass):
             )
 
 
-__all__ = ["BlobStructureValidator", "BlobValidationError"]
+__all__ = ["BlobStructureValidator", "BlobValidationError", "PipelinePalettes"]

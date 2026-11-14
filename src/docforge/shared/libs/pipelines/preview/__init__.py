@@ -8,6 +8,7 @@ from .models import (
     PreviewResponse,
     PreviewTraceNode,
 )
+from .ports import PreviewCollectionReads, PreviewDocumentReads, PreviewReadPort
 from .projector import PreviewProjector
 from .runner import PreviewRunner
 from .source_resolver import PreviewSourceResolver
@@ -22,6 +23,9 @@ __all__ = [
     "PreviewIrSummary",
     "PreviewResponse",
     "PreviewTraceNode",
+    "PreviewCollectionReads",
+    "PreviewDocumentReads",
+    "PreviewReadPort",
     "PreviewProjector",
     "PreviewRunner",
     "PreviewSourceResolver",

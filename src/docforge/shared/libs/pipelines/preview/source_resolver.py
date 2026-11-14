@@ -14,18 +14,22 @@ from loggerplusplus import LoggerClass
 
 # ====== Internal Project Imports ======
 from shared_libs.public_models import SourceDocument
-from shared_libs.services.db import Database
 
 # ====== Local Project Imports ======
 from .errors import PreviewInputError
+from .ports import PreviewReadPort
 
 
 class PreviewSourceResolver(LoggerClass):
     """Rehydrates an existing document's SourceDocument (bytes + declared meta) for a dry-run."""
 
-    def __init__(self, database: Database) -> None:
+    def __init__(self, reads: PreviewReadPort) -> None:
+        """
+        Args:
+            reads (PreviewReadPort): The read-only store access (the app/worker pass the Database).
+        """
         LoggerClass.__init__(self)
-        self._database = database
+        self._reads = reads
 
     async def from_document(self, document: Any, max_bytes: int) -> SourceDocument:
         """
@@ -42,7 +46,7 @@ class PreviewSourceResolver(LoggerClass):
             PreviewInputError: The original bytes are missing from the store, or exceed the size cap.
         """
         # 1. Pull the original bytes back from the store, bounded by the preview ceiling.
-        resolved = await self._database.documents.stream_blob(document.source_hash)
+        resolved = await self._reads.documents.stream_blob(document.source_hash)
         if resolved is None:
             raise PreviewInputError(
                 f"original bytes for document {document.id} are no longer in the store"
@@ -70,11 +74,11 @@ class PreviewSourceResolver(LoggerClass):
         self, collection_id: uuid.UUID, document_id: uuid.UUID
     ) -> dict[str, Any]:
         """Map the document's user-declared metadata rows to {field_name: value} (empty when none)."""
-        schema = await self._database.collections.get_schema(collection_id)
+        schema = await self._reads.collections.get_schema(collection_id)
         field_names = {row.id: row.field_name for row in schema}
         return {
             field_names[meta.field_id]: meta.value
-            for meta in await self._database.documents.get_metadata(document_id)
+            for meta in await self._reads.documents.get_metadata(document_id)
             if meta.origin.value == "user" and meta.field_id in field_names
         }
 
