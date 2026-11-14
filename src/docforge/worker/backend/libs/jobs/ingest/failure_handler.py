@@ -118,7 +118,7 @@ class FailureHandler:
                     f"(the job is still marked failed): {persist_exc}"
                 )
         await self.mark_document_failed(doc_uuid, replay_from, f"{type(exc).__name__}: {exc}")
-        # Redact any ``scheme://user:pass@host`` userinfo a provider exception may echo (a
+        # Redact any URL userinfo (credentials before the host) a provider exception may echo (a
         # credential-bearing base_url surfaced in a transport/auth error) before it is persisted on
         # the job row — the message is otherwise preserved verbatim for diagnostics.
         await database.jobs.mark_failed(
