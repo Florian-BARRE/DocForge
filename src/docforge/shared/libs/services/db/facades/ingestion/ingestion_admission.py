@@ -15,6 +15,7 @@ from sqlalchemy.exc import IntegrityError
 
 # ====== Internal Project Imports ======
 from shared_libs.public_models import TextSanitizer
+from shared_libs.services.db.bricks import ConstraintViolation
 from shared_libs.services.db.postgresql import PostgresClient
 from shared_libs.services.db.postgresql.apis import DocumentApi, IRApi, JobApi
 from shared_libs.services.db.postgresql.tables import (
@@ -65,15 +66,9 @@ class IngestionAdmission(LoggerClass):
         Returns:
             bool: True only when the violated constraint is ``uq_document_collection_id``.
         """
-        # 1. Walk the driver error and its __cause__ (the asyncpg native error carrying constraint_name)
-        #    and match the document guard's name — precise, so an unrelated integrity failure is never
+        # 1. Match the document guard's name — precise, so an unrelated integrity failure is never
         #    treated as a benign duplicate.
-        orig = getattr(error, "orig", None)
-        candidates = (orig, getattr(orig, "__cause__", None))
-        return any(
-            getattr(candidate, "constraint_name", None) == _DOCUMENT_UNIQUE_CONSTRAINT
-            for candidate in candidates
-        )
+        return ConstraintViolation.matches(error, _DOCUMENT_UNIQUE_CONSTRAINT)
 
     @staticmethod
     def _is_active_job_conflict(error: IntegrityError) -> bool:
@@ -86,15 +81,9 @@ class IngestionAdmission(LoggerClass):
         Returns:
             bool: True only when the violated index is ``uq_job_active_per_document``.
         """
-        # 1. Walk the driver error and its __cause__ (the asyncpg native error carrying constraint_name)
-        #    and match the active-job index's name — precise, so an unrelated integrity failure is never
+        # 1. Match the active-job index's name — precise, so an unrelated integrity failure is never
         #    mistaken for a benign "already running" outcome.
-        orig = getattr(error, "orig", None)
-        candidates = (orig, getattr(orig, "__cause__", None))
-        return any(
-            getattr(candidate, "constraint_name", None) == _ACTIVE_JOB_UNIQUE_INDEX
-            for candidate in candidates
-        )
+        return ConstraintViolation.matches(error, _ACTIVE_JOB_UNIQUE_INDEX)
 
     async def find_duplicate(
         self, collection_id: uuid.UUID, source_hash: str, pipeline_version: str

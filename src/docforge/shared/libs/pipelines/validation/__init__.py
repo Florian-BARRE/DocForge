@@ -2,7 +2,7 @@
 from .validator import GraphValidator
 
 # ---------------------- Blob validation ---------------------- #
-from .blob import BlobStructureValidator, BlobValidationError
+from .blob import BlobStructureValidator, BlobValidationError, PipelinePalettes
 from .palette import PaletteScopeValidator
 from .search_contract import SearchResultContract
 
@@ -14,6 +14,7 @@ __all__ = [
     "GraphValidator",
     "BlobStructureValidator",
     "BlobValidationError",
+    "PipelinePalettes",
     "PaletteScopeValidator",
     "SearchResultContract",
     "ValidationCode",

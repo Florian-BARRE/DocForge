@@ -43,6 +43,11 @@ class PipelineFacade(Protocol):
         """Resolve a preset name to its curated stock blob (None/unknown → the default)."""
         ...
 
+    @classmethod
+    def allowed_kinds(cls) -> dict[str, set[str]]:
+        """Return the (family → kinds) palette scope a valid built graph of this pipeline may use."""
+        ...
+
 
 @dataclass(frozen=True)
 class PipelineSpec:
@@ -132,6 +137,29 @@ class PipelineRegistry:
             if spec.key == key:
                 return spec
         return None
+
+    @classmethod
+    def allowed_kinds(cls, key: str) -> dict[str, set[str]]:
+        """
+        The palette scope (family → allowed kinds) of one pipeline kind.
+
+        This is the seam the validation package reaches the pipelines through (it injects the
+        registry instead of importing the ingest/search facades itself); resolving it here also
+        imports both facades, which registers their node families.
+
+        Args:
+            key (str): The pipeline key (``"ingest"`` or ``"search"``).
+
+        Returns:
+            dict[str, set[str]]: Family → the set of kinds a graph of that pipeline may contain.
+
+        Raises:
+            KeyError: When ``key`` is not a registered pipeline kind.
+        """
+        spec = cls.get(key)
+        if spec is None:
+            raise KeyError(f"unknown pipeline kind: {key!r}")
+        return spec.facade.allowed_kinds()
 
 
 __all__ = ["PipelineRegistry", "PipelineSpec", "PipelineFacade"]
