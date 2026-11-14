@@ -46,8 +46,12 @@ REVERSED_BLOB: dict = {
     "nodes": [{key: node[key] for key in reversed(list(node))} for node in BLOB["nodes"]],
 }
 
-DIGEST_DEFAULT_SEPARATORS = "a0d55c34f0131cd069aff60697aae366b57f4377f74cbf673b71941715c559a9"
-DIGEST_COMPACT_SEPARATORS = "14377d44a0fad08cef7304180f576bf9c9ddb0e6ffb2335fc36d723d0c0e2398"
+DIGEST_DEFAULT_SEPARATORS = (
+    "a0d55c34f0131cd069aff60697aae366b57f4377f74cbf673b71941715c559a9"  # pragma: allowlist secret
+)
+DIGEST_COMPACT_SEPARATORS = (
+    "14377d44a0fad08cef7304180f576bf9c9ddb0e6ffb2335fc36d723d0c0e2398"  # pragma: allowlist secret
+)
 
 FORMS: dict[str, tuple[Callable[[dict], str], str]] = {
     "router._pipeline_version": (
