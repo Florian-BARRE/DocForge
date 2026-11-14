@@ -2,8 +2,8 @@
 # Characterization of every place that hashes a PIPELINE BLOB today (safety net for a future single
 # BlobHasher). One fixed blob dict goes through each form and the exact digest is the golden:
 #   A. app documents router ``_pipeline_version`` — sha256 of json(sort_keys, default=str), cut to 16 hex
-#   B. worker ``jobs/core.py``  ``config_hash`` — same expression, the full 64 hex
-#   C. worker ``jobs/replay.py`` ``config_hash`` — same expression again (the replay path)
+#   B. worker ``jobs/ingest/persister.py`` ``config_hash`` — same expression, the full 64 hex (the full run)
+#   C. the replay path — since R-18 it reuses B's Persister.translate, so the same expression again
 #   D. worker ``PipelineRunner.__blob_hash`` — compact separators, sort_keys, default=str
 #   E. worker ``CacheKeyBuilder.config_fingerprint`` — the same compact form, for a stage config subtree
 # A/B/C agree (A is B's 16-hex prefix); D/E agree; the two families DIFFER (separators). A refactor must
@@ -60,13 +60,13 @@ FORMS: dict[str, tuple[Callable[[dict], str], str]] = {
     ),
     "jobs/core.config_hash": (
         lambda blob: HashFormExtractor.assigned_expression(
-            "worker/backend/libs/jobs/core.py", "config_hash", {"blob": blob}
+            "worker/backend/libs/jobs/ingest/persister.py", "config_hash", {"blob": blob}
         ),
         DIGEST_DEFAULT_SEPARATORS,
     ),
     "jobs/replay.config_hash": (
         lambda blob: HashFormExtractor.assigned_expression(
-            "worker/backend/libs/jobs/replay.py", "config_hash", {"blob": blob}
+            "worker/backend/libs/jobs/ingest/persister.py", "config_hash", {"blob": blob}
         ),
         DIGEST_DEFAULT_SEPARATORS,
     ),

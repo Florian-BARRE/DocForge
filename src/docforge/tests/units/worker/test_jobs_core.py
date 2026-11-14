@@ -377,8 +377,9 @@ def test_resolve_run_job_timeout_prefers_collection_then_default_then_rejects_ov
     """The pure job timeout resolver: collection override wins, else the default; above the hard
     ceiling it raises a named ValueError (never returns a truncated value)."""
     import pytest  # noqa: PLC0415
+    from jobs.ingest import RunLimits  # noqa: PLC0415
 
-    resolve = jobs_core._resolve_run_job_timeout
+    resolve = RunLimits.resolve_job_timeout
     assert resolve(99.0, 30.0, 7200.0) == 99.0
     assert resolve(None, 30.0, 7200.0) == 30.0
     assert resolve(7200.0, 30.0, 7200.0) == 7200.0  # exactly the ceiling is allowed
@@ -391,9 +392,11 @@ def test_resolve_trace_level_clamps_the_collection_request_to_the_operator_ceili
 ) -> None:
     """Effective level = min(collection request, operator ceiling) in the off < shape < full
     ordering — a full request under a shape ceiling is clamped down, never let through."""
+    from jobs.ingest import RunLimits  # noqa: PLC0415
+
     from shared_libs.pipelines.engine import TraceLevel  # noqa: PLC0415
 
-    resolve = jobs_core._resolve_trace_level
+    resolve = RunLimits.resolve_trace_level
     assert resolve("full", "shape") == TraceLevel.SHAPE  # collection wants full, ceiling forbids
     assert resolve("shape", "full") == TraceLevel.SHAPE  # collection asks for less than the ceiling
     assert resolve("full", "full") == TraceLevel.FULL  # both agree on full
@@ -403,9 +406,11 @@ def test_resolve_trace_level_clamps_the_collection_request_to_the_operator_ceili
 def test_resolve_trace_level_defaults_unrecognised_values_to_shape(jobs_core) -> None:
     """An unset/garbage collection verbosity or ceiling degrades to SHAPE (never a crash, never
     silently unlocking FULL)."""
+    from jobs.ingest import RunLimits  # noqa: PLC0415
+
     from shared_libs.pipelines.engine import TraceLevel  # noqa: PLC0415
 
-    resolve = jobs_core._resolve_trace_level
+    resolve = RunLimits.resolve_trace_level
     assert resolve(None, "full") == TraceLevel.SHAPE
     assert resolve("bogus", "full") == TraceLevel.SHAPE
     assert resolve("full", "bogus") == TraceLevel.SHAPE
