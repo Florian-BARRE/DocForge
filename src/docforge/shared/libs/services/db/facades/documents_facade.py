@@ -35,6 +35,7 @@ from shared_libs.services.db.qdrant import QdrantClient, QdrantIndexApi
 from shared_libs.services.db.s3 import S3Client, S3ObjectApi
 
 # ====== Local Project Imports ======
+from .document_object_store import DocumentObjectStore
 from .helpers import DatabaseHelpers
 from .payloads import IRBundle
 from .reading_payloads import ChunkIndexEntry, HeadingEntry
@@ -49,6 +50,7 @@ class DocumentsFacade(LoggerClass):
         self._postgres = postgres
         self._qdrant = qdrant
         self._s3 = s3
+        self._objects = DocumentObjectStore(s3)
 
     # -------------------- catalogue --------------------
     async def get(self, document_id: uuid.UUID) -> Document | None:
@@ -288,29 +290,11 @@ class DocumentsFacade(LoggerClass):
             return None
 
         # 2. Hand back a generator that keeps the S3 client open for the whole iteration.
-        return self.__stream_object(row.s3_key, chunk_size), row.mime_type
+        return self._objects.stream(row.s3_key, chunk_size), row.mime_type
 
     async def read_source_bytes(self, source_hash: str) -> bytes:
-        """
-        Read a document's ORIGINAL uploaded bytes from S3 (the object key is the source hash).
-
-        Backs the worker's full ingest run, which starts from the original file; a replay never
-        calls it (it stands on the persisted IR, so a garbage-collected source must not fail it).
-
-        Args:
-            source_hash (str): The document's ``source_hash`` — its content address and S3 key.
-
-        Returns:
-            bytes: The original file's bytes.
-        """
-        async with self._s3.client() as s3:
-            return await S3ObjectApi.get(s3, self._s3.bucket, source_hash)
-
-    async def __stream_object(self, s3_key: str, chunk_size: int) -> AsyncIterator[bytes]:
-        """Yield an object's bytes from S3 in bounded windows (client scope held for the iteration)."""
-        async with self._s3.client() as s3:
-            async for chunk in S3ObjectApi.stream(s3, self._s3.bucket, s3_key, chunk_size):
-                yield chunk
+        """A document's ORIGINAL uploaded bytes from S3 (key = source hash); a replay never reads it."""
+        return await self._objects.read_source(source_hash)
 
     # -------------------- deletion --------------------
     async def delete(self, document_id: uuid.UUID) -> bool:

@@ -51,6 +51,7 @@ from .helpers import DatabaseHelpers
 from .ingestion import IngestionFacade
 from .meta_vector_sync_facade import MetaVectorSyncFacade
 from .meta_vector_sync_helpers import MetaVectorSyncHelpers
+from .transfer_bundle_store import TransferBundleStore
 from .transfer_payloads import DocumentExportRows
 
 
@@ -66,6 +67,7 @@ class CollectionTransferFacade(LoggerClass):
         self._collections = CollectionsFacade(postgres, qdrant, s3)
         self._ingestion = IngestionFacade(postgres, qdrant, s3)
         self._meta_vectors = MetaVectorSyncFacade(postgres, qdrant)
+        self._bundles = TransferBundleStore(s3)
 
     # ==================== EXPORT (reads) ====================
     async def get_collection(self, collection_id: uuid.UUID) -> Collection | None:
@@ -127,9 +129,7 @@ class CollectionTransferFacade(LoggerClass):
         """
         Stream an export bundle's bytes from S3 in bounded chunks (never whole in memory).
 
-        Backs the authenticated download endpoint's ``StreamingResponse``: the shared S3 client is
-        kept open for the whole iteration (exiting the ``client()`` scope does not close it), so the
-        generator can pull windows straight from S3 to the HTTP response.
+        Backs the authenticated download endpoint's ``StreamingResponse``.
 
         Args:
             s3_key (str): The bundle object's key (the tracking row's ``s3_key``).
@@ -138,75 +138,24 @@ class CollectionTransferFacade(LoggerClass):
         Yields:
             bytes: The next window of the bundle's bytes.
         """
-        async with self._s3.client() as client:
-            async for chunk in S3ObjectApi.stream(client, self._s3.bucket, s3_key, chunk_size):
-                yield chunk
+        async for chunk in self._bundles.stream(s3_key, chunk_size):
+            yield chunk
 
     async def stage_bundle(self, s3_key: str, path: Any, content_type: str) -> int:
-        """
-        Publish an uploaded import bundle from a spooled local file to S3 (no in-memory buffering).
-
-        Backs the import endpoint: the router spools the multipart upload to a temp file, then this
-        streams that file to S3 under a staging key with a known Content-Length (``put_file``). The
-        worker later downloads it from that key.
-
-        Args:
-            s3_key (str): The staging object key to publish under.
-            path (Any): The local spooled-file path to upload.
-            content_type (str): The object's content type.
-
-        Returns:
-            int: The uploaded object's size in bytes.
-        """
-        async with self._s3.client() as client:
-            return await S3ObjectApi.put_file(client, self._s3.bucket, s3_key, path, content_type)
+        """Stage an uploaded import bundle (spooled local file) in S3 for the worker; returns its size."""
+        return await self._bundles.put_file(s3_key, path, content_type)
 
     async def publish_bundle(self, s3_key: str, path: Any, content_type: str) -> int:
-        """
-        Publish a finished EXPORT bundle from a local archive to S3.
-
-        Atomic: the key becomes valid only once the PUT lands.
-
-        Backs the worker's ``export_collection`` task, which packs the bundle in a temp dir then
-        uploads that file with a known Content-Length (no in-memory buffering).
-
-        Args:
-            s3_key (str): The object key to publish under.
-            path (Any): The local archive path to upload.
-            content_type (str): The object's content type.
-
-        Returns:
-            int: The uploaded object's size in bytes.
-        """
-        async with self._s3.client() as client:
-            return await S3ObjectApi.put_file(client, self._s3.bucket, s3_key, path, content_type)
+        """Publish a finished EXPORT bundle (local archive) to S3; returns its size in bytes."""
+        return await self._bundles.put_file(s3_key, path, content_type)
 
     async def download_bundle(self, s3_key: str, path: Any) -> None:
-        """
-        Download a bundle object from S3 to a local file (streamed to disk, never whole in memory).
-
-        Backs the worker's ``import_collection`` task, which validates the downloaded archive before
-        any write.
-
-        Args:
-            s3_key (str): The bundle object's key.
-            path (Any): The local destination path.
-        """
-        async with self._s3.client() as client:
-            await S3ObjectApi.download_to(client, self._s3.bucket, s3_key, path)
+        """Download a bundle object from S3 to a local file (streamed to disk)."""
+        await self._bundles.download_to(s3_key, path)
 
     async def delete_bundle(self, s3_key: str) -> None:
-        """
-        Delete one bundle object from S3 (idempotent — a missing object is fine).
-
-        Backs the worker's post-import cleanup of the staged upload; the caller decides whether a
-        failure is fatal (the import task treats it as best-effort).
-
-        Args:
-            s3_key (str): The bundle object's key.
-        """
-        async with self._s3.client() as client:
-            await S3ObjectApi.delete(client, self._s3.bucket, s3_key)
+        """Delete one bundle object from S3 (idempotent; a failure propagates to the caller)."""
+        await self._bundles.delete(s3_key)
 
     async def gc_expired_bundles(self, now: datetime) -> list[uuid.UUID]:
         """

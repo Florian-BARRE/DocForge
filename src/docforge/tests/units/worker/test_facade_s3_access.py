@@ -81,3 +81,19 @@ async def test_delete_bundle_deletes_the_object_and_propagates_failures(monkeypa
     delete.side_effect = RuntimeError("s3 down")
     with pytest.raises(RuntimeError):
         await facade.delete_bundle("col-exports/x.dcexport")
+
+
+async def test_stage_bundle_puts_the_spooled_upload_and_returns_its_size(monkeypatch) -> None:
+    s3, raw_client = _s3()
+    put_file = AsyncMock(return_value=77)
+    monkeypatch.setattr(transfer_module.S3ObjectApi, "put_file", put_file)
+    spooled = pathlib.Path("/tmp/upload.dcexport")
+
+    size = await CollectionTransferFacade(MagicMock(), MagicMock(), s3).stage_bundle(
+        "col-imports/x.dcexport", spooled, "application/x-dcexport"
+    )
+
+    assert size == 77
+    put_file.assert_awaited_once_with(
+        raw_client, "bucket", "col-imports/x.dcexport", spooled, "application/x-dcexport"
+    )
