@@ -17,8 +17,8 @@ from ..compact_json import compact_json
 from .reading_rendering import ReadingTextRenderer
 
 
-def register(mcp: MCPServer, sdk: AsyncClient) -> None:
-    """Register document explorer tools on the MCP server.
+def register_read_tools(mcp: MCPServer, sdk: AsyncClient) -> None:
+    """Register the read-only document and chunk browse tools.
 
     Args:
         mcp (MCPServer): The MCP server instance.
@@ -157,6 +157,15 @@ def register(mcp: MCPServer, sdk: AsyncClient) -> None:
             return compact_json({"total": page.total, "offset": offset, "chunks": chunks})
         return ReadingTextRenderer().render_chunk_page(page, offset)
 
+
+def register_mutation_tools(mcp: MCPServer, sdk: AsyncClient) -> None:
+    """Register the document delete and chunk enable/disable tools.
+
+    Args:
+        mcp (MCPServer): The MCP server instance.
+        sdk (AsyncClient): The DocForge API client.
+    """
+
     @mcp.tool()
     async def delete_document(document_id: str) -> Any:
         """Delete a document everywhere (Qdrant points, PG cascade, orphan-only blob purge). Irreversible."""
@@ -175,3 +184,14 @@ def register(mcp: MCPServer, sdk: AsyncClient) -> None:
         patch = BulkChunkEnabledPatch(chunk_ids=chunk_ids, enabled=enabled)
         result = await sdk.explorer.set_chunks_enabled(patch)
         return result.model_dump(mode="json")
+
+
+def register(mcp: MCPServer, sdk: AsyncClient) -> None:
+    """Register the document explorer tools on the MCP server, group by group.
+
+    Args:
+        mcp (MCPServer): The MCP server instance.
+        sdk (AsyncClient): The DocForge API client.
+    """
+    register_read_tools(mcp, sdk)
+    register_mutation_tools(mcp, sdk)

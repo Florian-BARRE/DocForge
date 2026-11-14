@@ -67,6 +67,20 @@ def _fingerprint(body: bytes) -> str:
 # ── ASGI driver ─────────────────────────────────────────────────────────────────────────────────
 
 
+def _settings():
+    """Build the injected IdempotencySettings from the (possibly monkeypatched) runtime config, the
+    way the composition root (``backend/app.py``) does."""
+    from backend.libs.idempotency import IdempotencySettings  # noqa: PLC0415
+    from config import RUNTIME_CONFIG  # noqa: PLC0415
+
+    return IdempotencySettings(
+        enabled=RUNTIME_CONFIG.IDEMPOTENCY_ENABLED,
+        ttl_hours=RUNTIME_CONFIG.IDEMPOTENCY_TTL_HOURS,
+        inprogress_ttl_seconds=RUNTIME_CONFIG.IDEMPOTENCY_INPROGRESS_TTL_SECONDS,
+        max_body_bytes=RUNTIME_CONFIG.IDEMPOTENCY_MAX_BODY_BYTES,
+    )
+
+
 async def _drive(
     *,
     monkeypatch,
@@ -132,7 +146,7 @@ async def _drive(
         except StopIteration:
             return {"type": "http.request", "body": b"", "more_body": False}
 
-    await IdempotencyMiddleware(_downstream)(scope, _receive, _send)
+    await IdempotencyMiddleware(_downstream, _settings())(scope, _receive, _send)
     return sent, state
 
 
@@ -199,7 +213,7 @@ async def test_eligible_request_stashes_route_template_for_metrics(
     async def _receive() -> dict:
         return {"type": "http.request", "body": _BODY, "more_body": False}
 
-    await IdempotencyMiddleware(_downstream)(scope, _receive, _send)
+    await IdempotencyMiddleware(_downstream, _settings())(scope, _receive, _send)
 
     assert scope[SCOPE_ROUTE_TEMPLATE] == "/api/v1/collections"
 

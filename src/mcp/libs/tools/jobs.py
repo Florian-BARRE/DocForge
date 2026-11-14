@@ -38,8 +38,8 @@ _POLL_MAX_DELAY_S = 5.0
 _POLL_BACKOFF_FACTOR = 1.5
 
 
-def register(mcp: MCPServer, sdk: AsyncClient) -> None:
-    """Register job tools on the MCP server.
+def register_triage_tools(mcp: MCPServer, sdk: AsyncClient) -> None:
+    """Register the job listing and failure-triage tools.
 
     Args:
         mcp (MCPServer): The MCP server instance.
@@ -132,6 +132,15 @@ def register(mcp: MCPServer, sdk: AsyncClient) -> None:
         series = await sdk.jobs.timeseries(collection_id, window_hours)
         return series.model_dump(mode="json")
 
+
+def register_job_tools(mcp: MCPServer, sdk: AsyncClient) -> None:
+    """Register the single-job tools (state, wait, trace, payload, cancel) and live workers.
+
+    Args:
+        mcp (MCPServer): The MCP server instance.
+        sdk (AsyncClient): The DocForge API client.
+    """
+
     @mcp.tool()
     async def get_job(job_id: str) -> Any:
         """Fetch one ingestion job's live state — poll this after an upload."""
@@ -204,6 +213,15 @@ def register(mcp: MCPServer, sdk: AsyncClient) -> None:
         result = await sdk.jobs.cancel(job_id, force=force)
         return result.model_dump(mode="json")
 
+
+def register_cost_and_queue_tools(mcp: MCPServer, sdk: AsyncClient) -> None:
+    """Register the collection cost, queue-depth and stage-duration tools.
+
+    Args:
+        mcp (MCPServer): The MCP server instance.
+        sdk (AsyncClient): The DocForge API client.
+    """
+
     @mcp.tool()
     async def get_collection_cost(collection_id: str) -> Any:
         """A collection's paid text-gen roll-up — tokens + USD summed over its documents' jobs."""
@@ -218,3 +236,15 @@ def register(mcp: MCPServer, sdk: AsyncClient) -> None:
     async def get_stage_durations(collection_id: str) -> Any:
         """Average per-stage wall-clock over a collection's done jobs (a running job's ETA basis)."""
         return (await sdk.jobs.stage_durations(collection_id)).model_dump(mode="json")
+
+
+def register(mcp: MCPServer, sdk: AsyncClient) -> None:
+    """Register the job tools on the MCP server, group by group.
+
+    Args:
+        mcp (MCPServer): The MCP server instance.
+        sdk (AsyncClient): The DocForge API client.
+    """
+    register_triage_tools(mcp, sdk)
+    register_job_tools(mcp, sdk)
+    register_cost_and_queue_tools(mcp, sdk)
