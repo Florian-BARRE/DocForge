@@ -3,14 +3,13 @@
 // fresh every time the palette opens (see CommandPalette.tsx), the same "conditionally-mounted
 // dialog" idiom as DeleteCollectionDialog.tsx: every hook here runs unconditionally on every render
 // of THIS component, and the component never returns early, so rules-of-hooks holds trivially.
-// Focus trap / Escape-to-close / focus-restore-on-close are the shared `useFocusTrap` primitive
-// (moves focus to the input, the panel's only focusable descendant, on mount).
+// Overlay / focus trap / Escape-to-close / focus-restore-on-close are the shared `Dialog` shell (its
+// `useFocusTrap` moves focus to the input, the panel's only focusable descendant, on mount).
 
 import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
-import { createPortal } from "react-dom";
 import { listCollections, type Collection } from "../../api/collections";
+import { Dialog } from "../../components/dialog/Dialog";
 import { theme as t } from "../../theme";
-import { useFocusTrap } from "../useFocusTrap";
 import type { Navigate, View } from "../view";
 import { buildActionItems, buildCollectionItems, buildGoToItems, filterItems, type CommandItem } from "./commandItems";
 import { CommandPaletteResultList, type CommandPaletteGroup } from "./CommandPaletteResultList";
@@ -29,7 +28,6 @@ export function CommandPaletteDialog({ view, onNavigate, onClose }: CommandPalet
   const [collections, setCollections] = useState<Collection[]>([]);
   const [collectionsLoading, setCollectionsLoading] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const panelRef = useFocusTrap<HTMLDivElement>(onClose);
 
   useEffect(() => {
     let cancelled = false;
@@ -96,58 +94,44 @@ export function CommandPaletteDialog({ view, onNavigate, onClose }: CommandPalet
     }
   };
 
-  return createPortal(
-    <div
-      onClick={onClose}
-      style={{
-        position: "fixed", inset: 0, background: t.color.overlay, backdropFilter: "blur(2px)", zIndex: 600,
-        display: "flex", alignItems: "flex-start", justifyContent: "center", padding: t.space.xxl,
-      }}
+  return (
+    <Dialog
+      onClose={onClose}
+      ariaLabel="Command palette"
+      placement="top"
+      layer={600}
+      maxWidth={560}
+      panelStyle={{ padding: 0, gap: 0, overflow: "hidden" }}
     >
-      <div
-        ref={panelRef}
-        role="dialog"
-        aria-modal="true"
-        aria-label="Command palette"
-        tabIndex={-1}
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          width: "100%", maxWidth: 560, background: t.color.panel, border: `1px solid ${t.color.line}`,
-          borderRadius: t.radius.l, boxShadow: t.shadow.pop, overflow: "hidden",
-          display: "flex", flexDirection: "column",
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: t.space.s, padding: t.space.m, borderBottom: `1px solid ${t.color.line}` }}>
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={onKeyDown}
-            placeholder="Jump to a collection, a page, or an action…"
-            aria-label="Command palette search"
-            role="combobox"
-            aria-expanded="true"
-            aria-controls="command-palette-results"
-            aria-activedescendant={selectedId ?? undefined}
-            autoComplete="off"
-            style={{
-              flex: 1, background: "transparent", border: "none", outline: "none", color: t.color.text,
-              fontFamily: t.font.family, fontSize: t.font.size.l,
-            }}
-          />
-          <span
-            style={{
-              fontFamily: t.font.mono, fontSize: t.font.size.xs, color: t.color.mute,
-              border: `1px solid ${t.color.line}`, borderRadius: t.radius.s, padding: "1px 6px",
-            }}
-          >
-            Esc
-          </span>
-        </div>
-        <div id="command-palette-results">
-          <CommandPaletteResultList groups={groups} selectedId={selectedId} onHoverSelect={setSelectedId} onActivate={activate} />
-        </div>
+      <div style={{ display: "flex", alignItems: "center", gap: t.space.s, padding: t.space.m, borderBottom: `1px solid ${t.color.line}` }}>
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={onKeyDown}
+          placeholder="Jump to a collection, a page, or an action…"
+          aria-label="Command palette search"
+          role="combobox"
+          aria-expanded="true"
+          aria-controls="command-palette-results"
+          aria-activedescendant={selectedId ?? undefined}
+          autoComplete="off"
+          style={{
+            flex: 1, background: "transparent", border: "none", outline: "none", color: t.color.text,
+            fontFamily: t.font.family, fontSize: t.font.size.l,
+          }}
+        />
+        <span
+          style={{
+            fontFamily: t.font.mono, fontSize: t.font.size.xs, color: t.color.mute,
+            border: `1px solid ${t.color.line}`, borderRadius: t.radius.s, padding: "1px 6px",
+          }}
+        >
+          Esc
+        </span>
       </div>
-    </div>,
-    document.body,
+      <div id="command-palette-results">
+        <CommandPaletteResultList groups={groups} selectedId={selectedId} onHoverSelect={setSelectedId} onActivate={activate} />
+      </div>
+    </Dialog>
   );
 }
