@@ -242,10 +242,6 @@ class FakeExportFacade:
     async def read_document_export(self, _document_id):
         return make_document_rows()
 
-    async def collect_blob_hashes(self, _collection_id):
-        # The same original hash is referenced by two docs in reality; the walker still lists it once.
-        return [ORIGINAL_HASH, PDF_HASH]
-
     async def get_blob_rows(self, _hashes):
         return make_blob_rows()
 

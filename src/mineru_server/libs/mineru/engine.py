@@ -41,15 +41,14 @@ class MineruEngine(LoggerClass):
         Args:
             backend (str): The MinerU VLM backend id (e.g. "vlm-transformers", "vlm-vllm-engine").
             lang (str): The OCR/parse language hint forwarded to MinerU.
-            model_source (str): "huggingface" or "modelscope" — the weight hoster (log-only; MinerU
-                reads MINERU_MODEL_SOURCE from the environment itself).
-            model_cache_home (str): The model cache root (log-only; set as an env var by compose).
+            model_source (str): "huggingface" or "modelscope" — accepted for signature stability but
+                not retained: MinerU reads MINERU_MODEL_SOURCE from the environment itself.
+            model_cache_home (str): The model cache root — not retained either (set as an env var
+                by compose).
         """
         LoggerClass.__init__(self)
         self._backend = backend
         self._lang = lang
-        self._model_source = model_source
-        self._model_cache_home = model_cache_home
         self._warmed = False
 
     @property
