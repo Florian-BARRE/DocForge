@@ -1,0 +1,26 @@
+{
+ "block_types": [
+  "heading",
+  "paragraph",
+  "heading",
+  "table",
+  "caption",
+  "formula",
+  "figure",
+  "list_item",
+  "heading",
+  "paragraph",
+  "header_footer"
+ ],
+ "n_blocks": 11,
+ "request": {
+  "content": "%PDF-1.7 characterization",
+  "headers": {
+   "Authorization": "Bearer token",
+   "Content-Type": "application/pdf"
+  },
+  "params": null,
+  "url": "/parse"
+ },
+ "score": 0.9090909090909091
+}

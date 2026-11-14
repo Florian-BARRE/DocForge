@@ -1,0 +1,93 @@
+{
+ "doc_id": "characterization-hash",
+ "source_hash": "characterization-hash",
+ "title": "",
+ "n_pages": 1,
+ "language": "",
+ "blocks": [
+  {
+   "id": "characterization-hash:p0:b0",
+   "block_type": "table",
+   "provenance": {
+    "page": 0,
+    "bbox": [
+     0.0,
+     0.0,
+     1.0,
+     0.2
+    ],
+    "char_span": null
+   },
+   "reading_order": 0,
+   "parent_id": null,
+   "level": null,
+   "text": null,
+   "table": {
+    "cells": [
+     [
+      "A",
+      "B"
+     ],
+     [
+      "1",
+      "2"
+     ]
+    ],
+    "n_rows": 2,
+    "n_cols": 2,
+    "has_header": true
+   },
+   "figure": null,
+   "language": null
+  },
+  {
+   "id": "characterization-hash:p0:b1",
+   "block_type": "formula",
+   "provenance": {
+    "page": 0,
+    "bbox": [
+     0.0,
+     0.2,
+     1.0,
+     0.4
+    ],
+    "char_span": null
+   },
+   "reading_order": 1,
+   "parent_id": null,
+   "level": null,
+   "text": "E=mc^2",
+   "table": null,
+   "figure": null,
+   "language": null
+  },
+  {
+   "id": "characterization-hash:p0:b2",
+   "block_type": "figure",
+   "provenance": {
+    "page": 0,
+    "bbox": [
+     0.5,
+     0.5,
+     1.0,
+     1.0
+    ],
+    "char_span": null
+   },
+   "reading_order": 2,
+   "parent_id": null,
+   "level": null,
+   "text": null,
+   "table": null,
+   "figure": {
+    "kind": "photo",
+    "crop": null,
+    "relevance": 1.0,
+    "ocr_text": null,
+    "description": null,
+    "data_table": null
+   },
+   "language": null
+  }
+ ]
+}
