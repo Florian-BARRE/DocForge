@@ -2,30 +2,23 @@
 # The MinerU2.5-Pro parser node — a NETWORK client, not an in-process engine. It POSTs the PDF bytes to
 # a sidecar (src/mineru_server, POST /parse) that runs the MinerU2.5-Pro vision-language layout-parsing
 # pipeline on its own torch+CUDA runtime, and maps the sidecar's clean per-page block contract into the
-# canonical IR via MineruIRMapper. Subclasses BaseParserNode directly (no docling engine): it inherits
-# the PDF-view resolution, empty-IR degradation, quality score and ScoredOutput, and implements ONLY
-# _parse (async network I/O) plus preflight (endpoint reachability). Wire it as an OFF-by-default
-# ScoreBelow escalation head after standard docling, never in the default/light blob — the sidecar's
-# VLM is GPU-only, heavy, slow and optional (built lazily sidecar-side).
-
-# ====== Third-Party Library Imports ======
-import httpx
+# canonical IR via MineruIRMapper. Subclasses SidecarParserNode, which owns the sidecar HTTP call and
+# preflight: this class declares ONLY its registry identity, its Config, its ENDPOINT and its mapper.
+# Wire it as an OFF-by-default ScoreBelow escalation head after standard docling, never in the
+# default/light blob — the sidecar's VLM is GPU-only, heavy, slow and optional (built lazily sidecar-
+# side).
 
 # ====== Internal Project Imports ======
-from shared_libs.pipelines.nodes.http_pool import HttpClientPool
-from shared_libs.pipelines.nodes.openai_compat import EndpointReachability
-from shared_libs.pipelines.nodes.retry import NetworkRetry
 from shared_libs.pipelines.registry import NodeRegistry
-from shared_libs.public_models import DocumentIR, IntakeResult
 
 # ====== Local Project Imports ======
-from ..base import BaseParserNode
+from ..sidecar_base import SidecarParserNode
 from .config import ParserMineruConfig
 from .mapper import MineruIRMapper
 
 
 @NodeRegistry.register("parser")
-class ParserMineruNode(BaseParserNode):
+class ParserMineruNode(SidecarParserNode):
     """
     Parse a PDF with the MinerU2.5-Pro sidecar, mapping its layout-parsing output to the canonical IR.
 
@@ -49,67 +42,12 @@ class ParserMineruNode(BaseParserNode):
         "standard docling."
     )
     Config = ParserMineruConfig
-    UNIQUE_IN_GRAPH = True
-    # The sidecar renders pages itself and is PDF-only: with no PDF view the base degrades to an empty
-    # IR (score 0), which is the correct behaviour for an escalation step.
-    NATIVE_FORMATS = frozenset()
+    ENDPOINT = "/parse"
+    MAPPER = MineruIRMapper
 
-    async def preflight(self) -> None:
-        """Verify the sidecar is reachable and its token accepted, before any spend.
-
-        Probes the sidecar's ``/health`` route — any answer (even non-200) proves the host is up; a
-        401/403 surfaces a rejected bearer token. The VLM model is built lazily on the first /parse
-        request, so /health is up well before the model loads.
-        """
-        config: ParserMineruConfig = self.config
-        await EndpointReachability.check(
-            node_kind=self.KIND,
-            base_url=config.base_url,
-            api_key=config.api_key,
-            timeout_seconds=config.preflight_timeout_seconds,
-            path="/health",
-        )
-
-    async def _parse(self, source: IntakeResult) -> DocumentIR:
-        """POST the PDF bytes to the sidecar and map its response into the canonical IR.
-
-        Args:
-            source (IntakeResult): The intake result carrying the PDF-view bytes to parse.
-
-        Returns:
-            DocumentIR: The IR mapped from the sidecar's per-page block contract.
-        """
-        config: ParserMineruConfig = self.config
-        # 1. Build headers — the raw PDF bytes ride in the body + the optional bearer token.
-        headers = {"Content-Type": "application/pdf"}
-        if config.api_key:
-            headers["Authorization"] = f"Bearer {config.api_key}"
-
-        async def _post(client: httpx.AsyncClient) -> dict:
-            """One async call per document — raw PDF bytes in the body (the retryable operation)."""
-            response = await client.post(
-                "/parse",
-                content=source.pdf_content,
-                headers=headers,
-            )
-            response.raise_for_status()
-            return response.json()
-
-        # 2. The pooled client keeps the connection alive across retries (headers ride per-request)
-        #    and self-heals a dead socket left by a sidecar restart; non-transient errors re-raise.
-        payload = await NetworkRetry.run(
-            lambda: HttpClientPool.run(
-                _post, base_url=config.base_url, timeout=config.timeout_seconds
-            ),
-            max_retries=config.max_retries,
-            retry_backoff_seconds=config.retry_backoff_seconds,
-            label=f"parser '{self.KIND}'",
-        )
-
-        # 3. Map the sidecar's clean per-page block contract into the canonical IR.
-        return MineruIRMapper.map_response(
-            payload, doc_id=source.source_hash, source_hash=source.source_hash
-        )
+    def _query_params(self) -> None:
+        """This sidecar's /parse endpoint takes no sub-pipeline query params."""
+        return None
 
 
 __all__ = ["ParserMineruNode"]
