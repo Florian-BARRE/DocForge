@@ -6,8 +6,10 @@
 // the Activity tab's idiom, so an active ingest job's status advances live in the grid too, not
 // just on the Jobs tab.
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { queryDocuments, type DocumentFilter, type DocumentGridRow, type DocumentSort } from "../../api/corpus";
+import { errorMessage } from "../../hooks/errorMessage";
+import { usePolling } from "../../hooks/usePolling";
 
 const POLL_MS = 2500;
 
@@ -41,27 +43,23 @@ export function useCorpusQuery({ collectionId, filter, sort, limit, offset }: Us
   const [error, setError] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
 
-  useEffect(() => {
-    let cancelled = false;
-    let timer: number | undefined;
-
-    const load = (isPoll: boolean) => {
-      if (!isPoll) setLoading(true);
-      setError(null);
-      queryDocuments(collectionId, { filter, sort, pagination: { limit, offset } })
-        .then((response) => {
-          if (cancelled) return;
-          setRows(response.rows);
-          setTotal(response.total);
-          if (response.rows.some(isActive)) timer = window.setTimeout(() => load(true), POLL_MS);
-        })
-        .catch((e) => { if (!cancelled) setError(e instanceof Error ? e.message : String(e)); })
-        .finally(() => { if (!cancelled) setLoading(false); });
-    };
-    load(false);
-
-    return () => { cancelled = true; window.clearTimeout(timer); };
-  }, [collectionId, filter, sort, limit, offset, tick]);
+  // Stops on the first error (`retryOnError: false`): the grid shows the error and `refetch` retries.
+  usePolling(
+    () => queryDocuments(collectionId, { filter, sort, pagination: { limit, offset } }),
+    {
+      intervalMs: POLL_MS,
+      retryOnError: false,
+      onFetchStart: (isPoll) => {
+        if (!isPoll) setLoading(true);
+        setError(null);
+      },
+      onData: (response) => { setRows(response.rows); setTotal(response.total); },
+      onError: (e) => setError(errorMessage(e)),
+      isDone: (response) => !response.rows.some(isActive),
+      onSettled: () => setLoading(false),
+    },
+    [collectionId, filter, sort, limit, offset, tick],
+  );
 
   const patchRow = useCallback((id: string, patch: Partial<DocumentGridRow>) => {
     setRows((prev) => prev.map((row) => (row.id === id ? { ...row, ...patch } : row)));

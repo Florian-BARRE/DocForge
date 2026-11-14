@@ -4,10 +4,11 @@
 // WorkersStatusTile, its sibling tile) per the IA redesign — the detailed backlog TREND lives on
 // Activity ▸ Trends instead, closing the QueueDepthTile duplication the redesign set out to kill.
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { getQueueDepth, type QueueDepth } from "../../api/jobs";
 import { StatTile } from "../../components/StatTile";
 import type { Navigate } from "../../shell/view";
+import { usePolling } from "../../hooks/usePolling";
 
 const POLL_MS = 5000;
 
@@ -18,25 +19,11 @@ interface QueueStatusTileProps {
 export function QueueStatusTile({ onNavigate }: QueueStatusTileProps) {
   const [depth, setDepth] = useState<QueueDepth | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    let timer: number | undefined;
-
-    const load = () => {
-      getQueueDepth()
-        .then((data) => {
-          if (cancelled) return;
-          setDepth(data);
-          timer = window.setTimeout(load, POLL_MS);
-        })
-        .catch(() => {
-          if (!cancelled) timer = window.setTimeout(load, POLL_MS);
-        });
-    };
-    load();
-
-    return () => { cancelled = true; window.clearTimeout(timer); };
-  }, []);
+  usePolling(
+    () => getQueueDepth(),
+    { intervalMs: POLL_MS, onData: setDepth },
+    [],
+  );
 
   if (!depth) return <StatTile value="…" label="Pending jobs" />;
 
