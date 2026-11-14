@@ -26,19 +26,6 @@ from .conftest import (
 ORPHAN_POINT_ID = "99999999-9999-9999-9999-999999999999"
 
 
-class SnapshotDriftExportFacade(FakeExportFacade):
-    """A live re-query of blob hashes would EXPLODE — the exporter must derive them from the snapshot.
-
-    ``collect_blob_hashes`` is the OLD live re-query path; the snapshot-consistent exporter must never
-    call it (the blob set now comes from the document rows already written). A call here is a bug.
-    """
-
-    async def collect_blob_hashes(self, _collection_id):
-        raise AssertionError(
-            "collect_blob_hashes must not be called — blobs come from the snapshot"
-        )
-
-
 class MissingBlobRowExportFacade(FakeExportFacade):
     """The PDF blob's REGISTRY ROW vanished (a concurrent delete raced the document pass)."""
 
@@ -142,9 +129,9 @@ async def test_produced_bundle_self_validates(export_facade, tmp_path) -> None:
 
 async def test_blob_set_is_derived_from_the_document_snapshot_not_a_live_requery(tmp_path) -> None:
     # The exporter must NOT re-query the collection's blob hashes live (that could disagree with the
-    # documents already written); it derives them from the snapshot rows. The facade's live re-query
-    # raises if called, yet the export still emits exactly the snapshot-referenced blobs.
-    manifest, root = await _build(SnapshotDriftExportFacade(), tmp_path)
+    # documents already written); it derives them from the snapshot rows. The facade exposes no live
+    # re-query at all, yet the export still emits exactly the snapshot-referenced blobs.
+    manifest, root = await _build(FakeExportFacade(), tmp_path)
     blob_files = {p.name for p in (root / BundlePaths.BLOB_DIR).iterdir()}
     assert blob_files == {ORIGINAL_HASH, PDF_HASH}  # doc.source_hash + doc.pdf_blob_hash — no more
     assert manifest.counts.blobs == 2

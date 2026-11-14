@@ -11,7 +11,6 @@ from typing import Any
 
 # ====== Third-Party Library Imports ======
 from sqlalchemy import delete, func, select, update
-from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # ====== Internal Project Imports ======
@@ -327,34 +326,6 @@ class ChunkApi:
             .where(Chunk.document_id == document_id)
         )
         return list(result.scalars().all())
-
-    @staticmethod
-    async def upsert_metadata(session: AsyncSession, values: Sequence[ChunkMetadata]) -> None:
-        """
-        Insert-or-update generated metadata values on (chunk_id, field_id).
-
-        The post-hoc metagen path: an LLM computes a field over EXISTING chunks and the values
-        land here without re-chunking — a second run for the same field overwrites in place.
-        """
-        if not values:
-            return
-        # The raw-insert path bypasses the ORM column default, so apply it here: a transient
-        # ChunkMetadata built without `origin` carries None, which would violate NOT NULL.
-        rows = [
-            {
-                "chunk_id": v.chunk_id,
-                "field_id": v.field_id,
-                "value": v.value,
-                "origin": v.origin or FieldOrigin.GENERATED,
-            }
-            for v in values
-        ]
-        statement = pg_insert(ChunkMetadata).values(rows)
-        statement = statement.on_conflict_do_update(
-            index_elements=["chunk_id", "field_id"],
-            set_={"value": statement.excluded.value, "origin": statement.excluded.origin},
-        )
-        await session.execute(statement)
 
     @staticmethod
     async def mark_indexed(session: AsyncSession, chunk_ids: Sequence[uuid.UUID]) -> None:
