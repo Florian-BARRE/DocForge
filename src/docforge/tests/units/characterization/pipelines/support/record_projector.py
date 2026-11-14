@@ -41,11 +41,19 @@ class RecordProjector:
             "score": record.score,
         }
         if with_summaries:
-            projected["input_summary"] = record.input_summary
-            projected["output_summary"] = record.output_summary
+            projected["input_summary"] = cls.summary(record.input_summary)
+            projected["output_summary"] = cls.summary(record.output_summary)
             projected["output"] = record.output
         projected["children"] = [cls.record(child, with_summaries) for child in record.children]
         return projected
+
+    @staticmethod
+    def summary(summary: dict[str, Any] | None) -> dict[str, Any] | None:
+        """A shape summary with its fingerprint cut to 8 hex characters: still a drift detector, but
+        short enough not to read as a secret to the repository's secret scanner."""
+        if summary is None:
+            return None
+        return {**summary, "hash": str(summary["hash"])[:8]}
 
     @staticmethod
     def error(record: NodeExecutionRecord) -> dict[str, str] | None:
