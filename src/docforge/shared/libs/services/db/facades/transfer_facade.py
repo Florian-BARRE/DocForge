@@ -161,6 +161,53 @@ class CollectionTransferFacade(LoggerClass):
         async with self._s3.client() as client:
             return await S3ObjectApi.put_file(client, self._s3.bucket, s3_key, path, content_type)
 
+    async def publish_bundle(self, s3_key: str, path: Any, content_type: str) -> int:
+        """
+        Publish a finished EXPORT bundle from a local archive to S3.
+
+        Atomic: the key becomes valid only once the PUT lands.
+
+        Backs the worker's ``export_collection`` task, which packs the bundle in a temp dir then
+        uploads that file with a known Content-Length (no in-memory buffering).
+
+        Args:
+            s3_key (str): The object key to publish under.
+            path (Any): The local archive path to upload.
+            content_type (str): The object's content type.
+
+        Returns:
+            int: The uploaded object's size in bytes.
+        """
+        async with self._s3.client() as client:
+            return await S3ObjectApi.put_file(client, self._s3.bucket, s3_key, path, content_type)
+
+    async def download_bundle(self, s3_key: str, path: Any) -> None:
+        """
+        Download a bundle object from S3 to a local file (streamed to disk, never whole in memory).
+
+        Backs the worker's ``import_collection`` task, which validates the downloaded archive before
+        any write.
+
+        Args:
+            s3_key (str): The bundle object's key.
+            path (Any): The local destination path.
+        """
+        async with self._s3.client() as client:
+            await S3ObjectApi.download_to(client, self._s3.bucket, s3_key, path)
+
+    async def delete_bundle(self, s3_key: str) -> None:
+        """
+        Delete one bundle object from S3 (idempotent — a missing object is fine).
+
+        Backs the worker's post-import cleanup of the staged upload; the caller decides whether a
+        failure is fatal (the import task treats it as best-effort).
+
+        Args:
+            s3_key (str): The bundle object's key.
+        """
+        async with self._s3.client() as client:
+            await S3ObjectApi.delete(client, self._s3.bucket, s3_key)
+
     async def gc_expired_bundles(self, now: datetime) -> list[uuid.UUID]:
         """
         Delete every expired export bundle everywhere — the S3 object AND its tracking row.

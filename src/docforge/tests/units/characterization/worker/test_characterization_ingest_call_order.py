@@ -25,7 +25,7 @@ _REHYDRATE_FULL = [
     "documents.get",
     "collections.get",
     "collections.get_schema",
-    "s3.get",
+    "documents.read_source_bytes",
     "documents.get_metadata",
 ]
 

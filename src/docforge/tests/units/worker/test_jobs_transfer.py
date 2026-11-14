@@ -3,7 +3,6 @@ coerced, the tracking row driven RUNNING → DONE (FAILED on error), the artifac
 for export, and the new collection id surfaced for import. The heavy engine is stubbed (it has its
 own tests); this pins the task's orchestration + return shape."""
 
-import contextlib
 import uuid
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -11,8 +10,19 @@ from unittest.mock import AsyncMock
 import pytest
 
 
+async def _fake_download(_key, archive_path):
+    """download_bundle writes the bundle to the target path; the import task stats it to derive the
+    decompression-bomb ceiling, so the mock must actually create the file."""
+    archive_path.write_bytes(b"bundle-bytes")
+
+
 def _context(monkeypatch, jobs_transfer):
-    """A fake worker CONTEXT with an AsyncMock tracker, a dummy s3 client scope and config."""
+    """A fake worker CONTEXT with AsyncMock transfer + tracker façades and config."""
+    transfer = SimpleNamespace(
+        publish_bundle=AsyncMock(return_value=4242),
+        download_bundle=AsyncMock(side_effect=_fake_download),
+        delete_bundle=AsyncMock(),
+    )
     tracker = SimpleNamespace(
         mark_running=AsyncMock(),
         report_progress=AsyncMock(),
@@ -21,14 +31,9 @@ def _context(monkeypatch, jobs_transfer):
         mark_failed=AsyncMock(),
     )
 
-    @contextlib.asynccontextmanager
-    async def _client():
-        yield object()
-
     auth = SimpleNamespace(grant_collection_to_key=AsyncMock(return_value=True))
     context = SimpleNamespace(
-        database=SimpleNamespace(transfer=object(), transfer_tracker=tracker, auth=auth),
-        s3=SimpleNamespace(bucket="bucket", client=_client),
+        database=SimpleNamespace(transfer=transfer, transfer_tracker=tracker, auth=auth),
         RUNTIME_CONFIG=SimpleNamespace(
             DOCFORGE_VERSION="test",
             EXPORT_COMPRESSION="none",
@@ -58,13 +63,15 @@ async def test_export_collection_returns_reference_and_marks_done(jobs_transfer,
     fake_exporter = SimpleNamespace(build=AsyncMock(return_value=manifest))
     monkeypatch.setattr(jobs_transfer, "CollectionExporter", lambda *a, **k: fake_exporter)
     monkeypatch.setattr(jobs_transfer.BundleArchive, "pack", staticmethod(lambda *a, **k: None))
-    monkeypatch.setattr(jobs_transfer.S3ObjectApi, "put_file", AsyncMock(return_value=4242))
     collection_id, transfer_id = str(uuid.uuid4()), str(uuid.uuid4())
 
     result = await jobs_transfer.export_collection({}, collection_id, transfer_id)
 
     assert result["s3_key"] == f"col-exports/{transfer_id}.dcexport"
     assert result["size_bytes"] == 4242
+    publish_args = context.database.transfer.publish_bundle.await_args.args
+    assert publish_args[0] == f"col-exports/{transfer_id}.dcexport"
+    assert publish_args[2] == "application/x-dcexport"
     assert result["counts"] == {"documents": 2, "points": 5}
     tracker.mark_running.assert_awaited_once()
     tracker.set_artifact.assert_awaited_once()
@@ -91,16 +98,7 @@ async def test_import_collection_returns_new_collection_and_marks_done(jobs_tran
     fake_reader = SimpleNamespace(validate=lambda: manifest)
     monkeypatch.setattr(jobs_transfer, "BundleReader", lambda _root: fake_reader)
 
-    # download_to writes the bundle to the target path; the import task now stats it to derive the
-    # decompression-bomb ceiling, so the mock must actually create the file.
-    async def _fake_download(_client, _bucket, _key, archive_path):
-        archive_path.write_bytes(b"bundle-bytes")
-
-    monkeypatch.setattr(
-        jobs_transfer.S3ObjectApi, "download_to", AsyncMock(side_effect=_fake_download)
-    )
-    delete_staged = AsyncMock()
-    monkeypatch.setattr(jobs_transfer.S3ObjectApi, "delete", delete_staged)
+    delete_staged = context.database.transfer.delete_bundle
     monkeypatch.setattr(jobs_transfer.BundleArchive, "unpack", staticmethod(lambda *a, **k: None))
     import_result = SimpleNamespace(
         collection_id=new_id, collection_name="DemoCollection (imported)", counts={"documents": 2}
@@ -115,7 +113,7 @@ async def test_import_collection_returns_new_collection_and_marks_done(jobs_tran
     tracker.mark_done.assert_awaited_once()
     # The staged bundle is reclaimed on success so it does not leak in S3 (GC sweeps exports only).
     delete_staged.assert_awaited_once()
-    assert delete_staged.await_args.args[2] == "col-exports/x.dcexport"
+    assert delete_staged.await_args.args[0] == "col-exports/x.dcexport"
     # The new collection's NAME (not just its id) is stamped on the tracking row, so a polled
     # transfer surfaces the real name instead of a null the UI falls back to generic text for.
     done_kwargs = tracker.mark_done.await_args.kwargs
@@ -132,13 +130,6 @@ def _patch_import_engine(jobs_transfer, monkeypatch, new_id):
         lambda _root: SimpleNamespace(validate=lambda: SimpleNamespace(format_version=1)),
     )
 
-    async def _fake_download(_client, _bucket, _key, archive_path):
-        archive_path.write_bytes(b"bundle-bytes")
-
-    monkeypatch.setattr(
-        jobs_transfer.S3ObjectApi, "download_to", AsyncMock(side_effect=_fake_download)
-    )
-    monkeypatch.setattr(jobs_transfer.S3ObjectApi, "delete", AsyncMock())
     monkeypatch.setattr(jobs_transfer.BundleArchive, "unpack", staticmethod(lambda *a, **k: None))
     import_result = SimpleNamespace(
         collection_id=new_id, collection_name="Imported", counts={"documents": 1}

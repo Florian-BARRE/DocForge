@@ -13,7 +13,6 @@ from typing import Any
 from shared_libs.pipelines.ingest import BlobNormalizationError, BlobNormalizer, IngestPipeline
 from shared_libs.public_models import CollectionContract, MetadataFieldSpec, SourceDocument
 from shared_libs.services.db.postgresql.tables import MetadataField
-from shared_libs.services.db.s3 import S3ObjectApi
 
 # ====== Local Project Imports ======
 from .ingest_services import IngestServices
@@ -22,12 +21,12 @@ from .run_limits import RunLimits
 
 
 class Rehydrator:
-    """Load one run's inputs through the Database façade and S3."""
+    """Load one run's inputs through the Database façade (rows and the original bytes)."""
 
     def __init__(self, services: IngestServices) -> None:
         """
         Args:
-            services (IngestServices): The run's services (database, s3, config, default timeout).
+            services (IngestServices): The run's services (database, config, default timeout).
         """
         self._services = services
 
@@ -72,7 +71,7 @@ class Rehydrator:
             RuntimeError: The document row is missing, or the stored blob cannot be auto-migrated.
             ValueError: The collection's job timeout exceeds the worker's hard ceiling.
         """
-        database, s3 = self._services.database, self._services.s3
+        database = self._services.database
         config = self._services.config
         document = await database.documents.get(doc_uuid)
         if document is None:
@@ -83,8 +82,7 @@ class Rehydrator:
         # fetch them either — a garbage-collected source object must not fail a replay.
         raw = b""
         if not replay_from:
-            async with s3.client() as client:
-                raw = await S3ObjectApi.get(client, s3.bucket, document.source_hash)
+            raw = await database.documents.read_source_bytes(document.source_hash)
         field_names = {row.id: row.field_name for row in schema}
         declared = {
             field_names[meta.field_id]: meta.value

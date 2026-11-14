@@ -114,7 +114,7 @@ async def test_replay_runs_the_engine_with_the_resume_point_and_no_cache_hook(ma
     assert run_kwargs["resume"] is harness.resume
     assert "cache_hook" not in run_kwargs
     assert "StageCacheHook" not in harness.calls
-    assert "s3.get" not in harness.calls
+    assert "documents.read_source_bytes" not in harness.calls
 
 
 async def test_replay_downstream_save_replaces_enrichments_only_for_the_enrich_stage(

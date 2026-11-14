@@ -290,6 +290,22 @@ class DocumentsFacade(LoggerClass):
         # 2. Hand back a generator that keeps the S3 client open for the whole iteration.
         return self.__stream_object(row.s3_key, chunk_size), row.mime_type
 
+    async def read_source_bytes(self, source_hash: str) -> bytes:
+        """
+        Read a document's ORIGINAL uploaded bytes from S3 (the object key is the source hash).
+
+        Backs the worker's full ingest run, which starts from the original file; a replay never
+        calls it (it stands on the persisted IR, so a garbage-collected source must not fail it).
+
+        Args:
+            source_hash (str): The document's ``source_hash`` — its content address and S3 key.
+
+        Returns:
+            bytes: The original file's bytes.
+        """
+        async with self._s3.client() as s3:
+            return await S3ObjectApi.get(s3, self._s3.bucket, source_hash)
+
     async def __stream_object(self, s3_key: str, chunk_size: int) -> AsyncIterator[bytes]:
         """Yield an object's bytes from S3 in bounded windows (client scope held for the iteration)."""
         async with self._s3.client() as s3:

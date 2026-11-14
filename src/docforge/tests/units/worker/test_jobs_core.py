@@ -20,7 +20,11 @@ def _fake_database() -> SimpleNamespace:
             is_cancel_requested=AsyncMock(return_value=False),
             persist_execution_tree=AsyncMock(),
         ),
-        documents=SimpleNamespace(get=AsyncMock(), get_metadata=AsyncMock(return_value=[])),
+        documents=SimpleNamespace(
+            get=AsyncMock(),
+            get_metadata=AsyncMock(return_value=[]),
+            read_source_bytes=AsyncMock(return_value=b"raw-bytes"),
+        ),
         collections=SimpleNamespace(get=AsyncMock(), get_schema=AsyncMock(return_value=[])),
         ingestion=SimpleNamespace(
             store_blobs=AsyncMock(),
@@ -69,10 +73,9 @@ def _fake_context(database: SimpleNamespace) -> SimpleNamespace:
 
 
 def _wire(jobs_core, monkeypatch, database: SimpleNamespace, points, job_timeout_seconds=None):
-    """Patch CONTEXT + the module-level S3ObjectApi/RunTranslator seams for one run."""
+    """Patch CONTEXT + the module-level RunTranslator seam for one run."""
     context = _fake_context(database)
     monkeypatch.setattr(jobs_core, "CONTEXT", context)
-    monkeypatch.setattr(jobs_core.S3ObjectApi, "get", AsyncMock(return_value=b"raw-bytes"))
     # Blob normalization is covered on its own (tests/units/stages/test_blob_normalization.py);
     # these tests exercise the job lifecycle + sync hooks, so pass the stub blob through as-is.
     monkeypatch.setattr(jobs_core.BlobNormalizer, "normalize", lambda blob: dict(blob))
@@ -598,7 +601,7 @@ async def test_replay_never_downloads_the_original_bytes(jobs_core, monkeypatch)
     document_id, _ = _wire(jobs_core, monkeypatch, database, points=[])
     database.jobs.get = AsyncMock(return_value=_replay_job("embed"))
     s3_get = AsyncMock(side_effect=AssertionError("replay must not read S3"))
-    monkeypatch.setattr(jobs_core.S3ObjectApi, "get", s3_get)
+    database.documents.read_source_bytes = s3_get
     execute = AsyncMock()
     monkeypatch.setattr(jobs_core.ReplayRun, "execute", execute)
 
