@@ -12,66 +12,35 @@
 // same "veil"); the horizontal scrollbar alone communicates that more columns exist. Per-column
 // filters live in the separate, toggleable CorpusFilterPanel, not in this table.
 
-import { flexRender, type Table } from "@tanstack/react-table";
+import type { Table } from "@tanstack/react-table";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { useEffect, useRef, useState, type DragEvent } from "react";
 import type { DocumentGridRow } from "../../api/corpus";
-import { LoadingState } from "../../components/LoadingState";
 import { theme } from "../../theme";
-import { autoFitColumnWidth } from "./columnAutoFit";
+import { CorpusTableBody } from "./CorpusTableBody";
 import { GroupHeaderRow } from "./GroupHeaderRow";
-import { TableHeaderCell, type DropSide } from "./TableHeaderCell";
+import { lastFlexColumnIndexOf, ROW_HEIGHT, tableWidthOf } from "./tableLayoutModel";
+import { TableHeaderCell } from "./TableHeaderCell";
 import { isPinnedColumn } from "./types";
+import { useCorpusTableLayout } from "./useCorpusTableLayout";
 
 interface CorpusTableProps {
   table: Table<DocumentGridRow>;
   loading: boolean;
 }
 
-const ROW_HEIGHT = 40;
-// `tableLayout: fixed` + an explicit table width needs a floor to compress against — without one
-// the browser happily squeezes every column to near-zero at narrow viewports instead of ever
-// overflowing the `overflow-x: auto` wrapper (scrollWidth stayed === clientWidth, so it never
-// scrolled sideways). Shipped in 0.8.2 — keep honoring it against the live TanStack column sizes.
-const MIN_TABLE_WIDTH = 1100;
-
-interface DragState {
-  sourceId: string;
-  overId: string | null;
-  side: DropSide;
-}
-
 export function CorpusTable({ table, loading }: CorpusTableProps) {
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const [drag, setDrag] = useState<DragState | null>(null);
-  const [containerWidth, setContainerWidth] = useState(0);
+  const {
+    scrollRef, drag, containerWidth, endDrag,
+    onHeaderDragStart, onHeaderDragOver, onHeaderDrop, onAutoFit, onResizeStep, onReorderStep,
+  } = useCorpusTableLayout(table);
   const rows = table.getRowModel().rows;
   const visibleColumns = table.getVisibleLeafColumns();
   const columnCount = visibleColumns.length;
-  // Track the scroll wrapper's own width so a narrower column set (e.g. after hiding columns via
-  // the "Columns" menu) can still stretch to fill it via `leftoverWidth` below, instead of
-  // collapsing to the MIN_TABLE_WIDTH floor and leaving dead space to its right.
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    const observer = new ResizeObserver((entries) => setContainerWidth(entries[0].contentRect.width));
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, []);
-  const tableWidth = Math.max(MIN_TABLE_WIDTH, containerWidth, table.getTotalSize());
+  const tableWidth = tableWidthOf(containerWidth, table.getTotalSize());
 
-  // `table-layout: fixed` with an explicit `<table>` width wider than the sum of the `<colgroup>`
-  // widths (the MIN_TABLE_WIDTH floor on a narrow/few-column collection, e.g. one with zero metadata
-  // fields) hands the leftover space to whichever <col> is LAST in the browser's own distribution —
-  // that's the non-resizable "__actions" column, which renders as a wide blank void after its
-  // small button cluster (a "ghost" trailing column). Route the leftover to the last REAL column
-  // instead, so it reads as one column stretching to fill the row rather than empty dead space.
-  const lastFlexColumnIndex = (() => {
-    for (let i = visibleColumns.length - 1; i >= 0; i--) {
-      if (!isPinnedColumn(visibleColumns[i].id)) return i;
-    }
-    return -1;
-  })();
+  // The leftover width goes to the last REAL column (not the pinned actions column), see
+  // lastFlexColumnIndexOf.
+  const lastFlexColumnIndex = lastFlexColumnIndexOf(visibleColumns.map((column) => column.id));
   const definedWidth = visibleColumns.reduce((sum, column) => sum + column.getSize(), 0);
   const leftoverWidth = Math.max(0, tableWidth - definedWidth);
 
@@ -84,53 +53,6 @@ export function CorpusTable({ table, loading }: CorpusTableProps) {
   const virtualItems = virtualizer.getVirtualItems();
   const paddingTop = virtualItems.length ? virtualItems[0].start : 0;
   const paddingBottom = virtualItems.length ? virtualizer.getTotalSize() - virtualItems[virtualItems.length - 1].end : 0;
-
-  const onHeaderDragStart = (columnId: string) => setDrag({ sourceId: columnId, overId: null, side: "after" });
-
-  const onHeaderDragOver = (e: DragEvent<HTMLTableCellElement>, columnId: string) => {
-    if (!drag || drag.sourceId === columnId) return;
-    const rect = e.currentTarget.getBoundingClientRect();
-    const side: DropSide = e.clientX - rect.left < rect.width / 2 ? "before" : "after";
-    setDrag((prev) => (prev ? { ...prev, overId: columnId, side } : prev));
-  };
-
-  const onHeaderDrop = () => {
-    if (drag?.overId && drag.overId !== drag.sourceId) {
-      const current = table.getState().columnOrder;
-      const without = current.filter((id) => id !== drag.sourceId);
-      const targetIndex = without.indexOf(drag.overId);
-      const insertAt = drag.side === "before" ? targetIndex : targetIndex + 1;
-      table.setColumnOrder([...without.slice(0, insertAt), drag.sourceId, ...without.slice(insertAt)]);
-    }
-    setDrag(null);
-  };
-
-  const onAutoFit = (columnId: string) => {
-    if (!scrollRef.current) return;
-    const column = table.getColumn(columnId);
-    if (!column) return;
-    const minSize = column.columnDef.minSize ?? 60;
-    const fitted = autoFitColumnWidth(scrollRef.current, columnId, minSize);
-    table.setColumnSizing((prev) => ({ ...prev, [columnId]: fitted }));
-  };
-
-  // Keyboard counterpart to the mouse drag on ColumnResizeHandle — same `setColumnSizing` write.
-  const onResizeStep = (columnId: string, nextSize: number) => {
-    table.setColumnSizing((prev) => ({ ...prev, [columnId]: nextSize }));
-  };
-
-  // Keyboard counterpart to the mouse drag-and-drop reorder — swaps with the adjacent reorderable
-  // column (pinned select/actions columns sit at the array's edges and are skipped).
-  const onReorderStep = (columnId: string, direction: -1 | 1) => {
-    const current = table.getState().columnOrder;
-    const index = current.indexOf(columnId);
-    if (index === -1) return;
-    const targetIndex = index + direction;
-    if (targetIndex < 0 || targetIndex >= current.length || isPinnedColumn(current[targetIndex])) return;
-    const next = [...current];
-    [next[index], next[targetIndex]] = [next[targetIndex], next[index]];
-    table.setColumnOrder(next);
-  };
 
   return (
     <div
@@ -170,7 +92,7 @@ export function CorpusTable({ table, loading }: CorpusTableProps) {
                   onDragStart={onHeaderDragStart}
                   onDragOver={onHeaderDragOver}
                   onDrop={onHeaderDrop}
-                  onDragEnd={() => setDrag(null)}
+                  onDragEnd={endDrag}
                   onAutoFit={onAutoFit}
                   onResizeStep={onResizeStep}
                   onReorderStep={onReorderStep}
@@ -179,45 +101,14 @@ export function CorpusTable({ table, loading }: CorpusTableProps) {
             </tr>
           ))}
         </thead>
-        <tbody>
-          {loading && rows.length === 0 && (
-            <tr style={{ background: theme.color.surface }}><td colSpan={columnCount}><LoadingState label="loading documents…" /></td></tr>
-          )}
-          {!loading && rows.length === 0 && (
-            <tr style={{ background: theme.color.surface }}>
-              <td colSpan={columnCount} style={{ textAlign: "center", padding: theme.space.xxl, color: theme.color.dim, fontSize: theme.font.size.l }}>
-                No documents match the current filter.
-              </td>
-            </tr>
-          )}
-          {rows.length > 0 && paddingTop > 0 && <tr aria-hidden style={{ height: paddingTop }} />}
-          {virtualItems.map((virtualRow) => {
-            const row = rows[virtualRow.index];
-            return (
-              <tr
-                key={row.id}
-                className="df-row-hover"
-                style={{ borderBottom: `1px solid ${theme.color.line}`, opacity: row.original.enabled ? 1 : 0.6 }}
-              >
-                {row.getVisibleCells().map((cell) => (
-                  <td
-                    key={cell.id}
-                    data-col-id={cell.column.id}
-                    style={{
-                      padding: "6px 8px", fontSize: theme.font.size.s, color: theme.color.text,
-                      overflow: "hidden",
-                      textAlign: cell.column.columnDef.meta?.align === "right" ? "right" : "left",
-                      ...(cell.column.columnDef.meta?.mono ? { fontFamily: theme.font.mono, color: theme.color.dim, fontSize: theme.font.size.xs } : {}),
-                    }}
-                  >
-                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                  </td>
-                ))}
-              </tr>
-            );
-          })}
-          {rows.length > 0 && paddingBottom > 0 && <tr aria-hidden style={{ height: paddingBottom }} />}
-        </tbody>
+        <CorpusTableBody
+          rows={rows}
+          virtualItems={virtualItems}
+          paddingTop={paddingTop}
+          paddingBottom={paddingBottom}
+          columnCount={columnCount}
+          loading={loading}
+        />
       </table>
     </div>
   );

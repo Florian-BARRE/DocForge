@@ -15,7 +15,7 @@ import { SearchQueryCard } from "./SearchQueryCard";
 import { SearchRerankCard } from "./SearchRerankCard";
 import { isActionBlob, isRerankEnabled, type QueryTransformKind } from "./state/blobOps";
 // Same anchor ids `useSearchPipelineEditor` used to compute `hasAnchor`/`hasQueryAnchor`.
-import { QUERY_ANCHOR_ID, RERANK_ANCHOR_ID } from "./state/useSearchPipelineEditor";
+import { QUERY_ANCHOR_ID, RERANK_ANCHOR_ID } from "./state/searchRailModel";
 
 interface SearchPipelineRailProps {
   blob: GroupBlob;

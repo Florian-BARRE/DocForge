@@ -8,7 +8,7 @@
 import { findNodeCard } from "../../../components/schema-form/paletteLookup";
 import type { ActionBlob, GroupBlob, Palette } from "../../../api/types";
 import { isRerankEnabled } from "./blobOps";
-import { RERANK_ANCHOR_ID } from "./useSearchPipelineEditor";
+import { RERANK_ANCHOR_ID } from "./searchRailModel";
 
 /** One minimap circle: a stable key (matches the card's `anchorKey`), its label, and whether the
  *  step is currently active (greys out an off-but-always-visible step, e.g. reranking). */
