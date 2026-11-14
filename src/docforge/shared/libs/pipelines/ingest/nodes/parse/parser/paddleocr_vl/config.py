@@ -7,13 +7,13 @@
 # on CPU), far slower than PP-StructureV3, so the base 300 s would truncate a real multi-page parse.
 
 # ====== Third-Party Library Imports ======
-from pydantic import Field, field_validator
+from pydantic import Field
 
-# ====== Internal Project Imports ======
-from shared_libs.pipelines.base import TimeoutRetryConfig
+# ====== Local Project Imports ======
+from ..sidecar_base import SidecarParserConfig
 
 
-class ParserPaddleOcrVlConfig(TimeoutRetryConfig):
+class ParserPaddleOcrVlConfig(SidecarParserConfig):
     """PaddleOCR-VL 1.6 sidecar endpoint + the sub-pipeline toggles forwarded per request.
 
     Timeout/retry come from ``TimeoutRetryConfig`` (``timeout_seconds`` overridden to 600 s — a VLM
@@ -27,7 +27,6 @@ class ParserPaddleOcrVlConfig(TimeoutRetryConfig):
         "chain escalation step added to a collection is reachable out of the box; override per "
         "collection to point at a remote sidecar.",
     )
-    api_key: str = Field(default="", description="Bearer token when the sidecar requires one.")
     timeout_seconds: float = Field(
         default=600.0,
         gt=0,
@@ -48,12 +47,6 @@ class ParserPaddleOcrVlConfig(TimeoutRetryConfig):
         description="OCR the text inside image blocks inline. OFF by default — DocForge crops figures "
         "in the figure_render stage and OCRs them separately, so inline OCR here is redundant work.",
     )
-
-    @field_validator("base_url", mode="before")
-    @classmethod
-    def _strip_whitespace(cls, value: object) -> object:
-        """Strip pasted whitespace — a trailing newline breaks the HTTP request line."""
-        return value.strip() if isinstance(value, str) else value
 
 
 __all__ = ["ParserPaddleOcrVlConfig"]

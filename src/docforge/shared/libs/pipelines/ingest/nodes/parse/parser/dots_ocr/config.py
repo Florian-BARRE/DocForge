@@ -7,13 +7,13 @@
 # even on GPU), so the base 300 s would truncate a real multi-page parse.
 
 # ====== Third-Party Library Imports ======
-from pydantic import Field, field_validator
+from pydantic import Field
 
-# ====== Internal Project Imports ======
-from shared_libs.pipelines.base import TimeoutRetryConfig
+# ====== Local Project Imports ======
+from ..sidecar_base import SidecarParserConfig
 
 
-class ParserDotsOcrConfig(TimeoutRetryConfig):
+class ParserDotsOcrConfig(SidecarParserConfig):
     """dots.ocr sidecar endpoint config.
 
     Timeout/retry come from ``TimeoutRetryConfig`` (``timeout_seconds`` overridden to 900 s — a
@@ -27,19 +27,12 @@ class ParserDotsOcrConfig(TimeoutRetryConfig):
         "chain escalation step added to a collection is reachable out of the box; override per "
         "collection to point at a remote sidecar.",
     )
-    api_key: str = Field(default="", description="Bearer token when the sidecar requires one.")
     timeout_seconds: float = Field(
         default=900.0,
         gt=0,
         description="Per-request timeout (s). dots.ocr is a per-page VLM — minutes per document even "
         "on GPU, so the default is high; raise it further for long dense documents.",
     )
-
-    @field_validator("base_url", mode="before")
-    @classmethod
-    def _strip_whitespace(cls, value: object) -> object:
-        """Strip pasted whitespace — a trailing newline breaks the HTTP request line."""
-        return value.strip() if isinstance(value, str) else value
 
 
 __all__ = ["ParserDotsOcrConfig"]
