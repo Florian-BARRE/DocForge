@@ -8,6 +8,9 @@ from .actor import IdempotencyActorScope
 from .request_buffer import IdempotencyRequestBuffer
 from .response_buffer import IdempotencyResponseBuffer
 
+# ---------------------- Injected configuration ---------------------- #
+from .settings import IdempotencySettings
+
 # ---------------------- The idempotency ASGI middleware ---------------------- #
 from .middleware import IdempotencyMiddleware
 
@@ -17,5 +20,6 @@ __all__ = [
     "IdempotencyActorScope",
     "IdempotencyRequestBuffer",
     "IdempotencyResponseBuffer",
+    "IdempotencySettings",
     "IdempotencyMiddleware",
 ]
