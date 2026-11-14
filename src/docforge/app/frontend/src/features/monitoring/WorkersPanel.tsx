@@ -11,7 +11,7 @@
 // compact top-right toggle switches the card grid between list/grid-N/auto layouts via the shared
 // ViewModeToggle, persisted per-viewer (useViewMode, storage key docforge_view_workers).
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { getWorkersLive, type JobStatus, type WorkerActivity } from "../../api/jobs";
 import { ErrorState } from "../../components/ErrorState";
 import { LoadingState } from "../../components/LoadingState";
@@ -25,6 +25,8 @@ import { TelemetryNote } from "./TelemetryNote";
 import { ThroughputTile } from "./ThroughputTile";
 import { WorkerCard } from "./WorkerCard";
 import { WorkersFleetSummary } from "./WorkersFleetSummary";
+import { errorMessage } from "../../hooks/errorMessage";
+import { usePolling } from "../../hooks/usePolling";
 
 const POLL_MS = 3000;
 const GRID_MIN_PX = 320;
@@ -34,30 +36,17 @@ export function WorkersPanel({ onNavigate }: { onNavigate: Navigate }) {
   const [error, setError] = useState<string | null>(null);
   const { mode, setMode } = useViewMode("docforge_view_workers");
 
-  useEffect(() => {
-    let cancelled = false;
-    let timer: number | undefined;
-
-    const load = () => {
-      getWorkersLive()
-        .then(({ workers: data }) => {
-          if (cancelled) return;
-          setWorkers(data);
-          setError(null);
-          timer = window.setTimeout(load, POLL_MS);
-        })
-        .catch((e) => {
-          if (cancelled) return;
-          // A transient poll failure surfaces the error but must NOT kill the interval — the
-          // fleet view is always-live and has to recover on its own once the backend answers again.
-          setError(e instanceof Error ? e.message : String(e));
-          timer = window.setTimeout(load, POLL_MS);
-        });
-    };
-    load();
-
-    return () => { cancelled = true; window.clearTimeout(timer); };
-  }, []);
+  // A transient poll failure surfaces the error but must NOT kill the interval — the fleet view is
+  // always-live and has to recover on its own once the backend answers again.
+  usePolling(
+    () => getWorkersLive(),
+    {
+      intervalMs: POLL_MS,
+      onData: ({ workers: data }) => { setWorkers(data); setError(null); },
+      onError: (e) => setError(errorMessage(e)),
+    },
+    [],
+  );
 
   // Applied right after a cancel/stop/force call resolves, so the affected job's card reflects the
   // new state immediately rather than waiting for the next poll tick.

@@ -6,11 +6,12 @@
 // CollectionsStatusTiles' siblings before Collections grew health presets) it stays a pure summary —
 // `onNavigate` is still accepted to keep HomePage's tile row call sites uniform.
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { getSearchHealth, type SearchHealthSummary } from "../../api/search";
 import { StatTile, type StatTileTone } from "../../components/StatTile";
 import type { Navigate } from "../../shell/view";
 import { theme } from "../../theme";
+import { usePolling } from "../../hooks/usePolling";
 
 const POLL_MS = 10000;
 
@@ -51,25 +52,11 @@ function toneFor(data: SearchHealthSummary): StatTileTone {
 export function SearchHealthTile({ onNavigate: _onNavigate }: SearchHealthTileProps) {
   const [data, setData] = useState<SearchHealthSummary | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    let timer: number | undefined;
-
-    const load = () => {
-      getSearchHealth()
-        .then((next) => {
-          if (cancelled) return;
-          setData(next);
-          timer = window.setTimeout(load, POLL_MS);
-        })
-        .catch(() => {
-          if (!cancelled) timer = window.setTimeout(load, POLL_MS);
-        });
-    };
-    load();
-
-    return () => { cancelled = true; window.clearTimeout(timer); };
-  }, []);
+  usePolling(
+    () => getSearchHealth(),
+    { intervalMs: POLL_MS, onData: setData },
+    [],
+  );
 
   if (!data) return <StatTile value="…" label="Search health" />;
 

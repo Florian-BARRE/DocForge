@@ -3,10 +3,11 @@
 // fetch+poll (mirrors WorkersPanel's own always-live pattern) so this tile works standalone even if
 // a sibling Home tile's fetch fails.
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { getWorkersLive, type WorkerActivity } from "../../api/jobs";
 import { StatTile } from "../../components/StatTile";
 import type { Navigate } from "../../shell/view";
+import { usePolling } from "../../hooks/usePolling";
 
 const POLL_MS = 4000;
 
@@ -17,25 +18,11 @@ interface WorkersStatusTileProps {
 export function WorkersStatusTile({ onNavigate }: WorkersStatusTileProps) {
   const [workers, setWorkers] = useState<WorkerActivity[] | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    let timer: number | undefined;
-
-    const load = () => {
-      getWorkersLive()
-        .then(({ workers: data }) => {
-          if (cancelled) return;
-          setWorkers(data);
-          timer = window.setTimeout(load, POLL_MS);
-        })
-        .catch(() => {
-          if (!cancelled) timer = window.setTimeout(load, POLL_MS);
-        });
-    };
-    load();
-
-    return () => { cancelled = true; window.clearTimeout(timer); };
-  }, []);
+  usePolling(
+    () => getWorkersLive(),
+    { intervalMs: POLL_MS, onData: ({ workers: data }) => setWorkers(data) },
+    [],
+  );
 
   if (!workers) return <StatTile value="…" label="Workers" />;
 

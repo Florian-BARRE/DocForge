@@ -4,9 +4,10 @@
 // independent of the jobs-list poll it sits above. Scoped to one collection's Activity tab when
 // `collectionId` is given; omitted, it reads the FLEET-WIDE backlog (Home/Monitoring dashboards).
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { getQueueDepth, type QueueDepth } from "../../api/jobs";
 import { theme } from "../../theme";
+import { usePolling } from "../../hooks/usePolling";
 
 const POLL_MS = 3000;
 
@@ -18,25 +19,11 @@ interface QueueDepthTileProps {
 export function QueueDepthTile({ collectionId }: QueueDepthTileProps) {
   const [depth, setDepth] = useState<QueueDepth | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    let timer: number | undefined;
-
-    const load = () => {
-      getQueueDepth(collectionId)
-        .then((data) => {
-          if (cancelled) return;
-          setDepth(data);
-          timer = window.setTimeout(load, POLL_MS);
-        })
-        .catch(() => {
-          if (!cancelled) timer = window.setTimeout(load, POLL_MS);
-        });
-    };
-    load();
-
-    return () => { cancelled = true; window.clearTimeout(timer); };
-  }, [collectionId]);
+  usePolling(
+    () => getQueueDepth(collectionId),
+    { intervalMs: POLL_MS, onData: setDepth },
+    [collectionId],
+  );
 
   if (!depth) return null;
 

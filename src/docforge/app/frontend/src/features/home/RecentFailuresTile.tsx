@@ -4,10 +4,11 @@
 // Failures. This tile only summarizes the rolling-window failure count and routes there, replacing
 // the old RecentFailuresStrip (which re-rendered a full JobRow list — a second copy of that surface).
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { getFailureBreakdown, type FailureBreakdown } from "../../api/jobs";
 import { StatTile } from "../../components/StatTile";
 import type { Navigate } from "../../shell/view";
+import { usePolling } from "../../hooks/usePolling";
 
 const POLL_MS = 15000;
 const WINDOW_HOURS = 24;
@@ -19,25 +20,11 @@ interface RecentFailuresTileProps {
 export function RecentFailuresTile({ onNavigate }: RecentFailuresTileProps) {
   const [data, setData] = useState<FailureBreakdown | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    let timer: number | undefined;
-
-    const load = () => {
-      getFailureBreakdown({ windowHours: WINDOW_HOURS })
-        .then((next) => {
-          if (cancelled) return;
-          setData(next);
-          timer = window.setTimeout(load, POLL_MS);
-        })
-        .catch(() => {
-          if (!cancelled) timer = window.setTimeout(load, POLL_MS);
-        });
-    };
-    load();
-
-    return () => { cancelled = true; window.clearTimeout(timer); };
-  }, []);
+  usePolling(
+    () => getFailureBreakdown({ windowHours: WINDOW_HOURS }),
+    { intervalMs: POLL_MS, onData: setData },
+    [],
+  );
 
   if (!data) return <StatTile value="…" label="Recent failures" />;
 

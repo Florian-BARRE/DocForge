@@ -4,13 +4,15 @@
 // ("Recent completed jobs"), so both read as a living view instead of stopping at a handful of
 // summary numbers in an otherwise empty canvas.
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { listJobsPage, type JobStatus, type JobStatusValue } from "../../api/jobs";
 import { ErrorState } from "../../components/ErrorState";
 import { LoadingState } from "../../components/LoadingState";
 import type { Navigate } from "../../shell/view";
 import { theme } from "../../theme";
 import { JobRow } from "./JobRow";
+import { errorMessage } from "../../hooks/errorMessage";
+import { usePolling } from "../../hooks/usePolling";
 
 const POLL_MS = 5000;
 
@@ -26,31 +28,17 @@ export function RecentJobsPanel({ title, status, limit = 8, emptyLabel, onNaviga
   const [jobs, setJobs] = useState<JobStatus[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    let timer: number | undefined;
-
-    const load = () => {
-      listJobsPage({ status, order: "newest", limit })
-        .then((page) => {
-          if (cancelled) return;
-          setJobs(page.jobs);
-          setError(null);
-          timer = window.setTimeout(load, POLL_MS);
-        })
-        .catch((e) => {
-          if (cancelled) return;
-          setError(e instanceof Error ? e.message : String(e));
-          timer = window.setTimeout(load, POLL_MS);
-        });
-    };
-    load();
-
-    return () => { cancelled = true; window.clearTimeout(timer); };
-    // `status` is a fresh array literal from the caller on every render — compare by content
-    // (JSON.stringify), not identity, so this effect doesn't re-poll/flicker on every parent render.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [JSON.stringify(status), limit]);
+  // `status` is a fresh array literal from the caller on every render — compare by content
+  // (JSON.stringify), not identity, so this loop doesn't re-poll/flicker on every parent render.
+  usePolling(
+    () => listJobsPage({ status, order: "newest", limit }),
+    {
+      intervalMs: POLL_MS,
+      onData: (page) => { setJobs(page.jobs); setError(null); },
+      onError: (e) => setError(errorMessage(e)),
+    },
+    [JSON.stringify(status), limit],
+  );
 
   return (
     <div>
