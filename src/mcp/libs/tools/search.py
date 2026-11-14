@@ -75,8 +75,8 @@ def _plain_filters(filters: dict[str, FilterValue] | None) -> dict[str, Any] | N
     }
 
 
-def register(mcp: MCPServer, sdk: AsyncClient) -> None:
-    """Register search tools on the MCP server.
+def register_query_tools(mcp: MCPServer, sdk: AsyncClient) -> None:
+    """Register the search and chunk-browse tools.
 
     Args:
         mcp (MCPServer): The MCP server instance.
@@ -255,6 +255,15 @@ def register(mcp: MCPServer, sdk: AsyncClient) -> None:
             return compact_json(page.model_dump(mode="json", exclude_unset=True))
         return SearchTextRenderer().render_browse(page)
 
+
+def register_health_tools(mcp: MCPServer, sdk: AsyncClient) -> None:
+    """Register the search-runtime health tool.
+
+    Args:
+        mcp (MCPServer): The MCP server instance.
+        sdk (AsyncClient): The DocForge API client.
+    """
+
     @mcp.tool()
     async def get_search_health() -> Any:
         """
@@ -265,3 +274,14 @@ def register(mcp: MCPServer, sdk: AsyncClient) -> None:
         aggregate with no per-collection scope.
         """
         return (await sdk.search.get_search_health()).model_dump(mode="json")
+
+
+def register(mcp: MCPServer, sdk: AsyncClient) -> None:
+    """Register the search tools on the MCP server, group by group.
+
+    Args:
+        mcp (MCPServer): The MCP server instance.
+        sdk (AsyncClient): The DocForge API client.
+    """
+    register_query_tools(mcp, sdk)
+    register_health_tools(mcp, sdk)

@@ -20,13 +20,13 @@ from ..path_guard import PathGuard
 from ._encoding import DEFAULT_MAX_INLINE_UPLOAD_BYTES, decode_base64_arg
 
 
-def register(
+def register_upload_tools(
     mcp: MCPServer,
     sdk: AsyncClient,
     path_guard: PathGuard,
     max_inline_upload_bytes: int = DEFAULT_MAX_INLINE_UPLOAD_BYTES,
 ) -> None:
-    """Register document tools on the MCP server.
+    """Register the two upload tools (server-local file path and base64 bytes).
 
     Args:
         mcp (MCPServer): The MCP server instance.
@@ -77,6 +77,15 @@ def register(
         )
         return accepted.model_dump(mode="json")
 
+
+def register_state_tools(mcp: MCPServer, sdk: AsyncClient) -> None:
+    """Register the document enable-toggle and metadata-update tools.
+
+    Args:
+        mcp (MCPServer): The MCP server instance.
+        sdk (AsyncClient): The DocForge API client.
+    """
+
     @mcp.tool()
     async def set_document_enabled(document_id: str, enabled: bool) -> Any:
         """Toggle a document's searchability (reversible, no re-ingest)."""
@@ -95,6 +104,15 @@ def register(
         """
         result = await sdk.documents.update_metadata(document_id, values)
         return result.model_dump(mode="json")
+
+
+def register_view_tools(mcp: MCPServer, sdk: AsyncClient) -> None:
+    """Register the Markdown / HTML rendered-view tools.
+
+    Args:
+        mcp (MCPServer): The MCP server instance.
+        sdk (AsyncClient): The DocForge API client.
+    """
 
     @mcp.tool()
     async def get_document_markdown(
@@ -138,6 +156,15 @@ def register(
         view = await sdk.documents.get_html(document_id, pages=pages)
         return view.model_dump(mode="json")
 
+
+def register_maintenance_tools(mcp: MCPServer, sdk: AsyncClient) -> None:
+    """Register the document reingest and trace-payload purge tools.
+
+    Args:
+        mcp (MCPServer): The MCP server instance.
+        sdk (AsyncClient): The DocForge API client.
+    """
+
     @mcp.tool()
     async def reingest_document(
         document_id: str, force: bool = False, replay_from: str | None = None
@@ -164,3 +191,27 @@ def register(
         """
         result = await sdk.documents.purge_trace_payloads(document_id)
         return result.model_dump(mode="json")
+
+
+def register(
+    mcp: MCPServer,
+    sdk: AsyncClient,
+    path_guard: PathGuard,
+    max_inline_upload_bytes: int = DEFAULT_MAX_INLINE_UPLOAD_BYTES,
+) -> None:
+    """Register the document tools on the MCP server, group by group.
+
+    Args:
+        mcp (MCPServer): The MCP server instance.
+        sdk (AsyncClient): The DocForge API client.
+        path_guard (PathGuard): Resolves/confines `file_path` before it reaches the SDK — a no-op
+            on stdio, but on streamable-HTTP it refuses any path outside the configured inbox (or
+            everything, if no inbox is configured) so a remote caller can never read an arbitrary
+            file off the MCP container's filesystem.
+        max_inline_upload_bytes (int): Decoded-size ceiling for `upload_document_bytes`'
+            `content_base64` (operator-configured via `MCP_MAX_INLINE_UPLOAD_BYTES`).
+    """
+    register_upload_tools(mcp, sdk, path_guard, max_inline_upload_bytes)
+    register_state_tools(mcp, sdk)
+    register_view_tools(mcp, sdk)
+    register_maintenance_tools(mcp, sdk)
