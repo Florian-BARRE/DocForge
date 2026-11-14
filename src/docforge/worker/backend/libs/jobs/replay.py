@@ -10,23 +10,14 @@
 # DOCUMENT keeps its prior status with a warning — its previous chunks/points are untouched and served.
 
 # ====== Standard Library Imports ======
-import hashlib
-import json
-import uuid
-from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
-
-# ====== Local Project Imports ======
-from persistence import RunTranslator
 
 # ====== Internal Project Imports (worker) ======
 from backend.context import CONTEXT
 
 # ====== Internal Project Imports ======
 from shared_libs.pipelines.build import PipelineBuilder
-from shared_libs.pipelines.engine import TraceLevel
-from shared_libs.pipelines.ingest.estimate import RateTable
 from shared_libs.pipelines.ingest.replay import (
     PersistedArtifacts,
     ReplayPlanner,
@@ -35,35 +26,16 @@ from shared_libs.pipelines.ingest.replay import (
     SeedKind,
 )
 from shared_libs.pipelines.ingest.stages import StageKey
-from shared_libs.pipelines.reachability import ProviderEgressPolicy
-from shared_libs.public_models import CollectionContract, GeneratedDocumentMeta, SourceDocument
+from shared_libs.public_models import GeneratedDocumentMeta
 
 # ====== Local Project Imports ======
-from .cancellation import CancellationGuard
-from .indexing import DocumentIndexer
-from .progress import JobProgressRecorder
+from .ingest import IngestServices, Persister, ReplayInputs, RunExecutor
 from .stage_plan import StagePlanHelpers
 
 _ZERO_CHUNK_WARNING = (
     "Replay completed but produced 0 chunks — nothing retrievable was created "
     "(the document may be empty or image-only with no extractable text)."
 )
-
-
-@dataclass(slots=True)
-class ReplayInputs:
-    """Everything ingest_document already rehydrated, handed to the replay run."""
-
-    job_id: uuid.UUID
-    document: Any
-    collection: Any
-    schema: list[Any]
-    source: SourceDocument
-    contract: CollectionContract
-    blob: dict
-    stage: str
-    timeout_seconds: float
-    trace_level: TraceLevel
 
 
 class ReplayRun:
@@ -106,7 +78,10 @@ class ReplayRun:
                 or the document has no persisted IR.
             PipelineRunError: The downstream run failed (carries breadcrumb + partial record).
         """
-        database, runner = CONTEXT.database, CONTEXT.runner
+        services = IngestServices.from_context(CONTEXT)
+        database = services.database
+        executor = RunExecutor(services, cache_hook_factory=None)
+        persister = Persister(services)
         document, blob = inputs.document, inputs.blob
 
         # 1. Plan on the built graph (pure); a pipeline edited since admission may refuse now.
@@ -124,66 +99,39 @@ class ReplayRun:
         resume = ReplaySeeder.resume_point(plan, group, persisted)
 
         # 3. Live progress over the DOWNSTREAM stages only (the percentage counts what runs).
-        root_ids = [node.get("id", "") for node in blob.get("nodes", [])]
         planned = [
             node_id
             for node_id in StagePlanHelpers.planned_stage_ids(blob)
             if node_id in plan.downstream_ids
         ]
-        recorder = JobProgressRecorder(
-            inputs.job_id,
-            root_ids,
-            planned,
-            RateTable.from_overrides(inputs.collection.estimate_overrides),
-        )
-        guarded = CancellationGuard(inputs.job_id, root_ids, recorder)
+        guarded = RunExecutor.guarded_progress(inputs.job_id, blob, inputs.collection, planned)
 
         # 4. Run ONLY the downstream subgraph on the seeds (no cache: parse never runs).
-        config = CONTEXT.RUNTIME_CONFIG
-        bundle, record = await runner.run(
+        bundle, record = await executor.run_replay(
             blob,
             inputs.source,
             inputs.contract,
             timeout_seconds=inputs.timeout_seconds,
             progress_callback=guarded,
-            preflight_enabled=config.WORKER_PREFLIGHT_ENABLED,
-            preflight_cache_ttl_seconds=config.WORKER_PREFLIGHT_CACHE_TTL_SECONDS,
-            egress_policy=ProviderEgressPolicy.from_spec(config.PROVIDER_EGRESS_ALLOWLIST),
             trace_level=inputs.trace_level,
             resume=resume,
         )
 
         # 5. The (downstream-only) execution tree onto the job timeline.
-        refs = None
-        if inputs.trace_level.captures_full:
-            refs = await database.ingestion.store_trace_payloads(
-                inputs.job_id, record, config.WORKER_TRACE_PAYLOAD_MAX_BYTES
-            )
-        await database.jobs.persist_execution_tree(inputs.job_id, record, refs=refs)
+        await persister.persist_execution_tree(inputs.job_id, record, inputs.trace_level)
 
         # 6. Translate with the SAME translator, persist only the downstream layers, then index.
-        strategy = next(
-            (n.get("kind", "") for n in blob.get("nodes", []) if n.get("family") == "chunker"),
-            "unknown",
-        )
-        config_hash = hashlib.sha256(
-            json.dumps(blob, sort_keys=True, default=str).encode()
-        ).hexdigest()
-        translated = RunTranslator.translate(
-            document.id, bundle, inputs.schema, strategy, config_hash
-        )
-        await database.replay_persist.save_downstream(
+        translated = persister.translate(document.id, bundle, inputs.schema, blob)
+        await persister.save_downstream(
             document.id,
-            translated.payload,
+            translated,
             replace_enrichments=plan.stage is StageKey.ENRICH,
             replace_document_meta=bundle.document_meta is not None,
             warning_reason=None if bundle.chunks else _ZERO_CHUNK_WARNING,
         )
-        await DocumentIndexer.index(
-            database, document.collection_id, document.id, translated, CONTEXT.logger
-        )
+        await persister.index(document.collection_id, document.id, translated)
         await database.jobs.mark_done(inputs.job_id, finished_at=datetime.now(UTC))
-        CONTEXT.logger.info(
+        services.logger.info(
             f"Replay from '{inputs.stage}' done for document {document.id}: "
             f"{len(bundle.chunks)} chunk(s), start node '{plan.start_node_id}'"
         )
