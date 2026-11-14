@@ -20,7 +20,6 @@ from backend.context import CONTEXT
 
 # ====== Internal Project Imports ======
 from shared_libs.pipelines.ingest import BlobNormalizer  # noqa: F401 - LEGACY-SEAM: test patch seam
-from shared_libs.services.db.s3 import S3ObjectApi  # noqa: F401 - LEGACY-SEAM: test patch seam
 
 # ====== Local Project Imports ======
 from .ingest import IngestJob, IngestServices

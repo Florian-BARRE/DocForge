@@ -26,7 +26,6 @@ from collection_transfer import (
 
 # ====== Internal Project Imports (worker) ======
 from backend.context import CONTEXT
-from shared_libs.services.db.s3 import S3ObjectApi
 
 _BUNDLE_CONTENT_TYPE = "application/x-dcexport"
 
@@ -77,7 +76,7 @@ async def export_collection(
     Returns:
         dict: ``{s3_key, size_bytes, format_version, dense_dim, counts}`` — also stamped on the row.
     """
-    database, s3, config = CONTEXT.database, CONTEXT.s3, CONTEXT.RUNTIME_CONFIG
+    database, config = CONTEXT.database, CONTEXT.RUNTIME_CONFIG
     cid, tid = uuid.UUID(collection_id), uuid.UUID(transfer_id)
     await database.transfer_tracker.mark_running(tid, datetime.now(UTC))
 
@@ -98,10 +97,7 @@ async def export_collection(
 
         # 2. Publish the finished object ATOMICALLY — the key becomes valid only once the PUT lands.
         key = f"{config.EXPORT_BUNDLE_PREFIX}/{tid}.dcexport"
-        async with s3.client() as client:
-            size = await S3ObjectApi.put_file(
-                client, s3.bucket, key, archive_path, _BUNDLE_CONTENT_TYPE
-            )
+        size = await database.transfer.publish_bundle(key, archive_path, _BUNDLE_CONTENT_TYPE)
 
         # 3. Stamp the durable artifact reference + counts, then close the tracking row.
         counts = manifest.counts.model_dump()
@@ -165,7 +161,7 @@ async def import_collection(
     Returns:
         dict: ``{collection_id, collection_name, counts}`` — also stamped on the tracking row.
     """
-    database, s3 = CONTEXT.database, CONTEXT.s3
+    database = CONTEXT.database
     tid = uuid.UUID(transfer_id)
     await database.transfer_tracker.mark_running(tid, datetime.now(UTC))
 
@@ -173,8 +169,7 @@ async def import_collection(
     archive_path, extract_dir = workspace / "bundle.dcexport", workspace / "extracted"
     try:
         # 1. Download + extract, then VALIDATE (manifest + per-file checksums) BEFORE any write.
-        async with s3.client() as client:
-            await S3ObjectApi.download_to(client, s3.bucket, s3_key, archive_path)
+        await database.transfer.download_bundle(s3_key, archive_path)
         extract_dir.mkdir(parents=True, exist_ok=True)
         # Decompression-bomb guard: bound the extracted size to a multiple of the (already
         # upload-capped) compressed size, and cap the member count — a hostile high-ratio bundle is
@@ -217,8 +212,7 @@ async def import_collection(
         #    an import that already succeeded. Only done on success, where no arq retry can re-run and
         #    need to re-download it (a failed import keeps its staging object for a possible retry).
         try:
-            async with s3.client() as client:
-                await S3ObjectApi.delete(client, s3.bucket, s3_key)
+            await database.transfer.delete_bundle(s3_key)
         except Exception as cleanup_exc:  # noqa: BLE001 — cleanup must not break a successful import
             CONTEXT.logger.warning(f"Could not delete staged import bundle {s3_key}: {cleanup_exc}")
 

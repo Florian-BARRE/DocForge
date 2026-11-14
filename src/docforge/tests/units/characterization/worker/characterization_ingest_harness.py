@@ -1,6 +1,6 @@
 # ====== Code Summary ======
 # IngestHarness — the recording fakes behind the ingest/replay CALL-ORDER characterization tests.
-# Every Database facade method, the S3 read, the pipeline runner, the translator and the stage-cache
+# Every Database facade method (the S3 read included, through ``documents``), the pipeline runner, the translator and the stage-cache
 # hook factory append ONE entry to a shared ordered log (``"facade.method"``) when they are awaited /
 # called, so a test can assert the EXACT ordered sequence of side effects of ``ingest_document`` (and of
 # the replay branch) as a golden list. The fakes return what the real calls return and never touch a
@@ -204,7 +204,9 @@ class IngestHarness:
                 persist_execution_tree=a("jobs.persist_execution_tree"),
             ),
             documents=SimpleNamespace(
-                get=a("documents.get", self.document), get_metadata=a("documents.get_metadata", [])
+                get=a("documents.get", self.document),
+                get_metadata=a("documents.get_metadata", []),
+                read_source_bytes=a("documents.read_source_bytes", b"raw-bytes"),
             ),
             collections=SimpleNamespace(
                 get=a("collections.get", self.collection),
@@ -247,7 +249,6 @@ class IngestHarness:
         # Each module resolves its services through its OWN module-level CONTEXT name.
         for module in (jobs_core, jobs_replay, jobs_cancellation):
             monkeypatch.setattr(module, "CONTEXT", self.context)
-        monkeypatch.setattr(jobs_core.S3ObjectApi, "get", self._async("s3.get", b"raw-bytes"))
         # Blob normalization is characterized elsewhere: pass the stub blob through as-is.
         blob = {"nodes": [{"id": node_id, "kind": "intake"} for node_id in root_node_ids]}
         monkeypatch.setattr(jobs_core.BlobNormalizer, "normalize", lambda _stored: dict(blob))
