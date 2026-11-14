@@ -17,7 +17,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 # ====== Internal Project Imports ======
 from shared_libs.pipelines.base import NodeExecutionRecord
 from shared_libs.services.db.postgresql import PostgresClient
-from shared_libs.services.db.postgresql.apis.execution_tree import TraceRefs
 from shared_libs.services.db.postgresql.apis.job_api import (
     FailureAggregates,
     JobWithNames,
@@ -30,6 +29,7 @@ from shared_libs.services.db.postgresql.tables import (
     JobStatus,
     WorkerHeartbeat,
 )
+from shared_libs.services.db.trace import TraceRefs
 
 # ====== Local Project Imports ======
 from .job_lifecycle_ops import JobLifecycleOps

@@ -17,11 +17,11 @@ from loggerplusplus import LoggerClass
 from shared_libs.pipelines.base import NodeExecutionRecord
 from shared_libs.services.db.postgresql import PostgresClient
 from shared_libs.services.db.postgresql.apis import JobApi
-from shared_libs.services.db.postgresql.apis.execution_tree import (
+from shared_libs.services.db.s3 import S3Client, S3Object, S3ObjectApi
+from shared_libs.services.db.trace import (
     ExecutionTreeFlattener,
     TraceRefs,
 )
-from shared_libs.services.db.s3 import S3Client, S3Object, S3ObjectApi
 
 # ====== Local Project Imports ======
 from ..helpers import DatabaseHelpers

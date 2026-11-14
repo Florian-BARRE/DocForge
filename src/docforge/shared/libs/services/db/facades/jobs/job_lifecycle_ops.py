@@ -16,8 +16,8 @@ from loggerplusplus import LoggerClass
 from shared_libs.pipelines.base import NodeExecutionRecord
 from shared_libs.services.db.postgresql import PostgresClient
 from shared_libs.services.db.postgresql.apis import JobApi
-from shared_libs.services.db.postgresql.apis.execution_tree import TraceRefs
 from shared_libs.services.db.postgresql.tables import Job, JobKind, JobStageEvent, JobStatus
+from shared_libs.services.db.trace import TraceRefs
 
 
 class JobLifecycleOps(LoggerClass):
