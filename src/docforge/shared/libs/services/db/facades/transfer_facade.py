@@ -48,7 +48,7 @@ from shared_libs.services.db.s3 import S3Client, S3Object, S3ObjectApi
 from .collections_facade import CollectionsFacade
 from .content_sparse_reencoder import ContentSparseReencoder
 from .helpers import DatabaseHelpers
-from .ingestion_facade import IngestionFacade
+from .ingestion import IngestionFacade
 from .meta_vector_sync_facade import MetaVectorSyncFacade
 from .meta_vector_sync_helpers import MetaVectorSyncHelpers
 from .transfer_payloads import DocumentExportRows

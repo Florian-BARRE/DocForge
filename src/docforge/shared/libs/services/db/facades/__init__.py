@@ -54,7 +54,7 @@ from .index_rebuild_payloads import (
 from .rebuild_guard import RebuildGuard
 from .content_sparse_reencoder import ContentSparseReencoder
 from .store_rebuild_facade import StoreRebuildFacade
-from .ingestion_facade import IngestionFacade
+from .ingestion import IngestionFacade
 from .ir_bundle_adapter import IRBundleAdapter
 from .replay_persist_facade import ReplayPersistFacade
 from .replay_source_facade import ReplaySourceFacade
@@ -68,7 +68,7 @@ from .metadata_edit_facade import (
 )
 from .schema_change_facade import FieldPurgeOutcome, SchemaChangeFacade
 from .search_facade import SearchFacade
-from .jobs_facade import JobsFacade
+from .jobs import JobsFacade
 from .trace_payload_facade import TracePayloadFacade
 from .auth_facade import AuthFacade
 from .storage_footprint_facade import StorageFootprintFacade

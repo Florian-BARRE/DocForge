@@ -7,8 +7,8 @@ from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock
 
 from shared_libs.services.db.facades import IngestionFacade
-from shared_libs.services.db.facades import ingestion_facade as facade_module
-from shared_libs.services.db.qdrant import QdrantPoint
+from shared_libs.services.db.postgresql.apis import ChunkApi, CollectionApi
+from shared_libs.services.db.qdrant import QdrantCollectionApi, QdrantIndexApi, QdrantPoint
 
 
 def _postgres() -> MagicMock:
@@ -23,17 +23,15 @@ def _postgres() -> MagicMock:
 
 def _wire(monkeypatch, missing: set[str]) -> AsyncMock:
     """Stub the store/PG calls of ``index``; return the CollectionApi.update spy."""
-    monkeypatch.setattr(facade_module.CollectionApi, "get_schema", AsyncMock(return_value=[]))
-    monkeypatch.setattr(
-        facade_module.QdrantCollectionApi, "ensure", AsyncMock(return_value=missing)
-    )
-    monkeypatch.setattr(facade_module.QdrantIndexApi, "delete_stale_for_document", AsyncMock())
-    monkeypatch.setattr(facade_module.QdrantIndexApi, "upsert", AsyncMock())
-    monkeypatch.setattr(facade_module.ChunkApi, "mark_indexed", AsyncMock())
+    monkeypatch.setattr(CollectionApi, "get_schema", AsyncMock(return_value=[]))
+    monkeypatch.setattr(QdrantCollectionApi, "ensure", AsyncMock(return_value=missing))
+    monkeypatch.setattr(QdrantIndexApi, "delete_stale_for_document", AsyncMock())
+    monkeypatch.setattr(QdrantIndexApi, "upsert", AsyncMock())
+    monkeypatch.setattr(ChunkApi, "mark_indexed", AsyncMock())
     collection = MagicMock(pipeline={})
-    monkeypatch.setattr(facade_module.CollectionApi, "get", AsyncMock(return_value=collection))
+    monkeypatch.setattr(CollectionApi, "get", AsyncMock(return_value=collection))
     update = AsyncMock()
-    monkeypatch.setattr(facade_module.CollectionApi, "update", update)
+    monkeypatch.setattr(CollectionApi, "update", update)
     return update
 
 
