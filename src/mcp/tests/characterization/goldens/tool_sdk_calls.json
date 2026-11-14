@@ -1,0 +1,3389 @@
+{
+  "apply_collection_snippet": {
+    "arguments": {
+      "collection_id": "11111111-1111-1111-1111-111111111111",
+      "kind": "pipeline",
+      "snippet": {
+        "body": {
+          "edges": [],
+          "nodes": [
+            {
+              "id": "parse"
+            }
+          ]
+        },
+        "docforge_version": "0.31.3",
+        "format_version": 1,
+        "kind": "pipeline"
+      }
+    },
+    "calls": [
+      {
+        "args": [
+          "11111111-1111-1111-1111-111111111111",
+          "pipeline",
+          {
+            "$model": "CollectionSnippet",
+            "set": {
+              "body": {
+                "edges": [],
+                "nodes": [
+                  {
+                    "id": "parse"
+                  }
+                ]
+              },
+              "docforge_version": "0.31.3",
+              "format_version": 1,
+              "kind": "pipeline"
+            }
+          }
+        ],
+        "call": "snippets.apply",
+        "kwargs": {}
+      }
+    ],
+    "completed": false,
+    "tool": "apply_collection_snippet"
+  },
+  "apply_collection_stage:other_action_is_sent_as_is": {
+    "arguments": {
+      "action": {
+        "action": "set_provider",
+        "kind": "bm25_local",
+        "slot": "sparse",
+        "stage": "embed"
+      },
+      "collection_id": "11111111-1111-1111-1111-111111111111"
+    },
+    "calls": [
+      {
+        "args": [
+          "11111111-1111-1111-1111-111111111111",
+          {
+            "action": "set_provider",
+            "kind": "bm25_local",
+            "slot": "sparse",
+            "stage": "embed"
+          }
+        ],
+        "call": "pipelines.apply_collection_stage",
+        "kwargs": {
+          "note": null
+        }
+      }
+    ],
+    "completed": false,
+    "tool": "apply_collection_stage"
+  },
+  "apply_collection_stage:set_config_defaults_to_merge": {
+    "arguments": {
+      "action": {
+        "action": "set_config",
+        "config": {
+          "size": 400
+        },
+        "stage": "chunk"
+      },
+      "collection_id": "11111111-1111-1111-1111-111111111111"
+    },
+    "calls": [
+      {
+        "args": [
+          "11111111-1111-1111-1111-111111111111",
+          {
+            "action": "set_config",
+            "config": {
+              "size": 400
+            },
+            "mode": "merge",
+            "stage": "chunk"
+          }
+        ],
+        "call": "pipelines.apply_collection_stage",
+        "kwargs": {
+          "note": null
+        }
+      }
+    ],
+    "completed": false,
+    "tool": "apply_collection_stage"
+  },
+  "apply_collection_stage:set_config_keeps_an_explicit_mode": {
+    "arguments": {
+      "action": {
+        "action": "set_config",
+        "config": {},
+        "mode": "replace",
+        "stage": "chunk"
+      },
+      "collection_id": "11111111-1111-1111-1111-111111111111",
+      "note": "reset"
+    },
+    "calls": [
+      {
+        "args": [
+          "11111111-1111-1111-1111-111111111111",
+          {
+            "action": "set_config",
+            "config": {},
+            "mode": "replace",
+            "stage": "chunk"
+          }
+        ],
+        "call": "pipelines.apply_collection_stage",
+        "kwargs": {
+          "note": "reset"
+        }
+      }
+    ],
+    "completed": false,
+    "tool": "apply_collection_stage"
+  },
+  "apply_pipeline_stage": {
+    "arguments": {
+      "action": {
+        "action": "set_config",
+        "config": {
+          "size": 400
+        },
+        "stage": "chunk"
+      },
+      "blob": {
+        "edges": [],
+        "nodes": [
+          {
+            "id": "parse"
+          }
+        ]
+      },
+      "key": "ingest"
+    },
+    "calls": [
+      {
+        "args": [
+          "ingest",
+          {
+            "edges": [],
+            "nodes": [
+              {
+                "id": "parse"
+              }
+            ]
+          },
+          {
+            "action": "set_config",
+            "config": {
+              "size": 400
+            },
+            "stage": "chunk"
+          }
+        ],
+        "call": "pipelines.apply_stage",
+        "kwargs": {}
+      }
+    ],
+    "completed": false,
+    "tool": "apply_pipeline_stage"
+  },
+  "browse_chunks": {
+    "arguments": {
+      "collection_id": "11111111-1111-1111-1111-111111111111"
+    },
+    "calls": [
+      {
+        "args": [
+          "11111111-1111-1111-1111-111111111111",
+          {
+            "$model": "ChunkBrowseRequest",
+            "set": {
+              "cursor": null,
+              "filters": null,
+              "limit": 20,
+              "return_fields": [
+                "text",
+                "document_title",
+                "page_number",
+                "heading_path",
+                "metadata"
+              ]
+            }
+          }
+        ],
+        "call": "search.browse",
+        "kwargs": {}
+      }
+    ],
+    "completed": false,
+    "tool": "browse_chunks"
+  },
+  "browse_chunks:filtered_paged": {
+    "arguments": {
+      "collection_id": "11111111-1111-1111-1111-111111111111",
+      "cursor": "cursor-1",
+      "filters": {
+        "doc_id": "doc-1",
+        "page": {
+          "gte": 2
+        }
+      },
+      "format": "json",
+      "limit": 100,
+      "return_fields": [
+        "text"
+      ]
+    },
+    "calls": [
+      {
+        "args": [
+          "11111111-1111-1111-1111-111111111111",
+          {
+            "$model": "ChunkBrowseRequest",
+            "set": {
+              "cursor": "cursor-1",
+              "filters": {
+                "doc_id": "doc-1",
+                "page": {
+                  "gte": 2
+                }
+              },
+              "limit": 100,
+              "return_fields": [
+                "text"
+              ]
+            }
+          }
+        ],
+        "call": "search.browse",
+        "kwargs": {}
+      }
+    ],
+    "completed": false,
+    "tool": "browse_chunks"
+  },
+  "cancel_job": {
+    "arguments": {
+      "job_id": "job-1"
+    },
+    "calls": [
+      {
+        "args": [
+          "job-1"
+        ],
+        "call": "jobs.cancel",
+        "kwargs": {
+          "force": false
+        }
+      }
+    ],
+    "completed": false,
+    "tool": "cancel_job"
+  },
+  "cancel_job:forced": {
+    "arguments": {
+      "force": true,
+      "job_id": "job-1"
+    },
+    "calls": [
+      {
+        "args": [
+          "job-1"
+        ],
+        "call": "jobs.cancel",
+        "kwargs": {
+          "force": true
+        }
+      }
+    ],
+    "completed": false,
+    "tool": "cancel_job"
+  },
+  "collection_health": {
+    "arguments": {
+      "collection_id": "11111111-1111-1111-1111-111111111111"
+    },
+    "calls": [
+      {
+        "args": [
+          "11111111-1111-1111-1111-111111111111"
+        ],
+        "call": "collections.health",
+        "kwargs": {}
+      }
+    ],
+    "completed": false,
+    "tool": "collection_health"
+  },
+  "collection_storage_footprint": {
+    "arguments": {
+      "collection_id": "11111111-1111-1111-1111-111111111111"
+    },
+    "calls": [
+      {
+        "args": [
+          "11111111-1111-1111-1111-111111111111"
+        ],
+        "call": "collections.storage",
+        "kwargs": {}
+      }
+    ],
+    "completed": false,
+    "tool": "collection_storage_footprint"
+  },
+  "create_api_key": {
+    "arguments": {
+      "name": "ci"
+    },
+    "calls": [
+      {
+        "args": [
+          "ci"
+        ],
+        "call": "auth.create_key",
+        "kwargs": {
+          "expires_at": null,
+          "permissions": null
+        }
+      }
+    ],
+    "completed": false,
+    "tool": "create_api_key"
+  },
+  "create_api_key:scoped_and_expiring": {
+    "arguments": {
+      "expires_at": "2026-03-04T05:06:07+00:00",
+      "name": "ci",
+      "permissions": {
+        "collections": [
+          "11111111-1111-1111-1111-111111111111"
+        ],
+        "profile": "agent_reader"
+      }
+    },
+    "calls": [
+      {
+        "args": [
+          "ci"
+        ],
+        "call": "auth.create_key",
+        "kwargs": {
+          "expires_at": {
+            "$datetime": "2026-03-04T05:06:07+00:00"
+          },
+          "permissions": {
+            "$model": "KeyPermissions",
+            "set": {
+              "collections": [
+                "11111111-1111-1111-1111-111111111111"
+              ],
+              "profile": "agent_reader"
+            }
+          }
+        }
+      }
+    ],
+    "completed": false,
+    "tool": "create_api_key"
+  },
+  "create_collection": {
+    "arguments": {
+      "max_file_size_bytes": 1000000,
+      "name": "Contracts",
+      "supported_formats": [
+        "pdf",
+        "docx"
+      ]
+    },
+    "calls": [
+      {
+        "args": [
+          {
+            "$model": "CreateCollectionRequest",
+            "set": {
+              "fields": [],
+              "job_timeout_seconds": null,
+              "max_file_size_bytes": 1000000,
+              "name": "Contracts",
+              "pipeline": null,
+              "preset": null,
+              "search_preset": null,
+              "supported_formats": [
+                "pdf",
+                "docx"
+              ],
+              "tags": null,
+              "title_field": null
+            }
+          }
+        ],
+        "call": "collections.create",
+        "kwargs": {}
+      }
+    ],
+    "completed": false,
+    "tool": "create_collection"
+  },
+  "create_collection:every_option": {
+    "arguments": {
+      "fields": [
+        {
+          "description": "Subject of the document",
+          "field_name": "topic",
+          "field_type": "keyword_list",
+          "filterable": true,
+          "origin": "user",
+          "scope": "document",
+          "semantic": true
+        }
+      ],
+      "job_timeout_seconds": 900.0,
+      "max_file_size_bytes": 1000000,
+      "name": "Contracts",
+      "pipeline": {
+        "edges": [],
+        "nodes": [
+          {
+            "id": "parse"
+          }
+        ]
+      },
+      "preset": "ocr_scan",
+      "search_preset": "hybrid_rerank",
+      "supported_formats": [
+        "pdf"
+      ],
+      "tags": [
+        "legal",
+        "2026"
+      ],
+      "title_field": "topic",
+      "trace_verbosity": "full"
+    },
+    "calls": [
+      {
+        "args": [
+          {
+            "$model": "CreateCollectionRequest",
+            "set": {
+              "fields": [
+                {
+                  "description": "Subject of the document",
+                  "field_name": "topic",
+                  "field_type": "keyword_list",
+                  "filterable": true,
+                  "origin": "user",
+                  "scope": "document",
+                  "semantic": true
+                }
+              ],
+              "job_timeout_seconds": 900.0,
+              "max_file_size_bytes": 1000000,
+              "name": "Contracts",
+              "pipeline": {
+                "edges": [],
+                "nodes": [
+                  {
+                    "id": "parse"
+                  }
+                ]
+              },
+              "preset": "ocr_scan",
+              "search_preset": "hybrid_rerank",
+              "supported_formats": [
+                "pdf"
+              ],
+              "tags": [
+                "legal",
+                "2026"
+              ],
+              "title_field": "topic",
+              "trace_verbosity": "full"
+            }
+          }
+        ],
+        "call": "collections.create",
+        "kwargs": {}
+      }
+    ],
+    "completed": false,
+    "tool": "create_collection"
+  },
+  "delete_collection": {
+    "arguments": {
+      "collection_id": "11111111-1111-1111-1111-111111111111"
+    },
+    "calls": [
+      {
+        "args": [
+          "11111111-1111-1111-1111-111111111111"
+        ],
+        "call": "collections.delete",
+        "kwargs": {}
+      }
+    ],
+    "completed": false,
+    "tool": "delete_collection"
+  },
+  "delete_collection_alias": {
+    "arguments": {
+      "name": "chat"
+    },
+    "calls": [
+      {
+        "args": [
+          "chat"
+        ],
+        "call": "collection_aliases.delete",
+        "kwargs": {}
+      }
+    ],
+    "completed": false,
+    "tool": "delete_collection_alias"
+  },
+  "delete_document": {
+    "arguments": {
+      "document_id": "doc-1"
+    },
+    "calls": [
+      {
+        "args": [
+          "doc-1"
+        ],
+        "call": "explorer.delete_document",
+        "kwargs": {}
+      }
+    ],
+    "completed": false,
+    "tool": "delete_document"
+  },
+  "delete_documents:by_filter_with_exclusions": {
+    "arguments": {
+      "collection_id": "11111111-1111-1111-1111-111111111111",
+      "selector": {
+        "exclude_ids": [
+          "doc-9"
+        ],
+        "filter": {
+          "filename": {
+            "contains": "q3"
+          },
+          "metadata": [
+            {
+              "field": "year",
+              "op": "gte",
+              "value": 2023
+            }
+          ],
+          "status": [
+            "done"
+          ]
+        }
+      }
+    },
+    "calls": [
+      {
+        "args": [
+          "11111111-1111-1111-1111-111111111111",
+          {
+            "$model": "DocumentSelector",
+            "set": {
+              "exclude_ids": [
+                "doc-9"
+              ],
+              "filter": {
+                "filename": {
+                  "contains": "q3"
+                },
+                "metadata": [
+                  {
+                    "field": "year",
+                    "op": "gte",
+                    "value": 2023
+                  }
+                ],
+                "status": [
+                  "done"
+                ]
+              }
+            }
+          }
+        ],
+        "call": "corpus.bulk_delete",
+        "kwargs": {}
+      }
+    ],
+    "completed": false,
+    "tool": "delete_documents"
+  },
+  "delete_documents:by_ids": {
+    "arguments": {
+      "collection_id": "11111111-1111-1111-1111-111111111111",
+      "selector": {
+        "document_ids": [
+          "doc-1"
+        ]
+      }
+    },
+    "calls": [
+      {
+        "args": [
+          "11111111-1111-1111-1111-111111111111",
+          {
+            "$model": "DocumentSelector",
+            "set": {
+              "document_ids": [
+                "doc-1"
+              ]
+            }
+          }
+        ],
+        "call": "corpus.bulk_delete",
+        "kwargs": {}
+      }
+    ],
+    "completed": false,
+    "tool": "delete_documents"
+  },
+  "describe_collection": {
+    "arguments": {
+      "collection_id": "11111111-1111-1111-1111-111111111111"
+    },
+    "calls": [
+      {
+        "args": [
+          "11111111-1111-1111-1111-111111111111"
+        ],
+        "call": "collections.describe",
+        "kwargs": {}
+      }
+    ],
+    "completed": false,
+    "tool": "describe_collection"
+  },
+  "diff_config_versions": {
+    "arguments": {
+      "collection_id": "11111111-1111-1111-1111-111111111111",
+      "from_version": 2,
+      "to_version": 3
+    },
+    "calls": [
+      {
+        "args": [
+          "11111111-1111-1111-1111-111111111111",
+          2,
+          3
+        ],
+        "call": "config_versions.diff",
+        "kwargs": {}
+      }
+    ],
+    "completed": false,
+    "tool": "diff_config_versions"
+  },
+  "edit_pipeline": {
+    "arguments": {
+      "blob": {
+        "edges": [],
+        "nodes": [
+          {
+            "id": "parse"
+          }
+        ]
+      },
+      "key": "ingest",
+      "operations": [
+        {
+          "node_id": "parse",
+          "op": "remove_node"
+        }
+      ]
+    },
+    "calls": [
+      {
+        "args": [
+          "ingest",
+          {
+            "edges": [],
+            "nodes": [
+              {
+                "id": "parse"
+              }
+            ]
+          },
+          [
+            {
+              "node_id": "parse",
+              "op": "remove_node"
+            }
+          ]
+        ],
+        "call": "pipelines.edit",
+        "kwargs": {}
+      }
+    ],
+    "completed": false,
+    "tool": "edit_pipeline"
+  },
+  "estimate_collection_cost": {
+    "arguments": {
+      "collection_id": "11111111-1111-1111-1111-111111111111"
+    },
+    "calls": [
+      {
+        "args": [
+          "11111111-1111-1111-1111-111111111111"
+        ],
+        "call": "collections.estimate",
+        "kwargs": {
+          "document_ids": null,
+          "filter": null,
+          "scope": "pending"
+        }
+      }
+    ],
+    "completed": false,
+    "tool": "estimate_collection_cost"
+  },
+  "estimate_collection_cost:document_ids": {
+    "arguments": {
+      "collection_id": "11111111-1111-1111-1111-111111111111",
+      "document_ids": [
+        "doc-1",
+        "doc-2"
+      ]
+    },
+    "calls": [
+      {
+        "args": [
+          "11111111-1111-1111-1111-111111111111"
+        ],
+        "call": "collections.estimate",
+        "kwargs": {
+          "document_ids": [
+            "doc-1",
+            "doc-2"
+          ],
+          "filter": null,
+          "scope": "pending"
+        }
+      }
+    ],
+    "completed": false,
+    "tool": "estimate_collection_cost"
+  },
+  "estimate_collection_cost:filter": {
+    "arguments": {
+      "collection_id": "11111111-1111-1111-1111-111111111111",
+      "filter": {
+        "filename": {
+          "contains": "q3"
+        },
+        "status": [
+          "done"
+        ]
+      }
+    },
+    "calls": [
+      {
+        "args": [
+          "11111111-1111-1111-1111-111111111111"
+        ],
+        "call": "collections.estimate",
+        "kwargs": {
+          "document_ids": null,
+          "filter": {
+            "$model": "DocumentFilter",
+            "set": {
+              "filename": {
+                "contains": "q3"
+              },
+              "status": [
+                "done"
+              ]
+            }
+          },
+          "scope": "pending"
+        }
+      }
+    ],
+    "completed": false,
+    "tool": "estimate_collection_cost"
+  },
+  "estimate_collection_cost:scope_all": {
+    "arguments": {
+      "collection_id": "11111111-1111-1111-1111-111111111111",
+      "scope": "all"
+    },
+    "calls": [
+      {
+        "args": [
+          "11111111-1111-1111-1111-111111111111"
+        ],
+        "call": "collections.estimate",
+        "kwargs": {
+          "document_ids": null,
+          "filter": null,
+          "scope": "all"
+        }
+      }
+    ],
+    "completed": false,
+    "tool": "estimate_collection_cost"
+  },
+  "export_collection": {
+    "arguments": {
+      "collection_id": "11111111-1111-1111-1111-111111111111"
+    },
+    "calls": [
+      {
+        "args": [
+          "11111111-1111-1111-1111-111111111111"
+        ],
+        "call": "transfers.export_collection",
+        "kwargs": {}
+      }
+    ],
+    "completed": false,
+    "tool": "export_collection"
+  },
+  "export_collection_snippet": {
+    "arguments": {
+      "collection_id": "11111111-1111-1111-1111-111111111111",
+      "kind": "schema"
+    },
+    "calls": [
+      {
+        "args": [
+          "11111111-1111-1111-1111-111111111111",
+          "schema"
+        ],
+        "call": "snippets.export",
+        "kwargs": {}
+      }
+    ],
+    "completed": false,
+    "tool": "export_collection_snippet"
+  },
+  "get_blob": {
+    "arguments": {
+      "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "calls": [
+      {
+        "args": [
+          "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        ],
+        "call": "blobs.get",
+        "kwargs": {}
+      }
+    ],
+    "completed": false,
+    "tool": "get_blob"
+  },
+  "get_blob:image_is_returned_inline": {
+    "arguments": {
+      "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "calls": [
+      {
+        "args": [
+          "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        ],
+        "call": "blobs.get",
+        "kwargs": {}
+      }
+    ],
+    "completed": true,
+    "result": {
+      "content": [
+        {
+          "data": "iVBORyBmaXhlZA==",
+          "mimeType": "image/png",
+          "type": "image"
+        }
+      ],
+      "isError": false,
+      "resultType": "complete"
+    },
+    "tool": "get_blob"
+  },
+  "get_blob:other_mime_is_returned_as_base64": {
+    "arguments": {
+      "content_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "calls": [
+      {
+        "args": [
+          "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        ],
+        "call": "blobs.get",
+        "kwargs": {}
+      }
+    ],
+    "completed": true,
+    "result": {
+      "content": [
+        {
+          "text": "{\"mime_type\":\"application/pdf\",\"content_base64\":\"JVBERiBmaXhlZA==\"}",
+          "type": "text"
+        }
+      ],
+      "isError": false,
+      "resultType": "complete"
+    },
+    "tool": "get_blob"
+  },
+  "get_capabilities": {
+    "arguments": {},
+    "calls": [
+      {
+        "args": [],
+        "call": "capabilities.capabilities",
+        "kwargs": {}
+      }
+    ],
+    "completed": false,
+    "tool": "get_capabilities"
+  },
+  "get_chunk_context": {
+    "arguments": {
+      "chunk_id": "chunk-1"
+    },
+    "calls": [
+      {
+        "args": [
+          "chunk-1",
+          1,
+          1
+        ],
+        "call": "explorer.get_chunk_context",
+        "kwargs": {}
+      }
+    ],
+    "completed": false,
+    "tool": "get_chunk_context"
+  },
+  "get_chunk_context:window": {
+    "arguments": {
+      "after": 0,
+      "before": 3,
+      "chunk_id": "chunk-1"
+    },
+    "calls": [
+      {
+        "args": [
+          "chunk-1",
+          3,
+          0
+        ],
+        "call": "explorer.get_chunk_context",
+        "kwargs": {}
+      }
+    ],
+    "completed": false,
+    "tool": "get_chunk_context"
+  },
+  "get_collection": {
+    "arguments": {
+      "collection_id": "11111111-1111-1111-1111-111111111111"
+    },
+    "calls": [
+      {
+        "args": [
+          "11111111-1111-1111-1111-111111111111"
+        ],
+        "call": "collections.get",
+        "kwargs": {}
+      }
+    ],
+    "completed": false,
+    "tool": "get_collection"
+  },
+  "get_collection_contract_schema": {
+    "arguments": {},
+    "calls": [
+      {
+        "args": [],
+        "call": "collections.contract_schema",
+        "kwargs": {}
+      }
+    ],
+    "completed": false,
+    "tool": "get_collection_contract_schema"
+  },
+  "get_collection_cost": {
+    "arguments": {
+      "collection_id": "11111111-1111-1111-1111-111111111111"
+    },
+    "calls": [
+      {
+        "args": [
+          "11111111-1111-1111-1111-111111111111"
+        ],
+        "call": "jobs.cost",
+        "kwargs": {}
+      }
+    ],
+    "completed": false,
+    "tool": "get_collection_cost"
+  },
+  "get_config_version": {
+    "arguments": {
+      "collection_id": "11111111-1111-1111-1111-111111111111",
+      "version": 3
+    },
+    "calls": [
+      {
+        "args": [
+          "11111111-1111-1111-1111-111111111111",
+          3
+        ],
+        "call": "config_versions.get",
+        "kwargs": {}
+      }
+    ],
+    "completed": false,
+    "tool": "get_config_version"
+  },
+  "get_document": {
+    "arguments": {
+      "document_id": "doc-1"
+    },
+    "calls": [
+      {
+        "args": [
+          "doc-1"
+        ],
+        "call": "explorer.get_document",
+        "kwargs": {}
+      }
+    ],
+    "completed": false,
+    "tool": "get_document"
+  },
+  "get_document_chunks": {
+    "arguments": {
+      "document_id": "doc-1"
+    },
+    "calls": [
+      {
+        "args": [
+          "doc-1",
+          20,
+          0,
+          false
+        ],
+        "call": "explorer.get_chunks_page",
+        "kwargs": {}
+      }
+    ],
+    "completed": false,
+    "tool": "get_document_chunks"
+  },
+  "get_document_chunks:paged_with_geometry": {
+    "arguments": {
+      "document_id": "doc-1",
+      "include_geometry": true,
+      "limit": 100,
+      "offset": 40
+    },
+    "calls": [
+      {
+        "args": [
+          "doc-1",
+          100,
+          40,
+          true
+        ],
+        "call": "explorer.get_chunks_page",
+        "kwargs": {}
+      }
+    ],
+    "completed": false,
+    "tool": "get_document_chunks"
+  },
+  "get_document_html": {
+    "arguments": {
+      "document_id": "doc-1"
+    },
+    "calls": [
+      {
+        "args": [
+          "doc-1"
+        ],
+        "call": "documents.get_html",
+        "kwargs": {
+          "pages": null
+        }
+      }
+    ],
+    "completed": false,
+    "tool": "get_document_html"
+  },
+  "get_document_html:pages": {
+    "arguments": {
+      "document_id": "doc-1",
+      "pages": "5,7-9"
+    },
+    "calls": [
+      {
+        "args": [
+          "doc-1"
+        ],
+        "call": "documents.get_html",
+        "kwargs": {
+          "pages": "5,7-9"
+        }
+      }
+    ],
+    "completed": false,
+    "tool": "get_document_html"
+  },
+  "get_document_ir": {
+    "arguments": {
+      "document_id": "doc-1"
+    },
+    "calls": [
+      {
+        "args": [
+          "doc-1"
+        ],
+        "call": "explorer.get_ir",
+        "kwargs": {}
+      }
+    ],
+    "completed": false,
+    "tool": "get_document_ir"
+  },
+  "get_document_markdown": {
+    "arguments": {
+      "document_id": "doc-1"
+    },
+    "calls": [
+      {
+        "args": [
+          "doc-1"
+        ],
+        "call": "documents.get_markdown",
+        "kwargs": {
+          "pages": null
+        }
+      }
+    ],
+    "completed": false,
+    "tool": "get_document_markdown"
+  },
+  "get_document_markdown:pages": {
+    "arguments": {
+      "document_id": "doc-1",
+      "pages": "5-7"
+    },
+    "calls": [
+      {
+        "args": [
+          "doc-1"
+        ],
+        "call": "documents.get_markdown",
+        "kwargs": {
+          "pages": "5-7"
+        }
+      }
+    ],
+    "completed": false,
+    "tool": "get_document_markdown"
+  },
+  "get_document_outline": {
+    "arguments": {
+      "document_id": "doc-1"
+    },
+    "calls": [
+      {
+        "args": [
+          "doc-1"
+        ],
+        "call": "explorer.get_outline",
+        "kwargs": {}
+      }
+    ],
+    "completed": false,
+    "tool": "get_document_outline"
+  },
+  "get_document_pages": {
+    "arguments": {
+      "document_id": "doc-1"
+    },
+    "calls": [
+      {
+        "args": [
+          "doc-1"
+        ],
+        "call": "explorer.get_pages",
+        "kwargs": {}
+      }
+    ],
+    "completed": false,
+    "tool": "get_document_pages"
+  },
+  "get_document_provenance": {
+    "arguments": {
+      "document_id": "doc-1"
+    },
+    "calls": [
+      {
+        "args": [
+          "doc-1"
+        ],
+        "call": "explorer.get_provenance",
+        "kwargs": {}
+      }
+    ],
+    "completed": false,
+    "tool": "get_document_provenance"
+  },
+  "get_export_download_ref": {
+    "arguments": {
+      "transfer_id": "transfer-1"
+    },
+    "calls": [
+      {
+        "args": [
+          "transfer-1"
+        ],
+        "call": "transfers.get_transfer",
+        "kwargs": {}
+      }
+    ],
+    "completed": true,
+    "result": {
+      "content": [
+        {
+          "text": "{\"transfer_id\":\"transfer-1\",\"kind\":\"export\",\"status\":\"done\",\"size_bytes\":1234,\"expires_at\":null,\"download_path\":\"/api/v1/transfers/transfer-1/download\"}",
+          "type": "text"
+        }
+      ],
+      "isError": false,
+      "resultType": "complete"
+    },
+    "tool": "get_export_download_ref"
+  },
+  "get_failure_breakdown": {
+    "arguments": {},
+    "calls": [
+      {
+        "args": [
+          null,
+          null
+        ],
+        "call": "jobs.failure_breakdown",
+        "kwargs": {}
+      }
+    ],
+    "completed": false,
+    "tool": "get_failure_breakdown"
+  },
+  "get_failure_breakdown:scoped_window": {
+    "arguments": {
+      "collection_id": "11111111-1111-1111-1111-111111111111",
+      "window_hours": 48
+    },
+    "calls": [
+      {
+        "args": [
+          "11111111-1111-1111-1111-111111111111",
+          48
+        ],
+        "call": "jobs.failure_breakdown",
+        "kwargs": {}
+      }
+    ],
+    "completed": false,
+    "tool": "get_failure_breakdown"
+  },
+  "get_job": {
+    "arguments": {
+      "job_id": "job-1"
+    },
+    "calls": [
+      {
+        "args": [
+          "job-1"
+        ],
+        "call": "jobs.get",
+        "kwargs": {}
+      }
+    ],
+    "completed": false,
+    "tool": "get_job"
+  },
+  "get_job_event_payload": {
+    "arguments": {
+      "event_id": "event-1",
+      "job_id": "job-1"
+    },
+    "calls": [
+      {
+        "args": [
+          "job-1",
+          "event-1"
+        ],
+        "call": "jobs.get_event_payload",
+        "kwargs": {
+          "slot": "output"
+        }
+      }
+    ],
+    "completed": false,
+    "tool": "get_job_event_payload"
+  },
+  "get_job_event_payload:input_slot": {
+    "arguments": {
+      "event_id": "event-1",
+      "job_id": "job-1",
+      "slot": "input"
+    },
+    "calls": [
+      {
+        "args": [
+          "job-1",
+          "event-1"
+        ],
+        "call": "jobs.get_event_payload",
+        "kwargs": {
+          "slot": "input"
+        }
+      }
+    ],
+    "completed": false,
+    "tool": "get_job_event_payload"
+  },
+  "get_job_events": {
+    "arguments": {
+      "job_id": "job-1"
+    },
+    "calls": [
+      {
+        "args": [
+          "job-1"
+        ],
+        "call": "jobs.get_events",
+        "kwargs": {}
+      }
+    ],
+    "completed": false,
+    "tool": "get_job_events"
+  },
+  "get_job_timeseries": {
+    "arguments": {},
+    "calls": [
+      {
+        "args": [
+          null,
+          null
+        ],
+        "call": "jobs.timeseries",
+        "kwargs": {}
+      }
+    ],
+    "completed": false,
+    "tool": "get_job_timeseries"
+  },
+  "get_job_timeseries:scoped_window": {
+    "arguments": {
+      "collection_id": "11111111-1111-1111-1111-111111111111",
+      "window_hours": 72
+    },
+    "calls": [
+      {
+        "args": [
+          "11111111-1111-1111-1111-111111111111",
+          72
+        ],
+        "call": "jobs.timeseries",
+        "kwargs": {}
+      }
+    ],
+    "completed": false,
+    "tool": "get_job_timeseries"
+  },
+  "get_live_workers": {
+    "arguments": {},
+    "calls": [
+      {
+        "args": [],
+        "call": "jobs.live_workers",
+        "kwargs": {}
+      }
+    ],
+    "completed": false,
+    "tool": "get_live_workers"
+  },
+  "get_new_failures": {
+    "arguments": {
+      "since": "2026-03-04T05:06:07+00:00"
+    },
+    "calls": [
+      {
+        "args": [
+          "2026-03-04T05:06:07+00:00"
+        ],
+        "call": "jobs.new_failures",
+        "kwargs": {
+          "collection_id": null,
+          "include_ids": null,
+          "limit": null
+        }
+      }
+    ],
+    "completed": false,
+    "tool": "get_new_failures"
+  },
+  "get_new_failures:scoped_with_ids": {
+    "arguments": {
+      "collection_id": "11111111-1111-1111-1111-111111111111",
+      "include_ids": true,
+      "limit": 5,
+      "since": "2026-03-04T05:06:07+00:00"
+    },
+    "calls": [
+      {
+        "args": [
+          "2026-03-04T05:06:07+00:00"
+        ],
+        "call": "jobs.new_failures",
+        "kwargs": {
+          "collection_id": "11111111-1111-1111-1111-111111111111",
+          "include_ids": true,
+          "limit": 5
+        }
+      }
+    ],
+    "completed": false,
+    "tool": "get_new_failures"
+  },
+  "get_pipeline_design": {
+    "arguments": {
+      "key": "ingest"
+    },
+    "calls": [
+      {
+        "args": [
+          "ingest"
+        ],
+        "call": "pipelines.get_design",
+        "kwargs": {
+          "full": false
+        }
+      }
+    ],
+    "completed": false,
+    "tool": "get_pipeline_design"
+  },
+  "get_pipeline_design:full": {
+    "arguments": {
+      "full": true,
+      "key": "search"
+    },
+    "calls": [
+      {
+        "args": [
+          "search"
+        ],
+        "call": "pipelines.get_design",
+        "kwargs": {
+          "full": true
+        }
+      }
+    ],
+    "completed": false,
+    "tool": "get_pipeline_design"
+  },
+  "get_preview_job": {
+    "arguments": {
+      "collection_id": "11111111-1111-1111-1111-111111111111",
+      "preview_id": "preview-1"
+    },
+    "calls": [
+      {
+        "args": [
+          "11111111-1111-1111-1111-111111111111",
+          "preview-1"
+        ],
+        "call": "collections.get_preview_job",
+        "kwargs": {}
+      }
+    ],
+    "completed": false,
+    "tool": "get_preview_job"
+  },
+  "get_queue_depth": {
+    "arguments": {},
+    "calls": [
+      {
+        "args": [
+          null
+        ],
+        "call": "jobs.queue",
+        "kwargs": {}
+      }
+    ],
+    "completed": false,
+    "tool": "get_queue_depth"
+  },
+  "get_queue_depth:one_collection": {
+    "arguments": {
+      "collection_id": "11111111-1111-1111-1111-111111111111"
+    },
+    "calls": [
+      {
+        "args": [
+          "11111111-1111-1111-1111-111111111111"
+        ],
+        "call": "jobs.queue",
+        "kwargs": {}
+      }
+    ],
+    "completed": false,
+    "tool": "get_queue_depth"
+  },
+  "get_search_health": {
+    "arguments": {},
+    "calls": [
+      {
+        "args": [],
+        "call": "search.get_search_health",
+        "kwargs": {}
+      }
+    ],
+    "completed": false,
+    "tool": "get_search_health"
+  },
+  "get_stage_durations": {
+    "arguments": {
+      "collection_id": "11111111-1111-1111-1111-111111111111"
+    },
+    "calls": [
+      {
+        "args": [
+          "11111111-1111-1111-1111-111111111111"
+        ],
+        "call": "jobs.stage_durations",
+        "kwargs": {}
+      }
+    ],
+    "completed": false,
+    "tool": "get_stage_durations"
+  },
+  "get_transfer": {
+    "arguments": {
+      "transfer_id": "transfer-1"
+    },
+    "calls": [
+      {
+        "args": [
+          "transfer-1"
+        ],
+        "call": "transfers.get_transfer",
+        "kwargs": {}
+      }
+    ],
+    "completed": false,
+    "tool": "get_transfer"
+  },
+  "import_collection": {
+    "arguments": {
+      "file_path": "/inbox/bundle.dcexport"
+    },
+    "calls": [
+      {
+        "args": [
+          {
+            "$path": "/inbox/bundle.dcexport"
+          }
+        ],
+        "call": "transfers.import_collection",
+        "kwargs": {
+          "target_name": null
+        }
+      }
+    ],
+    "completed": false,
+    "tool": "import_collection"
+  },
+  "import_collection:renamed": {
+    "arguments": {
+      "file_path": "/inbox/bundle.dcexport",
+      "target_name": "Imported"
+    },
+    "calls": [
+      {
+        "args": [
+          {
+            "$path": "/inbox/bundle.dcexport"
+          }
+        ],
+        "call": "transfers.import_collection",
+        "kwargs": {
+          "target_name": "Imported"
+        }
+      }
+    ],
+    "completed": false,
+    "tool": "import_collection"
+  },
+  "import_collection_bytes": {
+    "arguments": {
+      "content_base64": "ZGNleHBvcnQgZml4ZWQgYnl0ZXM=",
+      "target_name": "Imported"
+    },
+    "calls": [
+      {
+        "args": [
+          {
+            "$bytes": 20,
+            "sha256": "c14fb8633f69a2299821e2e4b2d219609819f0e6acb98495f154acefb0a932f5"
+          }
+        ],
+        "call": "transfers.import_collection",
+        "kwargs": {
+          "target_name": "Imported"
+        }
+      }
+    ],
+    "completed": false,
+    "tool": "import_collection_bytes"
+  },
+  "inspect_pipeline": {
+    "arguments": {
+      "blob": {
+        "edges": [],
+        "nodes": [
+          {
+            "id": "parse"
+          }
+        ]
+      },
+      "key": "ingest"
+    },
+    "calls": [
+      {
+        "args": [
+          "ingest",
+          {
+            "edges": [],
+            "nodes": [
+              {
+                "id": "parse"
+              }
+            ]
+          }
+        ],
+        "call": "pipelines.inspect",
+        "kwargs": {}
+      }
+    ],
+    "completed": false,
+    "tool": "inspect_pipeline"
+  },
+  "list_api_keys": {
+    "arguments": {},
+    "calls": [
+      {
+        "args": [],
+        "call": "auth.list_keys",
+        "kwargs": {}
+      }
+    ],
+    "completed": false,
+    "tool": "list_api_keys"
+  },
+  "list_audit": {
+    "arguments": {},
+    "calls": [
+      {
+        "args": [],
+        "call": "audit.list",
+        "kwargs": {
+          "actor_key_id": null,
+          "actor_user_id": null,
+          "correlation_id": null,
+          "created_from": null,
+          "created_to": null,
+          "cursor": null,
+          "limit": null,
+          "target_id": null,
+          "target_type": null
+        }
+      }
+    ],
+    "completed": false,
+    "tool": "list_audit"
+  },
+  "list_audit:every_filter": {
+    "arguments": {
+      "actor_key_id": "key-1",
+      "actor_user_id": "user-1",
+      "correlation_id": "corr-1",
+      "created_from": "2026-01-01T00:00:00+00:00",
+      "created_to": "2026-02-01T00:00:00+00:00",
+      "cursor": "cursor-1",
+      "limit": 10,
+      "target_id": "11111111-1111-1111-1111-111111111111",
+      "target_type": "collection"
+    },
+    "calls": [
+      {
+        "args": [],
+        "call": "audit.list",
+        "kwargs": {
+          "actor_key_id": "key-1",
+          "actor_user_id": "user-1",
+          "correlation_id": "corr-1",
+          "created_from": {
+            "$datetime": "2026-01-01T00:00:00+00:00"
+          },
+          "created_to": {
+            "$datetime": "2026-02-01T00:00:00+00:00"
+          },
+          "cursor": "cursor-1",
+          "limit": 10,
+          "target_id": "11111111-1111-1111-1111-111111111111",
+          "target_type": "collection"
+        }
+      }
+    ],
+    "completed": false,
+    "tool": "list_audit"
+  },
+  "list_collection_aliases": {
+    "arguments": {},
+    "calls": [
+      {
+        "args": [],
+        "call": "collection_aliases.list",
+        "kwargs": {}
+      }
+    ],
+    "completed": false,
+    "tool": "list_collection_aliases"
+  },
+  "list_collections": {
+    "arguments": {},
+    "calls": [
+      {
+        "args": [],
+        "call": "collections.list",
+        "kwargs": {}
+      }
+    ],
+    "completed": false,
+    "tool": "list_collections"
+  },
+  "list_config_versions": {
+    "arguments": {
+      "collection_id": "11111111-1111-1111-1111-111111111111"
+    },
+    "calls": [
+      {
+        "args": [
+          "11111111-1111-1111-1111-111111111111"
+        ],
+        "call": "config_versions.list",
+        "kwargs": {
+          "limit": 20,
+          "offset": 0
+        }
+      }
+    ],
+    "completed": false,
+    "tool": "list_config_versions"
+  },
+  "list_config_versions:paged": {
+    "arguments": {
+      "collection_id": "11111111-1111-1111-1111-111111111111",
+      "limit": 5,
+      "offset": 10
+    },
+    "calls": [
+      {
+        "args": [
+          "11111111-1111-1111-1111-111111111111"
+        ],
+        "call": "config_versions.list",
+        "kwargs": {
+          "limit": 5,
+          "offset": 10
+        }
+      }
+    ],
+    "completed": false,
+    "tool": "list_config_versions"
+  },
+  "list_documents": {
+    "arguments": {
+      "collection_id": "11111111-1111-1111-1111-111111111111"
+    },
+    "calls": [
+      {
+        "args": [
+          "11111111-1111-1111-1111-111111111111",
+          null,
+          null
+        ],
+        "call": "explorer.list_documents",
+        "kwargs": {}
+      }
+    ],
+    "completed": false,
+    "tool": "list_documents"
+  },
+  "list_documents:paged": {
+    "arguments": {
+      "collection_id": "11111111-1111-1111-1111-111111111111",
+      "limit": 50,
+      "offset": 100
+    },
+    "calls": [
+      {
+        "args": [
+          "11111111-1111-1111-1111-111111111111",
+          50,
+          100
+        ],
+        "call": "explorer.list_documents",
+        "kwargs": {}
+      }
+    ],
+    "completed": false,
+    "tool": "list_documents"
+  },
+  "list_jobs": {
+    "arguments": {},
+    "calls": [
+      {
+        "args": [
+          null
+        ],
+        "call": "jobs.list",
+        "kwargs": {
+          "created_after": null,
+          "created_before": null,
+          "error_type": null,
+          "limit": null,
+          "offset": null,
+          "order": null,
+          "search": null,
+          "sort": null,
+          "stage": null,
+          "status": null
+        }
+      }
+    ],
+    "completed": false,
+    "tool": "list_jobs"
+  },
+  "list_jobs:every_filter": {
+    "arguments": {
+      "collection_id": "11111111-1111-1111-1111-111111111111",
+      "created_after": "2026-01-01T00:00:00Z",
+      "created_before": "2026-02-01T00:00:00Z",
+      "error_type": "timeout",
+      "limit": 10,
+      "offset": 20,
+      "order": "oldest",
+      "search": "job-",
+      "sort": "duration",
+      "stage": "embed",
+      "status": [
+        "failed",
+        "cancelled"
+      ]
+    },
+    "calls": [
+      {
+        "args": [
+          "11111111-1111-1111-1111-111111111111"
+        ],
+        "call": "jobs.list",
+        "kwargs": {
+          "created_after": "2026-01-01T00:00:00Z",
+          "created_before": "2026-02-01T00:00:00Z",
+          "error_type": "timeout",
+          "limit": 10,
+          "offset": 20,
+          "order": "oldest",
+          "search": "job-",
+          "sort": "duration",
+          "stage": "embed",
+          "status": [
+            "failed",
+            "cancelled"
+          ]
+        }
+      }
+    ],
+    "completed": false,
+    "tool": "list_jobs"
+  },
+  "list_pipeline_surfaces": {
+    "arguments": {},
+    "calls": [
+      {
+        "args": [],
+        "call": "pipelines.list_surfaces",
+        "kwargs": {}
+      }
+    ],
+    "completed": false,
+    "tool": "list_pipeline_surfaces"
+  },
+  "ping": {
+    "arguments": {},
+    "calls": [
+      {
+        "args": [],
+        "call": "health.ping",
+        "kwargs": {}
+      }
+    ],
+    "completed": false,
+    "tool": "ping"
+  },
+  "preview_pipeline": {
+    "arguments": {
+      "collection_id": "11111111-1111-1111-1111-111111111111",
+      "document_id": "doc-1"
+    },
+    "calls": [
+      {
+        "args": [
+          "11111111-1111-1111-1111-111111111111"
+        ],
+        "call": "collections.preview_pipeline",
+        "kwargs": {
+          "blob": null,
+          "document_id": "doc-1",
+          "max_chunks": null
+        }
+      }
+    ],
+    "completed": false,
+    "tool": "preview_pipeline"
+  },
+  "preview_pipeline:candidate_blob": {
+    "arguments": {
+      "blob": {
+        "edges": [],
+        "nodes": [
+          {
+            "id": "parse"
+          }
+        ]
+      },
+      "collection_id": "11111111-1111-1111-1111-111111111111",
+      "document_id": "doc-1",
+      "max_chunks": 5
+    },
+    "calls": [
+      {
+        "args": [
+          "11111111-1111-1111-1111-111111111111"
+        ],
+        "call": "collections.preview_pipeline",
+        "kwargs": {
+          "blob": {
+            "edges": [],
+            "nodes": [
+              {
+                "id": "parse"
+              }
+            ]
+          },
+          "document_id": "doc-1",
+          "max_chunks": 5
+        }
+      }
+    ],
+    "completed": false,
+    "tool": "preview_pipeline"
+  },
+  "purge_collection_trace_payloads": {
+    "arguments": {
+      "collection_id": "11111111-1111-1111-1111-111111111111"
+    },
+    "calls": [
+      {
+        "args": [
+          "11111111-1111-1111-1111-111111111111"
+        ],
+        "call": "collections.purge_trace_payloads",
+        "kwargs": {}
+      }
+    ],
+    "completed": false,
+    "tool": "purge_collection_trace_payloads"
+  },
+  "purge_document_trace_payloads": {
+    "arguments": {
+      "document_id": "doc-1"
+    },
+    "calls": [
+      {
+        "args": [
+          "doc-1"
+        ],
+        "call": "documents.purge_trace_payloads",
+        "kwargs": {}
+      }
+    ],
+    "completed": false,
+    "tool": "purge_document_trace_payloads"
+  },
+  "query_documents": {
+    "arguments": {
+      "collection_id": "11111111-1111-1111-1111-111111111111"
+    },
+    "calls": [
+      {
+        "args": [
+          "11111111-1111-1111-1111-111111111111",
+          {
+            "$model": "DocumentQueryRequest",
+            "set": {
+              "filter": null,
+              "pagination": {
+                "limit": 50,
+                "offset": 0
+              },
+              "sort": null
+            }
+          }
+        ],
+        "call": "corpus.query",
+        "kwargs": {}
+      }
+    ],
+    "completed": false,
+    "tool": "query_documents"
+  },
+  "query_documents:filtered_sorted_paged": {
+    "arguments": {
+      "collection_id": "11111111-1111-1111-1111-111111111111",
+      "filter": {
+        "filename": {
+          "contains": "q3"
+        },
+        "metadata": [
+          {
+            "field": "year",
+            "op": "gte",
+            "value": 2023
+          }
+        ],
+        "status": [
+          "done"
+        ]
+      },
+      "limit": 10,
+      "offset": 20,
+      "sort": {
+        "direction": "desc",
+        "field": "created_at"
+      }
+    },
+    "calls": [
+      {
+        "args": [
+          "11111111-1111-1111-1111-111111111111",
+          {
+            "$model": "DocumentQueryRequest",
+            "set": {
+              "filter": {
+                "filename": {
+                  "contains": "q3"
+                },
+                "metadata": [
+                  {
+                    "field": "year",
+                    "op": "gte",
+                    "value": 2023
+                  }
+                ],
+                "status": [
+                  "done"
+                ]
+              },
+              "pagination": {
+                "limit": 10,
+                "offset": 20
+              },
+              "sort": {
+                "direction": "desc",
+                "field": "created_at"
+              }
+            }
+          }
+        ],
+        "call": "corpus.query",
+        "kwargs": {}
+      }
+    ],
+    "completed": false,
+    "tool": "query_documents"
+  },
+  "rebuild_collection_index": {
+    "arguments": {
+      "collection_id": "11111111-1111-1111-1111-111111111111"
+    },
+    "calls": [
+      {
+        "args": [
+          "11111111-1111-1111-1111-111111111111"
+        ],
+        "call": "collections.rebuild_index",
+        "kwargs": {}
+      }
+    ],
+    "completed": false,
+    "tool": "rebuild_collection_index"
+  },
+  "reingest_collection": {
+    "arguments": {
+      "collection_id": "11111111-1111-1111-1111-111111111111"
+    },
+    "calls": [
+      {
+        "args": [
+          "11111111-1111-1111-1111-111111111111",
+          {
+            "$model": "BulkReingestRequest",
+            "set": {
+              "confirm_estimate": false,
+              "document_ids": null,
+              "force": false,
+              "replay_from": null
+            }
+          }
+        ],
+        "call": "collections.reingest",
+        "kwargs": {}
+      }
+    ],
+    "completed": false,
+    "tool": "reingest_collection"
+  },
+  "reingest_collection:subset_forced_replayed_confirmed": {
+    "arguments": {
+      "collection_id": "11111111-1111-1111-1111-111111111111",
+      "confirm_estimate": true,
+      "document_ids": [
+        "doc-1"
+      ],
+      "force": true,
+      "replay_from": "embed"
+    },
+    "calls": [
+      {
+        "args": [
+          "11111111-1111-1111-1111-111111111111",
+          {
+            "$model": "BulkReingestRequest",
+            "set": {
+              "confirm_estimate": true,
+              "document_ids": [
+                "doc-1"
+              ],
+              "force": true,
+              "replay_from": "embed"
+            }
+          }
+        ],
+        "call": "collections.reingest",
+        "kwargs": {}
+      }
+    ],
+    "completed": false,
+    "tool": "reingest_collection"
+  },
+  "reingest_document": {
+    "arguments": {
+      "document_id": "doc-1"
+    },
+    "calls": [
+      {
+        "args": [
+          "doc-1",
+          false
+        ],
+        "call": "documents.reingest",
+        "kwargs": {
+          "replay_from": null
+        }
+      }
+    ],
+    "completed": false,
+    "tool": "reingest_document"
+  },
+  "reingest_document:forced_replayed": {
+    "arguments": {
+      "document_id": "doc-1",
+      "force": true,
+      "replay_from": "embed"
+    },
+    "calls": [
+      {
+        "args": [
+          "doc-1",
+          true
+        ],
+        "call": "documents.reingest",
+        "kwargs": {
+          "replay_from": "embed"
+        }
+      }
+    ],
+    "completed": false,
+    "tool": "reingest_document"
+  },
+  "reingest_documents": {
+    "arguments": {
+      "collection_id": "11111111-1111-1111-1111-111111111111",
+      "selector": {
+        "document_ids": [
+          "doc-1"
+        ]
+      }
+    },
+    "calls": [
+      {
+        "args": [
+          "11111111-1111-1111-1111-111111111111",
+          {
+            "$model": "DocumentSelector",
+            "set": {
+              "document_ids": [
+                "doc-1"
+              ]
+            }
+          },
+          false
+        ],
+        "call": "corpus.bulk_reingest",
+        "kwargs": {
+          "confirm_estimate": false,
+          "replay_from": null
+        }
+      }
+    ],
+    "completed": false,
+    "tool": "reingest_documents"
+  },
+  "reingest_documents:forced_replayed_confirmed": {
+    "arguments": {
+      "collection_id": "11111111-1111-1111-1111-111111111111",
+      "confirm_estimate": true,
+      "force": true,
+      "replay_from": "chunk",
+      "selector": {
+        "filter": {
+          "filename": {
+            "contains": "q3"
+          },
+          "metadata": [
+            {
+              "field": "year",
+              "op": "gte",
+              "value": 2023
+            }
+          ],
+          "status": [
+            "done"
+          ]
+        }
+      }
+    },
+    "calls": [
+      {
+        "args": [
+          "11111111-1111-1111-1111-111111111111",
+          {
+            "$model": "DocumentSelector",
+            "set": {
+              "filter": {
+                "filename": {
+                  "contains": "q3"
+                },
+                "metadata": [
+                  {
+                    "field": "year",
+                    "op": "gte",
+                    "value": 2023
+                  }
+                ],
+                "status": [
+                  "done"
+                ]
+              }
+            }
+          },
+          true
+        ],
+        "call": "corpus.bulk_reingest",
+        "kwargs": {
+          "confirm_estimate": true,
+          "replay_from": "chunk"
+        }
+      }
+    ],
+    "completed": false,
+    "tool": "reingest_documents"
+  },
+  "restore_config_version:confirmed_restores": {
+    "arguments": {
+      "collection_id": "11111111-1111-1111-1111-111111111111",
+      "confirm": true,
+      "version": 3
+    },
+    "calls": [
+      {
+        "args": [
+          "11111111-1111-1111-1111-111111111111",
+          3
+        ],
+        "call": "config_versions.restore",
+        "kwargs": {}
+      }
+    ],
+    "completed": false,
+    "tool": "restore_config_version"
+  },
+  "restore_config_version:unconfirmed_diffs_head_against_target": {
+    "arguments": {
+      "collection_id": "11111111-1111-1111-1111-111111111111",
+      "version": 3
+    },
+    "calls": [
+      {
+        "args": [
+          "11111111-1111-1111-1111-111111111111"
+        ],
+        "call": "config_versions.list",
+        "kwargs": {
+          "limit": 1
+        }
+      },
+      {
+        "args": [
+          "11111111-1111-1111-1111-111111111111",
+          7,
+          3
+        ],
+        "call": "config_versions.diff",
+        "kwargs": {}
+      }
+    ],
+    "completed": false,
+    "tool": "restore_config_version"
+  },
+  "revoke_api_key": {
+    "arguments": {
+      "key_id": "key-1"
+    },
+    "calls": [
+      {
+        "args": [
+          "key-1"
+        ],
+        "call": "auth.revoke_key",
+        "kwargs": {}
+      }
+    ],
+    "completed": false,
+    "tool": "revoke_api_key"
+  },
+  "rotate_api_key": {
+    "arguments": {
+      "key_id": "key-1"
+    },
+    "calls": [
+      {
+        "args": [
+          "key-1"
+        ],
+        "call": "auth.rotate_key",
+        "kwargs": {
+          "expires_at": {
+            "$sentinel": "ellipsis"
+          },
+          "name": {
+            "$sentinel": "ellipsis"
+          },
+          "permissions": {
+            "$sentinel": "ellipsis"
+          }
+        }
+      }
+    ],
+    "completed": false,
+    "tool": "rotate_api_key"
+  },
+  "rotate_api_key:renamed_rescoped_expiring": {
+    "arguments": {
+      "expires_at": "2026-03-04T05:06:07+00:00",
+      "key_id": "key-1",
+      "name": "renamed",
+      "permissions": {
+        "collections": [
+          "11111111-1111-1111-1111-111111111111"
+        ],
+        "profile": "agent_reader"
+      }
+    },
+    "calls": [
+      {
+        "args": [
+          "key-1"
+        ],
+        "call": "auth.rotate_key",
+        "kwargs": {
+          "expires_at": {
+            "$datetime": "2026-03-04T05:06:07+00:00"
+          },
+          "name": "renamed",
+          "permissions": {
+            "$model": "KeyPermissions",
+            "set": {
+              "collections": [
+                "11111111-1111-1111-1111-111111111111"
+              ],
+              "profile": "agent_reader"
+            }
+          }
+        }
+      }
+    ],
+    "completed": false,
+    "tool": "rotate_api_key"
+  },
+  "search_collection": {
+    "arguments": {
+      "collection_id": "11111111-1111-1111-1111-111111111111",
+      "query": "termination clause"
+    },
+    "calls": [
+      {
+        "args": [
+          "11111111-1111-1111-1111-111111111111",
+          {
+            "$model": "SearchRequest",
+            "set": {
+              "debug": false,
+              "filters": null,
+              "fusion": null,
+              "group_by": null,
+              "limit": 10,
+              "min_score": null,
+              "query": "termination clause",
+              "rerank": null,
+              "return_fields": [
+                "text",
+                "document_title",
+                "page_number",
+                "heading_path",
+                "score",
+                "metadata"
+              ],
+              "search_in": null
+            }
+          }
+        ],
+        "call": "search.search",
+        "kwargs": {}
+      }
+    ],
+    "completed": false,
+    "tool": "search_collection"
+  },
+  "search_collection:every_option": {
+    "arguments": {
+      "collection_id": "11111111-1111-1111-1111-111111111111",
+      "debug": true,
+      "filters": {
+        "kind": {
+          "in": [
+            "x",
+            "y"
+          ]
+        },
+        "owner": {
+          "exists": true
+        },
+        "status": {
+          "not": "draft"
+        },
+        "tags": [
+          "a",
+          "b"
+        ],
+        "title": {
+          "contains": "audit"
+        },
+        "topic": "legal",
+        "year": {
+          "gte": 2023,
+          "lt": 2026
+        }
+      },
+      "format": "json",
+      "fusion": "dbsf",
+      "group_by": "document",
+      "limit": 25,
+      "max_per_document": 3,
+      "min_score": 0.25,
+      "query": "termination clause",
+      "rerank": false,
+      "return_fields": [
+        "text",
+        "metadata.topic"
+      ],
+      "search_in": [
+        {
+          "field": "content",
+          "lexical": false,
+          "semantic": true
+        },
+        {
+          "field": "topic",
+          "lexical": true,
+          "semantic": false
+        }
+      ]
+    },
+    "calls": [
+      {
+        "args": [
+          "11111111-1111-1111-1111-111111111111",
+          {
+            "$model": "SearchRequest",
+            "set": {
+              "debug": true,
+              "filters": {
+                "kind": {
+                  "in": [
+                    "x",
+                    "y"
+                  ]
+                },
+                "owner": {
+                  "exists": true
+                },
+                "status": {
+                  "not": "draft"
+                },
+                "tags": [
+                  "a",
+                  "b"
+                ],
+                "title": {
+                  "contains": "audit"
+                },
+                "topic": "legal",
+                "year": {
+                  "gte": 2023,
+                  "lt": 2026
+                }
+              },
+              "fusion": "dbsf",
+              "group_by": "document",
+              "limit": 25,
+              "max_per_document": 3,
+              "min_score": 0.25,
+              "query": "termination clause",
+              "rerank": false,
+              "return_fields": [
+                "text",
+                "metadata.topic"
+              ],
+              "search_in": [
+                {
+                  "field": "content",
+                  "lexical": false,
+                  "semantic": true
+                },
+                {
+                  "field": "topic",
+                  "lexical": true,
+                  "semantic": false
+                }
+              ]
+            }
+          }
+        ],
+        "call": "search.search",
+        "kwargs": {}
+      }
+    ],
+    "completed": false,
+    "tool": "search_collection"
+  },
+  "set_chunk_enabled": {
+    "arguments": {
+      "chunk_id": "chunk-1",
+      "enabled": false
+    },
+    "calls": [
+      {
+        "args": [
+          "chunk-1",
+          false
+        ],
+        "call": "explorer.set_chunk_enabled",
+        "kwargs": {}
+      }
+    ],
+    "completed": false,
+    "tool": "set_chunk_enabled"
+  },
+  "set_chunks_enabled": {
+    "arguments": {
+      "chunk_ids": [
+        "chunk-1",
+        "chunk-2"
+      ],
+      "enabled": true
+    },
+    "calls": [
+      {
+        "args": [
+          {
+            "$model": "BulkChunkEnabledPatch",
+            "set": {
+              "chunk_ids": [
+                "chunk-1",
+                "chunk-2"
+              ],
+              "enabled": true
+            }
+          }
+        ],
+        "call": "explorer.set_chunks_enabled",
+        "kwargs": {}
+      }
+    ],
+    "completed": false,
+    "tool": "set_chunks_enabled"
+  },
+  "set_collection_alias:new_alias_is_written": {
+    "arguments": {
+      "collection_id": "11111111-1111-1111-1111-111111111111",
+      "name": "chat"
+    },
+    "calls": [
+      {
+        "args": [],
+        "call": "collection_aliases.list",
+        "kwargs": {}
+      },
+      {
+        "args": [
+          "chat",
+          "11111111-1111-1111-1111-111111111111"
+        ],
+        "call": "collection_aliases.set",
+        "kwargs": {}
+      }
+    ],
+    "completed": false,
+    "tool": "set_collection_alias"
+  },
+  "set_collection_alias:repoint_confirmed_is_written": {
+    "arguments": {
+      "collection_id": "11111111-1111-1111-1111-111111111111",
+      "confirm": true,
+      "name": "chat"
+    },
+    "calls": [
+      {
+        "args": [],
+        "call": "collection_aliases.list",
+        "kwargs": {}
+      },
+      {
+        "args": [
+          "chat",
+          "11111111-1111-1111-1111-111111111111"
+        ],
+        "call": "collection_aliases.set",
+        "kwargs": {}
+      }
+    ],
+    "completed": false,
+    "tool": "set_collection_alias"
+  },
+  "set_collection_alias:repoint_unconfirmed_writes_nothing": {
+    "arguments": {
+      "collection_id": "11111111-1111-1111-1111-111111111111",
+      "name": "chat"
+    },
+    "calls": [
+      {
+        "args": [],
+        "call": "collection_aliases.list",
+        "kwargs": {}
+      }
+    ],
+    "completed": true,
+    "result": {
+      "content": [
+        {
+          "text": "{\"applied\":false,\"message\":\"Dry run: alias 'chat' would move from 22222222-2222-2222-2222-222222222222 (Existing) to 11111111-1111-1111-1111-111111111111. Call again with confirm=true.\",\"from_collection_id\":\"22222222-2222-2222-2222-222222222222\",\"to_collection_id\":\"11111111-1111-1111-1111-111111111111\"}",
+          "type": "text"
+        }
+      ],
+      "isError": false,
+      "resultType": "complete"
+    },
+    "tool": "set_collection_alias"
+  },
+  "set_collection_alias:same_target_is_rewritten": {
+    "arguments": {
+      "collection_id": "11111111-1111-1111-1111-111111111111",
+      "name": "chat"
+    },
+    "calls": [
+      {
+        "args": [],
+        "call": "collection_aliases.list",
+        "kwargs": {}
+      },
+      {
+        "args": [
+          "chat",
+          "11111111-1111-1111-1111-111111111111"
+        ],
+        "call": "collection_aliases.set",
+        "kwargs": {}
+      }
+    ],
+    "completed": false,
+    "tool": "set_collection_alias"
+  },
+  "set_document_enabled": {
+    "arguments": {
+      "document_id": "doc-1",
+      "enabled": true
+    },
+    "calls": [
+      {
+        "args": [
+          "doc-1",
+          true
+        ],
+        "call": "documents.set_enabled",
+        "kwargs": {}
+      }
+    ],
+    "completed": false,
+    "tool": "set_document_enabled"
+  },
+  "set_documents_enabled": {
+    "arguments": {
+      "collection_id": "11111111-1111-1111-1111-111111111111",
+      "enabled": false,
+      "selector": {
+        "document_ids": [
+          "doc-1"
+        ]
+      }
+    },
+    "calls": [
+      {
+        "args": [
+          "11111111-1111-1111-1111-111111111111",
+          {
+            "$model": "DocumentSelector",
+            "set": {
+              "document_ids": [
+                "doc-1"
+              ]
+            }
+          },
+          false
+        ],
+        "call": "corpus.bulk_set_enabled",
+        "kwargs": {}
+      }
+    ],
+    "completed": false,
+    "tool": "set_documents_enabled"
+  },
+  "submit_preview_job": {
+    "arguments": {
+      "collection_id": "11111111-1111-1111-1111-111111111111",
+      "document_id": "doc-1"
+    },
+    "calls": [
+      {
+        "args": [
+          "11111111-1111-1111-1111-111111111111"
+        ],
+        "call": "collections.submit_preview_job",
+        "kwargs": {
+          "blob": null,
+          "document_id": "doc-1",
+          "max_chunks": null
+        }
+      }
+    ],
+    "completed": false,
+    "tool": "submit_preview_job"
+  },
+  "submit_preview_job:candidate_blob": {
+    "arguments": {
+      "blob": {
+        "edges": [],
+        "nodes": [
+          {
+            "id": "parse"
+          }
+        ]
+      },
+      "collection_id": "11111111-1111-1111-1111-111111111111",
+      "document_id": "doc-1",
+      "max_chunks": 5
+    },
+    "calls": [
+      {
+        "args": [
+          "11111111-1111-1111-1111-111111111111"
+        ],
+        "call": "collections.submit_preview_job",
+        "kwargs": {
+          "blob": {
+            "edges": [],
+            "nodes": [
+              {
+                "id": "parse"
+              }
+            ]
+          },
+          "document_id": "doc-1",
+          "max_chunks": 5
+        }
+      }
+    ],
+    "completed": false,
+    "tool": "submit_preview_job"
+  },
+  "update_collection:add_field": {
+    "arguments": {
+      "collection_id": "11111111-1111-1111-1111-111111111111",
+      "field_ops": [
+        {
+          "field": {
+            "description": "Subject of the document",
+            "field_name": "topic",
+            "field_type": "keyword_list",
+            "filterable": true,
+            "origin": "user",
+            "scope": "document",
+            "semantic": true
+          },
+          "op": "add"
+        }
+      ]
+    },
+    "calls": [
+      {
+        "args": [
+          "11111111-1111-1111-1111-111111111111",
+          {
+            "$model": "UpdateCollectionRequest",
+            "set": {
+              "field_ops": [
+                {
+                  "field": {
+                    "description": "Subject of the document",
+                    "field_name": "topic",
+                    "field_type": "keyword_list",
+                    "filterable": true,
+                    "origin": "user",
+                    "scope": "document",
+                    "semantic": true
+                  },
+                  "op": "add"
+                }
+              ]
+            }
+          }
+        ],
+        "call": "collections.update",
+        "kwargs": {}
+      }
+    ],
+    "completed": false,
+    "tool": "update_collection"
+  },
+  "update_collection:clear_title_field_wins": {
+    "arguments": {
+      "clear_title_field": true,
+      "collection_id": "11111111-1111-1111-1111-111111111111",
+      "title_field": "topic"
+    },
+    "calls": [
+      {
+        "args": [
+          "11111111-1111-1111-1111-111111111111",
+          {
+            "$model": "UpdateCollectionRequest",
+            "set": {
+              "title_field": null
+            }
+          }
+        ],
+        "call": "collections.update",
+        "kwargs": {}
+      }
+    ],
+    "completed": false,
+    "tool": "update_collection"
+  },
+  "update_collection:identity_and_blobs": {
+    "arguments": {
+      "collection_id": "11111111-1111-1111-1111-111111111111",
+      "max_file_size_bytes": 2000000,
+      "name": "Renamed",
+      "note": "why",
+      "pipeline": {
+        "edges": [],
+        "nodes": [
+          {
+            "id": "parse"
+          }
+        ]
+      },
+      "search": {
+        "nodes": []
+      },
+      "supported_formats": [
+        "pdf"
+      ],
+      "tags": [
+        "a"
+      ]
+    },
+    "calls": [
+      {
+        "args": [
+          "11111111-1111-1111-1111-111111111111",
+          {
+            "$model": "UpdateCollectionRequest",
+            "set": {
+              "max_file_size_bytes": 2000000,
+              "name": "Renamed",
+              "note": "why",
+              "pipeline": {
+                "edges": [],
+                "nodes": [
+                  {
+                    "id": "parse"
+                  }
+                ]
+              },
+              "search": {
+                "nodes": []
+              },
+              "supported_formats": [
+                "pdf"
+              ],
+              "tags": [
+                "a"
+              ]
+            }
+          }
+        ],
+        "call": "collections.update",
+        "kwargs": {}
+      }
+    ],
+    "completed": false,
+    "tool": "update_collection"
+  },
+  "update_collection:no_change": {
+    "arguments": {
+      "collection_id": "11111111-1111-1111-1111-111111111111"
+    },
+    "calls": [
+      {
+        "args": [
+          "11111111-1111-1111-1111-111111111111",
+          {
+            "$model": "UpdateCollectionRequest",
+            "set": {}
+          }
+        ],
+        "call": "collections.update",
+        "kwargs": {}
+      }
+    ],
+    "completed": false,
+    "tool": "update_collection"
+  },
+  "update_collection:preview": {
+    "arguments": {
+      "collection_id": "11111111-1111-1111-1111-111111111111",
+      "name": "Renamed",
+      "preview": true
+    },
+    "calls": [
+      {
+        "args": [
+          "11111111-1111-1111-1111-111111111111",
+          {
+            "$model": "UpdateCollectionRequest",
+            "set": {
+              "dry_run": true,
+              "name": "Renamed"
+            }
+          }
+        ],
+        "call": "collections.update",
+        "kwargs": {}
+      }
+    ],
+    "completed": false,
+    "tool": "update_collection"
+  },
+  "update_collection:remove_field_confirmed_writes": {
+    "arguments": {
+      "collection_id": "11111111-1111-1111-1111-111111111111",
+      "confirm": true,
+      "field_ops": [
+        {
+          "field_name": "topic",
+          "op": "remove"
+        }
+      ]
+    },
+    "calls": [
+      {
+        "args": [
+          "11111111-1111-1111-1111-111111111111",
+          {
+            "$model": "UpdateCollectionRequest",
+            "set": {
+              "field_ops": [
+                {
+                  "field_name": "topic",
+                  "op": "remove"
+                }
+              ]
+            }
+          }
+        ],
+        "call": "collections.update",
+        "kwargs": {}
+      }
+    ],
+    "completed": false,
+    "tool": "update_collection"
+  },
+  "update_collection:remove_field_unconfirmed_is_a_dry_run": {
+    "arguments": {
+      "collection_id": "11111111-1111-1111-1111-111111111111",
+      "field_ops": [
+        {
+          "field_name": "topic",
+          "op": "remove"
+        }
+      ]
+    },
+    "calls": [
+      {
+        "args": [
+          "11111111-1111-1111-1111-111111111111",
+          {
+            "$model": "UpdateCollectionRequest",
+            "set": {
+              "dry_run": true,
+              "field_ops": [
+                {
+                  "field_name": "topic",
+                  "op": "remove"
+                }
+              ]
+            }
+          }
+        ],
+        "call": "collections.update",
+        "kwargs": {}
+      }
+    ],
+    "completed": false,
+    "tool": "update_collection"
+  },
+  "update_collection:rename_field_unconfirmed_is_a_dry_run": {
+    "arguments": {
+      "collection_id": "11111111-1111-1111-1111-111111111111",
+      "field_ops": [
+        {
+          "field_name": "topic",
+          "new_name": "subject",
+          "op": "rename"
+        }
+      ]
+    },
+    "calls": [
+      {
+        "args": [
+          "11111111-1111-1111-1111-111111111111",
+          {
+            "$model": "UpdateCollectionRequest",
+            "set": {
+              "dry_run": true,
+              "field_ops": [
+                {
+                  "field_name": "topic",
+                  "new_name": "subject",
+                  "op": "rename"
+                }
+              ]
+            }
+          }
+        ],
+        "call": "collections.update",
+        "kwargs": {}
+      }
+    ],
+    "completed": false,
+    "tool": "update_collection"
+  },
+  "update_collection:set_title_field": {
+    "arguments": {
+      "collection_id": "11111111-1111-1111-1111-111111111111",
+      "title_field": "topic"
+    },
+    "calls": [
+      {
+        "args": [
+          "11111111-1111-1111-1111-111111111111",
+          {
+            "$model": "UpdateCollectionRequest",
+            "set": {
+              "title_field": "topic"
+            }
+          }
+        ],
+        "call": "collections.update",
+        "kwargs": {}
+      }
+    ],
+    "completed": false,
+    "tool": "update_collection"
+  },
+  "update_document_metadata": {
+    "arguments": {
+      "document_id": "doc-1",
+      "values": {
+        "tags": [
+          "a",
+          "b"
+        ],
+        "year": 2025
+      }
+    },
+    "calls": [
+      {
+        "args": [
+          "doc-1",
+          {
+            "tags": [
+              "a",
+              "b"
+            ],
+            "year": 2025
+          }
+        ],
+        "call": "documents.update_metadata",
+        "kwargs": {}
+      }
+    ],
+    "completed": false,
+    "tool": "update_document_metadata"
+  },
+  "upload_document": {
+    "arguments": {
+      "collection_id": "11111111-1111-1111-1111-111111111111",
+      "file_path": "/inbox/report.pdf",
+      "metadata": {
+        "year": 2024
+      }
+    },
+    "calls": [
+      {
+        "args": [
+          "11111111-1111-1111-1111-111111111111",
+          {
+            "$path": "/inbox/report.pdf"
+          }
+        ],
+        "call": "documents.upload",
+        "kwargs": {
+          "metadata": {
+            "year": 2024
+          }
+        }
+      }
+    ],
+    "completed": false,
+    "tool": "upload_document"
+  },
+  "upload_document:without_metadata": {
+    "arguments": {
+      "collection_id": "11111111-1111-1111-1111-111111111111",
+      "file_path": "/inbox/report.pdf"
+    },
+    "calls": [
+      {
+        "args": [
+          "11111111-1111-1111-1111-111111111111",
+          {
+            "$path": "/inbox/report.pdf"
+          }
+        ],
+        "call": "documents.upload",
+        "kwargs": {
+          "metadata": null
+        }
+      }
+    ],
+    "completed": false,
+    "tool": "upload_document"
+  },
+  "upload_document_bytes": {
+    "arguments": {
+      "collection_id": "11111111-1111-1111-1111-111111111111",
+      "content_base64": "JVBERi0xLjcgZml4ZWQgYnl0ZXM=",
+      "filename": "report.pdf",
+      "metadata": {
+        "year": 2024
+      }
+    },
+    "calls": [
+      {
+        "args": [
+          "11111111-1111-1111-1111-111111111111",
+          {
+            "$bytes": 20,
+            "sha256": "1b6f07174c37b072032a8af61c53abef82a96eca95bef0cd7caa2c0248f924a3"
+          }
+        ],
+        "call": "documents.upload",
+        "kwargs": {
+          "filename": "report.pdf",
+          "metadata": {
+            "year": 2024
+          }
+        }
+      }
+    ],
+    "completed": false,
+    "tool": "upload_document_bytes"
+  },
+  "view_pipeline_stages": {
+    "arguments": {
+      "blob": {
+        "edges": [],
+        "nodes": [
+          {
+            "id": "parse"
+          }
+        ]
+      },
+      "key": "ingest"
+    },
+    "calls": [
+      {
+        "args": [
+          "ingest",
+          {
+            "edges": [],
+            "nodes": [
+              {
+                "id": "parse"
+              }
+            ]
+          }
+        ],
+        "call": "pipelines.view_stages",
+        "kwargs": {}
+      }
+    ],
+    "completed": false,
+    "tool": "view_pipeline_stages"
+  },
+  "wait_for_job:expired_deadline_returns_the_running_job": {
+    "arguments": {
+      "job_id": "job-1",
+      "timeout_s": 0.0
+    },
+    "calls": [
+      {
+        "args": [
+          "job-1"
+        ],
+        "call": "jobs.get",
+        "kwargs": {}
+      }
+    ],
+    "completed": true,
+    "result": {
+      "content": [
+        {
+          "text": "{\"status\":\"running\",\"job_id\":\"job-1\"}",
+          "type": "text"
+        }
+      ],
+      "isError": false,
+      "resultType": "complete"
+    },
+    "tool": "wait_for_job"
+  },
+  "wait_for_job:terminal_job_is_returned_after_one_poll": {
+    "arguments": {
+      "job_id": "job-1"
+    },
+    "calls": [
+      {
+        "args": [
+          "job-1"
+        ],
+        "call": "jobs.get",
+        "kwargs": {}
+      }
+    ],
+    "completed": true,
+    "result": {
+      "content": [
+        {
+          "text": "{\"status\":\"done\",\"job_id\":\"job-1\"}",
+          "type": "text"
+        }
+      ],
+      "isError": false,
+      "resultType": "complete"
+    },
+    "tool": "wait_for_job"
+  },
+  "whoami": {
+    "arguments": {},
+    "calls": [
+      {
+        "args": [],
+        "call": "auth.whoami",
+        "kwargs": {}
+      }
+    ],
+    "completed": false,
+    "tool": "whoami"
+  }
+}
