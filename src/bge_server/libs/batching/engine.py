@@ -1,13 +1,12 @@
 # ====== Code Summary ======
-# BatchingEngine: owns FIVE BatchQueueWorkers (dense / sparse / colbert / embed_all / rerank) and
-# TWO asyncio.Locks: embed_lock (dense/sparse/colbert/embed_all, which all share
-# BgeModelsService.embed_model) and rerank_lock (independent — BgeModelsService.reranker is a
+# BatchingEngine: the submit / touch core. Owns FIVE BatchQueueWorkers (dense / sparse / colbert /
+# embed_all / rerank) and TWO asyncio.Locks: embed_lock (dense/sparse/colbert/embed_all, which all
+# share BgeModelsService.embed_model) and rerank_lock (independent -- BgeModelsService.reranker is a
 # separate FlagReranker instance, so rerank is not serialized behind embed calls). Public submit_*
 # coroutines (and embed_all) create a Future, wrap it in the appropriate BatchItem, enqueue it, and
-# await the result. Protected _process_* methods flatten the batch, run the model call under the
-# relevant lock via asyncio.to_thread, and scatter results back to each item's future. Rerank
-# scatter re-numbers indices 0..n-1 per request and sorts results score-descending to match TEI's
-# /rerank response order.
+# await the result. The per-kind flatten / model call / scatter logic lives in the BatchProcessor
+# subclasses of ``processors/`` (one per worker); each worker's process_fn is its processor's
+# ``process`` method.
 # Per-item error isolation: batch failures set the exception on every future in the batch.
 # embed_all gets cross-request coalescing exactly like dense/sparse/colbert (a dedicated
 # BatchQueueWorker + queue), since it is the PRIMARY production path (the DocForge embed node
@@ -18,17 +17,26 @@
 
 # ====== Standard Library Imports ======
 import asyncio
-from collections.abc import Callable
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 # ====== Third-Party Library Imports ======
 from loggerplusplus import LoggerClass
 
 # ====== Local Project Imports ======
-from .models import BatchItem, EmbedAllItem, EmbedItem, RerankItem
+from .models import EmbedAllItem, EmbedItem, RerankItem
+from .processors import (
+    BatchProcessor,
+    ColbertProcessor,
+    DenseProcessor,
+    EmbedAllProcessor,
+    RerankProcessor,
+    SparseProcessor,
+)
 
 if TYPE_CHECKING:
     from libs.bge_models.service import BgeModelsService
+
+    from .worker import BatchQueueWorker
 
 
 class BatchingEngine(LoggerClass):
@@ -37,7 +45,8 @@ class BatchingEngine(LoggerClass):
     model locks.
 
     Architecture:
-    - One worker per op-type so batches form independently per op.
+    - One worker per op-type so batches form independently per op; each worker's batches are
+      processed by the matching BatchProcessor (``processors/``).
     - TWO asyncio.Locks, not one:
         - embed_lock: shared by dense, sparse, colbert, and embed_all, which all call the same
           embed_model (BGEM3FlagModel) instance; concurrent forward passes on shared
@@ -47,8 +56,8 @@ class BatchingEngine(LoggerClass):
           embed_lock would head-of-line-block interactive search reranking behind bulk
           ingestion embedding, which can legitimately run for seconds. On CPU deployments
           (the default), BgeModelsService derives torch's intra-op thread cap assuming up to
-          two concurrent forward passes (embed-family + rerank) — see
-          BgeModelsService._max_concurrency — to bound thread-pool oversubscription now that
+          two concurrent forward passes (embed-family + rerank) -- see
+          BgeModelsService._max_concurrency -- to bound thread-pool oversubscription now that
           both locks can be held at once.
     - submit_* coroutines (and embed_all) are the primary public interface: create Future ->
       enqueue item -> await Future. QueueFullError propagates to the caller unchanged when the
@@ -57,11 +66,11 @@ class BatchingEngine(LoggerClass):
       queues (no Future/batch formation) but still acquire embed_lock / rerank_lock, so they
       stay mutually exclusive with every submit_*-driven (or embed_all) batch. Any caller that
       reaches the shared embed_model/reranker MUST go through a queued submit / embed_all call
-      or a touch_* method — never call BgeModelsService directly without holding the matching
+      or a touch_* method -- never call BgeModelsService directly without holding the matching
       lock.
 
     Error isolation:
-    - _process_* methods wrap the lock+to_thread+scatter in try/except. On any failure,
+    - BatchProcessor.process wraps the lock+to_thread+scatter in try/except. On any failure,
       the exception is distributed to all futures in the batch so no HTTP request hangs.
     """
 
@@ -95,290 +104,43 @@ class BatchingEngine(LoggerClass):
         LoggerClass.__init__(self)
 
         self._models = models
-        self._max_length = max_length
-        self._sub_batch_size = sub_batch_size
         # Global admission gate: at most max_concurrent forward passes in flight service-wide.
         self._gate = asyncio.Semaphore(max(1, max_concurrent))
 
-        # embed_lock — dense, sparse, and colbert all call the same embed_model instance, so
+        # embed_lock -- dense, sparse, and colbert all call the same embed_model instance, so
         # they share this lock (safety invariant: no concurrent forward passes on one instance).
         self._embed_lock = asyncio.Lock()
-        # rerank_lock — the reranker is a separate FlagReranker instance with no shared state
+        # rerank_lock -- the reranker is a separate FlagReranker instance with no shared state
         # with embed_model, so it gets its own lock instead of queuing behind embed calls.
         self._rerank_lock = asyncio.Lock()
 
-        # Import here to avoid circular imports at module level; BatchQueueWorker only needs
-        # the models attribute at process time, not at construction.
-        from .worker import BatchQueueWorker  # noqa: PLC0415
+        def worker(name: str, processor: BatchProcessor) -> "BatchQueueWorker":
+            # Import here to avoid circular imports at module level; BatchQueueWorker only needs
+            # the models attribute at process time, not at construction.
+            from .worker import BatchQueueWorker  # noqa: PLC0415
 
-        self._dense_worker = BatchQueueWorker(
-            name="dense",
-            max_batch_size=max_batch_size,
-            max_wait_ms=max_wait_ms,
-            max_queue_size=max_queue_size,
-            small_max_items=small_max_items,
-            process_fn=self._process_dense,
-        )
-        self._sparse_worker = BatchQueueWorker(
-            name="sparse",
-            max_batch_size=max_batch_size,
-            max_wait_ms=max_wait_ms,
-            max_queue_size=max_queue_size,
-            small_max_items=small_max_items,
-            process_fn=self._process_sparse,
-        )
-        self._colbert_worker = BatchQueueWorker(
-            name="colbert",
-            max_batch_size=max_batch_size,
-            max_wait_ms=max_wait_ms,
-            max_queue_size=max_queue_size,
-            small_max_items=small_max_items,
-            process_fn=self._process_colbert,
-        )
-        # embed_all is the PRIMARY production path (the DocForge embed node hits it first) — it
+            return BatchQueueWorker(
+                name=name,
+                max_batch_size=max_batch_size,
+                max_wait_ms=max_wait_ms,
+                max_queue_size=max_queue_size,
+                small_max_items=small_max_items,
+                process_fn=processor.process,
+            )
+
+        embed_args = (models, self._gate, self._embed_lock, sub_batch_size, max_length)
+        self._dense_worker = worker("dense", DenseProcessor(*embed_args))
+        self._sparse_worker = worker("sparse", SparseProcessor(*embed_args))
+        self._colbert_worker = worker("colbert", ColbertProcessor(*embed_args))
+        # embed_all is the PRIMARY production path (the DocForge embed node hits it first) -- it
         # gets its own BatchQueueWorker so concurrent callers coalesce into single model calls
         # exactly like dense/sparse/colbert, instead of the old in-flight-counter admission that
         # only bounded concurrency without ever batching across requests.
-        self._embed_all_worker = BatchQueueWorker(
-            name="embed_all",
-            max_batch_size=max_batch_size,
-            max_wait_ms=max_wait_ms,
-            max_queue_size=max_queue_size,
-            small_max_items=small_max_items,
-            process_fn=self._process_embed_all,
+        self._embed_all_worker = worker("embed_all", EmbedAllProcessor(*embed_args))
+        self._rerank_worker = worker(
+            "rerank",
+            RerankProcessor(models, self._gate, self._rerank_lock, sub_batch_size),
         )
-        self._rerank_worker = BatchQueueWorker(
-            name="rerank",
-            max_batch_size=max_batch_size,
-            max_wait_ms=max_wait_ms,
-            max_queue_size=max_queue_size,
-            small_max_items=small_max_items,
-            process_fn=self._process_rerank,
-        )
-
-    # ── Protected process methods ──────────────────────────────────────────────
-
-    @staticmethod
-    def _flatten(items: list[Any]) -> tuple[list[Any], list[tuple[int, int]], list[int]]:
-        """
-        Flatten every item's payload into one list.
-
-        Args:
-            items (list): Batch items exposing ``texts`` (and ``query`` for rerank, handled by
-                the caller).
-
-        Returns:
-            tuple: ``(flat, offsets, owners)`` -- the flat payload list, each item's
-                ``(start, end)`` slice into it, and the owning item index of every flat entry.
-        """
-        flat: list[Any] = []
-        offsets: list[tuple[int, int]] = []
-        owners: list[int] = []
-        for index, item in enumerate(items):
-            start = len(flat)
-            if isinstance(item, RerankItem):
-                flat.extend([item.query, text] for text in item.texts)
-            else:
-                flat.extend(item.texts)
-            offsets.append((start, len(flat)))
-            owners.extend([index] * (len(flat) - start))
-        return flat, offsets, owners
-
-    async def _infer(
-        self,
-        lock: asyncio.Lock,
-        items: list[Any],
-        flat: list[Any],
-        owners: list[int],
-        call: Callable[[list[Any]], list[Any]],
-    ) -> list[Any]:
-        """
-        Run ``call`` over ``flat`` in sub-batches, dropping work nobody is waiting for.
-
-        Takes the global admission gate then the model lock. A forward pass runs in a thread and
-        cannot be interrupted, so cancellation only takes effect at the checks here: before the
-        first pass (the request may have died while queued on the gate/lock) and between every
-        sub-batch. A sub-batch is skipped only when EVERY item that owns one of its entries has
-        been cancelled (client disconnected), so live requests are never short-changed.
-
-        Args:
-            lock (asyncio.Lock): Model lock for the model instance ``call`` uses.
-            items (list): The batch items, whose futures say whether anyone still waits.
-            flat (list): Flattened payload entries.
-            owners (list[int]): Owning item index per flat entry.
-            call (Callable): Blocking model call over a slice of ``flat``, one result per entry.
-
-        Returns:
-            list: One result per flat entry; ``None`` for entries skipped as abandoned.
-        """
-        results: list[Any] = [None] * len(flat)
-        size = self._sub_batch_size if self._sub_batch_size > 0 else max(1, len(flat))
-        async with self._gate, lock:
-            for start in range(0, len(flat), size):
-                end = min(start + size, len(flat))
-                if all(items[o].future.done() for o in set(owners[start:end])):
-                    continue
-                results[start:end] = await asyncio.to_thread(call, flat[start:end])
-        return results
-
-    async def _process_dense(self, batch: list[BatchItem]) -> None:
-        """
-        Flatten, run dense encode under the model lock, scatter results back.
-
-        Args:
-            batch (list[BatchItem]): Batch of EmbedItem instances from the dense worker.
-        """
-        items: list[EmbedItem] = [i for i in batch if isinstance(i, EmbedItem)]
-        try:
-            # 1. Flatten all texts and record per-item offsets for scatter
-            flat, offsets, owners = self._flatten(items)
-
-            # 2. Sub-batched model call under gate + embed_lock (dense/sparse/colbert/embed_all
-            #    share the embed_model instance -- mandatory serialisation)
-            max_length = self._max_length
-            vecs = await self._infer(
-                self._embed_lock,
-                items,
-                flat,
-                owners,
-                lambda chunk: self._models.encode_dense(chunk, max_length),
-            )
-
-            # 3. Scatter results back to each item's future by text slice
-            for item, (start, end) in zip(items, offsets):
-                if not item.future.done():
-                    item.future.set_result(vecs[start:end])
-
-        except Exception as exc:
-            # Error isolation: distribute failure to every future so no request hangs
-            for item in items:
-                if not item.future.done():
-                    item.future.set_exception(exc)
-
-    async def _process_sparse(self, batch: list[BatchItem]) -> None:
-        """
-        Flatten, run sparse encode under embed_lock, scatter results back.
-
-        Args:
-            batch (list[BatchItem]): Batch of EmbedItem instances from the sparse worker.
-        """
-        items: list[EmbedItem] = [i for i in batch if isinstance(i, EmbedItem)]
-        try:
-            flat, offsets, owners = self._flatten(items)
-            max_length = self._max_length
-            token_lists = await self._infer(
-                self._embed_lock,
-                items,
-                flat,
-                owners,
-                lambda chunk: self._models.encode_sparse(chunk, max_length),
-            )
-            for item, (start, end) in zip(items, offsets):
-                if not item.future.done():
-                    item.future.set_result(token_lists[start:end])
-
-        except Exception as exc:
-            for item in items:
-                if not item.future.done():
-                    item.future.set_exception(exc)
-
-    async def _process_colbert(self, batch: list[BatchItem]) -> None:
-        """
-        Flatten, run colbert encode under embed_lock, scatter results back.
-
-        Args:
-            batch (list[BatchItem]): Batch of EmbedItem instances from the colbert worker.
-        """
-        items: list[EmbedItem] = [i for i in batch if isinstance(i, EmbedItem)]
-        try:
-            flat, offsets, owners = self._flatten(items)
-            max_length = self._max_length
-            token_vec_lists = await self._infer(
-                self._embed_lock,
-                items,
-                flat,
-                owners,
-                lambda chunk: self._models.encode_colbert(chunk, max_length),
-            )
-            for item, (start, end) in zip(items, offsets):
-                if not item.future.done():
-                    item.future.set_result(token_vec_lists[start:end])
-
-        except Exception as exc:
-            for item in items:
-                if not item.future.done():
-                    item.future.set_exception(exc)
-
-    async def _process_embed_all(self, batch: list[BatchItem]) -> None:
-        """
-        Flatten, run the combined dense+sparse encode under embed_lock, scatter results back.
-
-        Each item's future resolves to a ``(dense_slice, sparse_slice)`` tuple: both
-        representations come from ONE shared forward pass per sub-batch over the cross-request
-        batch -- the throughput win this worker exists to capture.
-
-        Args:
-            batch (list[BatchItem]): Batch of EmbedAllItem instances from the embed_all worker.
-        """
-        items: list[EmbedAllItem] = [i for i in batch if isinstance(i, EmbedAllItem)]
-        try:
-            flat, offsets, owners = self._flatten(items)
-
-            def combined(chunk: list[Any]) -> list[Any]:
-                dense, sparse = self._models.encode_dense_sparse(chunk, self._max_length)
-                return list(zip(dense, sparse))
-
-            pairs = await self._infer(self._embed_lock, items, flat, owners, combined)
-
-            for item, (start, end) in zip(items, offsets):
-                if not item.future.done():
-                    rows = pairs[start:end]
-                    item.future.set_result(([r[0] for r in rows], [r[1] for r in rows]))
-
-        except Exception as exc:
-            for item in items:
-                if not item.future.done():
-                    item.future.set_exception(exc)
-
-    async def _process_rerank(self, batch: list[BatchItem]) -> None:
-        """
-        Flatten all (query, text) pairs, score them, scatter per-request results.
-
-        Each request's results are re-indexed 0..n-1 (not global offsets) so the TEI contract
-        is honoured: the DocForge bge_reranker provider expects local indices. Results are also
-        sorted score-descending per request, matching TEI's own /rerank response order.
-
-        Args:
-            batch (list[BatchItem]): Batch of RerankItem instances from the rerank worker.
-        """
-        items: list[RerankItem] = [i for i in batch if isinstance(i, RerankItem)]
-        try:
-            # 1. Flat [query, text] pairs; rerank_lock is independent of embed_lock (separate
-            #    FlagReranker instance), the global gate still caps total concurrency.
-            flat, offsets, owners = self._flatten(items)
-            flat_scores = await self._infer(
-                self._rerank_lock,
-                items,
-                flat,
-                owners,
-                self._models.compute_rerank_scores_flat,
-            )
-
-            # 2. Scatter scores back; re-number indices 0..n-1 per request, sort descending.
-            for item, (start, end) in zip(items, offsets):
-                if item.future.done():
-                    continue
-                result = sorted(
-                    ({"index": i, "score": float(s)} for i, s in enumerate(flat_scores[start:end])),
-                    key=lambda r: r["score"],
-                    reverse=True,
-                )
-                item.future.set_result(result)
-
-        except Exception as exc:
-            for item in items:
-                if not item.future.done():
-                    item.future.set_exception(exc)
 
     # ── Public methods ─────────────────────────────────────────────────────────
 
@@ -437,7 +199,7 @@ class BatchingEngine(LoggerClass):
         item = EmbedItem(future=future, cost=len(texts), texts=texts)
         self._dense_worker.submit(item)
 
-        # 3. Await the future; result set by _process_dense scatter
+        # 3. Await the future; result set by DenseProcessor scatter
         return await future
 
     async def submit_embed_sparse(self, texts: list[str]) -> list[list[dict[str, int | float]]]:
