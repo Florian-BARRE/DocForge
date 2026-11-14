@@ -1,5 +1,5 @@
 # ---------------------- Engine ---------------------- #
-from .core import FlowEngine
+from .flow_engine import FlowEngine
 
 # ---------------------- Trace capture ---------------------- #
 from .trace import RecordTrace, TraceLevel
