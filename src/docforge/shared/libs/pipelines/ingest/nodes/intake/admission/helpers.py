@@ -1,18 +1,17 @@
 # ====== Code Summary ======
 # AdmissionHelpers — the pure validation rules the admit node applies against the collection contract:
 # format allow-list (by extension), size cap, and the metadata checks (required user fields
-# present, unknown fields per policy, value type per FieldType, enum membership). Pure functions —
-# they return precise error strings; the node decides to fail.
+# present, unknown fields per policy, value type per FieldType via the FieldTypeRegistry, enum
+# membership). Pure functions — they return precise error strings; the node decides to fail.
 
 # ====== Standard Library Imports ======
-from datetime import datetime
 from pathlib import PurePosixPath
 from typing import Any
 
 # ====== Internal Project Imports ======
+from shared_libs.pipelines.field_types import FieldTypeRegistry
 from shared_libs.public_models import (
     FieldOrigin,
-    FieldType,
     MetadataFieldSpec,
     UnknownFieldPolicy,
 )
@@ -32,46 +31,10 @@ class AdmissionHelpers:
     @staticmethod
     def value_error(spec: MetadataFieldSpec, value: Any) -> str | None:
         """Check one declared value against its field spec (type + enum); None when valid."""
-        # 1. Type check — bool is an int subclass, so exclude it from the numeric types.
-        kind = spec.field_type
-        if kind == FieldType.STRING and not isinstance(value, str):
-            return f"field '{spec.field_name}' must be a string"
-        if kind == FieldType.INTEGER and (isinstance(value, bool) or not isinstance(value, int)):
-            return f"field '{spec.field_name}' must be an integer"
-        if kind == FieldType.FLOAT and (
-            isinstance(value, bool) or not isinstance(value, (int, float))
-        ):
-            return f"field '{spec.field_name}' must be a number"
-        if kind == FieldType.BOOL and not isinstance(value, bool):
-            return f"field '{spec.field_name}' must be a boolean"
-        if kind == FieldType.KEYWORD_LIST and (
-            not isinstance(value, list) or not all(isinstance(item, str) for item in value)
-        ):
-            return f"field '{spec.field_name}' must be a list of strings"
-        if kind == FieldType.TEXT_LIST and (
-            not isinstance(value, list) or not all(isinstance(item, str) for item in value)
-        ):
-            return f"field '{spec.field_name}' must be a list of strings"
-        # enum = a string whose membership is enforced by the whitelist step below.
-        if kind in (FieldType.ENUM, FieldType.TEXT) and not isinstance(value, str):
-            return f"field '{spec.field_name}' must be a string"
-        if kind == FieldType.INTEGER_LIST and (
-            not isinstance(value, list)
-            or not all(isinstance(i, int) and not isinstance(i, bool) for i in value)
-        ):
-            return f"field '{spec.field_name}' must be a list of integers"
-        if kind == FieldType.FLOAT_LIST and (
-            not isinstance(value, list)
-            or not all(isinstance(i, (int, float)) and not isinstance(i, bool) for i in value)
-        ):
-            return f"field '{spec.field_name}' must be a list of numbers"
-        if kind == FieldType.DATETIME:
-            if not isinstance(value, str):
-                return f"field '{spec.field_name}' must be an ISO datetime string"
-            try:
-                datetime.fromisoformat(value)
-            except ValueError:
-                return f"field '{spec.field_name}' is not a valid ISO datetime"
+        # 1. Type check — one handler per FieldType owns its shape rule (bool excluded from numbers…).
+        type_error = FieldTypeRegistry.get(spec.field_type).value_error(spec.field_name, value)
+        if type_error is not None:
+            return type_error
 
         # 2. Enum membership (a string value, or every item of a keyword list).
         if spec.enum_values is not None:
