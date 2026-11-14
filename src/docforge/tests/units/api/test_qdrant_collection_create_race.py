@@ -3,7 +3,7 @@
 While one job's ``create_collection`` is still running, Qdrant 1.20 already lists the collection
 (``collection_exists`` is True) but a ``get_collection`` on it answers HTTP 500 "0 of 0 read
 operations failed" (no shard ready yet). A job that reconciles the store, or reads its declared
-vectors (the ingestion facade's ``_guard_declared_vectors``), at that moment must wait for the
+vectors (the ingestion indexer's ``_guard_declared_vectors``), at that moment must wait for the
 collection to be ready instead of failing the ingest. A persistent 500 still propagates.
 No real Qdrant here: a fake client mimics the creation window.
 """

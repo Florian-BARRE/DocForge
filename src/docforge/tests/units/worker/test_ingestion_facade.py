@@ -19,8 +19,26 @@ from shared_libs.services.db.facades import (
     IngestionPayload,
     ReingestOutcome,
 )
-from shared_libs.services.db.facades import ingestion_facade as facade_module
-from shared_libs.services.db.qdrant import DeclaredVectors, PayloadType, QdrantPoint, SparseVec
+from shared_libs.services.db.facades.rebuild_guard import RebuildGuard
+from shared_libs.services.db.facades.trace_purge import TracePurgeHelper
+from shared_libs.services.db.postgresql.apis import (
+    BlobApi,
+    ChunkApi,
+    CollectionApi,
+    DocumentApi,
+    IRApi,
+    JobApi,
+)
+from shared_libs.services.db.postgresql.apis.execution_tree import ExecutionTreeFlattener
+from shared_libs.services.db.qdrant import (
+    DeclaredVectors,
+    PayloadType,
+    QdrantCollectionApi,
+    QdrantIndexApi,
+    QdrantPoint,
+    SparseVec,
+)
+from shared_libs.services.db.s3 import S3ObjectApi
 
 
 def _integrity_error(constraint_name: str) -> IntegrityError:
@@ -79,7 +97,7 @@ def _tracking(calls: list[str], name: str, return_value: object = None):
 
 async def test_find_duplicate_returns_the_matching_document(monkeypatch) -> None:
     existing = MagicMock()
-    monkeypatch.setattr(facade_module.DocumentApi, "find", AsyncMock(return_value=existing))
+    monkeypatch.setattr(DocumentApi, "find", AsyncMock(return_value=existing))
 
     facade = IngestionFacade(_postgres_yielding(MagicMock()), MagicMock(), MagicMock())
     found = await facade.find_duplicate(uuid.uuid4(), "sha", "v1")
@@ -88,7 +106,7 @@ async def test_find_duplicate_returns_the_matching_document(monkeypatch) -> None
 
 
 async def test_find_duplicate_returns_none_when_no_match(monkeypatch) -> None:
-    monkeypatch.setattr(facade_module.DocumentApi, "find", AsyncMock(return_value=None))
+    monkeypatch.setattr(DocumentApi, "find", AsyncMock(return_value=None))
 
     facade = IngestionFacade(_postgres_yielding(MagicMock()), MagicMock(), MagicMock())
     found = await facade.find_duplicate(uuid.uuid4(), "sha", "v1")
@@ -103,26 +121,16 @@ async def test_find_duplicate_returns_none_when_no_match(monkeypatch) -> None:
 
 def _patch_save_apis(monkeypatch, calls: list[str]) -> None:
     """Patch every data-access call ``save`` makes as an order-recording stand-in."""
-    monkeypatch.setattr(
-        facade_module.BlobApi, "collect_hashes_for_document", _tracking(calls, "collect", [])
-    )
-    monkeypatch.setattr(facade_module.DocumentApi, "update_facts", _tracking(calls, "facts"))
-    monkeypatch.setattr(facade_module.DocumentApi, "replace_pages", _tracking(calls, "pages"))
-    monkeypatch.setattr(
-        facade_module.DocumentApi, "replace_metadata", _tracking(calls, "doc_metadata")
-    )
-    monkeypatch.setattr(
-        facade_module.ChunkApi, "delete_for_document", _tracking(calls, "chunk_delete")
-    )
-    monkeypatch.setattr(facade_module.IRApi, "delete_for_document", _tracking(calls, "ir_delete"))
-    monkeypatch.setattr(facade_module.IRApi, "persist_ir", _tracking(calls, "ir_persist"))
-    monkeypatch.setattr(facade_module.ChunkApi, "persist_chunks", _tracking(calls, "chunk_persist"))
-    monkeypatch.setattr(
-        facade_module.DocumentApi, "finalize_done", _tracking(calls, "finalize_done")
-    )
-    monkeypatch.setattr(
-        facade_module.BlobApi, "delete_unreferenced", _tracking(calls, "blob_purge", [])
-    )
+    monkeypatch.setattr(BlobApi, "collect_hashes_for_document", _tracking(calls, "collect", []))
+    monkeypatch.setattr(DocumentApi, "update_facts", _tracking(calls, "facts"))
+    monkeypatch.setattr(DocumentApi, "replace_pages", _tracking(calls, "pages"))
+    monkeypatch.setattr(DocumentApi, "replace_metadata", _tracking(calls, "doc_metadata"))
+    monkeypatch.setattr(ChunkApi, "delete_for_document", _tracking(calls, "chunk_delete"))
+    monkeypatch.setattr(IRApi, "delete_for_document", _tracking(calls, "ir_delete"))
+    monkeypatch.setattr(IRApi, "persist_ir", _tracking(calls, "ir_persist"))
+    monkeypatch.setattr(ChunkApi, "persist_chunks", _tracking(calls, "chunk_persist"))
+    monkeypatch.setattr(DocumentApi, "finalize_done", _tracking(calls, "finalize_done"))
+    monkeypatch.setattr(BlobApi, "delete_unreferenced", _tracking(calls, "blob_purge", []))
 
 
 async def test_save_purges_chunks_and_ir_before_reinserting(monkeypatch) -> None:
@@ -149,7 +157,7 @@ async def test_save_sets_status_done(monkeypatch) -> None:
     document_id = uuid.uuid4()
     _patch_save_apis(monkeypatch, [])
     finalize_done = AsyncMock()
-    monkeypatch.setattr(facade_module.DocumentApi, "finalize_done", finalize_done)
+    monkeypatch.setattr(DocumentApi, "finalize_done", finalize_done)
 
     facade = IngestionFacade(
         _postgres_yielding(_session_with_flush()), MagicMock(), _s3_yielding(MagicMock())
@@ -167,7 +175,7 @@ async def test_save_stamps_warning_and_chunk_count_on_finalize(monkeypatch) -> N
     document_id = uuid.uuid4()
     _patch_save_apis(monkeypatch, [])
     finalize_done = AsyncMock()
-    monkeypatch.setattr(facade_module.DocumentApi, "finalize_done", finalize_done)
+    monkeypatch.setattr(DocumentApi, "finalize_done", finalize_done)
 
     facade = IngestionFacade(
         _postgres_yielding(_session_with_flush()), MagicMock(), _s3_yielding(MagicMock())
@@ -187,12 +195,12 @@ async def test_save_purges_superseded_blobs_but_keeps_shared_ones(monkeypatch) -
     _patch_save_apis(monkeypatch, [])
     # BEFORE the purge, the document referenced an old render + its source bytes.
     collect = AsyncMock(return_value=["old_render", "source_hash"])
-    monkeypatch.setattr(facade_module.BlobApi, "collect_hashes_for_document", collect)
+    monkeypatch.setattr(BlobApi, "collect_hashes_for_document", collect)
     # The guarded delete keeps the still-referenced source and removes only the superseded render.
     delete_unreferenced = AsyncMock(return_value=["old_render"])
-    monkeypatch.setattr(facade_module.BlobApi, "delete_unreferenced", delete_unreferenced)
+    monkeypatch.setattr(BlobApi, "delete_unreferenced", delete_unreferenced)
     s3_delete = AsyncMock()
-    monkeypatch.setattr(facade_module.S3ObjectApi, "delete_many", s3_delete)
+    monkeypatch.setattr(S3ObjectApi, "delete_many", s3_delete)
 
     facade = IngestionFacade(
         _postgres_yielding(_session_with_flush()), MagicMock(), _s3_yielding(MagicMock())
@@ -210,7 +218,7 @@ async def test_save_skips_s3_when_no_blobs_superseded(monkeypatch) -> None:
     """A first ingest (or a re-ingest whose blobs are byte-identical) purges nothing — no S3 call."""
     _patch_save_apis(monkeypatch, [])
     s3_delete = AsyncMock()
-    monkeypatch.setattr(facade_module.S3ObjectApi, "delete_many", s3_delete)
+    monkeypatch.setattr(S3ObjectApi, "delete_many", s3_delete)
 
     facade = IngestionFacade(
         _postgres_yielding(_session_with_flush()), MagicMock(), _s3_yielding(MagicMock())
@@ -227,8 +235,8 @@ async def test_save_skips_s3_when_no_blobs_superseded(monkeypatch) -> None:
 
 async def test_store_blobs_writes_s3_before_the_registry(monkeypatch) -> None:
     calls: list[str] = []
-    monkeypatch.setattr(facade_module.S3ObjectApi, "put_many", _tracking(calls, "s3_put"))
-    monkeypatch.setattr(facade_module.BlobApi, "register_many", _tracking(calls, "pg_register"))
+    monkeypatch.setattr(S3ObjectApi, "put_many", _tracking(calls, "s3_put"))
+    monkeypatch.setattr(BlobApi, "register_many", _tracking(calls, "pg_register"))
 
     facade = IngestionFacade(
         _postgres_yielding(MagicMock()), MagicMock(), _s3_yielding(MagicMock())
@@ -243,8 +251,8 @@ async def test_store_blobs_writes_s3_before_the_registry(monkeypatch) -> None:
 async def test_store_blobs_skips_s3_when_no_objects(monkeypatch) -> None:
     put_many = AsyncMock()
     register_many = AsyncMock()
-    monkeypatch.setattr(facade_module.S3ObjectApi, "put_many", put_many)
-    monkeypatch.setattr(facade_module.BlobApi, "register_many", register_many)
+    monkeypatch.setattr(S3ObjectApi, "put_many", put_many)
+    monkeypatch.setattr(BlobApi, "register_many", register_many)
 
     facade = IngestionFacade(
         _postgres_yielding(MagicMock()), MagicMock(), _s3_yielding(MagicMock())
@@ -274,11 +282,11 @@ async def test_store_trace_payloads_batches_into_one_put_many(monkeypatch) -> No
         _flat("parse", resolved_input={"a": 1}, output={"b": 2}),
         _flat("chunk", resolved_input={"c": 3}, output={"d": 4}),
     ]
-    monkeypatch.setattr(facade_module.ExecutionTreeFlattener, "flatten", lambda record: nodes)
+    monkeypatch.setattr(ExecutionTreeFlattener, "flatten", lambda record: nodes)
     put_many = AsyncMock()
-    monkeypatch.setattr(facade_module.S3ObjectApi, "put_many", put_many)
+    monkeypatch.setattr(S3ObjectApi, "put_many", put_many)
     set_bytes = AsyncMock()
-    monkeypatch.setattr(facade_module.JobApi, "set_trace_payload_bytes", set_bytes)
+    monkeypatch.setattr(JobApi, "set_trace_payload_bytes", set_bytes)
 
     job_id = uuid.uuid4()
     facade = IngestionFacade(
@@ -302,10 +310,8 @@ async def test_store_trace_payloads_batches_into_one_put_many(monkeypatch) -> No
 async def test_store_trace_payloads_best_effort_drops_all_refs_on_failure(monkeypatch) -> None:
     """A batch store failure is swallowed (never raised) and drops every ref — trace never fails ingest."""
     nodes = [_flat("parse", resolved_input={"a": 1}, output={"b": 2})]
-    monkeypatch.setattr(facade_module.ExecutionTreeFlattener, "flatten", lambda record: nodes)
-    monkeypatch.setattr(
-        facade_module.S3ObjectApi, "put_many", AsyncMock(side_effect=RuntimeError("s3 down"))
-    )
+    monkeypatch.setattr(ExecutionTreeFlattener, "flatten", lambda record: nodes)
+    monkeypatch.setattr(S3ObjectApi, "put_many", AsyncMock(side_effect=RuntimeError("s3 down")))
 
     facade = IngestionFacade(MagicMock(), MagicMock(), _s3_yielding(MagicMock()))
     refs = await facade.store_trace_payloads(uuid.uuid4(), MagicMock(), max_payload_bytes=10_000)
@@ -316,9 +322,9 @@ async def test_store_trace_payloads_best_effort_drops_all_refs_on_failure(monkey
 async def test_store_trace_payloads_noop_when_no_payloads(monkeypatch) -> None:
     """No full payloads attached → no put_many at all (the empty-pending short-circuit)."""
     nodes = [_flat("parse", resolved_input=None, output=None)]
-    monkeypatch.setattr(facade_module.ExecutionTreeFlattener, "flatten", lambda record: nodes)
+    monkeypatch.setattr(ExecutionTreeFlattener, "flatten", lambda record: nodes)
     put_many = AsyncMock()
-    monkeypatch.setattr(facade_module.S3ObjectApi, "put_many", put_many)
+    monkeypatch.setattr(S3ObjectApi, "put_many", put_many)
 
     facade = IngestionFacade(MagicMock(), MagicMock(), _s3_yielding(MagicMock()))
     refs = await facade.store_trace_payloads(uuid.uuid4(), MagicMock(), max_payload_bytes=10_000)
@@ -330,10 +336,10 @@ async def test_store_trace_payloads_noop_when_no_payloads(monkeypatch) -> None:
 async def test_store_trace_payloads_byte_accounting_failure_is_swallowed(monkeypatch) -> None:
     """A failure recording the byte total never fails an ingestion — the refs still come back."""
     nodes = [_flat("parse", resolved_input={"a": 1}, output={"b": 2})]
-    monkeypatch.setattr(facade_module.ExecutionTreeFlattener, "flatten", lambda record: nodes)
-    monkeypatch.setattr(facade_module.S3ObjectApi, "put_many", AsyncMock())
+    monkeypatch.setattr(ExecutionTreeFlattener, "flatten", lambda record: nodes)
+    monkeypatch.setattr(S3ObjectApi, "put_many", AsyncMock())
     monkeypatch.setattr(
-        facade_module.JobApi,
+        JobApi,
         "set_trace_payload_bytes",
         AsyncMock(side_effect=RuntimeError("pg down")),
     )
@@ -354,11 +360,11 @@ async def test_store_trace_payloads_counts_identical_overcap_payloads_once(monke
         _flat("parse", output={"x": "a" * 100}),
         _flat("chunk", output={"x": "a" * 100}),
     ]
-    monkeypatch.setattr(facade_module.ExecutionTreeFlattener, "flatten", lambda record: nodes)
+    monkeypatch.setattr(ExecutionTreeFlattener, "flatten", lambda record: nodes)
     put_many = AsyncMock()
-    monkeypatch.setattr(facade_module.S3ObjectApi, "put_many", put_many)
+    monkeypatch.setattr(S3ObjectApi, "put_many", put_many)
     set_bytes = AsyncMock()
-    monkeypatch.setattr(facade_module.JobApi, "set_trace_payload_bytes", set_bytes)
+    monkeypatch.setattr(JobApi, "set_trace_payload_bytes", set_bytes)
 
     facade = IngestionFacade(
         _postgres_yielding(MagicMock()), MagicMock(), _s3_yielding(MagicMock())
@@ -379,11 +385,11 @@ async def test_store_trace_payloads_counts_distinct_overcap_payloads_twice(monke
         _flat("parse", output={"x": "a" * 100}),
         _flat("chunk", output={"x": "b" * 100}),
     ]
-    monkeypatch.setattr(facade_module.ExecutionTreeFlattener, "flatten", lambda record: nodes)
+    monkeypatch.setattr(ExecutionTreeFlattener, "flatten", lambda record: nodes)
     put_many = AsyncMock()
-    monkeypatch.setattr(facade_module.S3ObjectApi, "put_many", put_many)
+    monkeypatch.setattr(S3ObjectApi, "put_many", put_many)
     set_bytes = AsyncMock()
-    monkeypatch.setattr(facade_module.JobApi, "set_trace_payload_bytes", set_bytes)
+    monkeypatch.setattr(JobApi, "set_trace_payload_bytes", set_bytes)
 
     facade = IngestionFacade(
         _postgres_yielding(MagicMock()), MagicMock(), _s3_yielding(MagicMock())
@@ -419,15 +425,15 @@ async def test_index_derives_vector_space_from_schema_and_marks_chunks_indexed(m
         _field("year", FieldType.INTEGER, filterable=True),
         _field("body", FieldType.TEXT, lexical=True),
     ]
-    monkeypatch.setattr(facade_module.CollectionApi, "get_schema", AsyncMock(return_value=schema))
+    monkeypatch.setattr(CollectionApi, "get_schema", AsyncMock(return_value=schema))
     ensure = AsyncMock(return_value=set())
     delete_stale = AsyncMock()
     upsert = AsyncMock()
     mark_indexed = AsyncMock()
-    monkeypatch.setattr(facade_module.QdrantCollectionApi, "ensure", ensure)
-    monkeypatch.setattr(facade_module.QdrantIndexApi, "delete_stale_for_document", delete_stale)
-    monkeypatch.setattr(facade_module.QdrantIndexApi, "upsert", upsert)
-    monkeypatch.setattr(facade_module.ChunkApi, "mark_indexed", mark_indexed)
+    monkeypatch.setattr(QdrantCollectionApi, "ensure", ensure)
+    monkeypatch.setattr(QdrantIndexApi, "delete_stale_for_document", delete_stale)
+    monkeypatch.setattr(QdrantIndexApi, "upsert", upsert)
+    monkeypatch.setattr(ChunkApi, "mark_indexed", mark_indexed)
 
     document_id = uuid.uuid4()
     chunk_ids = [uuid.uuid4(), uuid.uuid4()]
@@ -468,17 +474,15 @@ async def test_index_upserts_before_purging_stale_points_so_a_failed_upsert_keep
     untouched — never delete-then-upsert, which left the document with ZERO points on a failure."""
     collection_id = uuid.uuid4()
     document_id = uuid.uuid4()
-    monkeypatch.setattr(facade_module.CollectionApi, "get_schema", AsyncMock(return_value=[]))
-    monkeypatch.setattr(facade_module.QdrantCollectionApi, "ensure", AsyncMock(return_value=set()))
-    monkeypatch.setattr(facade_module.ChunkApi, "mark_indexed", AsyncMock())
+    monkeypatch.setattr(CollectionApi, "get_schema", AsyncMock(return_value=[]))
+    monkeypatch.setattr(QdrantCollectionApi, "ensure", AsyncMock(return_value=set()))
+    monkeypatch.setattr(ChunkApi, "mark_indexed", AsyncMock())
     full_delete = AsyncMock()
-    monkeypatch.setattr(facade_module.QdrantIndexApi, "delete_by_document", full_delete)
+    monkeypatch.setattr(QdrantIndexApi, "delete_by_document", full_delete)
 
     calls: list[str] = []
-    monkeypatch.setattr(
-        facade_module.QdrantIndexApi, "delete_stale_for_document", _tracking(calls, "purge")
-    )
-    monkeypatch.setattr(facade_module.QdrantIndexApi, "upsert", _tracking(calls, "upsert"))
+    monkeypatch.setattr(QdrantIndexApi, "delete_stale_for_document", _tracking(calls, "purge"))
+    monkeypatch.setattr(QdrantIndexApi, "upsert", _tracking(calls, "upsert"))
 
     points = [QdrantPoint(point_id=str(uuid.uuid4()), payload={})]
     facade = IngestionFacade(_postgres_yielding(MagicMock()), MagicMock(), MagicMock())
@@ -488,9 +492,9 @@ async def test_index_upserts_before_purging_stale_points_so_a_failed_upsert_keep
 
     # A failing upsert: nothing is deleted at all.
     purge = AsyncMock()
-    monkeypatch.setattr(facade_module.QdrantIndexApi, "delete_stale_for_document", purge)
+    monkeypatch.setattr(QdrantIndexApi, "delete_stale_for_document", purge)
     monkeypatch.setattr(
-        facade_module.QdrantIndexApi, "upsert", AsyncMock(side_effect=RuntimeError("qdrant down"))
+        QdrantIndexApi, "upsert", AsyncMock(side_effect=RuntimeError("qdrant down"))
     )
     with pytest.raises(RuntimeError):
         await facade.index(collection_id, document_id, dense_dim=8, points=points)
@@ -527,10 +531,10 @@ async def test_index_fails_clearly_on_an_undeclared_chunk_scope_vector(monkeypat
 
     collection_id = uuid.uuid4()
     schema = [_field("Résumé", FieldType.TEXT, semantic=True)]
-    monkeypatch.setattr(facade_module.CollectionApi, "get_schema", AsyncMock(return_value=schema))
-    monkeypatch.setattr(facade_module.QdrantCollectionApi, "ensure", AsyncMock(return_value=set()))
+    monkeypatch.setattr(CollectionApi, "get_schema", AsyncMock(return_value=schema))
+    monkeypatch.setattr(QdrantCollectionApi, "ensure", AsyncMock(return_value=set()))
     monkeypatch.setattr(
-        facade_module.QdrantCollectionApi,
+        QdrantCollectionApi,
         "declared",
         AsyncMock(
             return_value=DeclaredVectors(
@@ -540,8 +544,8 @@ async def test_index_fails_clearly_on_an_undeclared_chunk_scope_vector(monkeypat
     )
     delete_by_document = AsyncMock()
     upsert = AsyncMock()
-    monkeypatch.setattr(facade_module.QdrantIndexApi, "delete_by_document", delete_by_document)
-    monkeypatch.setattr(facade_module.QdrantIndexApi, "upsert", upsert)
+    monkeypatch.setattr(QdrantIndexApi, "delete_by_document", delete_by_document)
+    monkeypatch.setattr(QdrantIndexApi, "upsert", upsert)
 
     points = [
         QdrantPoint(
@@ -565,13 +569,13 @@ async def test_index_fails_clearly_on_an_undeclared_chunk_scope_vector(monkeypat
 
 async def test_index_skips_the_store_read_for_content_only_points(monkeypatch) -> None:
     """No meta_* vector carried → no declared-vectors round-trip (zero cost on the common path)."""
-    monkeypatch.setattr(facade_module.CollectionApi, "get_schema", AsyncMock(return_value=[]))
-    monkeypatch.setattr(facade_module.QdrantCollectionApi, "ensure", AsyncMock(return_value=set()))
+    monkeypatch.setattr(CollectionApi, "get_schema", AsyncMock(return_value=[]))
+    monkeypatch.setattr(QdrantCollectionApi, "ensure", AsyncMock(return_value=set()))
     declared = AsyncMock()
-    monkeypatch.setattr(facade_module.QdrantCollectionApi, "declared_vectors", declared)
-    monkeypatch.setattr(facade_module.QdrantIndexApi, "delete_stale_for_document", AsyncMock())
-    monkeypatch.setattr(facade_module.QdrantIndexApi, "upsert", AsyncMock())
-    monkeypatch.setattr(facade_module.ChunkApi, "mark_indexed", AsyncMock())
+    monkeypatch.setattr(QdrantCollectionApi, "declared_vectors", declared)
+    monkeypatch.setattr(QdrantIndexApi, "delete_stale_for_document", AsyncMock())
+    monkeypatch.setattr(QdrantIndexApi, "upsert", AsyncMock())
+    monkeypatch.setattr(ChunkApi, "mark_indexed", AsyncMock())
 
     points = [QdrantPoint(point_id=str(uuid.uuid4()), payload={}, dense={"content_dense": [0.1]})]
     facade = IngestionFacade(_postgres_yielding(MagicMock()), MagicMock(), MagicMock())
@@ -589,23 +593,17 @@ async def test_reingest_admits_a_fresh_job_when_the_document_is_idle(monkeypatch
     doc_id, coll_id, job_id = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
     document = MagicMock(id=doc_id, collection_id=coll_id)
     job = MagicMock(id=job_id)
-    monkeypatch.setattr(
-        facade_module.DocumentApi, "get_for_update", AsyncMock(return_value=document)
-    )
-    monkeypatch.setattr(
-        facade_module.JobApi, "get_active_for_document", AsyncMock(return_value=None)
-    )
+    monkeypatch.setattr(DocumentApi, "get_for_update", AsyncMock(return_value=document))
+    monkeypatch.setattr(JobApi, "get_active_for_document", AsyncMock(return_value=None))
     create = AsyncMock(return_value=job)
-    monkeypatch.setattr(facade_module.JobApi, "create", create)
+    monkeypatch.setattr(JobApi, "create", create)
     set_status = AsyncMock()
-    monkeypatch.setattr(facade_module.DocumentApi, "set_status", set_status)
+    monkeypatch.setattr(DocumentApi, "set_status", set_status)
     # Reingest replaces the run, so it reclaims the document's PRIOR jobs' full-trace payloads
     # (best-effort, after the commit). Both the id-gather and the purge are mocked here.
-    monkeypatch.setattr(
-        facade_module.JobApi, "list_job_ids_for_document", AsyncMock(return_value=["old-job"])
-    )
+    monkeypatch.setattr(JobApi, "list_job_ids_for_document", AsyncMock(return_value=["old-job"]))
     trace_purge = AsyncMock(return_value=0)
-    monkeypatch.setattr(facade_module.TracePurgeHelper, "purge", trace_purge)
+    monkeypatch.setattr(TracePurgeHelper, "purge", trace_purge)
 
     facade = IngestionFacade(_postgres_yielding(MagicMock()), MagicMock(), MagicMock())
     result = await facade.reingest(doc_id)
@@ -624,16 +622,14 @@ async def test_reingest_refuses_a_document_that_already_has_an_active_job(monkey
     two parallel runs interleave their Qdrant upsert + stale-point purge and strand orphan points."""
     doc_id, active_id = uuid.uuid4(), uuid.uuid4()
     document = MagicMock(id=doc_id, collection_id=uuid.uuid4())
+    monkeypatch.setattr(DocumentApi, "get_for_update", AsyncMock(return_value=document))
     monkeypatch.setattr(
-        facade_module.DocumentApi, "get_for_update", AsyncMock(return_value=document)
-    )
-    monkeypatch.setattr(
-        facade_module.JobApi,
+        JobApi,
         "get_active_for_document",
         AsyncMock(return_value=MagicMock(id=active_id)),
     )
     create = AsyncMock()
-    monkeypatch.setattr(facade_module.JobApi, "create", create)
+    monkeypatch.setattr(JobApi, "create", create)
 
     facade = IngestionFacade(_postgres_yielding(MagicMock()), MagicMock(), MagicMock())
     result = await facade.reingest(doc_id)
@@ -646,9 +642,9 @@ async def test_reingest_refuses_a_document_that_already_has_an_active_job(monkey
 async def test_reingest_unknown_document_is_not_found_and_skips_the_active_probe(
     monkeypatch,
 ) -> None:
-    monkeypatch.setattr(facade_module.DocumentApi, "get_for_update", AsyncMock(return_value=None))
+    monkeypatch.setattr(DocumentApi, "get_for_update", AsyncMock(return_value=None))
     get_active = AsyncMock()
-    monkeypatch.setattr(facade_module.JobApi, "get_active_for_document", get_active)
+    monkeypatch.setattr(JobApi, "get_active_for_document", get_active)
 
     facade = IngestionFacade(_postgres_yielding(MagicMock()), MagicMock(), MagicMock())
     result = await facade.reingest(uuid.uuid4())
@@ -674,10 +670,10 @@ async def test_admit_returns_created_when_the_insert_wins(monkeypatch) -> None:
     )
     created = MagicMock(id=uuid.uuid4(), collection_id=coll_id)
     job = MagicMock(id=uuid.uuid4())
-    monkeypatch.setattr(facade_module.DocumentApi, "create", AsyncMock(return_value=created))
-    monkeypatch.setattr(facade_module.JobApi, "create", AsyncMock(return_value=job))
+    monkeypatch.setattr(DocumentApi, "create", AsyncMock(return_value=created))
+    monkeypatch.setattr(JobApi, "create", AsyncMock(return_value=job))
     find = AsyncMock()
-    monkeypatch.setattr(facade_module.DocumentApi, "find", find)
+    monkeypatch.setattr(DocumentApi, "find", find)
 
     facade = IngestionFacade(_postgres_yielding(MagicMock()), MagicMock(), MagicMock())
     result = await facade.admit(document, MagicMock())
@@ -705,14 +701,14 @@ async def test_admit_resolves_duplicate_race_to_the_incumbent_document(monkeypat
     session = MagicMock()
     session.rollback = AsyncMock()
     monkeypatch.setattr(
-        facade_module.DocumentApi,
+        DocumentApi,
         "create",
         AsyncMock(side_effect=_integrity_error("uq_document_collection_id")),
     )
     find = AsyncMock(return_value=incumbent)
-    monkeypatch.setattr(facade_module.DocumentApi, "find", find)
+    monkeypatch.setattr(DocumentApi, "find", find)
     job_create = AsyncMock()
-    monkeypatch.setattr(facade_module.JobApi, "create", job_create)
+    monkeypatch.setattr(JobApi, "create", job_create)
 
     facade = IngestionFacade(_postgres_yielding(session), MagicMock(), MagicMock())
     result = await facade.admit(document, MagicMock())
@@ -739,12 +735,12 @@ async def test_admit_reraises_an_unrelated_integrity_error(monkeypatch) -> None:
     session = MagicMock()
     session.rollback = AsyncMock()
     monkeypatch.setattr(
-        facade_module.DocumentApi,
+        DocumentApi,
         "create",
         AsyncMock(side_effect=_integrity_error("fk_job_document_id_document")),
     )
     find = AsyncMock()
-    monkeypatch.setattr(facade_module.DocumentApi, "find", find)
+    monkeypatch.setattr(DocumentApi, "find", find)
 
     facade = IngestionFacade(_postgres_yielding(session), MagicMock(), MagicMock())
     with pytest.raises(IntegrityError):
@@ -755,18 +751,16 @@ async def test_admit_reraises_an_unrelated_integrity_error(monkeypatch) -> None:
 
 async def _reingest_with_status(monkeypatch, status, replay_from):
     """Run an admitted reingest for a document in ``status``; return the set_status mock."""
-    from shared_libs.services.db.facades import ingestion_facade as module  # noqa: PLC0415
-
     document = MagicMock(id=uuid.uuid4(), collection_id=uuid.uuid4(), status=status)
-    monkeypatch.setattr(module.DocumentApi, "get_for_update", AsyncMock(return_value=document))
-    monkeypatch.setattr(module.RebuildGuard, "assert_no_rebuild", AsyncMock())
-    monkeypatch.setattr(module.JobApi, "get_active_for_document", AsyncMock(return_value=None))
-    monkeypatch.setattr(module.IRApi, "has_blocks", AsyncMock(return_value=True))
-    monkeypatch.setattr(module.JobApi, "list_job_ids_for_document", AsyncMock(return_value=[]))
-    monkeypatch.setattr(module.JobApi, "create", AsyncMock(return_value=MagicMock()))
-    monkeypatch.setattr(module.TracePurgeHelper, "purge", AsyncMock(return_value=0))
+    monkeypatch.setattr(DocumentApi, "get_for_update", AsyncMock(return_value=document))
+    monkeypatch.setattr(RebuildGuard, "assert_no_rebuild", AsyncMock())
+    monkeypatch.setattr(JobApi, "get_active_for_document", AsyncMock(return_value=None))
+    monkeypatch.setattr(IRApi, "has_blocks", AsyncMock(return_value=True))
+    monkeypatch.setattr(JobApi, "list_job_ids_for_document", AsyncMock(return_value=[]))
+    monkeypatch.setattr(JobApi, "create", AsyncMock(return_value=MagicMock()))
+    monkeypatch.setattr(TracePurgeHelper, "purge", AsyncMock(return_value=0))
     set_status = AsyncMock()
-    monkeypatch.setattr(module.DocumentApi, "set_status", set_status)
+    monkeypatch.setattr(DocumentApi, "set_status", set_status)
     facade = IngestionFacade(_postgres_yielding(MagicMock()), MagicMock(), MagicMock())
     result = await facade.reingest(document.id, replay_from=replay_from)
     assert result.outcome is ReingestOutcome.ADMITTED
@@ -809,16 +803,16 @@ async def test_index_refuses_a_sparse_vector_declared_for_another_encoder(monkey
         UndeclaredVectorError,
     )
 
-    monkeypatch.setattr(facade_module.CollectionApi, "get_schema", AsyncMock(return_value=[]))
+    monkeypatch.setattr(CollectionApi, "get_schema", AsyncMock(return_value=[]))
     ensure = AsyncMock(return_value={"content"})
-    monkeypatch.setattr(facade_module.QdrantCollectionApi, "ensure", ensure)
+    monkeypatch.setattr(QdrantCollectionApi, "ensure", ensure)
     monkeypatch.setattr(
-        facade_module.QdrantCollectionApi,
+        QdrantCollectionApi,
         "declared",
         AsyncMock(return_value=DeclaredVectors(sparse=frozenset({"content_bm25"}))),
     )
     upsert = AsyncMock()
-    monkeypatch.setattr(facade_module.QdrantIndexApi, "upsert", upsert)
+    monkeypatch.setattr(QdrantIndexApi, "upsert", upsert)
     points = [
         QdrantPoint(
             point_id=str(uuid.uuid4()),

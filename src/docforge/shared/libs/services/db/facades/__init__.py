@@ -54,7 +54,7 @@ from .index_rebuild_payloads import (
 from .rebuild_guard import RebuildGuard
 from .content_sparse_reencoder import ContentSparseReencoder
 from .store_rebuild_facade import StoreRebuildFacade
-from .ingestion_facade import IngestionFacade
+from .ingestion import IngestionFacade
 from .ir_bundle_adapter import IRBundleAdapter
 from .replay_persist_facade import ReplayPersistFacade
 from .replay_source_facade import ReplaySourceFacade
