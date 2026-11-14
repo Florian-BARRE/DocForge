@@ -344,27 +344,26 @@ def _deliver_kinds(palette) -> set[str]:
     return {node.kind for node in deliver.nodes}
 
 
-def test_search_placeholders_are_registered_but_hidden() -> None:
-    """The future methods are registered (discoverable) yet SELECTABLE=False (out of the palette)."""
-    hidden = {
-        # rewrite + hyde are now REAL selectable nodes; only understand + multi stay placeholders
-        # (multi needs graph fan-out, understand needs structured filter extraction).
+def test_search_registers_only_runnable_kinds() -> None:
+    """Every kind registered under a search family is real: no SELECTABLE=False placeholder is left.
+
+    The future methods (understand, multi, dense, sparse, rrf, weighted, llm, dedup_document, mmr,
+    parent_expand, assemble) were registered-but-never-executable stubs and were removed (R-01);
+    the ``fuse`` family only held such stubs, so it left the search palette with them.
+    """
+    removed = {
         "query": {"understand", "multi"},
         "retrieve": {"dense", "sparse"},
         "fuse": {"rrf", "weighted"},
         "rerank": {"llm"},
         "postprocess": {"dedup_document", "mmr", "parent_expand", "assemble"},
     }
+    for family, kinds in removed.items():
+        assert set(NodeRegistry.kinds(family)).isdisjoint(kinds), family
+    assert "fuse" not in SearchPipeline.FAMILIES
     palette = {f.family: {n.kind for n in f.nodes} for f in SearchPipeline.palette().families}
-    for family, kinds in hidden.items():
-        # 1. Hidden from the palette's method picker.
-        assert palette[family].isdisjoint(kinds), (family, palette[family] & kinds)
-        # 2. Still registered + describable, and rerank placeholders advertise scored=True.
-        for kind in kinds:
-            described = NodeRegistry.get(family, kind).describe()
-            assert described.selectable is False
-    assert NodeRegistry.get("rerank", "llm").describe().scored is True
-    # The two query-understanding methods are REAL: selectable and present in the palette.
+    assert "fuse" not in palette
+    # Every selectable method is present in the palette; the rewrite + hyde query methods are real.
     for kind in ("rewrite", "hyde"):
         assert NodeRegistry.get("query", kind).describe().selectable is True
         assert kind in palette["query"]
@@ -641,14 +640,3 @@ def test_degraded_query_rewrite_surfaces_a_notice_to_the_caller(monkeypatch) -> 
     assert "degraded" in result.debug
     assert "rewrite" in result.debug["degraded"]
     assert "raw query used" in result.debug["degraded"]
-
-
-@pytest.mark.parametrize("kind", ["understand", "llm", "rrf", "mmr"])
-def test_placeholder_bodies_raise(kind: str) -> None:
-    """A placeholder never runs — its body raises NotImplementedError if ever invoked."""
-    family = {"understand": "query", "llm": "rerank", "rrf": "fuse", "mmr": "postprocess"}[kind]
-    node_class = NodeRegistry.get(family, kind)
-    node = node_class(id="x", config=node_class.Config())
-    with pytest.raises(NotImplementedError):
-        # The body raises before it ever reads its input — no valid Consumes needed.
-        asyncio.run(node.run(None))

@@ -111,30 +111,6 @@ class CollectionsFacade(LoggerClass):
             self._qdrant.raw, DatabaseHelpers.qdrant_collection_name(collection_id)
         )
 
-    async def update_contract(
-        self,
-        collection_id: uuid.UUID,
-        *,
-        name: str | None = None,
-        supported_formats: list[str] | None = None,
-        tags: list[str] | None = None,
-        max_file_size_bytes: int | None = None,
-        job_timeout_seconds: float | None = None,
-        trace_verbosity: str | None = None,
-    ) -> None:
-        """Patch the collection's identity/limits (None = leave unchanged; tags [] = clear)."""
-        async with self._postgres.session() as session:
-            await CollectionApi.update(
-                session,
-                collection_id,
-                name=name,
-                supported_formats=supported_formats,
-                tags=tags,
-                max_file_size_bytes=max_file_size_bytes,
-                job_timeout_seconds=job_timeout_seconds,
-                trace_verbosity=trace_verbosity,
-            )
-
     async def set_estimate_overrides(
         self, collection_id: uuid.UUID, overrides: dict | None
     ) -> None:

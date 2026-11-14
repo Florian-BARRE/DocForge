@@ -29,7 +29,6 @@ class SearchPipeline:
         "query",
         "encode",
         "retrieve",
-        "fuse",
         "rerank",
         "postprocess",
         "deliver",
@@ -106,10 +105,9 @@ class SearchPipeline:
         The (family → kinds) map a valid built search graph may use — the palette scope.
 
         Resolved from ``FAMILIES`` (the families search is built from) and ``FAMILY_KINDS`` (the
-        per-family scoping for the shared ``deliver`` family → ``hits``). Admits the future
-        ``SELECTABLE=False`` placeholder kinds registered under search families, so a valid graph is
-        never rejected for a legitimately registered kind. Fed to ``PaletteScopeValidator`` at the
-        write boundary.
+        per-family scoping for the shared ``deliver`` family → ``hits``). Admits every kind registered
+        under a search family, so a valid graph is never rejected for a legitimately registered
+        kind. Fed to ``PaletteScopeValidator`` at the write boundary.
 
         Returns:
             dict[str, set[str]]: Family → the set of kinds a search graph may contain.

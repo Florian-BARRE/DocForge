@@ -110,11 +110,6 @@ class CollectionTransferFacade(LoggerClass):
                 ),
             )
 
-    async def collect_blob_hashes(self, collection_id: uuid.UUID) -> list[str]:
-        """Every unique blob hash the collection's documents reference."""
-        async with self._postgres.session() as session:
-            return await BlobApi.collect_hashes_for_collection(session, collection_id)
-
     async def get_blob_rows(self, hashes: Sequence[str]) -> list[Blob]:
         """The registry rows (hash, key, mime, size, kind) for a set of blob hashes."""
         async with self._postgres.session() as session:

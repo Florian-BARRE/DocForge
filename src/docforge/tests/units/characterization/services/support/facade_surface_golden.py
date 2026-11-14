@@ -69,7 +69,6 @@ FACADE_SURFACE: dict[str, tuple[str, tuple[str, ...]]] = {
             "async reconcile_store(collection_id: UUID) -> set[str]",
             "async set_estimate_overrides(collection_id: UUID, overrides: dict | None) -> None",
             "async update_config(collection_id: UUID, *, pipeline: dict | None = None, search: dict | None = None, note: str | None = None, expected_version: int | None = None, author: ConfigAuthor | None = None) -> bool",
-            "async update_contract(collection_id: UUID, *, name: str | None = None, supported_formats: list[str] | None = None, tags: list[str] | None = None, max_file_size_bytes: int | None = None, job_timeout_seconds: float | None = None, trace_verbosity: str | None = None) -> None",
             "async update_schema(collection_id: UUID, desired: list[MetadataField]) -> bool",
             "async vector_count(collection_id: UUID) -> int",
         ),
@@ -300,7 +299,6 @@ FACADE_SURFACE: dict[str, tuple[str, tuple[str, ...]]] = {
     "transfer": (
         "CollectionTransferFacade",
         (
-            "async collect_blob_hashes(collection_id: UUID) -> list[str]",
             "async content_sparse_reencoder(collection_id: UUID) -> ContentSparseReencoder | None",
             "async create_collection(collection: Collection, fields: list[MetadataField]) -> Collection",
             "async dense_dim(collection_id: UUID) -> int",

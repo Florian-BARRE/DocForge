@@ -446,7 +446,7 @@ def test_rerank_blob_runs_end_to_end_and_changes_order(monkeypatch) -> None:
     assert [hit.score for hit in result.hits] == [0.99, 0.55, 0.10]
 
 
-def test_other_rerank_kinds_stay_placeholders() -> None:
-    """The llm rerank remains a hidden placeholder — only cross_encoder is selectable."""
-    assert NodeRegistry.get("rerank", "llm").describe().selectable is False
+def test_cross_encoder_is_the_only_rerank_kind() -> None:
+    """The llm rerank placeholder is gone — cross_encoder is the one (selectable) rerank kind."""
+    assert NodeRegistry.kinds("rerank") == ["cross_encoder"]
     assert NodeRegistry.get("rerank", "cross_encoder").describe().selectable is True

@@ -19,3 +19,12 @@ def test_page_count_skips_blocks_without_a_usable_page_idx() -> None:
 def test_page_count_is_zero_without_a_page_idx() -> None:
     """A content_list with no usable page_idx counts no page."""
     assert MineruEngine._MineruEngine__page_count([{"page_idx": None}, {}]) == 0  # type: ignore[attr-defined]
+
+
+def test_engine_retains_only_what_it_reads() -> None:
+    """The weight hoster and cache root are accepted but never stored (MinerU reads them from env)."""
+    engine = MineruEngine("vlm-transformers", "en", "huggingface", "/models")
+
+    assert not hasattr(engine, "_model_source")
+    assert not hasattr(engine, "_model_cache_home")
+    assert engine.backend == "vlm-transformers"

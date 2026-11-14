@@ -50,8 +50,7 @@ EMBED_PRICING: dict[str, float] = {
 # OCR provider kind → USD per page. OCR is priced per PAGE, not per token (that is how the hosted
 # OCR providers bill). The local ``rapidocr``/``paddle``/``tesseract`` kinds are free and are not listed here (the
 # estimator prices them 0 as known-local providers, and they stamp no usage on their records). An
-# absent paid kind prices to a null cost. Used by BOTH the pre-hoc estimator (projected spend) and
-# the post-hoc meter (``price_ocr_pages`` prices a paid OCR leaf's ``NodeUsage.pages`` here).
+# absent paid kind prices to a null cost. Used by the pre-hoc estimator (projected spend).
 # Rate verified 2026-09-06: Mistral OCR 4.1 standard API = $4 per 1000 pages (Document AI $5/1000 is a
 # different endpoint, not this per-page OCR call). The 50% batch-API discount is not modelled.
 OCR_PAGE_PRICING: dict[str, float] = {
@@ -90,26 +89,4 @@ def price_usd(model: str, prompt_tokens: int, completion_tokens: int) -> float |
     return None
 
 
-def price_ocr_pages(kind: str, pages: int) -> float | None:
-    """
-    Price a per-page OCR call in USD, or None when the OCR kind is not in ``OCR_PAGE_PRICING``.
-
-    Hosted OCR bills per page, not per token, so this is the page-shaped sibling of ``price_usd``:
-    the post-hoc meter routes a leaf whose ``NodeUsage.pages`` is set here. A free/local OCR kind
-    (rapidocr, paddle, tesseract) stamps no usage and never reaches this helper; an unknown paid kind prices to
-    None so the caller can surface "—" instead of a fabricated cost.
-
-    Args:
-        kind (str): The OCR provider kind the leaf recorded as its ``NodeUsage.model`` (the key).
-        pages (int): Pages billed for the call.
-
-    Returns:
-        float | None: The USD cost (0.0 for zero pages on a known kind), or None for an unknown kind.
-    """
-    rate = OCR_PAGE_PRICING.get(kind)
-    if rate is None:
-        return None
-    return pages * rate
-
-
-__all__ = ["MODEL_PRICING", "EMBED_PRICING", "OCR_PAGE_PRICING", "price_usd", "price_ocr_pages"]
+__all__ = ["MODEL_PRICING", "EMBED_PRICING", "OCR_PAGE_PRICING", "price_usd"]

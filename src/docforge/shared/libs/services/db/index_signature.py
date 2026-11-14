@@ -135,9 +135,4 @@ class CollectionIndexSignature:
         return EmbedBaseline.candidates(pipeline_blob or {})
 
 
-def collection_index_signature(pipeline_blob: dict, schema_rows: Sequence[MetadataField]) -> str:
-    """Module-level wrapper over ``CollectionIndexSignature.compute`` (the DESIGN's exact name)."""
-    return CollectionIndexSignature.compute(pipeline_blob, schema_rows)
-
-
-__all__ = ["CollectionIndexSignature", "collection_index_signature"]
+__all__ = ["CollectionIndexSignature"]
