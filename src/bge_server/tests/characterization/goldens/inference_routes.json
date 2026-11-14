@@ -1,0 +1,46 @@
+{
+  "embed_all_empty": {
+    "body": "{\"dense\":[],\"sparse\":[]}",
+    "status": 200
+  },
+  "embed_all_list": {
+    "body": "{\"dense\":[[1.0,2.0],[3.0,4.0]],\"sparse\":[[{\"index\":5,\"value\":1.0}],[{\"index\":7,\"value\":0.8},{\"index\":9,\"value\":0.25}]]}",
+    "status": 200
+  },
+  "embed_colbert_empty": {
+    "body": "[]",
+    "status": 200
+  },
+  "embed_colbert_list": {
+    "body": "[[[0.1,0.2],[0.3,0.4]],[[0.5,0.6]]]",
+    "status": 200
+  },
+  "embed_empty": {
+    "body": "[]",
+    "status": 200
+  },
+  "embed_list": {
+    "body": "[[1.0,2.0],[3.0,4.0]]",
+    "status": 200
+  },
+  "embed_single_string": {
+    "body": "[[1.0,2.0],[3.0,4.0]]",
+    "status": 200
+  },
+  "embed_sparse_empty": {
+    "body": "[]",
+    "status": 200
+  },
+  "embed_sparse_list": {
+    "body": "[[{\"index\":5,\"value\":1.0}],[{\"index\":7,\"value\":0.8},{\"index\":9,\"value\":0.25}]]",
+    "status": 200
+  },
+  "rerank_no_candidates": {
+    "body": "[]",
+    "status": 200
+  },
+  "rerank_two_candidates": {
+    "body": "[{\"index\":1,\"score\":0.2},{\"index\":0,\"score\":1.0}]",
+    "status": 200
+  }
+}

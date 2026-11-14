@@ -1,0 +1,3425 @@
+{
+  "docforge_sdk": {
+    "__all__": [
+      "APIConnectionError",
+      "APIStatusError",
+      "APITimeoutError",
+      "AddFieldOp",
+      "AsyncClient",
+      "AuditEntry",
+      "AuditPage",
+      "AuthError",
+      "BlobContent",
+      "BlockLocation",
+      "BulkChunkEnabledPatch",
+      "BulkChunkEnabledResponse",
+      "BulkReingestAccepted",
+      "BulkReingestRequest",
+      "CancelResult",
+      "CapabilitiesResponse",
+      "Capability",
+      "CapabilityMatrix",
+      "ChunkBrowseRequest",
+      "ChunkBrowseResponse",
+      "ChunkContext",
+      "ChunkEnabledPatch",
+      "ChunkEnabledResult",
+      "ChunkInfo",
+      "ChunkPage",
+      "Client",
+      "CollectionAliasModel",
+      "CollectionEstimateRequest",
+      "CollectionModel",
+      "CollectionStorageResponse",
+      "ConflictError",
+      "ContextChunk",
+      "CostEstimate",
+      "CreateCollectionRequest",
+      "CreateKeyRequest",
+      "CreatedKey",
+      "DocForgeError",
+      "DocumentDetail",
+      "DocumentEnabledResponse",
+      "DocumentIRModel",
+      "DocumentListItem",
+      "DocumentOutline",
+      "DocumentProvenance",
+      "DocumentStatus",
+      "DocumentStorageModel",
+      "EditResponse",
+      "EnabledPatch",
+      "EnrichmentKind",
+      "EnrichmentStatus",
+      "EstimateAssumptions",
+      "FailureBreakdown",
+      "FieldOp",
+      "FieldOrigin",
+      "FieldPatch",
+      "FieldScope",
+      "FieldSpec",
+      "FieldType",
+      "HealthStatus",
+      "IRBlock",
+      "IREnrichment",
+      "IRFigure",
+      "IRTable",
+      "InspectResponse",
+      "JobEvent",
+      "JobEventPayload",
+      "JobPage",
+      "JobStatus",
+      "JobTimeseries",
+      "JobTrace",
+      "KeyInfo",
+      "KeyPermissions",
+      "KeyProfile",
+      "MetadataUpdateResponse",
+      "MetadataValue",
+      "MetadataValuesPatch",
+      "NewFailures",
+      "NotFoundError",
+      "OutlineHeading",
+      "PageInfo",
+      "PipelineDesignResponse",
+      "PipelineIndexResponse",
+      "PipelineSurface",
+      "PostgresFootprintModel",
+      "PreviewChunk",
+      "PreviewCost",
+      "PreviewIrSummary",
+      "PreviewJobAccepted",
+      "PreviewJobResult",
+      "PreviewResponse",
+      "PreviewTraceNode",
+      "QdrantFootprintModel",
+      "RebuildIndexAccepted",
+      "ReingestJobHandle",
+      "RemoveFieldOp",
+      "RenameFieldOp",
+      "RotateKeyRequest",
+      "S3FootprintModel",
+      "SchemaDiff",
+      "SchemaDiffModifiedField",
+      "SchemaDiffRename",
+      "SearchHealthSummary",
+      "SearchHit",
+      "SearchRequest",
+      "SearchResponse",
+      "SearchTarget",
+      "ServiceInfo",
+      "SetCollectionAliasRequest",
+      "SetCollectionAliasResponse",
+      "SourceKind",
+      "StageApplyResponse",
+      "StageEstimate",
+      "StageViewResponse",
+      "TracePurgeResult",
+      "TransferAccepted",
+      "TransferStatus",
+      "UnprocessableError",
+      "UpdateCollectionRequest",
+      "UpdateCollectionResponse",
+      "UpdateFieldOp",
+      "UploadAccepted",
+      "VolumeEstimate",
+      "WorkerActivity",
+      "WorkersLive",
+      "__version__"
+    ],
+    "exports": {
+      "APIConnectionError": {
+        "kind": "class",
+        "methods": {},
+        "qualified_name": "docforge_sdk._exceptions.APIConnectionError"
+      },
+      "APIStatusError": {
+        "kind": "class",
+        "methods": {},
+        "qualified_name": "docforge_sdk._exceptions.APIStatusError"
+      },
+      "APITimeoutError": {
+        "kind": "class",
+        "methods": {},
+        "qualified_name": "docforge_sdk._exceptions.APITimeoutError"
+      },
+      "AddFieldOp": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.schema_ops.AddFieldOp"
+      },
+      "AsyncClient": {
+        "kind": "class",
+        "methods": {
+          "aclose": "(self) -> None"
+        },
+        "qualified_name": "docforge_sdk.client.AsyncClient"
+      },
+      "AuditEntry": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.audit.AuditEntry"
+      },
+      "AuditPage": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.audit.AuditPage"
+      },
+      "AuthError": {
+        "kind": "class",
+        "methods": {},
+        "qualified_name": "docforge_sdk._exceptions.AuthError"
+      },
+      "BlobContent": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.blobs.BlobContent"
+      },
+      "BlockLocation": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.search.BlockLocation"
+      },
+      "BulkChunkEnabledPatch": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.explorer.BulkChunkEnabledPatch"
+      },
+      "BulkChunkEnabledResponse": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.explorer.BulkChunkEnabledResponse"
+      },
+      "BulkReingestAccepted": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.collections.BulkReingestAccepted"
+      },
+      "BulkReingestRequest": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.collections.BulkReingestRequest"
+      },
+      "CancelResult": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.jobs.CancelResult"
+      },
+      "CapabilitiesResponse": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.capabilities.CapabilitiesResponse"
+      },
+      "Capability": {
+        "kind": "enum",
+        "members": {
+          "ADMIN": "admin",
+          "CREATE": "create",
+          "READ": "read",
+          "READ_TECHNICAL": "read_technical",
+          "READ_TEXT": "read_text",
+          "SEARCH": "search",
+          "WRITE": "write"
+        },
+        "qualified_name": "docforge_sdk.models._shared.Capability"
+      },
+      "CapabilityMatrix": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.capabilities.CapabilityMatrix"
+      },
+      "ChunkBrowseRequest": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.search.ChunkBrowseRequest"
+      },
+      "ChunkBrowseResponse": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.search.ChunkBrowseResponse"
+      },
+      "ChunkContext": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.explorer.ChunkContext"
+      },
+      "ChunkEnabledPatch": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.explorer.ChunkEnabledPatch"
+      },
+      "ChunkEnabledResult": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.explorer.ChunkEnabledResult"
+      },
+      "ChunkInfo": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.explorer.ChunkInfo"
+      },
+      "ChunkPage": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.explorer.ChunkPage"
+      },
+      "Client": {
+        "kind": "class",
+        "methods": {
+          "close": "(self) -> None"
+        },
+        "qualified_name": "docforge_sdk.client.Client"
+      },
+      "CollectionAliasModel": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.collection_aliases.CollectionAliasModel"
+      },
+      "CollectionEstimateRequest": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.estimate.CollectionEstimateRequest"
+      },
+      "CollectionModel": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.collections.CollectionModel"
+      },
+      "CollectionStorageResponse": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.storage.CollectionStorageResponse"
+      },
+      "ConflictError": {
+        "kind": "class",
+        "methods": {},
+        "qualified_name": "docforge_sdk._exceptions.ConflictError"
+      },
+      "ContextChunk": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.explorer.ContextChunk"
+      },
+      "CostEstimate": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.estimate.CostEstimate"
+      },
+      "CreateCollectionRequest": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.collections.CreateCollectionRequest"
+      },
+      "CreateKeyRequest": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.auth.CreateKeyRequest"
+      },
+      "CreatedKey": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.auth.CreatedKey"
+      },
+      "DocForgeError": {
+        "kind": "class",
+        "methods": {},
+        "qualified_name": "docforge_sdk._exceptions.DocForgeError"
+      },
+      "DocumentDetail": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.explorer.DocumentDetail"
+      },
+      "DocumentEnabledResponse": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.documents.DocumentEnabledResponse"
+      },
+      "DocumentIRModel": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.ir.DocumentIRModel"
+      },
+      "DocumentListItem": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.explorer.DocumentListItem"
+      },
+      "DocumentOutline": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.explorer.DocumentOutline"
+      },
+      "DocumentProvenance": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.ir.DocumentProvenance"
+      },
+      "DocumentStatus": {
+        "kind": "enum",
+        "members": {
+          "DONE": "done",
+          "FAILED": "failed",
+          "PENDING": "pending",
+          "PROCESSING": "processing"
+        },
+        "qualified_name": "docforge_sdk.models._shared.DocumentStatus"
+      },
+      "DocumentStorageModel": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.storage.DocumentStorageModel"
+      },
+      "EditResponse": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.pipelines.EditResponse"
+      },
+      "EnabledPatch": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.documents.EnabledPatch"
+      },
+      "EnrichmentKind": {
+        "kind": "enum",
+        "members": {
+          "CHART_TO_DATA": "chart_to_data",
+          "CLASSIFY": "classify",
+          "OCR": "ocr",
+          "TABLE_SUMMARY": "table_summary",
+          "VLM": "vlm"
+        },
+        "qualified_name": "docforge_sdk.models._shared.EnrichmentKind"
+      },
+      "EnrichmentStatus": {
+        "kind": "enum",
+        "members": {
+          "FAILED": "failed",
+          "OK": "ok",
+          "SKIPPED": "skipped"
+        },
+        "qualified_name": "docforge_sdk.models._shared.EnrichmentStatus"
+      },
+      "EstimateAssumptions": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.estimate.EstimateAssumptions"
+      },
+      "FailureBreakdown": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.jobs.FailureBreakdown"
+      },
+      "FieldOp": {
+        "kind": "constant",
+        "type": "_AnnotatedAlias"
+      },
+      "FieldOrigin": {
+        "kind": "enum",
+        "members": {
+          "GENERATED": "generated",
+          "SYSTEM": "system",
+          "USER": "user"
+        },
+        "qualified_name": "docforge_sdk.models._shared.FieldOrigin"
+      },
+      "FieldPatch": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.schema_ops.FieldPatch"
+      },
+      "FieldScope": {
+        "kind": "enum",
+        "members": {
+          "CHUNK": "chunk",
+          "DOCUMENT": "document"
+        },
+        "qualified_name": "docforge_sdk.models._shared.FieldScope"
+      },
+      "FieldSpec": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.field_spec.FieldSpec"
+      },
+      "FieldType": {
+        "kind": "enum",
+        "members": {
+          "BOOL": "bool",
+          "DATETIME": "datetime",
+          "ENUM": "enum",
+          "FLOAT": "float",
+          "FLOAT_LIST": "float_list",
+          "INTEGER": "integer",
+          "INTEGER_LIST": "integer_list",
+          "KEYWORD_LIST": "keyword_list",
+          "STRING": "string",
+          "TEXT": "text",
+          "TEXT_LIST": "text_list"
+        },
+        "qualified_name": "docforge_sdk.models._shared.FieldType"
+      },
+      "HealthStatus": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.health.HealthStatus"
+      },
+      "IRBlock": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.ir.IRBlock"
+      },
+      "IREnrichment": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.ir.IREnrichment"
+      },
+      "IRFigure": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.ir.IRFigure"
+      },
+      "IRTable": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.ir.IRTable"
+      },
+      "InspectResponse": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.pipelines.InspectResponse"
+      },
+      "JobEvent": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.jobs.JobEvent"
+      },
+      "JobEventPayload": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.jobs.JobEventPayload"
+      },
+      "JobPage": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.jobs.JobPage"
+      },
+      "JobStatus": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.jobs.JobStatus"
+      },
+      "JobTimeseries": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.jobs.JobTimeseries"
+      },
+      "JobTrace": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.jobs.JobTrace"
+      },
+      "KeyInfo": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.auth.KeyInfo"
+      },
+      "KeyPermissions": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models._shared.KeyPermissions"
+      },
+      "KeyProfile": {
+        "kind": "enum",
+        "members": {
+          "ADMIN": "admin",
+          "AGENT_READER": "agent_reader",
+          "AGENT_SEARCHER": "agent_searcher",
+          "OPERATOR": "operator"
+        },
+        "qualified_name": "docforge_sdk.models._shared.KeyProfile"
+      },
+      "MetadataUpdateResponse": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.documents.MetadataUpdateResponse"
+      },
+      "MetadataValue": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.explorer.MetadataValue"
+      },
+      "MetadataValuesPatch": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.documents.MetadataValuesPatch"
+      },
+      "NewFailures": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.jobs.NewFailures"
+      },
+      "NotFoundError": {
+        "kind": "class",
+        "methods": {},
+        "qualified_name": "docforge_sdk._exceptions.NotFoundError"
+      },
+      "OutlineHeading": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.explorer.OutlineHeading"
+      },
+      "PageInfo": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.explorer.PageInfo"
+      },
+      "PipelineDesignResponse": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.pipelines.PipelineDesignResponse"
+      },
+      "PipelineIndexResponse": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.pipelines.PipelineIndexResponse"
+      },
+      "PipelineSurface": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.pipelines.PipelineSurface"
+      },
+      "PostgresFootprintModel": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.storage.PostgresFootprintModel"
+      },
+      "PreviewChunk": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.preview.PreviewChunk"
+      },
+      "PreviewCost": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.preview.PreviewCost"
+      },
+      "PreviewIrSummary": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.preview.PreviewIrSummary"
+      },
+      "PreviewJobAccepted": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.preview.PreviewJobAccepted"
+      },
+      "PreviewJobResult": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.preview.PreviewJobResult"
+      },
+      "PreviewResponse": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.preview.PreviewResponse"
+      },
+      "PreviewTraceNode": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.preview.PreviewTraceNode"
+      },
+      "QdrantFootprintModel": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.storage.QdrantFootprintModel"
+      },
+      "RebuildIndexAccepted": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.index_rebuild.RebuildIndexAccepted"
+      },
+      "ReingestJobHandle": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.reingest.ReingestJobHandle"
+      },
+      "RemoveFieldOp": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.schema_ops.RemoveFieldOp"
+      },
+      "RenameFieldOp": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.schema_ops.RenameFieldOp"
+      },
+      "RotateKeyRequest": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.auth.RotateKeyRequest"
+      },
+      "S3FootprintModel": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.storage.S3FootprintModel"
+      },
+      "SchemaDiff": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.schema_ops.SchemaDiff"
+      },
+      "SchemaDiffModifiedField": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.schema_ops.SchemaDiffModifiedField"
+      },
+      "SchemaDiffRename": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.schema_ops.SchemaDiffRename"
+      },
+      "SearchHealthSummary": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.search.SearchHealthSummary"
+      },
+      "SearchHit": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.search.SearchHit"
+      },
+      "SearchRequest": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.search.SearchRequest"
+      },
+      "SearchResponse": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.search.SearchResponse"
+      },
+      "SearchTarget": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.search.SearchTarget"
+      },
+      "ServiceInfo": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.capabilities.ServiceInfo"
+      },
+      "SetCollectionAliasRequest": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.collection_aliases.SetCollectionAliasRequest"
+      },
+      "SetCollectionAliasResponse": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.collection_aliases.SetCollectionAliasResponse"
+      },
+      "SourceKind": {
+        "kind": "enum",
+        "members": {
+          "DIGITAL_BORN": "digital_born",
+          "MIXED": "mixed",
+          "SCANNED": "scanned"
+        },
+        "qualified_name": "docforge_sdk.models._shared.SourceKind"
+      },
+      "StageApplyResponse": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.pipelines.StageApplyResponse"
+      },
+      "StageEstimate": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.estimate.StageEstimate"
+      },
+      "StageViewResponse": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.pipelines.StageViewResponse"
+      },
+      "TracePurgeResult": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.trace.TracePurgeResult"
+      },
+      "TransferAccepted": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.transfers.TransferAccepted"
+      },
+      "TransferStatus": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.transfers.TransferStatus"
+      },
+      "UnprocessableError": {
+        "kind": "class",
+        "methods": {},
+        "qualified_name": "docforge_sdk._exceptions.UnprocessableError"
+      },
+      "UpdateCollectionRequest": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.collections.UpdateCollectionRequest"
+      },
+      "UpdateCollectionResponse": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.collections.UpdateCollectionResponse"
+      },
+      "UpdateFieldOp": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.schema_ops.UpdateFieldOp"
+      },
+      "UploadAccepted": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.documents.UploadAccepted"
+      },
+      "VolumeEstimate": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.estimate.VolumeEstimate"
+      },
+      "WorkerActivity": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.jobs.WorkerActivity"
+      },
+      "WorkersLive": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.jobs.WorkersLive"
+      },
+      "__version__": {
+        "kind": "version",
+        "type": "str"
+      }
+    }
+  },
+  "docforge_sdk.client": {
+    "__all__": [
+      "AsyncClient",
+      "Client"
+    ],
+    "exports": {
+      "AsyncClient": {
+        "kind": "class",
+        "methods": {
+          "aclose": "(self) -> None"
+        },
+        "qualified_name": "docforge_sdk.client.AsyncClient"
+      },
+      "Client": {
+        "kind": "class",
+        "methods": {
+          "close": "(self) -> None"
+        },
+        "qualified_name": "docforge_sdk.client.Client"
+      }
+    }
+  },
+  "docforge_sdk.models": {
+    "__all__": [
+      "AddFieldOp",
+      "AssumptionOverrides",
+      "AuditEntry",
+      "AuditPage",
+      "BlobContent",
+      "BlockLocation",
+      "BulkChunkEnabledPatch",
+      "BulkChunkEnabledResponse",
+      "BulkDeleteResponse",
+      "BulkEnabledResponse",
+      "BulkReingestAccepted",
+      "BulkReingestRequest",
+      "BulkReingestResponse",
+      "CancelResult",
+      "CapabilitiesResponse",
+      "Capability",
+      "CapabilityMatrix",
+      "ChunkBrowseRequest",
+      "ChunkBrowseResponse",
+      "ChunkContext",
+      "ChunkEnabledPatch",
+      "ChunkEnabledResult",
+      "ChunkInfo",
+      "ChunkPage",
+      "CollectionAliasModel",
+      "CollectionContractSchemaResponse",
+      "CollectionCost",
+      "CollectionDescription",
+      "CollectionEstimateRequest",
+      "CollectionFailureBucket",
+      "CollectionHealthResponse",
+      "CollectionHealthSummary",
+      "CollectionListItem",
+      "CollectionListVerdict",
+      "CollectionModel",
+      "CollectionSnippet",
+      "CollectionStageApplyResponse",
+      "CollectionStorageResponse",
+      "ConfigDiffEntry",
+      "ConfigVersionDetail",
+      "ConfigVersionDiffResponse",
+      "ConfigVersionListResponse",
+      "ConfigVersionRestoreResponse",
+      "ConfigVersionSummary",
+      "ContextChunk",
+      "CostEstimate",
+      "CreateCollectionRequest",
+      "CreateKeyRequest",
+      "CreatedKey",
+      "DateRange",
+      "DocumentDetail",
+      "DocumentEnabledResponse",
+      "DocumentFilter",
+      "DocumentGridRow",
+      "DocumentIRModel",
+      "DocumentListItem",
+      "DocumentOutline",
+      "DocumentProvenance",
+      "DocumentQueryRequest",
+      "DocumentQueryResponse",
+      "DocumentSelector",
+      "DocumentSort",
+      "DocumentStatus",
+      "DocumentStorageModel",
+      "DocumentView",
+      "EditResponse",
+      "EnabledPatch",
+      "EnrichmentKind",
+      "EnrichmentStatus",
+      "EstimateAssumptions",
+      "EstimateOverrides",
+      "FailureBreakdown",
+      "FailureBucket",
+      "FieldGuide",
+      "FieldOp",
+      "FieldOrigin",
+      "FieldPatch",
+      "FieldScope",
+      "FieldSpec",
+      "FieldType",
+      "HealthStatus",
+      "HealthVerdict",
+      "IRBlock",
+      "IREnrichment",
+      "IRFigure",
+      "IRTable",
+      "IngestHealth",
+      "InspectResponse",
+      "JobEvent",
+      "JobEventPayload",
+      "JobPage",
+      "JobStatus",
+      "JobTimeseries",
+      "JobTrace",
+      "KeyInfo",
+      "KeyPermissions",
+      "KeyProfile",
+      "MetadataFilter",
+      "MetadataUpdateResponse",
+      "MetadataValue",
+      "MetadataValuesPatch",
+      "ModelRateOverride",
+      "NewFailures",
+      "NumberRange",
+      "OutlineHeading",
+      "PageInfo",
+      "Pagination",
+      "PipelineDesignResponse",
+      "PipelineIndexResponse",
+      "PipelinePreset",
+      "PipelineSurface",
+      "PostgresFootprintModel",
+      "PreviewChunk",
+      "PreviewCost",
+      "PreviewIrSummary",
+      "PreviewJobAccepted",
+      "PreviewJobResult",
+      "PreviewResponse",
+      "PreviewTraceNode",
+      "ProbeStatus",
+      "ProviderProbeResult",
+      "QdrantFootprintModel",
+      "QueueDepth",
+      "RateOverrides",
+      "RebuildIndexAccepted",
+      "ReingestJobHandle",
+      "RemoveFieldOp",
+      "RenameFieldOp",
+      "RotateKeyRequest",
+      "S3FootprintModel",
+      "SNIPPET_FILE_EXTENSION",
+      "SchemaDiff",
+      "SchemaDiffModifiedField",
+      "SchemaDiffRename",
+      "SearchHealth",
+      "SearchHealthSummary",
+      "SearchHint",
+      "SearchHit",
+      "SearchIndex",
+      "SearchRequest",
+      "SearchResponse",
+      "SearchTarget",
+      "SearchTargetGuide",
+      "ServiceInfo",
+      "SetCollectionAliasRequest",
+      "SetCollectionAliasResponse",
+      "SnippetImportResult",
+      "SnippetKind",
+      "SourceKind",
+      "StageApplyResponse",
+      "StageDurations",
+      "StageEstimate",
+      "StageViewResponse",
+      "TextFilter",
+      "TimeseriesBucket",
+      "TracePurgeResult",
+      "TransferAccepted",
+      "TransferStatus",
+      "UpdateCollectionRequest",
+      "UpdateCollectionResponse",
+      "UpdateFieldOp",
+      "UploadAccepted",
+      "VolumeEstimate",
+      "WhoAmI",
+      "WorkerActivity",
+      "WorkersLive"
+    ],
+    "exports": {
+      "AddFieldOp": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.schema_ops.AddFieldOp"
+      },
+      "AssumptionOverrides": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.estimate.AssumptionOverrides"
+      },
+      "AuditEntry": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.audit.AuditEntry"
+      },
+      "AuditPage": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.audit.AuditPage"
+      },
+      "BlobContent": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.blobs.BlobContent"
+      },
+      "BlockLocation": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.search.BlockLocation"
+      },
+      "BulkChunkEnabledPatch": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.explorer.BulkChunkEnabledPatch"
+      },
+      "BulkChunkEnabledResponse": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.explorer.BulkChunkEnabledResponse"
+      },
+      "BulkDeleteResponse": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.corpus.BulkDeleteResponse"
+      },
+      "BulkEnabledResponse": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.corpus.BulkEnabledResponse"
+      },
+      "BulkReingestAccepted": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.collections.BulkReingestAccepted"
+      },
+      "BulkReingestRequest": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.collections.BulkReingestRequest"
+      },
+      "BulkReingestResponse": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.corpus.BulkReingestResponse"
+      },
+      "CancelResult": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.jobs.CancelResult"
+      },
+      "CapabilitiesResponse": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.capabilities.CapabilitiesResponse"
+      },
+      "Capability": {
+        "kind": "enum",
+        "members": {
+          "ADMIN": "admin",
+          "CREATE": "create",
+          "READ": "read",
+          "READ_TECHNICAL": "read_technical",
+          "READ_TEXT": "read_text",
+          "SEARCH": "search",
+          "WRITE": "write"
+        },
+        "qualified_name": "docforge_sdk.models._shared.Capability"
+      },
+      "CapabilityMatrix": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.capabilities.CapabilityMatrix"
+      },
+      "ChunkBrowseRequest": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.search.ChunkBrowseRequest"
+      },
+      "ChunkBrowseResponse": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.search.ChunkBrowseResponse"
+      },
+      "ChunkContext": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.explorer.ChunkContext"
+      },
+      "ChunkEnabledPatch": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.explorer.ChunkEnabledPatch"
+      },
+      "ChunkEnabledResult": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.explorer.ChunkEnabledResult"
+      },
+      "ChunkInfo": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.explorer.ChunkInfo"
+      },
+      "ChunkPage": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.explorer.ChunkPage"
+      },
+      "CollectionAliasModel": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.collection_aliases.CollectionAliasModel"
+      },
+      "CollectionContractSchemaResponse": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.collections.CollectionContractSchemaResponse"
+      },
+      "CollectionCost": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.jobs.CollectionCost"
+      },
+      "CollectionDescription": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.collections.CollectionDescription"
+      },
+      "CollectionEstimateRequest": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.estimate.CollectionEstimateRequest"
+      },
+      "CollectionFailureBucket": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.jobs.CollectionFailureBucket"
+      },
+      "CollectionHealthResponse": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.health.CollectionHealthResponse"
+      },
+      "CollectionHealthSummary": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.health.CollectionHealthSummary"
+      },
+      "CollectionListItem": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.collections.CollectionListItem"
+      },
+      "CollectionListVerdict": {
+        "kind": "enum",
+        "members": {
+          "CANNOT_INGEST": "cannot_ingest",
+          "EMPTY": "empty",
+          "OPERATIONAL": "operational"
+        },
+        "qualified_name": "docforge_sdk.models.health.CollectionListVerdict"
+      },
+      "CollectionModel": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.collections.CollectionModel"
+      },
+      "CollectionSnippet": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.snippets.CollectionSnippet"
+      },
+      "CollectionStageApplyResponse": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.pipelines.CollectionStageApplyResponse"
+      },
+      "CollectionStorageResponse": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.storage.CollectionStorageResponse"
+      },
+      "ConfigDiffEntry": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.config_versions.ConfigDiffEntry"
+      },
+      "ConfigVersionDetail": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.config_versions.ConfigVersionDetail"
+      },
+      "ConfigVersionDiffResponse": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.config_versions.ConfigVersionDiffResponse"
+      },
+      "ConfigVersionListResponse": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.config_versions.ConfigVersionListResponse"
+      },
+      "ConfigVersionRestoreResponse": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.config_versions.ConfigVersionRestoreResponse"
+      },
+      "ConfigVersionSummary": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.config_versions.ConfigVersionSummary"
+      },
+      "ContextChunk": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.explorer.ContextChunk"
+      },
+      "CostEstimate": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.estimate.CostEstimate"
+      },
+      "CreateCollectionRequest": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.collections.CreateCollectionRequest"
+      },
+      "CreateKeyRequest": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.auth.CreateKeyRequest"
+      },
+      "CreatedKey": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.auth.CreatedKey"
+      },
+      "DateRange": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.corpus.DateRange"
+      },
+      "DocumentDetail": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.explorer.DocumentDetail"
+      },
+      "DocumentEnabledResponse": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.documents.DocumentEnabledResponse"
+      },
+      "DocumentFilter": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.corpus.DocumentFilter"
+      },
+      "DocumentGridRow": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.corpus.DocumentGridRow"
+      },
+      "DocumentIRModel": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.ir.DocumentIRModel"
+      },
+      "DocumentListItem": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.explorer.DocumentListItem"
+      },
+      "DocumentOutline": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.explorer.DocumentOutline"
+      },
+      "DocumentProvenance": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.ir.DocumentProvenance"
+      },
+      "DocumentQueryRequest": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.corpus.DocumentQueryRequest"
+      },
+      "DocumentQueryResponse": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.corpus.DocumentQueryResponse"
+      },
+      "DocumentSelector": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.corpus.DocumentSelector"
+      },
+      "DocumentSort": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.corpus.DocumentSort"
+      },
+      "DocumentStatus": {
+        "kind": "enum",
+        "members": {
+          "DONE": "done",
+          "FAILED": "failed",
+          "PENDING": "pending",
+          "PROCESSING": "processing"
+        },
+        "qualified_name": "docforge_sdk.models._shared.DocumentStatus"
+      },
+      "DocumentStorageModel": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.storage.DocumentStorageModel"
+      },
+      "DocumentView": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.documents.DocumentView"
+      },
+      "EditResponse": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.pipelines.EditResponse"
+      },
+      "EnabledPatch": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.documents.EnabledPatch"
+      },
+      "EnrichmentKind": {
+        "kind": "enum",
+        "members": {
+          "CHART_TO_DATA": "chart_to_data",
+          "CLASSIFY": "classify",
+          "OCR": "ocr",
+          "TABLE_SUMMARY": "table_summary",
+          "VLM": "vlm"
+        },
+        "qualified_name": "docforge_sdk.models._shared.EnrichmentKind"
+      },
+      "EnrichmentStatus": {
+        "kind": "enum",
+        "members": {
+          "FAILED": "failed",
+          "OK": "ok",
+          "SKIPPED": "skipped"
+        },
+        "qualified_name": "docforge_sdk.models._shared.EnrichmentStatus"
+      },
+      "EstimateAssumptions": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.estimate.EstimateAssumptions"
+      },
+      "EstimateOverrides": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.estimate.EstimateOverrides"
+      },
+      "FailureBreakdown": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.jobs.FailureBreakdown"
+      },
+      "FailureBucket": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.jobs.FailureBucket"
+      },
+      "FieldGuide": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.collections.FieldGuide"
+      },
+      "FieldOp": {
+        "kind": "constant",
+        "type": "_AnnotatedAlias"
+      },
+      "FieldOrigin": {
+        "kind": "enum",
+        "members": {
+          "GENERATED": "generated",
+          "SYSTEM": "system",
+          "USER": "user"
+        },
+        "qualified_name": "docforge_sdk.models._shared.FieldOrigin"
+      },
+      "FieldPatch": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.schema_ops.FieldPatch"
+      },
+      "FieldScope": {
+        "kind": "enum",
+        "members": {
+          "CHUNK": "chunk",
+          "DOCUMENT": "document"
+        },
+        "qualified_name": "docforge_sdk.models._shared.FieldScope"
+      },
+      "FieldSpec": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.field_spec.FieldSpec"
+      },
+      "FieldType": {
+        "kind": "enum",
+        "members": {
+          "BOOL": "bool",
+          "DATETIME": "datetime",
+          "ENUM": "enum",
+          "FLOAT": "float",
+          "FLOAT_LIST": "float_list",
+          "INTEGER": "integer",
+          "INTEGER_LIST": "integer_list",
+          "KEYWORD_LIST": "keyword_list",
+          "STRING": "string",
+          "TEXT": "text",
+          "TEXT_LIST": "text_list"
+        },
+        "qualified_name": "docforge_sdk.models._shared.FieldType"
+      },
+      "HealthStatus": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.health.HealthStatus"
+      },
+      "HealthVerdict": {
+        "kind": "enum",
+        "members": {
+          "DEGRADED": "degraded",
+          "DOWN": "down",
+          "EMPTY": "empty",
+          "INGEST_UNAVAILABLE": "ingest_unavailable",
+          "OPERATIONAL": "operational"
+        },
+        "qualified_name": "docforge_sdk.models.health.HealthVerdict"
+      },
+      "IRBlock": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.ir.IRBlock"
+      },
+      "IREnrichment": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.ir.IREnrichment"
+      },
+      "IRFigure": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.ir.IRFigure"
+      },
+      "IRTable": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.ir.IRTable"
+      },
+      "IngestHealth": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.health.IngestHealth"
+      },
+      "InspectResponse": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.pipelines.InspectResponse"
+      },
+      "JobEvent": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.jobs.JobEvent"
+      },
+      "JobEventPayload": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.jobs.JobEventPayload"
+      },
+      "JobPage": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.jobs.JobPage"
+      },
+      "JobStatus": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.jobs.JobStatus"
+      },
+      "JobTimeseries": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.jobs.JobTimeseries"
+      },
+      "JobTrace": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.jobs.JobTrace"
+      },
+      "KeyInfo": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.auth.KeyInfo"
+      },
+      "KeyPermissions": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models._shared.KeyPermissions"
+      },
+      "KeyProfile": {
+        "kind": "enum",
+        "members": {
+          "ADMIN": "admin",
+          "AGENT_READER": "agent_reader",
+          "AGENT_SEARCHER": "agent_searcher",
+          "OPERATOR": "operator"
+        },
+        "qualified_name": "docforge_sdk.models._shared.KeyProfile"
+      },
+      "MetadataFilter": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.corpus.MetadataFilter"
+      },
+      "MetadataUpdateResponse": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.documents.MetadataUpdateResponse"
+      },
+      "MetadataValue": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.explorer.MetadataValue"
+      },
+      "MetadataValuesPatch": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.documents.MetadataValuesPatch"
+      },
+      "ModelRateOverride": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.estimate.ModelRateOverride"
+      },
+      "NewFailures": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.jobs.NewFailures"
+      },
+      "NumberRange": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.corpus.NumberRange"
+      },
+      "OutlineHeading": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.explorer.OutlineHeading"
+      },
+      "PageInfo": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.explorer.PageInfo"
+      },
+      "Pagination": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.corpus.Pagination"
+      },
+      "PipelineDesignResponse": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.pipelines.PipelineDesignResponse"
+      },
+      "PipelineIndexResponse": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.pipelines.PipelineIndexResponse"
+      },
+      "PipelinePreset": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.pipelines.PipelinePreset"
+      },
+      "PipelineSurface": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.pipelines.PipelineSurface"
+      },
+      "PostgresFootprintModel": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.storage.PostgresFootprintModel"
+      },
+      "PreviewChunk": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.preview.PreviewChunk"
+      },
+      "PreviewCost": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.preview.PreviewCost"
+      },
+      "PreviewIrSummary": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.preview.PreviewIrSummary"
+      },
+      "PreviewJobAccepted": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.preview.PreviewJobAccepted"
+      },
+      "PreviewJobResult": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.preview.PreviewJobResult"
+      },
+      "PreviewResponse": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.preview.PreviewResponse"
+      },
+      "PreviewTraceNode": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.preview.PreviewTraceNode"
+      },
+      "ProbeStatus": {
+        "kind": "enum",
+        "members": {
+          "AUTH_FAILED": "auth_failed",
+          "NOT_CONFIGURED": "not_configured",
+          "OK": "ok",
+          "SKIPPED": "skipped",
+          "UNREACHABLE": "unreachable"
+        },
+        "qualified_name": "docforge_sdk.models.health.ProbeStatus"
+      },
+      "ProviderProbeResult": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.health.ProviderProbeResult"
+      },
+      "QdrantFootprintModel": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.storage.QdrantFootprintModel"
+      },
+      "QueueDepth": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.jobs.QueueDepth"
+      },
+      "RateOverrides": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.estimate.RateOverrides"
+      },
+      "RebuildIndexAccepted": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.index_rebuild.RebuildIndexAccepted"
+      },
+      "ReingestJobHandle": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.reingest.ReingestJobHandle"
+      },
+      "RemoveFieldOp": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.schema_ops.RemoveFieldOp"
+      },
+      "RenameFieldOp": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.schema_ops.RenameFieldOp"
+      },
+      "RotateKeyRequest": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.auth.RotateKeyRequest"
+      },
+      "S3FootprintModel": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.storage.S3FootprintModel"
+      },
+      "SNIPPET_FILE_EXTENSION": {
+        "kind": "constant",
+        "type": "str",
+        "value": ".dfsnippet"
+      },
+      "SchemaDiff": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.schema_ops.SchemaDiff"
+      },
+      "SchemaDiffModifiedField": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.schema_ops.SchemaDiffModifiedField"
+      },
+      "SchemaDiffRename": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.schema_ops.SchemaDiffRename"
+      },
+      "SearchHealth": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.health.SearchHealth"
+      },
+      "SearchHealthSummary": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.search.SearchHealthSummary"
+      },
+      "SearchHint": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.search.SearchHint"
+      },
+      "SearchHit": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.search.SearchHit"
+      },
+      "SearchIndex": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.health.SearchIndex"
+      },
+      "SearchRequest": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.search.SearchRequest"
+      },
+      "SearchResponse": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.search.SearchResponse"
+      },
+      "SearchTarget": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.search.SearchTarget"
+      },
+      "SearchTargetGuide": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.collections.SearchTargetGuide"
+      },
+      "ServiceInfo": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.capabilities.ServiceInfo"
+      },
+      "SetCollectionAliasRequest": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.collection_aliases.SetCollectionAliasRequest"
+      },
+      "SetCollectionAliasResponse": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.collection_aliases.SetCollectionAliasResponse"
+      },
+      "SnippetImportResult": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.snippets.SnippetImportResult"
+      },
+      "SnippetKind": {
+        "kind": "constant",
+        "type": "_LiteralGenericAlias"
+      },
+      "SourceKind": {
+        "kind": "enum",
+        "members": {
+          "DIGITAL_BORN": "digital_born",
+          "MIXED": "mixed",
+          "SCANNED": "scanned"
+        },
+        "qualified_name": "docforge_sdk.models._shared.SourceKind"
+      },
+      "StageApplyResponse": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.pipelines.StageApplyResponse"
+      },
+      "StageDurations": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.jobs.StageDurations"
+      },
+      "StageEstimate": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.estimate.StageEstimate"
+      },
+      "StageViewResponse": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.pipelines.StageViewResponse"
+      },
+      "TextFilter": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.corpus.TextFilter"
+      },
+      "TimeseriesBucket": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.jobs.TimeseriesBucket"
+      },
+      "TracePurgeResult": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.trace.TracePurgeResult"
+      },
+      "TransferAccepted": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.transfers.TransferAccepted"
+      },
+      "TransferStatus": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.transfers.TransferStatus"
+      },
+      "UpdateCollectionRequest": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.collections.UpdateCollectionRequest"
+      },
+      "UpdateCollectionResponse": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.collections.UpdateCollectionResponse"
+      },
+      "UpdateFieldOp": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.schema_ops.UpdateFieldOp"
+      },
+      "UploadAccepted": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.documents.UploadAccepted"
+      },
+      "VolumeEstimate": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.estimate.VolumeEstimate"
+      },
+      "WhoAmI": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.auth.WhoAmI"
+      },
+      "WorkerActivity": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.jobs.WorkerActivity"
+      },
+      "WorkersLive": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.jobs.WorkersLive"
+      }
+    }
+  },
+  "docforge_sdk.models.audit": {
+    "__all__": [
+      "AuditEntry",
+      "AuditPage"
+    ],
+    "exports": {
+      "AuditEntry": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.audit.AuditEntry"
+      },
+      "AuditPage": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.audit.AuditPage"
+      }
+    }
+  },
+  "docforge_sdk.models.auth": {
+    "__all__": [
+      "CreateKeyRequest",
+      "CreatedKey",
+      "KeyInfo",
+      "RotateKeyRequest",
+      "WhoAmI"
+    ],
+    "exports": {
+      "CreateKeyRequest": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.auth.CreateKeyRequest"
+      },
+      "CreatedKey": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.auth.CreatedKey"
+      },
+      "KeyInfo": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.auth.KeyInfo"
+      },
+      "RotateKeyRequest": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.auth.RotateKeyRequest"
+      },
+      "WhoAmI": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.auth.WhoAmI"
+      }
+    }
+  },
+  "docforge_sdk.models.blobs": {
+    "__all__": [
+      "BlobContent"
+    ],
+    "exports": {
+      "BlobContent": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.blobs.BlobContent"
+      }
+    }
+  },
+  "docforge_sdk.models.capabilities": {
+    "__all__": [
+      "CapabilitiesResponse",
+      "CapabilityMatrix",
+      "ServiceInfo"
+    ],
+    "exports": {
+      "CapabilitiesResponse": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.capabilities.CapabilitiesResponse"
+      },
+      "CapabilityMatrix": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.capabilities.CapabilityMatrix"
+      },
+      "ServiceInfo": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.capabilities.ServiceInfo"
+      }
+    }
+  },
+  "docforge_sdk.models.collection_aliases": {
+    "__all__": [
+      "CollectionAliasModel",
+      "SetCollectionAliasRequest",
+      "SetCollectionAliasResponse"
+    ],
+    "exports": {
+      "CollectionAliasModel": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.collection_aliases.CollectionAliasModel"
+      },
+      "SetCollectionAliasRequest": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.collection_aliases.SetCollectionAliasRequest"
+      },
+      "SetCollectionAliasResponse": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.collection_aliases.SetCollectionAliasResponse"
+      }
+    }
+  },
+  "docforge_sdk.models.collections": {
+    "__all__": [
+      "BulkReingestAccepted",
+      "BulkReingestRequest",
+      "CollectionContractSchemaResponse",
+      "CollectionDescription",
+      "CollectionListItem",
+      "CollectionModel",
+      "CreateCollectionRequest",
+      "FieldGuide",
+      "FieldSpec",
+      "ReingestJobHandle",
+      "SearchTargetGuide",
+      "UpdateCollectionRequest",
+      "UpdateCollectionResponse"
+    ],
+    "exports": {
+      "BulkReingestAccepted": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.collections.BulkReingestAccepted"
+      },
+      "BulkReingestRequest": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.collections.BulkReingestRequest"
+      },
+      "CollectionContractSchemaResponse": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.collections.CollectionContractSchemaResponse"
+      },
+      "CollectionDescription": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.collections.CollectionDescription"
+      },
+      "CollectionListItem": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.collections.CollectionListItem"
+      },
+      "CollectionModel": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.collections.CollectionModel"
+      },
+      "CreateCollectionRequest": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.collections.CreateCollectionRequest"
+      },
+      "FieldGuide": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.collections.FieldGuide"
+      },
+      "FieldSpec": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.field_spec.FieldSpec"
+      },
+      "ReingestJobHandle": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.reingest.ReingestJobHandle"
+      },
+      "SearchTargetGuide": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.collections.SearchTargetGuide"
+      },
+      "UpdateCollectionRequest": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.collections.UpdateCollectionRequest"
+      },
+      "UpdateCollectionResponse": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.collections.UpdateCollectionResponse"
+      }
+    }
+  },
+  "docforge_sdk.models.config_versions": {
+    "__all__": null,
+    "exports": {
+      "ConfigDiffEntry": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.config_versions.ConfigDiffEntry"
+      },
+      "ConfigVersionDetail": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.config_versions.ConfigVersionDetail"
+      },
+      "ConfigVersionDiffResponse": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.config_versions.ConfigVersionDiffResponse"
+      },
+      "ConfigVersionListResponse": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.config_versions.ConfigVersionListResponse"
+      },
+      "ConfigVersionRestoreResponse": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.config_versions.ConfigVersionRestoreResponse"
+      },
+      "ConfigVersionSummary": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.config_versions.ConfigVersionSummary"
+      }
+    }
+  },
+  "docforge_sdk.models.corpus": {
+    "__all__": [
+      "BulkDeleteResponse",
+      "BulkEnabledResponse",
+      "BulkReingestResponse",
+      "DateRange",
+      "DocumentFilter",
+      "DocumentGridRow",
+      "DocumentQueryRequest",
+      "DocumentQueryResponse",
+      "DocumentSelector",
+      "DocumentSort",
+      "MetadataFilter",
+      "NumberRange",
+      "Pagination",
+      "TextFilter"
+    ],
+    "exports": {
+      "BulkDeleteResponse": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.corpus.BulkDeleteResponse"
+      },
+      "BulkEnabledResponse": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.corpus.BulkEnabledResponse"
+      },
+      "BulkReingestResponse": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.corpus.BulkReingestResponse"
+      },
+      "DateRange": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.corpus.DateRange"
+      },
+      "DocumentFilter": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.corpus.DocumentFilter"
+      },
+      "DocumentGridRow": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.corpus.DocumentGridRow"
+      },
+      "DocumentQueryRequest": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.corpus.DocumentQueryRequest"
+      },
+      "DocumentQueryResponse": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.corpus.DocumentQueryResponse"
+      },
+      "DocumentSelector": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.corpus.DocumentSelector"
+      },
+      "DocumentSort": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.corpus.DocumentSort"
+      },
+      "MetadataFilter": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.corpus.MetadataFilter"
+      },
+      "NumberRange": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.corpus.NumberRange"
+      },
+      "Pagination": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.corpus.Pagination"
+      },
+      "TextFilter": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.corpus.TextFilter"
+      }
+    }
+  },
+  "docforge_sdk.models.documents": {
+    "__all__": [
+      "DocumentEnabledResponse",
+      "DocumentView",
+      "EnabledPatch",
+      "MetadataUpdateResponse",
+      "MetadataValuesPatch",
+      "UploadAccepted"
+    ],
+    "exports": {
+      "DocumentEnabledResponse": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.documents.DocumentEnabledResponse"
+      },
+      "DocumentView": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.documents.DocumentView"
+      },
+      "EnabledPatch": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.documents.EnabledPatch"
+      },
+      "MetadataUpdateResponse": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.documents.MetadataUpdateResponse"
+      },
+      "MetadataValuesPatch": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.documents.MetadataValuesPatch"
+      },
+      "UploadAccepted": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.documents.UploadAccepted"
+      }
+    }
+  },
+  "docforge_sdk.models.estimate": {
+    "__all__": [
+      "AssumptionOverrides",
+      "CollectionEstimateRequest",
+      "CostEstimate",
+      "EstimateAssumptions",
+      "EstimateOverrides",
+      "ModelRateOverride",
+      "RateOverrides",
+      "StageEstimate",
+      "VolumeEstimate"
+    ],
+    "exports": {
+      "AssumptionOverrides": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.estimate.AssumptionOverrides"
+      },
+      "CollectionEstimateRequest": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.estimate.CollectionEstimateRequest"
+      },
+      "CostEstimate": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.estimate.CostEstimate"
+      },
+      "EstimateAssumptions": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.estimate.EstimateAssumptions"
+      },
+      "EstimateOverrides": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.estimate.EstimateOverrides"
+      },
+      "ModelRateOverride": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.estimate.ModelRateOverride"
+      },
+      "RateOverrides": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.estimate.RateOverrides"
+      },
+      "StageEstimate": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.estimate.StageEstimate"
+      },
+      "VolumeEstimate": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.estimate.VolumeEstimate"
+      }
+    }
+  },
+  "docforge_sdk.models.explorer": {
+    "__all__": [
+      "BulkChunkEnabledPatch",
+      "BulkChunkEnabledResponse",
+      "ChunkContext",
+      "ChunkEnabledPatch",
+      "ChunkEnabledResult",
+      "ChunkInfo",
+      "ChunkPage",
+      "ContextChunk",
+      "DocumentDetail",
+      "DocumentListItem",
+      "DocumentOutline",
+      "MetadataValue",
+      "OutlineHeading",
+      "PageInfo"
+    ],
+    "exports": {
+      "BulkChunkEnabledPatch": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.explorer.BulkChunkEnabledPatch"
+      },
+      "BulkChunkEnabledResponse": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.explorer.BulkChunkEnabledResponse"
+      },
+      "ChunkContext": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.explorer.ChunkContext"
+      },
+      "ChunkEnabledPatch": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.explorer.ChunkEnabledPatch"
+      },
+      "ChunkEnabledResult": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.explorer.ChunkEnabledResult"
+      },
+      "ChunkInfo": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.explorer.ChunkInfo"
+      },
+      "ChunkPage": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.explorer.ChunkPage"
+      },
+      "ContextChunk": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.explorer.ContextChunk"
+      },
+      "DocumentDetail": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.explorer.DocumentDetail"
+      },
+      "DocumentListItem": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.explorer.DocumentListItem"
+      },
+      "DocumentOutline": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.explorer.DocumentOutline"
+      },
+      "MetadataValue": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.explorer.MetadataValue"
+      },
+      "OutlineHeading": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.explorer.OutlineHeading"
+      },
+      "PageInfo": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.explorer.PageInfo"
+      }
+    }
+  },
+  "docforge_sdk.models.field_spec": {
+    "__all__": [
+      "FieldSpec"
+    ],
+    "exports": {
+      "FieldSpec": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.field_spec.FieldSpec"
+      }
+    }
+  },
+  "docforge_sdk.models.health": {
+    "__all__": [
+      "CollectionHealthResponse",
+      "CollectionHealthSummary",
+      "CollectionListVerdict",
+      "HealthStatus",
+      "HealthVerdict",
+      "IngestHealth",
+      "ProbeStatus",
+      "ProviderProbeResult",
+      "SearchHealth",
+      "SearchIndex"
+    ],
+    "exports": {
+      "CollectionHealthResponse": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.health.CollectionHealthResponse"
+      },
+      "CollectionHealthSummary": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.health.CollectionHealthSummary"
+      },
+      "CollectionListVerdict": {
+        "kind": "enum",
+        "members": {
+          "CANNOT_INGEST": "cannot_ingest",
+          "EMPTY": "empty",
+          "OPERATIONAL": "operational"
+        },
+        "qualified_name": "docforge_sdk.models.health.CollectionListVerdict"
+      },
+      "HealthStatus": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.health.HealthStatus"
+      },
+      "HealthVerdict": {
+        "kind": "enum",
+        "members": {
+          "DEGRADED": "degraded",
+          "DOWN": "down",
+          "EMPTY": "empty",
+          "INGEST_UNAVAILABLE": "ingest_unavailable",
+          "OPERATIONAL": "operational"
+        },
+        "qualified_name": "docforge_sdk.models.health.HealthVerdict"
+      },
+      "IngestHealth": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.health.IngestHealth"
+      },
+      "ProbeStatus": {
+        "kind": "enum",
+        "members": {
+          "AUTH_FAILED": "auth_failed",
+          "NOT_CONFIGURED": "not_configured",
+          "OK": "ok",
+          "SKIPPED": "skipped",
+          "UNREACHABLE": "unreachable"
+        },
+        "qualified_name": "docforge_sdk.models.health.ProbeStatus"
+      },
+      "ProviderProbeResult": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.health.ProviderProbeResult"
+      },
+      "SearchHealth": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.health.SearchHealth"
+      },
+      "SearchIndex": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.health.SearchIndex"
+      }
+    }
+  },
+  "docforge_sdk.models.index_rebuild": {
+    "__all__": [
+      "RebuildIndexAccepted"
+    ],
+    "exports": {
+      "RebuildIndexAccepted": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.index_rebuild.RebuildIndexAccepted"
+      }
+    }
+  },
+  "docforge_sdk.models.ir": {
+    "__all__": [
+      "DocumentIRModel",
+      "DocumentProvenance",
+      "IRBlock",
+      "IREnrichment",
+      "IRFigure",
+      "IRTable"
+    ],
+    "exports": {
+      "DocumentIRModel": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.ir.DocumentIRModel"
+      },
+      "DocumentProvenance": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.ir.DocumentProvenance"
+      },
+      "IRBlock": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.ir.IRBlock"
+      },
+      "IREnrichment": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.ir.IREnrichment"
+      },
+      "IRFigure": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.ir.IRFigure"
+      },
+      "IRTable": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.ir.IRTable"
+      }
+    }
+  },
+  "docforge_sdk.models.jobs": {
+    "__all__": [
+      "CancelResult",
+      "CollectionCost",
+      "CollectionFailureBucket",
+      "FailureBreakdown",
+      "FailureBucket",
+      "JobEvent",
+      "JobEventPayload",
+      "JobPage",
+      "JobStatus",
+      "JobTimeseries",
+      "JobTrace",
+      "NewFailures",
+      "QueueDepth",
+      "StageDurations",
+      "TimeseriesBucket",
+      "WorkerActivity",
+      "WorkersLive"
+    ],
+    "exports": {
+      "CancelResult": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.jobs.CancelResult"
+      },
+      "CollectionCost": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.jobs.CollectionCost"
+      },
+      "CollectionFailureBucket": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.jobs.CollectionFailureBucket"
+      },
+      "FailureBreakdown": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.jobs.FailureBreakdown"
+      },
+      "FailureBucket": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.jobs.FailureBucket"
+      },
+      "JobEvent": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.jobs.JobEvent"
+      },
+      "JobEventPayload": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.jobs.JobEventPayload"
+      },
+      "JobPage": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.jobs.JobPage"
+      },
+      "JobStatus": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.jobs.JobStatus"
+      },
+      "JobTimeseries": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.jobs.JobTimeseries"
+      },
+      "JobTrace": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.jobs.JobTrace"
+      },
+      "NewFailures": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.jobs.NewFailures"
+      },
+      "QueueDepth": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.jobs.QueueDepth"
+      },
+      "StageDurations": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.jobs.StageDurations"
+      },
+      "TimeseriesBucket": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.jobs.TimeseriesBucket"
+      },
+      "WorkerActivity": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.jobs.WorkerActivity"
+      },
+      "WorkersLive": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.jobs.WorkersLive"
+      }
+    }
+  },
+  "docforge_sdk.models.pipelines": {
+    "__all__": [
+      "CollectionStageApplyResponse",
+      "EditResponse",
+      "InspectResponse",
+      "PipelineDesignResponse",
+      "PipelineIndexResponse",
+      "PipelineSurface",
+      "StageApplyResponse",
+      "StageViewResponse"
+    ],
+    "exports": {
+      "CollectionStageApplyResponse": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.pipelines.CollectionStageApplyResponse"
+      },
+      "EditResponse": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.pipelines.EditResponse"
+      },
+      "InspectResponse": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.pipelines.InspectResponse"
+      },
+      "PipelineDesignResponse": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.pipelines.PipelineDesignResponse"
+      },
+      "PipelineIndexResponse": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.pipelines.PipelineIndexResponse"
+      },
+      "PipelineSurface": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.pipelines.PipelineSurface"
+      },
+      "StageApplyResponse": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.pipelines.StageApplyResponse"
+      },
+      "StageViewResponse": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.pipelines.StageViewResponse"
+      }
+    }
+  },
+  "docforge_sdk.models.preview": {
+    "__all__": [
+      "PreviewChunk",
+      "PreviewCost",
+      "PreviewIrSummary",
+      "PreviewJobAccepted",
+      "PreviewJobResult",
+      "PreviewResponse",
+      "PreviewTraceNode"
+    ],
+    "exports": {
+      "PreviewChunk": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.preview.PreviewChunk"
+      },
+      "PreviewCost": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.preview.PreviewCost"
+      },
+      "PreviewIrSummary": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.preview.PreviewIrSummary"
+      },
+      "PreviewJobAccepted": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.preview.PreviewJobAccepted"
+      },
+      "PreviewJobResult": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.preview.PreviewJobResult"
+      },
+      "PreviewResponse": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.preview.PreviewResponse"
+      },
+      "PreviewTraceNode": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.preview.PreviewTraceNode"
+      }
+    }
+  },
+  "docforge_sdk.models.reingest": {
+    "__all__": [
+      "ReingestJobHandle"
+    ],
+    "exports": {
+      "ReingestJobHandle": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.reingest.ReingestJobHandle"
+      }
+    }
+  },
+  "docforge_sdk.models.schema_ops": {
+    "__all__": [
+      "AddFieldOp",
+      "FieldOp",
+      "FieldPatch",
+      "RemoveFieldOp",
+      "RenameFieldOp",
+      "SchemaDiff",
+      "SchemaDiffModifiedField",
+      "SchemaDiffRename",
+      "UpdateFieldOp"
+    ],
+    "exports": {
+      "AddFieldOp": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.schema_ops.AddFieldOp"
+      },
+      "FieldOp": {
+        "kind": "constant",
+        "type": "_AnnotatedAlias"
+      },
+      "FieldPatch": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.schema_ops.FieldPatch"
+      },
+      "RemoveFieldOp": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.schema_ops.RemoveFieldOp"
+      },
+      "RenameFieldOp": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.schema_ops.RenameFieldOp"
+      },
+      "SchemaDiff": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.schema_ops.SchemaDiff"
+      },
+      "SchemaDiffModifiedField": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.schema_ops.SchemaDiffModifiedField"
+      },
+      "SchemaDiffRename": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.schema_ops.SchemaDiffRename"
+      },
+      "UpdateFieldOp": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.schema_ops.UpdateFieldOp"
+      }
+    }
+  },
+  "docforge_sdk.models.search": {
+    "__all__": [
+      "BlockLocation",
+      "ChunkBrowseRequest",
+      "ChunkBrowseResponse",
+      "SearchCost",
+      "SearchHealthSummary",
+      "SearchHint",
+      "SearchHit",
+      "SearchRequest",
+      "SearchResponse",
+      "SearchTarget"
+    ],
+    "exports": {
+      "BlockLocation": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.search.BlockLocation"
+      },
+      "ChunkBrowseRequest": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.search.ChunkBrowseRequest"
+      },
+      "ChunkBrowseResponse": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.search.ChunkBrowseResponse"
+      },
+      "SearchCost": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.search.SearchCost"
+      },
+      "SearchHealthSummary": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.search.SearchHealthSummary"
+      },
+      "SearchHint": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.search.SearchHint"
+      },
+      "SearchHit": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.search.SearchHit"
+      },
+      "SearchRequest": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.search.SearchRequest"
+      },
+      "SearchResponse": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.search.SearchResponse"
+      },
+      "SearchTarget": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.search.SearchTarget"
+      }
+    }
+  },
+  "docforge_sdk.models.snippets": {
+    "__all__": [
+      "CollectionSnippet",
+      "SNIPPET_FILE_EXTENSION",
+      "SnippetImportResult",
+      "SnippetKind"
+    ],
+    "exports": {
+      "CollectionSnippet": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.snippets.CollectionSnippet"
+      },
+      "SNIPPET_FILE_EXTENSION": {
+        "kind": "constant",
+        "type": "str",
+        "value": ".dfsnippet"
+      },
+      "SnippetImportResult": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.snippets.SnippetImportResult"
+      },
+      "SnippetKind": {
+        "kind": "constant",
+        "type": "_LiteralGenericAlias"
+      }
+    }
+  },
+  "docforge_sdk.models.storage": {
+    "__all__": [
+      "CollectionStorageResponse",
+      "DocumentStorageModel",
+      "PostgresFootprintModel",
+      "QdrantFootprintModel",
+      "S3FootprintModel"
+    ],
+    "exports": {
+      "CollectionStorageResponse": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.storage.CollectionStorageResponse"
+      },
+      "DocumentStorageModel": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.storage.DocumentStorageModel"
+      },
+      "PostgresFootprintModel": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.storage.PostgresFootprintModel"
+      },
+      "QdrantFootprintModel": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.storage.QdrantFootprintModel"
+      },
+      "S3FootprintModel": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.storage.S3FootprintModel"
+      }
+    }
+  },
+  "docforge_sdk.models.trace": {
+    "__all__": [
+      "TracePurgeResult"
+    ],
+    "exports": {
+      "TracePurgeResult": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.trace.TracePurgeResult"
+      }
+    }
+  },
+  "docforge_sdk.models.transfers": {
+    "__all__": [
+      "TransferAccepted",
+      "TransferStatus"
+    ],
+    "exports": {
+      "TransferAccepted": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.transfers.TransferAccepted"
+      },
+      "TransferStatus": {
+        "kind": "model",
+        "qualified_name": "docforge_sdk.models.transfers.TransferStatus"
+      }
+    }
+  },
+  "docforge_sdk.resources": {
+    "__all__": [
+      "AsyncAudit",
+      "AsyncAuth",
+      "AsyncBlobs",
+      "AsyncCapabilities",
+      "AsyncCollectionAliases",
+      "AsyncCollections",
+      "AsyncDocuments",
+      "AsyncExplorer",
+      "AsyncHealth",
+      "AsyncJobs",
+      "AsyncPipelines",
+      "AsyncResource",
+      "AsyncSearch",
+      "AsyncTransfers",
+      "SyncAudit",
+      "SyncAuth",
+      "SyncBlobs",
+      "SyncCapabilities",
+      "SyncCollectionAliases",
+      "SyncCollections",
+      "SyncDocuments",
+      "SyncExplorer",
+      "SyncHealth",
+      "SyncJobs",
+      "SyncPipelines",
+      "SyncResource",
+      "SyncSearch",
+      "SyncTransfers"
+    ],
+    "exports": {
+      "AsyncAudit": {
+        "kind": "class",
+        "methods": {
+          "list": "(self, limit: int | None = None, cursor: str | None = None, actor_user_id: str | None = None, actor_key_id: str | None = None, target_type: str | None = None, target_id: str | None = None, correlation_id: str | None = None, created_from: datetime.datetime | None = None, created_to: datetime.datetime | None = None) -> docforge_sdk.models.audit.AuditPage"
+        },
+        "qualified_name": "docforge_sdk.resources.audit.AsyncAudit"
+      },
+      "AsyncAuth": {
+        "kind": "class",
+        "methods": {
+          "create_key": "(self, name: str, permissions: docforge_sdk.models._shared.KeyPermissions | None = None, expires_at: datetime.datetime | None = None) -> docforge_sdk.models.auth.CreatedKey",
+          "list_keys": "(self) -> list[docforge_sdk.models.auth.KeyInfo]",
+          "revoke_key": "(self, key_id: str) -> None",
+          "rotate_key": "(self, key_id: str, name: str | None | ellipsis = Ellipsis, permissions: docforge_sdk.models._shared.KeyPermissions | None | ellipsis = Ellipsis, expires_at: datetime.datetime | None | ellipsis = Ellipsis) -> docforge_sdk.models.auth.CreatedKey",
+          "whoami": "(self) -> docforge_sdk.models.auth.WhoAmI"
+        },
+        "qualified_name": "docforge_sdk.resources.auth.AsyncAuth"
+      },
+      "AsyncBlobs": {
+        "kind": "class",
+        "methods": {
+          "get": "(self, content_hash: str) -> docforge_sdk.models.blobs.BlobContent"
+        },
+        "qualified_name": "docforge_sdk.resources.blobs.AsyncBlobs"
+      },
+      "AsyncCapabilities": {
+        "kind": "class",
+        "methods": {
+          "capabilities": "(self) -> docforge_sdk.models.capabilities.CapabilitiesResponse"
+        },
+        "qualified_name": "docforge_sdk.resources.capabilities.AsyncCapabilities"
+      },
+      "AsyncCollectionAliases": {
+        "kind": "class",
+        "methods": {
+          "delete": "(self, name: str) -> None",
+          "list": "(self) -> list[docforge_sdk.models.collection_aliases.CollectionAliasModel]",
+          "set": "(self, name: str, collection_id: str) -> docforge_sdk.models.collection_aliases.SetCollectionAliasResponse"
+        },
+        "qualified_name": "docforge_sdk.resources.collection_aliases.AsyncCollectionAliases"
+      },
+      "AsyncCollections": {
+        "kind": "class",
+        "methods": {
+          "contract_schema": "(self) -> docforge_sdk.models.collections.CollectionContractSchemaResponse",
+          "create": "(self, request: docforge_sdk.models.collections.CreateCollectionRequest) -> docforge_sdk.models.collections.CollectionModel",
+          "delete": "(self, collection_id: str) -> None",
+          "describe": "(self, collection_id: str) -> docforge_sdk.models.collections.CollectionDescription",
+          "estimate": "(self, collection_id: str, scope: Literal['pending', 'all'] = 'pending', document_ids: list[str] | None = None, filter: docforge_sdk.models.corpus.DocumentFilter | None = None) -> docforge_sdk.models.estimate.CostEstimate",
+          "get": "(self, collection_id: str) -> docforge_sdk.models.collections.CollectionModel",
+          "get_preview_job": "(self, collection_id: str, preview_id: str) -> docforge_sdk.models.preview.PreviewJobResult",
+          "health": "(self, collection_id: str) -> docforge_sdk.models.health.CollectionHealthResponse",
+          "list": "(self) -> list[docforge_sdk.models.collections.CollectionListItem]",
+          "preview_pipeline": "(self, collection_id: str, *, file: str | pathlib.Path | bytes | None = None, document_id: str | None = None, blob: dict[str, typing.Any] | None = None, metadata: dict[str, typing.Any] | None = None, max_chunks: int | None = None, filename: str | None = None) -> docforge_sdk.models.preview.PreviewResponse",
+          "purge_trace_payloads": "(self, collection_id: str) -> docforge_sdk.models.trace.TracePurgeResult",
+          "rebuild_index": "(self, collection_id: str) -> docforge_sdk.models.index_rebuild.RebuildIndexAccepted",
+          "reingest": "(self, collection_id: str, request: docforge_sdk.models.collections.BulkReingestRequest | None = None) -> docforge_sdk.models.collections.BulkReingestAccepted",
+          "storage": "(self, collection_id: str) -> docforge_sdk.models.storage.CollectionStorageResponse",
+          "submit_preview_job": "(self, collection_id: str, *, file: str | pathlib.Path | bytes | None = None, document_id: str | None = None, blob: dict[str, typing.Any] | None = None, metadata: dict[str, typing.Any] | None = None, max_chunks: int | None = None, filename: str | None = None) -> docforge_sdk.models.preview.PreviewJobAccepted",
+          "update": "(self, collection_id: str, request: docforge_sdk.models.collections.UpdateCollectionRequest) -> docforge_sdk.models.collections.UpdateCollectionResponse"
+        },
+        "qualified_name": "docforge_sdk.resources.collections.AsyncCollections"
+      },
+      "AsyncDocuments": {
+        "kind": "class",
+        "methods": {
+          "get_html": "(self, document_id: str, download: bool = False, pages: str | None = None) -> docforge_sdk.models.documents.DocumentView",
+          "get_markdown": "(self, document_id: str, download: bool = False, pages: str | None = None) -> docforge_sdk.models.documents.DocumentView",
+          "purge_trace_payloads": "(self, document_id: str) -> docforge_sdk.models.trace.TracePurgeResult",
+          "reingest": "(self, document_id: str, force: bool = False, replay_from: str | None = None) -> docforge_sdk.models.documents.UploadAccepted",
+          "set_enabled": "(self, document_id: str, enabled: bool) -> docforge_sdk.models.documents.DocumentEnabledResponse",
+          "update_metadata": "(self, document_id: str, values: dict[str, typing.Any]) -> docforge_sdk.models.documents.MetadataUpdateResponse",
+          "upload": "(self, collection_id: str, file: str | pathlib.Path | bytes, metadata: dict[str, typing.Any] | None = None, filename: str | None = None) -> docforge_sdk.models.documents.UploadAccepted"
+        },
+        "qualified_name": "docforge_sdk.resources.documents.AsyncDocuments"
+      },
+      "AsyncExplorer": {
+        "kind": "class",
+        "methods": {
+          "delete_document": "(self, document_id: str) -> None",
+          "get_chunk_context": "(self, chunk_id: str, before: int | None = None, after: int | None = None) -> docforge_sdk.models.explorer.ChunkContext",
+          "get_chunks": "(self, document_id: str, limit: int | None = None, offset: int | None = None, include_geometry: bool | None = None) -> list[docforge_sdk.models.explorer.ChunkInfo]",
+          "get_chunks_page": "(self, document_id: str, limit: int | None = None, offset: int | None = None, include_geometry: bool | None = None) -> docforge_sdk.models.explorer.ChunkPage",
+          "get_document": "(self, document_id: str) -> docforge_sdk.models.explorer.DocumentDetail",
+          "get_ir": "(self, document_id: str) -> docforge_sdk.models.ir.DocumentIRModel",
+          "get_outline": "(self, document_id: str) -> docforge_sdk.models.explorer.DocumentOutline",
+          "get_pages": "(self, document_id: str) -> list[docforge_sdk.models.explorer.PageInfo]",
+          "get_provenance": "(self, document_id: str) -> docforge_sdk.models.ir.DocumentProvenance",
+          "list_documents": "(self, collection_id: str, limit: int | None = None, offset: int | None = None) -> list[docforge_sdk.models.explorer.DocumentListItem]",
+          "set_chunk_enabled": "(self, chunk_id: str, enabled: bool) -> docforge_sdk.models.explorer.ChunkEnabledResult",
+          "set_chunks_enabled": "(self, patch: docforge_sdk.models.explorer.BulkChunkEnabledPatch) -> docforge_sdk.models.explorer.BulkChunkEnabledResponse"
+        },
+        "qualified_name": "docforge_sdk.resources.explorer.AsyncExplorer"
+      },
+      "AsyncHealth": {
+        "kind": "class",
+        "methods": {
+          "ping": "(self) -> docforge_sdk.models.health.HealthStatus"
+        },
+        "qualified_name": "docforge_sdk.resources.health.AsyncHealth"
+      },
+      "AsyncJobs": {
+        "kind": "class",
+        "methods": {
+          "cancel": "(self, job_id: str, force: bool = False) -> docforge_sdk.models.jobs.CancelResult",
+          "cost": "(self, collection_id: str) -> docforge_sdk.models.jobs.CollectionCost",
+          "failure_breakdown": "(self, collection_id: str | None = None, window_hours: int | None = None) -> docforge_sdk.models.jobs.FailureBreakdown",
+          "get": "(self, job_id: str) -> docforge_sdk.models.jobs.JobStatus",
+          "get_event_payload": "(self, job_id: str, event_id: str, slot: str = 'output') -> docforge_sdk.models.jobs.JobEventPayload",
+          "get_events": "(self, job_id: str) -> docforge_sdk.models.jobs.JobTrace",
+          "list": "(self, collection_id: str | None = None, status: list[str] | None = None, order: str | None = None, limit: int | None = None, offset: int | None = None, *, stage: str | None = None, error_type: str | None = None, search: str | None = None, created_after: str | None = None, created_before: str | None = None, sort: str | None = None) -> docforge_sdk.models.jobs.JobPage",
+          "live_workers": "(self) -> docforge_sdk.models.jobs.WorkersLive",
+          "new_failures": "(self, since: str, collection_id: str | None = None, include_ids: bool | None = None, limit: int | None = None) -> docforge_sdk.models.jobs.NewFailures",
+          "queue": "(self, collection_id: str | None = None) -> docforge_sdk.models.jobs.QueueDepth",
+          "stage_durations": "(self, collection_id: str) -> docforge_sdk.models.jobs.StageDurations",
+          "timeseries": "(self, collection_id: str | None = None, window_hours: int | None = None) -> docforge_sdk.models.jobs.JobTimeseries"
+        },
+        "qualified_name": "docforge_sdk.resources.jobs.AsyncJobs"
+      },
+      "AsyncPipelines": {
+        "kind": "class",
+        "methods": {
+          "apply_collection_stage": "(self, collection_id: str, action: dict[str, typing.Any], note: str | None = None) -> docforge_sdk.models.pipelines.CollectionStageApplyResponse",
+          "apply_stage": "(self, key: str, blob: dict[str, typing.Any], action: dict[str, typing.Any]) -> docforge_sdk.models.pipelines.StageApplyResponse",
+          "edit": "(self, key: str, blob: dict[str, typing.Any], operations: list[dict[str, typing.Any]]) -> docforge_sdk.models.pipelines.EditResponse",
+          "get_design": "(self, key: str, full: bool = False) -> docforge_sdk.models.pipelines.PipelineDesignResponse",
+          "inspect": "(self, key: str, blob: dict[str, typing.Any]) -> docforge_sdk.models.pipelines.InspectResponse",
+          "list_surfaces": "(self) -> docforge_sdk.models.pipelines.PipelineIndexResponse",
+          "view_stages": "(self, key: str, blob: dict[str, typing.Any]) -> docforge_sdk.models.pipelines.StageViewResponse"
+        },
+        "qualified_name": "docforge_sdk.resources.pipelines.AsyncPipelines"
+      },
+      "AsyncResource": {
+        "kind": "class",
+        "methods": {},
+        "qualified_name": "docforge_sdk.resources._base.AsyncResource"
+      },
+      "AsyncSearch": {
+        "kind": "class",
+        "methods": {
+          "browse": "(self, collection_id: str, request: docforge_sdk.models.search.ChunkBrowseRequest) -> docforge_sdk.models.search.ChunkBrowseResponse",
+          "get_search_health": "(self) -> docforge_sdk.models.search.SearchHealthSummary",
+          "search": "(self, collection_id: str, request: docforge_sdk.models.search.SearchRequest) -> docforge_sdk.models.search.SearchResponse"
+        },
+        "qualified_name": "docforge_sdk.resources.search.AsyncSearch"
+      },
+      "AsyncTransfers": {
+        "kind": "class",
+        "methods": {
+          "download_export": "(self, transfer_id: str) -> collections.abc.AsyncIterator[bytes]",
+          "export_collection": "(self, collection_id: str) -> docforge_sdk.models.transfers.TransferAccepted",
+          "get_transfer": "(self, transfer_id: str) -> docforge_sdk.models.transfers.TransferStatus",
+          "import_collection": "(self, file: Union[str, pathlib.Path, bytes, IO[bytes]], target_name: str | None = None) -> docforge_sdk.models.transfers.TransferAccepted"
+        },
+        "qualified_name": "docforge_sdk.resources.transfers.AsyncTransfers"
+      },
+      "SyncAudit": {
+        "kind": "class",
+        "methods": {
+          "list": "(self, limit: int | None = None, cursor: str | None = None, actor_user_id: str | None = None, actor_key_id: str | None = None, target_type: str | None = None, target_id: str | None = None, correlation_id: str | None = None, created_from: datetime.datetime | None = None, created_to: datetime.datetime | None = None) -> docforge_sdk.models.audit.AuditPage"
+        },
+        "qualified_name": "docforge_sdk.resources.audit.SyncAudit"
+      },
+      "SyncAuth": {
+        "kind": "class",
+        "methods": {
+          "create_key": "(self, name: str, permissions: docforge_sdk.models._shared.KeyPermissions | None = None, expires_at: datetime.datetime | None = None) -> docforge_sdk.models.auth.CreatedKey",
+          "list_keys": "(self) -> list[docforge_sdk.models.auth.KeyInfo]",
+          "revoke_key": "(self, key_id: str) -> None",
+          "rotate_key": "(self, key_id: str, name: str | None | ellipsis = Ellipsis, permissions: docforge_sdk.models._shared.KeyPermissions | None | ellipsis = Ellipsis, expires_at: datetime.datetime | None | ellipsis = Ellipsis) -> docforge_sdk.models.auth.CreatedKey",
+          "whoami": "(self) -> docforge_sdk.models.auth.WhoAmI"
+        },
+        "qualified_name": "docforge_sdk.resources.auth.SyncAuth"
+      },
+      "SyncBlobs": {
+        "kind": "class",
+        "methods": {
+          "get": "(self, content_hash: str) -> docforge_sdk.models.blobs.BlobContent"
+        },
+        "qualified_name": "docforge_sdk.resources.blobs.SyncBlobs"
+      },
+      "SyncCapabilities": {
+        "kind": "class",
+        "methods": {
+          "capabilities": "(self) -> docforge_sdk.models.capabilities.CapabilitiesResponse"
+        },
+        "qualified_name": "docforge_sdk.resources.capabilities.SyncCapabilities"
+      },
+      "SyncCollectionAliases": {
+        "kind": "class",
+        "methods": {
+          "delete": "(self, name: str) -> None",
+          "list": "(self) -> list[docforge_sdk.models.collection_aliases.CollectionAliasModel]",
+          "set": "(self, name: str, collection_id: str) -> docforge_sdk.models.collection_aliases.SetCollectionAliasResponse"
+        },
+        "qualified_name": "docforge_sdk.resources.collection_aliases.SyncCollectionAliases"
+      },
+      "SyncCollections": {
+        "kind": "class",
+        "methods": {
+          "contract_schema": "(self) -> docforge_sdk.models.collections.CollectionContractSchemaResponse",
+          "create": "(self, request: docforge_sdk.models.collections.CreateCollectionRequest) -> docforge_sdk.models.collections.CollectionModel",
+          "delete": "(self, collection_id: str) -> None",
+          "describe": "(self, collection_id: str) -> docforge_sdk.models.collections.CollectionDescription",
+          "estimate": "(self, collection_id: str, scope: Literal['pending', 'all'] = 'pending', document_ids: list[str] | None = None, filter: docforge_sdk.models.corpus.DocumentFilter | None = None) -> docforge_sdk.models.estimate.CostEstimate",
+          "get": "(self, collection_id: str) -> docforge_sdk.models.collections.CollectionModel",
+          "get_preview_job": "(self, collection_id: str, preview_id: str) -> docforge_sdk.models.preview.PreviewJobResult",
+          "health": "(self, collection_id: str) -> docforge_sdk.models.health.CollectionHealthResponse",
+          "list": "(self) -> list[docforge_sdk.models.collections.CollectionListItem]",
+          "preview_pipeline": "(self, collection_id: str, *, file: str | pathlib.Path | bytes | None = None, document_id: str | None = None, blob: dict[str, typing.Any] | None = None, metadata: dict[str, typing.Any] | None = None, max_chunks: int | None = None, filename: str | None = None) -> docforge_sdk.models.preview.PreviewResponse",
+          "purge_trace_payloads": "(self, collection_id: str) -> docforge_sdk.models.trace.TracePurgeResult",
+          "rebuild_index": "(self, collection_id: str) -> docforge_sdk.models.index_rebuild.RebuildIndexAccepted",
+          "reingest": "(self, collection_id: str, request: docforge_sdk.models.collections.BulkReingestRequest | None = None) -> docforge_sdk.models.collections.BulkReingestAccepted",
+          "storage": "(self, collection_id: str) -> docforge_sdk.models.storage.CollectionStorageResponse",
+          "submit_preview_job": "(self, collection_id: str, *, file: str | pathlib.Path | bytes | None = None, document_id: str | None = None, blob: dict[str, typing.Any] | None = None, metadata: dict[str, typing.Any] | None = None, max_chunks: int | None = None, filename: str | None = None) -> docforge_sdk.models.preview.PreviewJobAccepted",
+          "update": "(self, collection_id: str, request: docforge_sdk.models.collections.UpdateCollectionRequest) -> docforge_sdk.models.collections.UpdateCollectionResponse"
+        },
+        "qualified_name": "docforge_sdk.resources.collections.SyncCollections"
+      },
+      "SyncDocuments": {
+        "kind": "class",
+        "methods": {
+          "get_html": "(self, document_id: str, download: bool = False, pages: str | None = None) -> docforge_sdk.models.documents.DocumentView",
+          "get_markdown": "(self, document_id: str, download: bool = False, pages: str | None = None) -> docforge_sdk.models.documents.DocumentView",
+          "purge_trace_payloads": "(self, document_id: str) -> docforge_sdk.models.trace.TracePurgeResult",
+          "reingest": "(self, document_id: str, force: bool = False, replay_from: str | None = None) -> docforge_sdk.models.documents.UploadAccepted",
+          "set_enabled": "(self, document_id: str, enabled: bool) -> docforge_sdk.models.documents.DocumentEnabledResponse",
+          "update_metadata": "(self, document_id: str, values: dict[str, typing.Any]) -> docforge_sdk.models.documents.MetadataUpdateResponse",
+          "upload": "(self, collection_id: str, file: str | pathlib.Path | bytes, metadata: dict[str, typing.Any] | None = None, filename: str | None = None) -> docforge_sdk.models.documents.UploadAccepted"
+        },
+        "qualified_name": "docforge_sdk.resources.documents.SyncDocuments"
+      },
+      "SyncExplorer": {
+        "kind": "class",
+        "methods": {
+          "delete_document": "(self, document_id: str) -> None",
+          "get_chunk_context": "(self, chunk_id: str, before: int | None = None, after: int | None = None) -> docforge_sdk.models.explorer.ChunkContext",
+          "get_chunks": "(self, document_id: str, limit: int | None = None, offset: int | None = None, include_geometry: bool | None = None) -> list[docforge_sdk.models.explorer.ChunkInfo]",
+          "get_chunks_page": "(self, document_id: str, limit: int | None = None, offset: int | None = None, include_geometry: bool | None = None) -> docforge_sdk.models.explorer.ChunkPage",
+          "get_document": "(self, document_id: str) -> docforge_sdk.models.explorer.DocumentDetail",
+          "get_ir": "(self, document_id: str) -> docforge_sdk.models.ir.DocumentIRModel",
+          "get_outline": "(self, document_id: str) -> docforge_sdk.models.explorer.DocumentOutline",
+          "get_pages": "(self, document_id: str) -> list[docforge_sdk.models.explorer.PageInfo]",
+          "get_provenance": "(self, document_id: str) -> docforge_sdk.models.ir.DocumentProvenance",
+          "list_documents": "(self, collection_id: str, limit: int | None = None, offset: int | None = None) -> list[docforge_sdk.models.explorer.DocumentListItem]",
+          "set_chunk_enabled": "(self, chunk_id: str, enabled: bool) -> docforge_sdk.models.explorer.ChunkEnabledResult",
+          "set_chunks_enabled": "(self, patch: docforge_sdk.models.explorer.BulkChunkEnabledPatch) -> docforge_sdk.models.explorer.BulkChunkEnabledResponse"
+        },
+        "qualified_name": "docforge_sdk.resources.explorer.SyncExplorer"
+      },
+      "SyncHealth": {
+        "kind": "class",
+        "methods": {
+          "ping": "(self) -> docforge_sdk.models.health.HealthStatus"
+        },
+        "qualified_name": "docforge_sdk.resources.health.SyncHealth"
+      },
+      "SyncJobs": {
+        "kind": "class",
+        "methods": {
+          "cancel": "(self, job_id: str, force: bool = False) -> docforge_sdk.models.jobs.CancelResult",
+          "cost": "(self, collection_id: str) -> docforge_sdk.models.jobs.CollectionCost",
+          "failure_breakdown": "(self, collection_id: str | None = None, window_hours: int | None = None) -> docforge_sdk.models.jobs.FailureBreakdown",
+          "get": "(self, job_id: str) -> docforge_sdk.models.jobs.JobStatus",
+          "get_event_payload": "(self, job_id: str, event_id: str, slot: str = 'output') -> docforge_sdk.models.jobs.JobEventPayload",
+          "get_events": "(self, job_id: str) -> docforge_sdk.models.jobs.JobTrace",
+          "list": "(self, collection_id: str | None = None, status: list[str] | None = None, order: str | None = None, limit: int | None = None, offset: int | None = None, *, stage: str | None = None, error_type: str | None = None, search: str | None = None, created_after: str | None = None, created_before: str | None = None, sort: str | None = None) -> docforge_sdk.models.jobs.JobPage",
+          "live_workers": "(self) -> docforge_sdk.models.jobs.WorkersLive",
+          "new_failures": "(self, since: str, collection_id: str | None = None, include_ids: bool | None = None, limit: int | None = None) -> docforge_sdk.models.jobs.NewFailures",
+          "queue": "(self, collection_id: str | None = None) -> docforge_sdk.models.jobs.QueueDepth",
+          "stage_durations": "(self, collection_id: str) -> docforge_sdk.models.jobs.StageDurations",
+          "timeseries": "(self, collection_id: str | None = None, window_hours: int | None = None) -> docforge_sdk.models.jobs.JobTimeseries"
+        },
+        "qualified_name": "docforge_sdk.resources.jobs.SyncJobs"
+      },
+      "SyncPipelines": {
+        "kind": "class",
+        "methods": {
+          "apply_collection_stage": "(self, collection_id: str, action: dict[str, typing.Any], note: str | None = None) -> docforge_sdk.models.pipelines.CollectionStageApplyResponse",
+          "apply_stage": "(self, key: str, blob: dict[str, typing.Any], action: dict[str, typing.Any]) -> docforge_sdk.models.pipelines.StageApplyResponse",
+          "edit": "(self, key: str, blob: dict[str, typing.Any], operations: list[dict[str, typing.Any]]) -> docforge_sdk.models.pipelines.EditResponse",
+          "get_design": "(self, key: str, full: bool = False) -> docforge_sdk.models.pipelines.PipelineDesignResponse",
+          "inspect": "(self, key: str, blob: dict[str, typing.Any]) -> docforge_sdk.models.pipelines.InspectResponse",
+          "list_surfaces": "(self) -> docforge_sdk.models.pipelines.PipelineIndexResponse",
+          "view_stages": "(self, key: str, blob: dict[str, typing.Any]) -> docforge_sdk.models.pipelines.StageViewResponse"
+        },
+        "qualified_name": "docforge_sdk.resources.pipelines.SyncPipelines"
+      },
+      "SyncResource": {
+        "kind": "class",
+        "methods": {},
+        "qualified_name": "docforge_sdk.resources._base.SyncResource"
+      },
+      "SyncSearch": {
+        "kind": "class",
+        "methods": {
+          "browse": "(self, collection_id: str, request: docforge_sdk.models.search.ChunkBrowseRequest) -> docforge_sdk.models.search.ChunkBrowseResponse",
+          "get_search_health": "(self) -> docforge_sdk.models.search.SearchHealthSummary",
+          "search": "(self, collection_id: str, request: docforge_sdk.models.search.SearchRequest) -> docforge_sdk.models.search.SearchResponse"
+        },
+        "qualified_name": "docforge_sdk.resources.search.SyncSearch"
+      },
+      "SyncTransfers": {
+        "kind": "class",
+        "methods": {
+          "download_export": "(self, transfer_id: str) -> collections.abc.Iterator[bytes]",
+          "export_collection": "(self, collection_id: str) -> docforge_sdk.models.transfers.TransferAccepted",
+          "get_transfer": "(self, transfer_id: str) -> docforge_sdk.models.transfers.TransferStatus",
+          "import_collection": "(self, file: Union[str, pathlib.Path, bytes, IO[bytes]], target_name: str | None = None) -> docforge_sdk.models.transfers.TransferAccepted"
+        },
+        "qualified_name": "docforge_sdk.resources.transfers.SyncTransfers"
+      }
+    }
+  },
+  "docforge_sdk.resources.audit": {
+    "__all__": [
+      "AsyncAudit",
+      "SyncAudit"
+    ],
+    "exports": {
+      "AsyncAudit": {
+        "kind": "class",
+        "methods": {
+          "list": "(self, limit: int | None = None, cursor: str | None = None, actor_user_id: str | None = None, actor_key_id: str | None = None, target_type: str | None = None, target_id: str | None = None, correlation_id: str | None = None, created_from: datetime.datetime | None = None, created_to: datetime.datetime | None = None) -> docforge_sdk.models.audit.AuditPage"
+        },
+        "qualified_name": "docforge_sdk.resources.audit.AsyncAudit"
+      },
+      "SyncAudit": {
+        "kind": "class",
+        "methods": {
+          "list": "(self, limit: int | None = None, cursor: str | None = None, actor_user_id: str | None = None, actor_key_id: str | None = None, target_type: str | None = None, target_id: str | None = None, correlation_id: str | None = None, created_from: datetime.datetime | None = None, created_to: datetime.datetime | None = None) -> docforge_sdk.models.audit.AuditPage"
+        },
+        "qualified_name": "docforge_sdk.resources.audit.SyncAudit"
+      }
+    }
+  },
+  "docforge_sdk.resources.auth": {
+    "__all__": [
+      "AsyncAuth",
+      "SyncAuth"
+    ],
+    "exports": {
+      "AsyncAuth": {
+        "kind": "class",
+        "methods": {
+          "create_key": "(self, name: str, permissions: docforge_sdk.models._shared.KeyPermissions | None = None, expires_at: datetime.datetime | None = None) -> docforge_sdk.models.auth.CreatedKey",
+          "list_keys": "(self) -> list[docforge_sdk.models.auth.KeyInfo]",
+          "revoke_key": "(self, key_id: str) -> None",
+          "rotate_key": "(self, key_id: str, name: str | None | ellipsis = Ellipsis, permissions: docforge_sdk.models._shared.KeyPermissions | None | ellipsis = Ellipsis, expires_at: datetime.datetime | None | ellipsis = Ellipsis) -> docforge_sdk.models.auth.CreatedKey",
+          "whoami": "(self) -> docforge_sdk.models.auth.WhoAmI"
+        },
+        "qualified_name": "docforge_sdk.resources.auth.AsyncAuth"
+      },
+      "SyncAuth": {
+        "kind": "class",
+        "methods": {
+          "create_key": "(self, name: str, permissions: docforge_sdk.models._shared.KeyPermissions | None = None, expires_at: datetime.datetime | None = None) -> docforge_sdk.models.auth.CreatedKey",
+          "list_keys": "(self) -> list[docforge_sdk.models.auth.KeyInfo]",
+          "revoke_key": "(self, key_id: str) -> None",
+          "rotate_key": "(self, key_id: str, name: str | None | ellipsis = Ellipsis, permissions: docforge_sdk.models._shared.KeyPermissions | None | ellipsis = Ellipsis, expires_at: datetime.datetime | None | ellipsis = Ellipsis) -> docforge_sdk.models.auth.CreatedKey",
+          "whoami": "(self) -> docforge_sdk.models.auth.WhoAmI"
+        },
+        "qualified_name": "docforge_sdk.resources.auth.SyncAuth"
+      }
+    }
+  },
+  "docforge_sdk.resources.blobs": {
+    "__all__": [
+      "AsyncBlobs",
+      "SyncBlobs"
+    ],
+    "exports": {
+      "AsyncBlobs": {
+        "kind": "class",
+        "methods": {
+          "get": "(self, content_hash: str) -> docforge_sdk.models.blobs.BlobContent"
+        },
+        "qualified_name": "docforge_sdk.resources.blobs.AsyncBlobs"
+      },
+      "SyncBlobs": {
+        "kind": "class",
+        "methods": {
+          "get": "(self, content_hash: str) -> docforge_sdk.models.blobs.BlobContent"
+        },
+        "qualified_name": "docforge_sdk.resources.blobs.SyncBlobs"
+      }
+    }
+  },
+  "docforge_sdk.resources.capabilities": {
+    "__all__": [
+      "AsyncCapabilities",
+      "SyncCapabilities"
+    ],
+    "exports": {
+      "AsyncCapabilities": {
+        "kind": "class",
+        "methods": {
+          "capabilities": "(self) -> docforge_sdk.models.capabilities.CapabilitiesResponse"
+        },
+        "qualified_name": "docforge_sdk.resources.capabilities.AsyncCapabilities"
+      },
+      "SyncCapabilities": {
+        "kind": "class",
+        "methods": {
+          "capabilities": "(self) -> docforge_sdk.models.capabilities.CapabilitiesResponse"
+        },
+        "qualified_name": "docforge_sdk.resources.capabilities.SyncCapabilities"
+      }
+    }
+  },
+  "docforge_sdk.resources.collection_aliases": {
+    "__all__": [
+      "AsyncCollectionAliases",
+      "SyncCollectionAliases"
+    ],
+    "exports": {
+      "AsyncCollectionAliases": {
+        "kind": "class",
+        "methods": {
+          "delete": "(self, name: str) -> None",
+          "list": "(self) -> list[docforge_sdk.models.collection_aliases.CollectionAliasModel]",
+          "set": "(self, name: str, collection_id: str) -> docforge_sdk.models.collection_aliases.SetCollectionAliasResponse"
+        },
+        "qualified_name": "docforge_sdk.resources.collection_aliases.AsyncCollectionAliases"
+      },
+      "SyncCollectionAliases": {
+        "kind": "class",
+        "methods": {
+          "delete": "(self, name: str) -> None",
+          "list": "(self) -> list[docforge_sdk.models.collection_aliases.CollectionAliasModel]",
+          "set": "(self, name: str, collection_id: str) -> docforge_sdk.models.collection_aliases.SetCollectionAliasResponse"
+        },
+        "qualified_name": "docforge_sdk.resources.collection_aliases.SyncCollectionAliases"
+      }
+    }
+  },
+  "docforge_sdk.resources.collections": {
+    "__all__": [
+      "AsyncCollections",
+      "SyncCollections"
+    ],
+    "exports": {
+      "AsyncCollections": {
+        "kind": "class",
+        "methods": {
+          "contract_schema": "(self) -> docforge_sdk.models.collections.CollectionContractSchemaResponse",
+          "create": "(self, request: docforge_sdk.models.collections.CreateCollectionRequest) -> docforge_sdk.models.collections.CollectionModel",
+          "delete": "(self, collection_id: str) -> None",
+          "describe": "(self, collection_id: str) -> docforge_sdk.models.collections.CollectionDescription",
+          "estimate": "(self, collection_id: str, scope: Literal['pending', 'all'] = 'pending', document_ids: list[str] | None = None, filter: docforge_sdk.models.corpus.DocumentFilter | None = None) -> docforge_sdk.models.estimate.CostEstimate",
+          "get": "(self, collection_id: str) -> docforge_sdk.models.collections.CollectionModel",
+          "get_preview_job": "(self, collection_id: str, preview_id: str) -> docforge_sdk.models.preview.PreviewJobResult",
+          "health": "(self, collection_id: str) -> docforge_sdk.models.health.CollectionHealthResponse",
+          "list": "(self) -> list[docforge_sdk.models.collections.CollectionListItem]",
+          "preview_pipeline": "(self, collection_id: str, *, file: str | pathlib.Path | bytes | None = None, document_id: str | None = None, blob: dict[str, typing.Any] | None = None, metadata: dict[str, typing.Any] | None = None, max_chunks: int | None = None, filename: str | None = None) -> docforge_sdk.models.preview.PreviewResponse",
+          "purge_trace_payloads": "(self, collection_id: str) -> docforge_sdk.models.trace.TracePurgeResult",
+          "rebuild_index": "(self, collection_id: str) -> docforge_sdk.models.index_rebuild.RebuildIndexAccepted",
+          "reingest": "(self, collection_id: str, request: docforge_sdk.models.collections.BulkReingestRequest | None = None) -> docforge_sdk.models.collections.BulkReingestAccepted",
+          "storage": "(self, collection_id: str) -> docforge_sdk.models.storage.CollectionStorageResponse",
+          "submit_preview_job": "(self, collection_id: str, *, file: str | pathlib.Path | bytes | None = None, document_id: str | None = None, blob: dict[str, typing.Any] | None = None, metadata: dict[str, typing.Any] | None = None, max_chunks: int | None = None, filename: str | None = None) -> docforge_sdk.models.preview.PreviewJobAccepted",
+          "update": "(self, collection_id: str, request: docforge_sdk.models.collections.UpdateCollectionRequest) -> docforge_sdk.models.collections.UpdateCollectionResponse"
+        },
+        "qualified_name": "docforge_sdk.resources.collections.AsyncCollections"
+      },
+      "SyncCollections": {
+        "kind": "class",
+        "methods": {
+          "contract_schema": "(self) -> docforge_sdk.models.collections.CollectionContractSchemaResponse",
+          "create": "(self, request: docforge_sdk.models.collections.CreateCollectionRequest) -> docforge_sdk.models.collections.CollectionModel",
+          "delete": "(self, collection_id: str) -> None",
+          "describe": "(self, collection_id: str) -> docforge_sdk.models.collections.CollectionDescription",
+          "estimate": "(self, collection_id: str, scope: Literal['pending', 'all'] = 'pending', document_ids: list[str] | None = None, filter: docforge_sdk.models.corpus.DocumentFilter | None = None) -> docforge_sdk.models.estimate.CostEstimate",
+          "get": "(self, collection_id: str) -> docforge_sdk.models.collections.CollectionModel",
+          "get_preview_job": "(self, collection_id: str, preview_id: str) -> docforge_sdk.models.preview.PreviewJobResult",
+          "health": "(self, collection_id: str) -> docforge_sdk.models.health.CollectionHealthResponse",
+          "list": "(self) -> list[docforge_sdk.models.collections.CollectionListItem]",
+          "preview_pipeline": "(self, collection_id: str, *, file: str | pathlib.Path | bytes | None = None, document_id: str | None = None, blob: dict[str, typing.Any] | None = None, metadata: dict[str, typing.Any] | None = None, max_chunks: int | None = None, filename: str | None = None) -> docforge_sdk.models.preview.PreviewResponse",
+          "purge_trace_payloads": "(self, collection_id: str) -> docforge_sdk.models.trace.TracePurgeResult",
+          "rebuild_index": "(self, collection_id: str) -> docforge_sdk.models.index_rebuild.RebuildIndexAccepted",
+          "reingest": "(self, collection_id: str, request: docforge_sdk.models.collections.BulkReingestRequest | None = None) -> docforge_sdk.models.collections.BulkReingestAccepted",
+          "storage": "(self, collection_id: str) -> docforge_sdk.models.storage.CollectionStorageResponse",
+          "submit_preview_job": "(self, collection_id: str, *, file: str | pathlib.Path | bytes | None = None, document_id: str | None = None, blob: dict[str, typing.Any] | None = None, metadata: dict[str, typing.Any] | None = None, max_chunks: int | None = None, filename: str | None = None) -> docforge_sdk.models.preview.PreviewJobAccepted",
+          "update": "(self, collection_id: str, request: docforge_sdk.models.collections.UpdateCollectionRequest) -> docforge_sdk.models.collections.UpdateCollectionResponse"
+        },
+        "qualified_name": "docforge_sdk.resources.collections.SyncCollections"
+      }
+    }
+  },
+  "docforge_sdk.resources.config_versions": {
+    "__all__": [
+      "AsyncConfigVersions",
+      "SyncConfigVersions"
+    ],
+    "exports": {
+      "AsyncConfigVersions": {
+        "kind": "class",
+        "methods": {
+          "diff": "(self, collection_id: str, from_version: int, to_version: int) -> docforge_sdk.models.config_versions.ConfigVersionDiffResponse",
+          "get": "(self, collection_id: str, version: int) -> docforge_sdk.models.config_versions.ConfigVersionDetail",
+          "list": "(self, collection_id: str, *, limit: int = 50, offset: int = 0) -> docforge_sdk.models.config_versions.ConfigVersionListResponse",
+          "restore": "(self, collection_id: str, version: int) -> docforge_sdk.models.config_versions.ConfigVersionRestoreResponse"
+        },
+        "qualified_name": "docforge_sdk.resources.config_versions.AsyncConfigVersions"
+      },
+      "SyncConfigVersions": {
+        "kind": "class",
+        "methods": {
+          "diff": "(self, collection_id: str, from_version: int, to_version: int) -> docforge_sdk.models.config_versions.ConfigVersionDiffResponse",
+          "get": "(self, collection_id: str, version: int) -> docforge_sdk.models.config_versions.ConfigVersionDetail",
+          "list": "(self, collection_id: str, *, limit: int = 50, offset: int = 0) -> docforge_sdk.models.config_versions.ConfigVersionListResponse",
+          "restore": "(self, collection_id: str, version: int) -> docforge_sdk.models.config_versions.ConfigVersionRestoreResponse"
+        },
+        "qualified_name": "docforge_sdk.resources.config_versions.SyncConfigVersions"
+      }
+    }
+  },
+  "docforge_sdk.resources.corpus": {
+    "__all__": [
+      "AsyncCorpus",
+      "SyncCorpus"
+    ],
+    "exports": {
+      "AsyncCorpus": {
+        "kind": "class",
+        "methods": {
+          "bulk_delete": "(self, collection_id: str, selector: docforge_sdk.models.corpus.DocumentSelector) -> docforge_sdk.models.corpus.BulkDeleteResponse",
+          "bulk_reingest": "(self, collection_id: str, selector: docforge_sdk.models.corpus.DocumentSelector, force: bool = False, replay_from: str | None = None, confirm_estimate: bool = False) -> docforge_sdk.models.corpus.BulkReingestResponse",
+          "bulk_set_enabled": "(self, collection_id: str, selector: docforge_sdk.models.corpus.DocumentSelector, enabled: bool) -> docforge_sdk.models.corpus.BulkEnabledResponse",
+          "query": "(self, collection_id: str, request: docforge_sdk.models.corpus.DocumentQueryRequest | None = None) -> docforge_sdk.models.corpus.DocumentQueryResponse"
+        },
+        "qualified_name": "docforge_sdk.resources.corpus.AsyncCorpus"
+      },
+      "SyncCorpus": {
+        "kind": "class",
+        "methods": {
+          "bulk_delete": "(self, collection_id: str, selector: docforge_sdk.models.corpus.DocumentSelector) -> docforge_sdk.models.corpus.BulkDeleteResponse",
+          "bulk_reingest": "(self, collection_id: str, selector: docforge_sdk.models.corpus.DocumentSelector, force: bool = False, replay_from: str | None = None, confirm_estimate: bool = False) -> docforge_sdk.models.corpus.BulkReingestResponse",
+          "bulk_set_enabled": "(self, collection_id: str, selector: docforge_sdk.models.corpus.DocumentSelector, enabled: bool) -> docforge_sdk.models.corpus.BulkEnabledResponse",
+          "query": "(self, collection_id: str, request: docforge_sdk.models.corpus.DocumentQueryRequest | None = None) -> docforge_sdk.models.corpus.DocumentQueryResponse"
+        },
+        "qualified_name": "docforge_sdk.resources.corpus.SyncCorpus"
+      }
+    }
+  },
+  "docforge_sdk.resources.documents": {
+    "__all__": [
+      "AsyncDocuments",
+      "SyncDocuments"
+    ],
+    "exports": {
+      "AsyncDocuments": {
+        "kind": "class",
+        "methods": {
+          "get_html": "(self, document_id: str, download: bool = False, pages: str | None = None) -> docforge_sdk.models.documents.DocumentView",
+          "get_markdown": "(self, document_id: str, download: bool = False, pages: str | None = None) -> docforge_sdk.models.documents.DocumentView",
+          "purge_trace_payloads": "(self, document_id: str) -> docforge_sdk.models.trace.TracePurgeResult",
+          "reingest": "(self, document_id: str, force: bool = False, replay_from: str | None = None) -> docforge_sdk.models.documents.UploadAccepted",
+          "set_enabled": "(self, document_id: str, enabled: bool) -> docforge_sdk.models.documents.DocumentEnabledResponse",
+          "update_metadata": "(self, document_id: str, values: dict[str, typing.Any]) -> docforge_sdk.models.documents.MetadataUpdateResponse",
+          "upload": "(self, collection_id: str, file: str | pathlib.Path | bytes, metadata: dict[str, typing.Any] | None = None, filename: str | None = None) -> docforge_sdk.models.documents.UploadAccepted"
+        },
+        "qualified_name": "docforge_sdk.resources.documents.AsyncDocuments"
+      },
+      "SyncDocuments": {
+        "kind": "class",
+        "methods": {
+          "get_html": "(self, document_id: str, download: bool = False, pages: str | None = None) -> docforge_sdk.models.documents.DocumentView",
+          "get_markdown": "(self, document_id: str, download: bool = False, pages: str | None = None) -> docforge_sdk.models.documents.DocumentView",
+          "purge_trace_payloads": "(self, document_id: str) -> docforge_sdk.models.trace.TracePurgeResult",
+          "reingest": "(self, document_id: str, force: bool = False, replay_from: str | None = None) -> docforge_sdk.models.documents.UploadAccepted",
+          "set_enabled": "(self, document_id: str, enabled: bool) -> docforge_sdk.models.documents.DocumentEnabledResponse",
+          "update_metadata": "(self, document_id: str, values: dict[str, typing.Any]) -> docforge_sdk.models.documents.MetadataUpdateResponse",
+          "upload": "(self, collection_id: str, file: str | pathlib.Path | bytes, metadata: dict[str, typing.Any] | None = None, filename: str | None = None) -> docforge_sdk.models.documents.UploadAccepted"
+        },
+        "qualified_name": "docforge_sdk.resources.documents.SyncDocuments"
+      }
+    }
+  },
+  "docforge_sdk.resources.explorer": {
+    "__all__": [
+      "AsyncExplorer",
+      "SyncExplorer"
+    ],
+    "exports": {
+      "AsyncExplorer": {
+        "kind": "class",
+        "methods": {
+          "delete_document": "(self, document_id: str) -> None",
+          "get_chunk_context": "(self, chunk_id: str, before: int | None = None, after: int | None = None) -> docforge_sdk.models.explorer.ChunkContext",
+          "get_chunks": "(self, document_id: str, limit: int | None = None, offset: int | None = None, include_geometry: bool | None = None) -> list[docforge_sdk.models.explorer.ChunkInfo]",
+          "get_chunks_page": "(self, document_id: str, limit: int | None = None, offset: int | None = None, include_geometry: bool | None = None) -> docforge_sdk.models.explorer.ChunkPage",
+          "get_document": "(self, document_id: str) -> docforge_sdk.models.explorer.DocumentDetail",
+          "get_ir": "(self, document_id: str) -> docforge_sdk.models.ir.DocumentIRModel",
+          "get_outline": "(self, document_id: str) -> docforge_sdk.models.explorer.DocumentOutline",
+          "get_pages": "(self, document_id: str) -> list[docforge_sdk.models.explorer.PageInfo]",
+          "get_provenance": "(self, document_id: str) -> docforge_sdk.models.ir.DocumentProvenance",
+          "list_documents": "(self, collection_id: str, limit: int | None = None, offset: int | None = None) -> list[docforge_sdk.models.explorer.DocumentListItem]",
+          "set_chunk_enabled": "(self, chunk_id: str, enabled: bool) -> docforge_sdk.models.explorer.ChunkEnabledResult",
+          "set_chunks_enabled": "(self, patch: docforge_sdk.models.explorer.BulkChunkEnabledPatch) -> docforge_sdk.models.explorer.BulkChunkEnabledResponse"
+        },
+        "qualified_name": "docforge_sdk.resources.explorer.AsyncExplorer"
+      },
+      "SyncExplorer": {
+        "kind": "class",
+        "methods": {
+          "delete_document": "(self, document_id: str) -> None",
+          "get_chunk_context": "(self, chunk_id: str, before: int | None = None, after: int | None = None) -> docforge_sdk.models.explorer.ChunkContext",
+          "get_chunks": "(self, document_id: str, limit: int | None = None, offset: int | None = None, include_geometry: bool | None = None) -> list[docforge_sdk.models.explorer.ChunkInfo]",
+          "get_chunks_page": "(self, document_id: str, limit: int | None = None, offset: int | None = None, include_geometry: bool | None = None) -> docforge_sdk.models.explorer.ChunkPage",
+          "get_document": "(self, document_id: str) -> docforge_sdk.models.explorer.DocumentDetail",
+          "get_ir": "(self, document_id: str) -> docforge_sdk.models.ir.DocumentIRModel",
+          "get_outline": "(self, document_id: str) -> docforge_sdk.models.explorer.DocumentOutline",
+          "get_pages": "(self, document_id: str) -> list[docforge_sdk.models.explorer.PageInfo]",
+          "get_provenance": "(self, document_id: str) -> docforge_sdk.models.ir.DocumentProvenance",
+          "list_documents": "(self, collection_id: str, limit: int | None = None, offset: int | None = None) -> list[docforge_sdk.models.explorer.DocumentListItem]",
+          "set_chunk_enabled": "(self, chunk_id: str, enabled: bool) -> docforge_sdk.models.explorer.ChunkEnabledResult",
+          "set_chunks_enabled": "(self, patch: docforge_sdk.models.explorer.BulkChunkEnabledPatch) -> docforge_sdk.models.explorer.BulkChunkEnabledResponse"
+        },
+        "qualified_name": "docforge_sdk.resources.explorer.SyncExplorer"
+      }
+    }
+  },
+  "docforge_sdk.resources.health": {
+    "__all__": [
+      "AsyncHealth",
+      "SyncHealth"
+    ],
+    "exports": {
+      "AsyncHealth": {
+        "kind": "class",
+        "methods": {
+          "ping": "(self) -> docforge_sdk.models.health.HealthStatus"
+        },
+        "qualified_name": "docforge_sdk.resources.health.AsyncHealth"
+      },
+      "SyncHealth": {
+        "kind": "class",
+        "methods": {
+          "ping": "(self) -> docforge_sdk.models.health.HealthStatus"
+        },
+        "qualified_name": "docforge_sdk.resources.health.SyncHealth"
+      }
+    }
+  },
+  "docforge_sdk.resources.jobs": {
+    "__all__": [
+      "AsyncJobs",
+      "SyncJobs"
+    ],
+    "exports": {
+      "AsyncJobs": {
+        "kind": "class",
+        "methods": {
+          "cancel": "(self, job_id: str, force: bool = False) -> docforge_sdk.models.jobs.CancelResult",
+          "cost": "(self, collection_id: str) -> docforge_sdk.models.jobs.CollectionCost",
+          "failure_breakdown": "(self, collection_id: str | None = None, window_hours: int | None = None) -> docforge_sdk.models.jobs.FailureBreakdown",
+          "get": "(self, job_id: str) -> docforge_sdk.models.jobs.JobStatus",
+          "get_event_payload": "(self, job_id: str, event_id: str, slot: str = 'output') -> docforge_sdk.models.jobs.JobEventPayload",
+          "get_events": "(self, job_id: str) -> docforge_sdk.models.jobs.JobTrace",
+          "list": "(self, collection_id: str | None = None, status: list[str] | None = None, order: str | None = None, limit: int | None = None, offset: int | None = None, *, stage: str | None = None, error_type: str | None = None, search: str | None = None, created_after: str | None = None, created_before: str | None = None, sort: str | None = None) -> docforge_sdk.models.jobs.JobPage",
+          "live_workers": "(self) -> docforge_sdk.models.jobs.WorkersLive",
+          "new_failures": "(self, since: str, collection_id: str | None = None, include_ids: bool | None = None, limit: int | None = None) -> docforge_sdk.models.jobs.NewFailures",
+          "queue": "(self, collection_id: str | None = None) -> docforge_sdk.models.jobs.QueueDepth",
+          "stage_durations": "(self, collection_id: str) -> docforge_sdk.models.jobs.StageDurations",
+          "timeseries": "(self, collection_id: str | None = None, window_hours: int | None = None) -> docforge_sdk.models.jobs.JobTimeseries"
+        },
+        "qualified_name": "docforge_sdk.resources.jobs.AsyncJobs"
+      },
+      "SyncJobs": {
+        "kind": "class",
+        "methods": {
+          "cancel": "(self, job_id: str, force: bool = False) -> docforge_sdk.models.jobs.CancelResult",
+          "cost": "(self, collection_id: str) -> docforge_sdk.models.jobs.CollectionCost",
+          "failure_breakdown": "(self, collection_id: str | None = None, window_hours: int | None = None) -> docforge_sdk.models.jobs.FailureBreakdown",
+          "get": "(self, job_id: str) -> docforge_sdk.models.jobs.JobStatus",
+          "get_event_payload": "(self, job_id: str, event_id: str, slot: str = 'output') -> docforge_sdk.models.jobs.JobEventPayload",
+          "get_events": "(self, job_id: str) -> docforge_sdk.models.jobs.JobTrace",
+          "list": "(self, collection_id: str | None = None, status: list[str] | None = None, order: str | None = None, limit: int | None = None, offset: int | None = None, *, stage: str | None = None, error_type: str | None = None, search: str | None = None, created_after: str | None = None, created_before: str | None = None, sort: str | None = None) -> docforge_sdk.models.jobs.JobPage",
+          "live_workers": "(self) -> docforge_sdk.models.jobs.WorkersLive",
+          "new_failures": "(self, since: str, collection_id: str | None = None, include_ids: bool | None = None, limit: int | None = None) -> docforge_sdk.models.jobs.NewFailures",
+          "queue": "(self, collection_id: str | None = None) -> docforge_sdk.models.jobs.QueueDepth",
+          "stage_durations": "(self, collection_id: str) -> docforge_sdk.models.jobs.StageDurations",
+          "timeseries": "(self, collection_id: str | None = None, window_hours: int | None = None) -> docforge_sdk.models.jobs.JobTimeseries"
+        },
+        "qualified_name": "docforge_sdk.resources.jobs.SyncJobs"
+      }
+    }
+  },
+  "docforge_sdk.resources.pipelines": {
+    "__all__": [
+      "AsyncPipelines",
+      "SyncPipelines"
+    ],
+    "exports": {
+      "AsyncPipelines": {
+        "kind": "class",
+        "methods": {
+          "apply_collection_stage": "(self, collection_id: str, action: dict[str, typing.Any], note: str | None = None) -> docforge_sdk.models.pipelines.CollectionStageApplyResponse",
+          "apply_stage": "(self, key: str, blob: dict[str, typing.Any], action: dict[str, typing.Any]) -> docforge_sdk.models.pipelines.StageApplyResponse",
+          "edit": "(self, key: str, blob: dict[str, typing.Any], operations: list[dict[str, typing.Any]]) -> docforge_sdk.models.pipelines.EditResponse",
+          "get_design": "(self, key: str, full: bool = False) -> docforge_sdk.models.pipelines.PipelineDesignResponse",
+          "inspect": "(self, key: str, blob: dict[str, typing.Any]) -> docforge_sdk.models.pipelines.InspectResponse",
+          "list_surfaces": "(self) -> docforge_sdk.models.pipelines.PipelineIndexResponse",
+          "view_stages": "(self, key: str, blob: dict[str, typing.Any]) -> docforge_sdk.models.pipelines.StageViewResponse"
+        },
+        "qualified_name": "docforge_sdk.resources.pipelines.AsyncPipelines"
+      },
+      "SyncPipelines": {
+        "kind": "class",
+        "methods": {
+          "apply_collection_stage": "(self, collection_id: str, action: dict[str, typing.Any], note: str | None = None) -> docforge_sdk.models.pipelines.CollectionStageApplyResponse",
+          "apply_stage": "(self, key: str, blob: dict[str, typing.Any], action: dict[str, typing.Any]) -> docforge_sdk.models.pipelines.StageApplyResponse",
+          "edit": "(self, key: str, blob: dict[str, typing.Any], operations: list[dict[str, typing.Any]]) -> docforge_sdk.models.pipelines.EditResponse",
+          "get_design": "(self, key: str, full: bool = False) -> docforge_sdk.models.pipelines.PipelineDesignResponse",
+          "inspect": "(self, key: str, blob: dict[str, typing.Any]) -> docforge_sdk.models.pipelines.InspectResponse",
+          "list_surfaces": "(self) -> docforge_sdk.models.pipelines.PipelineIndexResponse",
+          "view_stages": "(self, key: str, blob: dict[str, typing.Any]) -> docforge_sdk.models.pipelines.StageViewResponse"
+        },
+        "qualified_name": "docforge_sdk.resources.pipelines.SyncPipelines"
+      }
+    }
+  },
+  "docforge_sdk.resources.search": {
+    "__all__": [
+      "AsyncSearch",
+      "SyncSearch"
+    ],
+    "exports": {
+      "AsyncSearch": {
+        "kind": "class",
+        "methods": {
+          "browse": "(self, collection_id: str, request: docforge_sdk.models.search.ChunkBrowseRequest) -> docforge_sdk.models.search.ChunkBrowseResponse",
+          "get_search_health": "(self) -> docforge_sdk.models.search.SearchHealthSummary",
+          "search": "(self, collection_id: str, request: docforge_sdk.models.search.SearchRequest) -> docforge_sdk.models.search.SearchResponse"
+        },
+        "qualified_name": "docforge_sdk.resources.search.AsyncSearch"
+      },
+      "SyncSearch": {
+        "kind": "class",
+        "methods": {
+          "browse": "(self, collection_id: str, request: docforge_sdk.models.search.ChunkBrowseRequest) -> docforge_sdk.models.search.ChunkBrowseResponse",
+          "get_search_health": "(self) -> docforge_sdk.models.search.SearchHealthSummary",
+          "search": "(self, collection_id: str, request: docforge_sdk.models.search.SearchRequest) -> docforge_sdk.models.search.SearchResponse"
+        },
+        "qualified_name": "docforge_sdk.resources.search.SyncSearch"
+      }
+    }
+  },
+  "docforge_sdk.resources.snippets": {
+    "__all__": [
+      "AsyncSnippets",
+      "SyncSnippets"
+    ],
+    "exports": {
+      "AsyncSnippets": {
+        "kind": "class",
+        "methods": {
+          "apply": "(self, collection_id: str, kind: Literal['pipeline', 'search', 'schema'], snippet: docforge_sdk.models.snippets.CollectionSnippet) -> docforge_sdk.models.snippets.SnippetImportResult",
+          "export": "(self, collection_id: str, kind: Literal['pipeline', 'search', 'schema']) -> docforge_sdk.models.snippets.CollectionSnippet"
+        },
+        "qualified_name": "docforge_sdk.resources.snippets.AsyncSnippets"
+      },
+      "SyncSnippets": {
+        "kind": "class",
+        "methods": {
+          "apply": "(self, collection_id: str, kind: Literal['pipeline', 'search', 'schema'], snippet: docforge_sdk.models.snippets.CollectionSnippet) -> docforge_sdk.models.snippets.SnippetImportResult",
+          "export": "(self, collection_id: str, kind: Literal['pipeline', 'search', 'schema']) -> docforge_sdk.models.snippets.CollectionSnippet"
+        },
+        "qualified_name": "docforge_sdk.resources.snippets.SyncSnippets"
+      }
+    }
+  },
+  "docforge_sdk.resources.transfers": {
+    "__all__": [
+      "AsyncTransfers",
+      "SyncTransfers"
+    ],
+    "exports": {
+      "AsyncTransfers": {
+        "kind": "class",
+        "methods": {
+          "download_export": "(self, transfer_id: str) -> collections.abc.AsyncIterator[bytes]",
+          "export_collection": "(self, collection_id: str) -> docforge_sdk.models.transfers.TransferAccepted",
+          "get_transfer": "(self, transfer_id: str) -> docforge_sdk.models.transfers.TransferStatus",
+          "import_collection": "(self, file: Union[str, pathlib.Path, bytes, IO[bytes]], target_name: str | None = None) -> docforge_sdk.models.transfers.TransferAccepted"
+        },
+        "qualified_name": "docforge_sdk.resources.transfers.AsyncTransfers"
+      },
+      "SyncTransfers": {
+        "kind": "class",
+        "methods": {
+          "download_export": "(self, transfer_id: str) -> collections.abc.Iterator[bytes]",
+          "export_collection": "(self, collection_id: str) -> docforge_sdk.models.transfers.TransferAccepted",
+          "get_transfer": "(self, transfer_id: str) -> docforge_sdk.models.transfers.TransferStatus",
+          "import_collection": "(self, file: Union[str, pathlib.Path, bytes, IO[bytes]], target_name: str | None = None) -> docforge_sdk.models.transfers.TransferAccepted"
+        },
+        "qualified_name": "docforge_sdk.resources.transfers.SyncTransfers"
+      }
+    }
+  }
+}

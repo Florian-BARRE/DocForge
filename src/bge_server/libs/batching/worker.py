@@ -31,9 +31,9 @@ class BatchQueueWorker(LoggerClass):
     until the cost budget is met or the wait window elapses.
 
     Concurrency note: this class takes NO lock at construction — locking is owned entirely by
-    BatchingEngine, not by the worker. The engine's process_fn closures (``_process_dense`` etc.)
-    acquire the relevant lock themselves before calling the model: dense/sparse/colbert share
-    ``embed_lock`` (same ``embed_model`` instance, concurrent forward passes on shared torch state
+    BatchingEngine, not by the worker. The engine's process_fn callables (the BatchProcessor
+    ``process`` methods) acquire the relevant lock themselves before calling the model:
+    dense/sparse/colbert share ``embed_lock`` (same ``embed_model`` instance, concurrent forward passes on shared torch state
     are unsafe), while rerank uses its own independent ``rerank_lock`` (a separate FlagReranker
     instance with no shared state). See BatchingEngine's class docstring for the full two-lock
     rationale.

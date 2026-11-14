@@ -1,0 +1,8268 @@
+{
+  "AddFieldOp": {
+    "fields": {
+      "field": {
+        "annotation": "FieldSpec",
+        "required": true
+      },
+      "op": {
+        "annotation": "Literal['add']",
+        "required": true
+      }
+    },
+    "full": {
+      "field": {
+        "description": "text",
+        "enum_values": [
+          "text"
+        ],
+        "field_name": "text",
+        "field_type": "string",
+        "filterable": true,
+        "lexical": true,
+        "origin": "system",
+        "required": true,
+        "scope": "document",
+        "semantic": true
+      },
+      "op": "add"
+    },
+    "minimal": {
+      "field": {
+        "description": null,
+        "enum_values": null,
+        "field_name": "text",
+        "field_type": "string",
+        "filterable": false,
+        "lexical": false,
+        "origin": "user",
+        "required": false,
+        "scope": "document",
+        "semantic": false
+      },
+      "op": "add"
+    }
+  },
+  "AssumptionOverrides": {
+    "fields": {
+      "bytes_per_page": {
+        "annotation": "float | None",
+        "required": false
+      },
+      "bytes_per_token": {
+        "annotation": "float | None",
+        "required": false
+      },
+      "chunk_overlap_ratio": {
+        "annotation": "float | None",
+        "required": false
+      },
+      "embed_dense_dims": {
+        "annotation": "int | None",
+        "required": false
+      },
+      "images_per_page": {
+        "annotation": "float | None",
+        "required": false
+      },
+      "llm_output_tokens": {
+        "annotation": "float | None",
+        "required": false
+      },
+      "llm_prompt_overhead_tokens": {
+        "annotation": "float | None",
+        "required": false
+      },
+      "metagen_doc_context_tokens": {
+        "annotation": "float | None",
+        "required": false
+      },
+      "metagen_output_tokens_per_field": {
+        "annotation": "float | None",
+        "required": false
+      },
+      "scanned_page_ratio": {
+        "annotation": "float | None",
+        "required": false
+      },
+      "target_chunk_tokens": {
+        "annotation": "int | None",
+        "required": false
+      },
+      "tokens_per_page": {
+        "annotation": "float | None",
+        "required": false
+      },
+      "vlm_output_tokens": {
+        "annotation": "float | None",
+        "required": false
+      },
+      "vlm_prompt_tokens_per_image": {
+        "annotation": "float | None",
+        "required": false
+      }
+    },
+    "full": {
+      "bytes_per_page": 0.5,
+      "bytes_per_token": 0.5,
+      "chunk_overlap_ratio": 0.5,
+      "embed_dense_dims": 1,
+      "images_per_page": 0.5,
+      "llm_output_tokens": 0.5,
+      "llm_prompt_overhead_tokens": 0.5,
+      "metagen_doc_context_tokens": 0.5,
+      "metagen_output_tokens_per_field": 0.5,
+      "scanned_page_ratio": 0.5,
+      "target_chunk_tokens": 1,
+      "tokens_per_page": 0.5,
+      "vlm_output_tokens": 0.5,
+      "vlm_prompt_tokens_per_image": 0.5
+    },
+    "minimal": {
+      "bytes_per_page": null,
+      "bytes_per_token": null,
+      "chunk_overlap_ratio": null,
+      "embed_dense_dims": null,
+      "images_per_page": null,
+      "llm_output_tokens": null,
+      "llm_prompt_overhead_tokens": null,
+      "metagen_doc_context_tokens": null,
+      "metagen_output_tokens_per_field": null,
+      "scanned_page_ratio": null,
+      "target_chunk_tokens": null,
+      "tokens_per_page": null,
+      "vlm_output_tokens": null,
+      "vlm_prompt_tokens_per_image": null
+    }
+  },
+  "AuditEntry": {
+    "fields": {
+      "actor_key_id": {
+        "annotation": "str | None",
+        "required": false
+      },
+      "actor_label": {
+        "annotation": "str | None",
+        "required": false
+      },
+      "actor_user_id": {
+        "annotation": "str | None",
+        "required": false
+      },
+      "client_ip": {
+        "annotation": "str | None",
+        "required": false
+      },
+      "correlation_id": {
+        "annotation": "str | None",
+        "required": false
+      },
+      "created_at": {
+        "annotation": "datetime.datetime",
+        "required": true
+      },
+      "id": {
+        "annotation": "int",
+        "required": true
+      },
+      "method": {
+        "annotation": "str",
+        "required": true
+      },
+      "path": {
+        "annotation": "str",
+        "required": true
+      },
+      "status_code": {
+        "annotation": "int",
+        "required": true
+      },
+      "target_id": {
+        "annotation": "str | None",
+        "required": false
+      },
+      "target_type": {
+        "annotation": "str | None",
+        "required": false
+      }
+    },
+    "full": {
+      "actor_key_id": "text",
+      "actor_label": "text",
+      "actor_user_id": "text",
+      "client_ip": "text",
+      "correlation_id": "text",
+      "created_at": "2026-01-02T03:04:05Z",
+      "id": 1,
+      "method": "text",
+      "path": "text",
+      "status_code": 1,
+      "target_id": "text",
+      "target_type": "text"
+    },
+    "minimal": {
+      "actor_key_id": null,
+      "actor_label": null,
+      "actor_user_id": null,
+      "client_ip": null,
+      "correlation_id": null,
+      "created_at": "2026-01-02T03:04:05Z",
+      "id": 1,
+      "method": "text",
+      "path": "text",
+      "status_code": 1,
+      "target_id": null,
+      "target_type": null
+    }
+  },
+  "AuditPage": {
+    "fields": {
+      "entries": {
+        "annotation": "list[AuditEntry]",
+        "required": true
+      },
+      "limit": {
+        "annotation": "int",
+        "required": true
+      },
+      "next_cursor": {
+        "annotation": "str | None",
+        "required": false
+      }
+    },
+    "full": {
+      "entries": [
+        {
+          "actor_key_id": "text",
+          "actor_label": "text",
+          "actor_user_id": "text",
+          "client_ip": "text",
+          "correlation_id": "text",
+          "created_at": "2026-01-02T03:04:05Z",
+          "id": 1,
+          "method": "text",
+          "path": "text",
+          "status_code": 1,
+          "target_id": "text",
+          "target_type": "text"
+        }
+      ],
+      "limit": 1,
+      "next_cursor": "text"
+    },
+    "minimal": {
+      "entries": [],
+      "limit": 1,
+      "next_cursor": null
+    }
+  },
+  "BlobContent": {
+    "fields": {
+      "content": {
+        "annotation": "bytes",
+        "required": true
+      },
+      "mime_type": {
+        "annotation": "str",
+        "required": true
+      }
+    },
+    "full": {
+      "content": "text",
+      "mime_type": "text"
+    },
+    "minimal": {
+      "content": "text",
+      "mime_type": "text"
+    }
+  },
+  "BlockLocation": {
+    "fields": {
+      "bbox": {
+        "annotation": "list[float]",
+        "required": true
+      },
+      "page": {
+        "annotation": "int | None",
+        "required": true
+      },
+      "page_number": {
+        "annotation": "int | None",
+        "required": false
+      }
+    },
+    "full": {
+      "bbox": [
+        0.5
+      ],
+      "page": 1,
+      "page_number": 1
+    },
+    "minimal": {
+      "bbox": [],
+      "page": 1,
+      "page_number": null
+    }
+  },
+  "BulkChunkEnabledPatch": {
+    "fields": {
+      "chunk_ids": {
+        "annotation": "list[str]",
+        "required": true
+      },
+      "enabled": {
+        "annotation": "bool",
+        "required": true
+      }
+    },
+    "full": {
+      "chunk_ids": [
+        "text"
+      ],
+      "enabled": true
+    },
+    "minimal": {
+      "chunk_ids": [
+        "text"
+      ],
+      "enabled": true
+    }
+  },
+  "BulkChunkEnabledResponse": {
+    "fields": {
+      "not_found": {
+        "annotation": "list[str]",
+        "required": false
+      },
+      "results": {
+        "annotation": "list[ChunkEnabledResult]",
+        "required": false
+      },
+      "search_sync_error": {
+        "annotation": "str | None",
+        "required": false
+      },
+      "search_sync_pending": {
+        "annotation": "bool",
+        "required": false
+      }
+    },
+    "full": {
+      "not_found": [
+        "text"
+      ],
+      "results": [
+        {
+          "chunk_id": "text",
+          "enabled": true,
+          "reindex_required": true,
+          "search_sync_error": "text",
+          "search_sync_pending": true
+        }
+      ],
+      "search_sync_error": "text",
+      "search_sync_pending": true
+    },
+    "minimal": {
+      "not_found": [],
+      "results": [],
+      "search_sync_error": null,
+      "search_sync_pending": false
+    }
+  },
+  "BulkDeleteResponse": {
+    "fields": {
+      "capped": {
+        "annotation": "bool",
+        "required": false
+      },
+      "collection_id": {
+        "annotation": "str",
+        "required": true
+      },
+      "deleted": {
+        "annotation": "int",
+        "required": true
+      },
+      "matched": {
+        "annotation": "int",
+        "required": true
+      },
+      "max_selection": {
+        "annotation": "int",
+        "required": false
+      }
+    },
+    "full": {
+      "capped": true,
+      "collection_id": "text",
+      "deleted": 1,
+      "matched": 1,
+      "max_selection": 1
+    },
+    "minimal": {
+      "capped": false,
+      "collection_id": "text",
+      "deleted": 1,
+      "matched": 1,
+      "max_selection": 0
+    }
+  },
+  "BulkEnabledResponse": {
+    "fields": {
+      "collection_id": {
+        "annotation": "str",
+        "required": true
+      },
+      "enabled": {
+        "annotation": "bool",
+        "required": true
+      },
+      "matched": {
+        "annotation": "int",
+        "required": true
+      },
+      "reindex_implied": {
+        "annotation": "bool",
+        "required": true
+      },
+      "updated": {
+        "annotation": "int",
+        "required": true
+      }
+    },
+    "full": {
+      "collection_id": "text",
+      "enabled": true,
+      "matched": 1,
+      "reindex_implied": true,
+      "updated": 1
+    },
+    "minimal": {
+      "collection_id": "text",
+      "enabled": true,
+      "matched": 1,
+      "reindex_implied": true,
+      "updated": 1
+    }
+  },
+  "BulkReingestAccepted": {
+    "fields": {
+      "capped": {
+        "annotation": "bool",
+        "required": true
+      },
+      "collection_id": {
+        "annotation": "str",
+        "required": true
+      },
+      "count": {
+        "annotation": "int",
+        "required": true
+      },
+      "enqueued": {
+        "annotation": "int",
+        "required": true
+      },
+      "jobs": {
+        "annotation": "list[ReingestJobHandle]",
+        "required": true
+      },
+      "matched": {
+        "annotation": "int",
+        "required": true
+      },
+      "max_fanout": {
+        "annotation": "int",
+        "required": true
+      },
+      "skipped_in_flight": {
+        "annotation": "int",
+        "required": false
+      },
+      "skipped_not_replayable": {
+        "annotation": "int",
+        "required": false
+      }
+    },
+    "full": {
+      "capped": true,
+      "collection_id": "text",
+      "count": 1,
+      "enqueued": 1,
+      "jobs": [
+        {
+          "document_id": "text",
+          "job_id": "text"
+        }
+      ],
+      "matched": 1,
+      "max_fanout": 1,
+      "skipped_in_flight": 1,
+      "skipped_not_replayable": 1
+    },
+    "minimal": {
+      "capped": true,
+      "collection_id": "text",
+      "count": 1,
+      "enqueued": 1,
+      "jobs": [],
+      "matched": 1,
+      "max_fanout": 1,
+      "skipped_in_flight": 0,
+      "skipped_not_replayable": 0
+    }
+  },
+  "BulkReingestRequest": {
+    "fields": {
+      "confirm_estimate": {
+        "annotation": "bool",
+        "required": false
+      },
+      "document_ids": {
+        "annotation": "list[str] | None",
+        "required": false
+      },
+      "force": {
+        "annotation": "bool",
+        "required": false
+      },
+      "replay_from": {
+        "annotation": "str | None",
+        "required": false
+      }
+    },
+    "full": {
+      "confirm_estimate": true,
+      "document_ids": [
+        "text"
+      ],
+      "force": true,
+      "replay_from": "text"
+    },
+    "minimal": {
+      "confirm_estimate": false,
+      "document_ids": null,
+      "force": false,
+      "replay_from": null
+    }
+  },
+  "BulkReingestResponse": {
+    "fields": {
+      "capped": {
+        "annotation": "bool",
+        "required": true
+      },
+      "collection_id": {
+        "annotation": "str",
+        "required": true
+      },
+      "enqueued": {
+        "annotation": "int",
+        "required": true
+      },
+      "jobs": {
+        "annotation": "list[ReingestJobHandle]",
+        "required": true
+      },
+      "matched": {
+        "annotation": "int",
+        "required": true
+      },
+      "max_fanout": {
+        "annotation": "int",
+        "required": true
+      },
+      "skipped_in_flight": {
+        "annotation": "int",
+        "required": false
+      },
+      "skipped_not_replayable": {
+        "annotation": "int",
+        "required": false
+      }
+    },
+    "full": {
+      "capped": true,
+      "collection_id": "text",
+      "enqueued": 1,
+      "jobs": [
+        {
+          "document_id": "text",
+          "job_id": "text"
+        }
+      ],
+      "matched": 1,
+      "max_fanout": 1,
+      "skipped_in_flight": 1,
+      "skipped_not_replayable": 1
+    },
+    "minimal": {
+      "capped": true,
+      "collection_id": "text",
+      "enqueued": 1,
+      "jobs": [],
+      "matched": 1,
+      "max_fanout": 1,
+      "skipped_in_flight": 0,
+      "skipped_not_replayable": 0
+    }
+  },
+  "CancelResult": {
+    "fields": {
+      "cancel_requested": {
+        "annotation": "bool",
+        "required": true
+      },
+      "detail": {
+        "annotation": "str",
+        "required": true
+      },
+      "job_id": {
+        "annotation": "str",
+        "required": true
+      },
+      "outcome": {
+        "annotation": "str",
+        "required": true
+      },
+      "status": {
+        "annotation": "str",
+        "required": true
+      }
+    },
+    "full": {
+      "cancel_requested": true,
+      "detail": "text",
+      "job_id": "text",
+      "outcome": "text",
+      "status": "text"
+    },
+    "minimal": {
+      "cancel_requested": true,
+      "detail": "text",
+      "job_id": "text",
+      "outcome": "text",
+      "status": "text"
+    }
+  },
+  "CapabilitiesResponse": {
+    "fields": {
+      "auth_enabled": {
+        "annotation": "bool",
+        "required": true
+      },
+      "capabilities": {
+        "annotation": "CapabilityMatrix",
+        "required": true
+      },
+      "gpu_present": {
+        "annotation": "bool | None",
+        "required": false
+      },
+      "services": {
+        "annotation": "list[ServiceInfo]",
+        "required": false
+      },
+      "version": {
+        "annotation": "str",
+        "required": true
+      }
+    },
+    "full": {
+      "auth_enabled": true,
+      "capabilities": {
+        "chunkers": [
+          "text"
+        ],
+        "contextualize": [
+          "text"
+        ],
+        "embed": [
+          "text"
+        ],
+        "embed_dense": [
+          "text"
+        ],
+        "embed_sparse": [
+          "text"
+        ],
+        "llm": [
+          "text"
+        ],
+        "metagen": [
+          "text"
+        ],
+        "ocr": [
+          "text"
+        ],
+        "parsers": [
+          "text"
+        ],
+        "rerank": [
+          "text"
+        ],
+        "vlm": [
+          "text"
+        ]
+      },
+      "gpu_present": true,
+      "services": [
+        {
+          "detail": "text",
+          "device": "text",
+          "name": "text",
+          "provides": [
+            "text"
+          ],
+          "reachable": true,
+          "role": "text"
+        }
+      ],
+      "version": "text"
+    },
+    "minimal": {
+      "auth_enabled": true,
+      "capabilities": {
+        "chunkers": [],
+        "contextualize": [],
+        "embed": [],
+        "embed_dense": [],
+        "embed_sparse": [],
+        "llm": [],
+        "metagen": [],
+        "ocr": [],
+        "parsers": [],
+        "rerank": [],
+        "vlm": []
+      },
+      "gpu_present": null,
+      "services": [],
+      "version": "text"
+    }
+  },
+  "CapabilityMatrix": {
+    "fields": {
+      "chunkers": {
+        "annotation": "list[str]",
+        "required": false
+      },
+      "contextualize": {
+        "annotation": "list[str]",
+        "required": false
+      },
+      "embed": {
+        "annotation": "list[str]",
+        "required": false
+      },
+      "embed_dense": {
+        "annotation": "list[str]",
+        "required": false
+      },
+      "embed_sparse": {
+        "annotation": "list[str]",
+        "required": false
+      },
+      "llm": {
+        "annotation": "list[str]",
+        "required": false
+      },
+      "metagen": {
+        "annotation": "list[str]",
+        "required": false
+      },
+      "ocr": {
+        "annotation": "list[str]",
+        "required": false
+      },
+      "parsers": {
+        "annotation": "list[str]",
+        "required": false
+      },
+      "rerank": {
+        "annotation": "list[str]",
+        "required": false
+      },
+      "vlm": {
+        "annotation": "list[str]",
+        "required": false
+      }
+    },
+    "full": {
+      "chunkers": [
+        "text"
+      ],
+      "contextualize": [
+        "text"
+      ],
+      "embed": [
+        "text"
+      ],
+      "embed_dense": [
+        "text"
+      ],
+      "embed_sparse": [
+        "text"
+      ],
+      "llm": [
+        "text"
+      ],
+      "metagen": [
+        "text"
+      ],
+      "ocr": [
+        "text"
+      ],
+      "parsers": [
+        "text"
+      ],
+      "rerank": [
+        "text"
+      ],
+      "vlm": [
+        "text"
+      ]
+    },
+    "minimal": {
+      "chunkers": [],
+      "contextualize": [],
+      "embed": [],
+      "embed_dense": [],
+      "embed_sparse": [],
+      "llm": [],
+      "metagen": [],
+      "ocr": [],
+      "parsers": [],
+      "rerank": [],
+      "vlm": []
+    }
+  },
+  "ChunkBrowseRequest": {
+    "fields": {
+      "cursor": {
+        "annotation": "str | None",
+        "required": false
+      },
+      "filters": {
+        "annotation": "dict[str, typing.Any] | None",
+        "required": false
+      },
+      "limit": {
+        "annotation": "int",
+        "required": false
+      },
+      "return_fields": {
+        "annotation": "list[str] | None",
+        "required": false
+      }
+    },
+    "full": {
+      "cursor": "text",
+      "filters": {
+        "key0": "value"
+      },
+      "limit": 1,
+      "return_fields": [
+        "text"
+      ]
+    },
+    "minimal": {
+      "cursor": null,
+      "filters": null,
+      "limit": 20,
+      "return_fields": null
+    }
+  },
+  "ChunkBrowseResponse": {
+    "fields": {
+      "chunks": {
+        "annotation": "list[SearchHit]",
+        "required": false
+      },
+      "hints": {
+        "annotation": "list[SearchHint]",
+        "required": false
+      },
+      "next_cursor": {
+        "annotation": "str | None",
+        "required": false
+      }
+    },
+    "full": {
+      "chunks": [
+        {
+          "bbox": [
+            0.5
+          ],
+          "block_ids": [
+            "text"
+          ],
+          "block_locations": [
+            {
+              "bbox": [
+                0.5
+              ],
+              "page": 1,
+              "page_number": 1
+            }
+          ],
+          "chunk_id": "text",
+          "chunk_index": 1,
+          "document_id": "text",
+          "document_title": "text",
+          "filename": "text",
+          "fusion_score": 0.5,
+          "heading_path": [
+            "text"
+          ],
+          "metadata": {
+            "key0": "value"
+          },
+          "page": 1,
+          "page_number": 1,
+          "rerank_score": 0.5,
+          "score": 0.5,
+          "text": "text",
+          "token_count": 1
+        }
+      ],
+      "hints": [
+        {
+          "field": "text",
+          "message": "text",
+          "suggestions": [
+            "text"
+          ],
+          "value": "value"
+        }
+      ],
+      "next_cursor": "text"
+    },
+    "minimal": {
+      "chunks": [],
+      "hints": [],
+      "next_cursor": null
+    }
+  },
+  "ChunkContext": {
+    "fields": {
+      "chunks": {
+        "annotation": "list[ContextChunk]",
+        "required": true
+      },
+      "display_title": {
+        "annotation": "str",
+        "required": true
+      },
+      "document_id": {
+        "annotation": "str",
+        "required": true
+      }
+    },
+    "full": {
+      "chunks": [
+        {
+          "chunk_id": "text",
+          "chunk_index": 1,
+          "heading_path": [
+            "text"
+          ],
+          "is_target": true,
+          "page_number": 1,
+          "text": "text",
+          "token_count": 1
+        }
+      ],
+      "display_title": "text",
+      "document_id": "text"
+    },
+    "minimal": {
+      "chunks": [],
+      "display_title": "text",
+      "document_id": "text"
+    }
+  },
+  "ChunkEnabledPatch": {
+    "fields": {
+      "enabled": {
+        "annotation": "bool",
+        "required": true
+      }
+    },
+    "full": {
+      "enabled": true
+    },
+    "minimal": {
+      "enabled": true
+    }
+  },
+  "ChunkEnabledResult": {
+    "fields": {
+      "chunk_id": {
+        "annotation": "str",
+        "required": true
+      },
+      "enabled": {
+        "annotation": "bool",
+        "required": true
+      },
+      "reindex_required": {
+        "annotation": "bool",
+        "required": true
+      },
+      "search_sync_error": {
+        "annotation": "str | None",
+        "required": false
+      },
+      "search_sync_pending": {
+        "annotation": "bool",
+        "required": false
+      }
+    },
+    "full": {
+      "chunk_id": "text",
+      "enabled": true,
+      "reindex_required": true,
+      "search_sync_error": "text",
+      "search_sync_pending": true
+    },
+    "minimal": {
+      "chunk_id": "text",
+      "enabled": true,
+      "reindex_required": true,
+      "search_sync_error": null,
+      "search_sync_pending": false
+    }
+  },
+  "ChunkInfo": {
+    "fields": {
+      "block_ids": {
+        "annotation": "list[str]",
+        "required": false
+      },
+      "chunk_index": {
+        "annotation": "int",
+        "required": true
+      },
+      "enabled": {
+        "annotation": "bool",
+        "required": true
+      },
+      "heading_path": {
+        "annotation": "list[str]",
+        "required": false
+      },
+      "id": {
+        "annotation": "str",
+        "required": true
+      },
+      "is_indexed": {
+        "annotation": "bool",
+        "required": true
+      },
+      "metadata": {
+        "annotation": "list[MetadataValue]",
+        "required": false
+      },
+      "page": {
+        "annotation": "int | None",
+        "required": false
+      },
+      "page_number": {
+        "annotation": "int | None",
+        "required": false
+      },
+      "parent_id": {
+        "annotation": "str | None",
+        "required": false
+      },
+      "role": {
+        "annotation": "str",
+        "required": true
+      },
+      "strategy": {
+        "annotation": "str",
+        "required": true
+      },
+      "text": {
+        "annotation": "str",
+        "required": true
+      },
+      "token_count": {
+        "annotation": "int",
+        "required": true
+      }
+    },
+    "full": {
+      "block_ids": [
+        "text"
+      ],
+      "chunk_index": 1,
+      "enabled": true,
+      "heading_path": [
+        "text"
+      ],
+      "id": "text",
+      "is_indexed": true,
+      "metadata": [
+        {
+          "field_name": "text",
+          "origin": "system",
+          "value": "value"
+        }
+      ],
+      "page": 1,
+      "page_number": 1,
+      "parent_id": "text",
+      "role": "text",
+      "strategy": "text",
+      "text": "text",
+      "token_count": 1
+    },
+    "minimal": {
+      "block_ids": [],
+      "chunk_index": 1,
+      "enabled": true,
+      "heading_path": [],
+      "id": "text",
+      "is_indexed": true,
+      "metadata": [],
+      "page": null,
+      "page_number": null,
+      "parent_id": null,
+      "role": "text",
+      "strategy": "text",
+      "text": "text",
+      "token_count": 1
+    }
+  },
+  "ChunkPage": {
+    "fields": {
+      "items": {
+        "annotation": "list[ChunkInfo]",
+        "required": true
+      },
+      "total": {
+        "annotation": "int | None",
+        "required": false
+      }
+    },
+    "full": {
+      "items": [
+        {
+          "block_ids": [
+            "text"
+          ],
+          "chunk_index": 1,
+          "enabled": true,
+          "heading_path": [
+            "text"
+          ],
+          "id": "text",
+          "is_indexed": true,
+          "metadata": [
+            {
+              "field_name": "text",
+              "origin": "system",
+              "value": "value"
+            }
+          ],
+          "page": 1,
+          "page_number": 1,
+          "parent_id": "text",
+          "role": "text",
+          "strategy": "text",
+          "text": "text",
+          "token_count": 1
+        }
+      ],
+      "total": 1
+    },
+    "minimal": {
+      "items": [],
+      "total": null
+    }
+  },
+  "CollectionAliasModel": {
+    "fields": {
+      "collection_id": {
+        "annotation": "str",
+        "required": true
+      },
+      "collection_name": {
+        "annotation": "str",
+        "required": true
+      },
+      "created_at": {
+        "annotation": "datetime.datetime",
+        "required": true
+      },
+      "name": {
+        "annotation": "str",
+        "required": true
+      },
+      "updated_at": {
+        "annotation": "datetime.datetime",
+        "required": true
+      }
+    },
+    "full": {
+      "collection_id": "text",
+      "collection_name": "text",
+      "created_at": "2026-01-02T03:04:05Z",
+      "name": "text",
+      "updated_at": "2026-01-02T03:04:05Z"
+    },
+    "minimal": {
+      "collection_id": "text",
+      "collection_name": "text",
+      "created_at": "2026-01-02T03:04:05Z",
+      "name": "text",
+      "updated_at": "2026-01-02T03:04:05Z"
+    }
+  },
+  "CollectionContractSchemaResponse": {
+    "fields": {
+      "config_schema": {
+        "annotation": "dict[str, typing.Any]",
+        "required": true
+      },
+      "field_schema": {
+        "annotation": "dict[str, typing.Any]",
+        "required": true
+      },
+      "supported_format_tokens": {
+        "annotation": "list[str]",
+        "required": true
+      }
+    },
+    "full": {
+      "config_schema": {
+        "key0": "value"
+      },
+      "field_schema": {
+        "key0": "value"
+      },
+      "supported_format_tokens": [
+        "text"
+      ]
+    },
+    "minimal": {
+      "config_schema": {},
+      "field_schema": {},
+      "supported_format_tokens": []
+    }
+  },
+  "CollectionCost": {
+    "fields": {
+      "collection_id": {
+        "annotation": "str",
+        "required": true
+      },
+      "cost_usd": {
+        "annotation": "float",
+        "required": true
+      },
+      "document_count": {
+        "annotation": "int",
+        "required": true
+      },
+      "total_completion_tokens": {
+        "annotation": "int",
+        "required": true
+      },
+      "total_prompt_tokens": {
+        "annotation": "int",
+        "required": true
+      }
+    },
+    "full": {
+      "collection_id": "text",
+      "cost_usd": 0.5,
+      "document_count": 1,
+      "total_completion_tokens": 1,
+      "total_prompt_tokens": 1
+    },
+    "minimal": {
+      "collection_id": "text",
+      "cost_usd": 0.5,
+      "document_count": 1,
+      "total_completion_tokens": 1,
+      "total_prompt_tokens": 1
+    }
+  },
+  "CollectionDescription": {
+    "fields": {
+      "collection_id": {
+        "annotation": "str",
+        "required": true
+      },
+      "document_count": {
+        "annotation": "int",
+        "required": true
+      },
+      "example_requests": {
+        "annotation": "list[dict[str, typing.Any]]",
+        "required": true
+      },
+      "fields": {
+        "annotation": "list[FieldGuide]",
+        "required": true
+      },
+      "filter_grammar": {
+        "annotation": "list[str]",
+        "required": true
+      },
+      "name": {
+        "annotation": "str",
+        "required": true
+      },
+      "page_numbering": {
+        "annotation": "str",
+        "required": true
+      },
+      "searchable_targets": {
+        "annotation": "list[SearchTargetGuide]",
+        "required": true
+      },
+      "title_field": {
+        "annotation": "str | None",
+        "required": false
+      }
+    },
+    "full": {
+      "collection_id": "text",
+      "document_count": 1,
+      "example_requests": [
+        {
+          "key0": "value"
+        }
+      ],
+      "fields": [
+        {
+          "description": "text",
+          "distinct_count": 1,
+          "enum_values": [
+            "text"
+          ],
+          "example_values": [
+            "text"
+          ],
+          "filterable": true,
+          "lexical": true,
+          "name": "text",
+          "note": "text",
+          "origin": "system",
+          "required": true,
+          "scope": "document",
+          "semantic": true,
+          "type": "string"
+        }
+      ],
+      "filter_grammar": [
+        "text"
+      ],
+      "name": "text",
+      "page_numbering": "text",
+      "searchable_targets": [
+        {
+          "field": "text",
+          "lexical": true,
+          "semantic": true
+        }
+      ],
+      "title_field": "text"
+    },
+    "minimal": {
+      "collection_id": "text",
+      "document_count": 1,
+      "example_requests": [],
+      "fields": [],
+      "filter_grammar": [],
+      "name": "text",
+      "page_numbering": "text",
+      "searchable_targets": [],
+      "title_field": null
+    }
+  },
+  "CollectionEstimateRequest": {
+    "fields": {
+      "document_ids": {
+        "annotation": "list[str] | None",
+        "required": false
+      },
+      "filter": {
+        "annotation": "DocumentFilter | None",
+        "required": false
+      },
+      "scope": {
+        "annotation": "Literal['pending', 'all']",
+        "required": false
+      }
+    },
+    "full": {
+      "rejected": [
+        ": value_error"
+      ]
+    },
+    "minimal": {
+      "document_ids": null,
+      "filter": null,
+      "scope": "pending"
+    }
+  },
+  "CollectionFailureBucket": {
+    "fields": {
+      "collection_id": {
+        "annotation": "str",
+        "required": true
+      },
+      "collection_name": {
+        "annotation": "str | None",
+        "required": false
+      },
+      "count": {
+        "annotation": "int",
+        "required": true
+      }
+    },
+    "full": {
+      "collection_id": "text",
+      "collection_name": "text",
+      "count": 1
+    },
+    "minimal": {
+      "collection_id": "text",
+      "collection_name": null,
+      "count": 1
+    }
+  },
+  "CollectionHealthResponse": {
+    "fields": {
+      "checked_at": {
+        "annotation": "datetime.datetime",
+        "required": true
+      },
+      "collection_id": {
+        "annotation": "str",
+        "required": true
+      },
+      "ingest": {
+        "annotation": "IngestHealth",
+        "required": true
+      },
+      "reason": {
+        "annotation": "str",
+        "required": true
+      },
+      "search": {
+        "annotation": "SearchHealth",
+        "required": true
+      },
+      "verdict": {
+        "annotation": "HealthVerdict",
+        "required": true
+      }
+    },
+    "full": {
+      "checked_at": "2026-01-02T03:04:05Z",
+      "collection_id": "text",
+      "ingest": {
+        "build_error": "text",
+        "buildable": true,
+        "providers": [
+          {
+            "detail": "text",
+            "endpoint": "text",
+            "family": "text",
+            "kind": "text",
+            "latency_ms": 1,
+            "node_id": "text",
+            "side": "text",
+            "status": "ok"
+          }
+        ]
+      },
+      "reason": "text",
+      "search": {
+        "build_error": "text",
+        "buildable": true,
+        "index": {
+          "last_ingest_at": "2026-01-02T03:04:05Z",
+          "vector_count": 1
+        },
+        "providers": [
+          {
+            "detail": "text",
+            "endpoint": "text",
+            "family": "text",
+            "kind": "text",
+            "latency_ms": 1,
+            "node_id": "text",
+            "side": "text",
+            "status": "ok"
+          }
+        ],
+        "search_operational": true
+      },
+      "verdict": "operational"
+    },
+    "minimal": {
+      "checked_at": "2026-01-02T03:04:05Z",
+      "collection_id": "text",
+      "ingest": {
+        "build_error": null,
+        "buildable": true,
+        "providers": []
+      },
+      "reason": "text",
+      "search": {
+        "build_error": null,
+        "buildable": true,
+        "index": {
+          "last_ingest_at": null,
+          "vector_count": 1
+        },
+        "providers": [],
+        "search_operational": true
+      },
+      "verdict": "operational"
+    }
+  },
+  "CollectionHealthSummary": {
+    "fields": {
+      "chunk_count": {
+        "annotation": "int",
+        "required": true
+      },
+      "doc_count": {
+        "annotation": "int",
+        "required": true
+      },
+      "last_ingest_at": {
+        "annotation": "datetime.datetime | None",
+        "required": false
+      },
+      "verdict": {
+        "annotation": "CollectionListVerdict",
+        "required": true
+      }
+    },
+    "full": {
+      "chunk_count": 1,
+      "doc_count": 1,
+      "last_ingest_at": "2026-01-02T03:04:05Z",
+      "verdict": "empty"
+    },
+    "minimal": {
+      "chunk_count": 1,
+      "doc_count": 1,
+      "last_ingest_at": null,
+      "verdict": "empty"
+    }
+  },
+  "CollectionListItem": {
+    "fields": {
+      "aliases": {
+        "annotation": "list[str] | None",
+        "required": false
+      },
+      "created_at": {
+        "annotation": "datetime.datetime | None",
+        "required": false
+      },
+      "estimate_overrides": {
+        "annotation": "EstimateOverrides | None",
+        "required": false
+      },
+      "fields": {
+        "annotation": "list[FieldSpec]",
+        "required": false
+      },
+      "health": {
+        "annotation": "CollectionHealthSummary",
+        "required": true
+      },
+      "id": {
+        "annotation": "str",
+        "required": true
+      },
+      "job_timeout_seconds": {
+        "annotation": "float | None",
+        "required": false
+      },
+      "max_file_size_bytes": {
+        "annotation": "int",
+        "required": true
+      },
+      "missing_vectors": {
+        "annotation": "list[str] | None",
+        "required": false
+      },
+      "name": {
+        "annotation": "str",
+        "required": true
+      },
+      "needs_reindex": {
+        "annotation": "bool",
+        "required": true
+      },
+      "pipeline": {
+        "annotation": "dict[str, typing.Any] | None",
+        "required": true
+      },
+      "search": {
+        "annotation": "dict[str, typing.Any] | None",
+        "required": true
+      },
+      "supported_formats": {
+        "annotation": "list[str]",
+        "required": true
+      },
+      "tags": {
+        "annotation": "list[str]",
+        "required": false
+      },
+      "title_field": {
+        "annotation": "str | None",
+        "required": false
+      },
+      "trace_verbosity": {
+        "annotation": "Literal['shape', 'full']",
+        "required": false
+      }
+    },
+    "full": {
+      "aliases": [
+        "text"
+      ],
+      "created_at": "2026-01-02T03:04:05Z",
+      "estimate_overrides": {
+        "assumptions": {
+          "bytes_per_page": 0.5,
+          "bytes_per_token": 0.5,
+          "chunk_overlap_ratio": 0.5,
+          "embed_dense_dims": 1,
+          "images_per_page": 0.5,
+          "llm_output_tokens": 0.5,
+          "llm_prompt_overhead_tokens": 0.5,
+          "metagen_doc_context_tokens": 0.5,
+          "metagen_output_tokens_per_field": 0.5,
+          "scanned_page_ratio": 0.5,
+          "target_chunk_tokens": 1,
+          "tokens_per_page": 0.5,
+          "vlm_output_tokens": 0.5,
+          "vlm_prompt_tokens_per_image": 0.5
+        },
+        "rates": {
+          "embed": {
+            "key0": 0.5
+          },
+          "models": {
+            "key0": {
+              "input": 0.5,
+              "output": 0.5
+            }
+          },
+          "ocr": {
+            "key0": 0.5
+          }
+        }
+      },
+      "fields": [
+        {
+          "description": "text",
+          "enum_values": [
+            "text"
+          ],
+          "field_name": "text",
+          "field_type": "string",
+          "filterable": true,
+          "lexical": true,
+          "origin": "system",
+          "required": true,
+          "scope": "document",
+          "semantic": true
+        }
+      ],
+      "health": {
+        "chunk_count": 1,
+        "doc_count": 1,
+        "last_ingest_at": "2026-01-02T03:04:05Z",
+        "verdict": "empty"
+      },
+      "id": "text",
+      "job_timeout_seconds": 0.5,
+      "max_file_size_bytes": 1,
+      "missing_vectors": [
+        "text"
+      ],
+      "name": "text",
+      "needs_reindex": true,
+      "pipeline": {
+        "key0": "value"
+      },
+      "search": {
+        "key0": "value"
+      },
+      "supported_formats": [
+        "text"
+      ],
+      "tags": [
+        "text"
+      ],
+      "title_field": "text",
+      "trace_verbosity": "shape"
+    },
+    "minimal": {
+      "aliases": null,
+      "created_at": null,
+      "estimate_overrides": null,
+      "fields": [],
+      "health": {
+        "chunk_count": 1,
+        "doc_count": 1,
+        "last_ingest_at": null,
+        "verdict": "empty"
+      },
+      "id": "text",
+      "job_timeout_seconds": null,
+      "max_file_size_bytes": 1,
+      "missing_vectors": null,
+      "name": "text",
+      "needs_reindex": true,
+      "pipeline": {},
+      "search": {},
+      "supported_formats": [],
+      "tags": [],
+      "title_field": null,
+      "trace_verbosity": "shape"
+    }
+  },
+  "CollectionModel": {
+    "fields": {
+      "aliases": {
+        "annotation": "list[str] | None",
+        "required": false
+      },
+      "created_at": {
+        "annotation": "datetime.datetime | None",
+        "required": false
+      },
+      "estimate_overrides": {
+        "annotation": "EstimateOverrides | None",
+        "required": false
+      },
+      "fields": {
+        "annotation": "list[FieldSpec]",
+        "required": false
+      },
+      "id": {
+        "annotation": "str",
+        "required": true
+      },
+      "job_timeout_seconds": {
+        "annotation": "float | None",
+        "required": false
+      },
+      "max_file_size_bytes": {
+        "annotation": "int",
+        "required": true
+      },
+      "missing_vectors": {
+        "annotation": "list[str] | None",
+        "required": false
+      },
+      "name": {
+        "annotation": "str",
+        "required": true
+      },
+      "needs_reindex": {
+        "annotation": "bool",
+        "required": true
+      },
+      "pipeline": {
+        "annotation": "dict[str, typing.Any] | None",
+        "required": true
+      },
+      "search": {
+        "annotation": "dict[str, typing.Any] | None",
+        "required": true
+      },
+      "supported_formats": {
+        "annotation": "list[str]",
+        "required": true
+      },
+      "tags": {
+        "annotation": "list[str]",
+        "required": false
+      },
+      "title_field": {
+        "annotation": "str | None",
+        "required": false
+      },
+      "trace_verbosity": {
+        "annotation": "Literal['shape', 'full']",
+        "required": false
+      }
+    },
+    "full": {
+      "aliases": [
+        "text"
+      ],
+      "created_at": "2026-01-02T03:04:05Z",
+      "estimate_overrides": {
+        "assumptions": {
+          "bytes_per_page": 0.5,
+          "bytes_per_token": 0.5,
+          "chunk_overlap_ratio": 0.5,
+          "embed_dense_dims": 1,
+          "images_per_page": 0.5,
+          "llm_output_tokens": 0.5,
+          "llm_prompt_overhead_tokens": 0.5,
+          "metagen_doc_context_tokens": 0.5,
+          "metagen_output_tokens_per_field": 0.5,
+          "scanned_page_ratio": 0.5,
+          "target_chunk_tokens": 1,
+          "tokens_per_page": 0.5,
+          "vlm_output_tokens": 0.5,
+          "vlm_prompt_tokens_per_image": 0.5
+        },
+        "rates": {
+          "embed": {
+            "key0": 0.5
+          },
+          "models": {
+            "key0": {
+              "input": 0.5,
+              "output": 0.5
+            }
+          },
+          "ocr": {
+            "key0": 0.5
+          }
+        }
+      },
+      "fields": [
+        {
+          "description": "text",
+          "enum_values": [
+            "text"
+          ],
+          "field_name": "text",
+          "field_type": "string",
+          "filterable": true,
+          "lexical": true,
+          "origin": "system",
+          "required": true,
+          "scope": "document",
+          "semantic": true
+        }
+      ],
+      "id": "text",
+      "job_timeout_seconds": 0.5,
+      "max_file_size_bytes": 1,
+      "missing_vectors": [
+        "text"
+      ],
+      "name": "text",
+      "needs_reindex": true,
+      "pipeline": {
+        "key0": "value"
+      },
+      "search": {
+        "key0": "value"
+      },
+      "supported_formats": [
+        "text"
+      ],
+      "tags": [
+        "text"
+      ],
+      "title_field": "text",
+      "trace_verbosity": "shape"
+    },
+    "minimal": {
+      "aliases": null,
+      "created_at": null,
+      "estimate_overrides": null,
+      "fields": [],
+      "id": "text",
+      "job_timeout_seconds": null,
+      "max_file_size_bytes": 1,
+      "missing_vectors": null,
+      "name": "text",
+      "needs_reindex": true,
+      "pipeline": {},
+      "search": {},
+      "supported_formats": [],
+      "tags": [],
+      "title_field": null,
+      "trace_verbosity": "shape"
+    }
+  },
+  "CollectionSnippet": {
+    "fields": {
+      "body": {
+        "annotation": "dict[str, typing.Any]",
+        "required": true
+      },
+      "docforge_version": {
+        "annotation": "str",
+        "required": true
+      },
+      "format_version": {
+        "annotation": "int",
+        "required": true
+      },
+      "kind": {
+        "annotation": "Literal['pipeline', 'search', 'schema']",
+        "required": true
+      }
+    },
+    "full": {
+      "body": {
+        "key0": "value"
+      },
+      "docforge_version": "text",
+      "format_version": 1,
+      "kind": "pipeline"
+    },
+    "minimal": {
+      "body": {},
+      "docforge_version": "text",
+      "format_version": 1,
+      "kind": "pipeline"
+    }
+  },
+  "CollectionStageApplyResponse": {
+    "fields": {
+      "build_error": {
+        "annotation": "str | None",
+        "required": false
+      },
+      "collection_id": {
+        "annotation": "str",
+        "required": true
+      },
+      "issues": {
+        "annotation": "list[dict[str, typing.Any]]",
+        "required": false
+      },
+      "needs_reindex": {
+        "annotation": "bool",
+        "required": false
+      },
+      "notices": {
+        "annotation": "list[str]",
+        "required": false
+      },
+      "persisted": {
+        "annotation": "bool",
+        "required": true
+      },
+      "stages": {
+        "annotation": "list[dict[str, typing.Any]]",
+        "required": true
+      },
+      "valid": {
+        "annotation": "bool",
+        "required": true
+      }
+    },
+    "full": {
+      "build_error": "text",
+      "collection_id": "text",
+      "issues": [
+        {
+          "key0": "value"
+        }
+      ],
+      "needs_reindex": true,
+      "notices": [
+        "text"
+      ],
+      "persisted": true,
+      "stages": [
+        {
+          "key0": "value"
+        }
+      ],
+      "valid": true
+    },
+    "minimal": {
+      "build_error": null,
+      "collection_id": "text",
+      "issues": [],
+      "needs_reindex": false,
+      "notices": [],
+      "persisted": true,
+      "stages": [],
+      "valid": true
+    }
+  },
+  "CollectionStorageResponse": {
+    "fields": {
+      "collection_id": {
+        "annotation": "str",
+        "required": true
+      },
+      "documents": {
+        "annotation": "list[DocumentStorageModel]",
+        "required": true
+      },
+      "grand_total_bytes": {
+        "annotation": "int",
+        "required": true
+      },
+      "postgres": {
+        "annotation": "PostgresFootprintModel",
+        "required": true
+      },
+      "qdrant": {
+        "annotation": "QdrantFootprintModel",
+        "required": true
+      },
+      "s3": {
+        "annotation": "S3FootprintModel",
+        "required": true
+      },
+      "trace_bytes": {
+        "annotation": "int",
+        "required": true
+      }
+    },
+    "full": {
+      "collection_id": "text",
+      "documents": [
+        {
+          "document_id": "text",
+          "filename": "text",
+          "postgres": {
+            "chunks_bytes": 1,
+            "documents_bytes": 1,
+            "enrichment_bytes": 1,
+            "estimated": true,
+            "ir_blocks_bytes": 1,
+            "metadata_bytes": 1,
+            "observability_bytes": 1,
+            "total_bytes": 1
+          },
+          "qdrant": {
+            "dense_bytes": 1,
+            "estimated": true,
+            "payload_bytes": 1,
+            "points": 1,
+            "sparse_bytes": 1,
+            "total_bytes": 1
+          },
+          "s3": {
+            "estimated": true,
+            "original_bytes": 1,
+            "physical_unique_bytes": 1,
+            "rendered_bytes": 1,
+            "total_bytes": 1
+          },
+          "total_bytes": 1,
+          "trace_bytes": 1
+        }
+      ],
+      "grand_total_bytes": 1,
+      "postgres": {
+        "chunks_bytes": 1,
+        "documents_bytes": 1,
+        "enrichment_bytes": 1,
+        "estimated": true,
+        "ir_blocks_bytes": 1,
+        "metadata_bytes": 1,
+        "observability_bytes": 1,
+        "total_bytes": 1
+      },
+      "qdrant": {
+        "dense_bytes": 1,
+        "estimated": true,
+        "payload_bytes": 1,
+        "points": 1,
+        "sparse_bytes": 1,
+        "total_bytes": 1
+      },
+      "s3": {
+        "estimated": true,
+        "original_bytes": 1,
+        "physical_unique_bytes": 1,
+        "rendered_bytes": 1,
+        "total_bytes": 1
+      },
+      "trace_bytes": 1
+    },
+    "minimal": {
+      "collection_id": "text",
+      "documents": [],
+      "grand_total_bytes": 1,
+      "postgres": {
+        "chunks_bytes": 1,
+        "documents_bytes": 1,
+        "enrichment_bytes": 1,
+        "estimated": true,
+        "ir_blocks_bytes": 1,
+        "metadata_bytes": 1,
+        "observability_bytes": 1,
+        "total_bytes": 1
+      },
+      "qdrant": {
+        "dense_bytes": 1,
+        "estimated": true,
+        "payload_bytes": 1,
+        "points": 1,
+        "sparse_bytes": 1,
+        "total_bytes": 1
+      },
+      "s3": {
+        "estimated": true,
+        "original_bytes": 1,
+        "physical_unique_bytes": 1,
+        "rendered_bytes": 1,
+        "total_bytes": 1
+      },
+      "trace_bytes": 1
+    }
+  },
+  "ConfigDiffEntry": {
+    "fields": {
+      "after": {
+        "annotation": "Any",
+        "required": false
+      },
+      "before": {
+        "annotation": "Any",
+        "required": false
+      },
+      "op": {
+        "annotation": "Literal['added', 'removed', 'changed']",
+        "required": true
+      },
+      "path": {
+        "annotation": "str",
+        "required": true
+      }
+    },
+    "full": {
+      "after": "value",
+      "before": "value",
+      "op": "added",
+      "path": "text"
+    },
+    "minimal": {
+      "after": null,
+      "before": null,
+      "op": "added",
+      "path": "text"
+    }
+  },
+  "ConfigVersionDetail": {
+    "fields": {
+      "author_key_id": {
+        "annotation": "str | None",
+        "required": false
+      },
+      "author_label": {
+        "annotation": "str | None",
+        "required": false
+      },
+      "changes": {
+        "annotation": "list[str]",
+        "required": false
+      },
+      "config": {
+        "annotation": "dict[str, typing.Any]",
+        "required": true
+      },
+      "created_at": {
+        "annotation": "datetime.datetime",
+        "required": true
+      },
+      "note": {
+        "annotation": "str | None",
+        "required": false
+      },
+      "version": {
+        "annotation": "int",
+        "required": true
+      }
+    },
+    "full": {
+      "author_key_id": "text",
+      "author_label": "text",
+      "changes": [
+        "text"
+      ],
+      "config": {
+        "key0": "value"
+      },
+      "created_at": "2026-01-02T03:04:05Z",
+      "note": "text",
+      "version": 1
+    },
+    "minimal": {
+      "author_key_id": null,
+      "author_label": null,
+      "changes": [],
+      "config": {},
+      "created_at": "2026-01-02T03:04:05Z",
+      "note": null,
+      "version": 1
+    }
+  },
+  "ConfigVersionDiffResponse": {
+    "fields": {
+      "changes": {
+        "annotation": "list[ConfigDiffEntry]",
+        "required": true
+      },
+      "collection_id": {
+        "annotation": "str",
+        "required": true
+      },
+      "from_version": {
+        "annotation": "int",
+        "required": true
+      },
+      "to_version": {
+        "annotation": "int",
+        "required": true
+      }
+    },
+    "full": {
+      "changes": [
+        {
+          "after": "value",
+          "before": "value",
+          "op": "added",
+          "path": "text"
+        }
+      ],
+      "collection_id": "text",
+      "from_version": 1,
+      "to_version": 1
+    },
+    "minimal": {
+      "changes": [],
+      "collection_id": "text",
+      "from_version": 1,
+      "to_version": 1
+    }
+  },
+  "ConfigVersionListResponse": {
+    "fields": {
+      "collection_id": {
+        "annotation": "str",
+        "required": true
+      },
+      "items": {
+        "annotation": "list[ConfigVersionSummary]",
+        "required": true
+      },
+      "limit": {
+        "annotation": "int",
+        "required": true
+      },
+      "offset": {
+        "annotation": "int",
+        "required": true
+      },
+      "total": {
+        "annotation": "int",
+        "required": true
+      }
+    },
+    "full": {
+      "collection_id": "text",
+      "items": [
+        {
+          "author_key_id": "text",
+          "author_label": "text",
+          "changes": [
+            "text"
+          ],
+          "created_at": "2026-01-02T03:04:05Z",
+          "note": "text",
+          "version": 1
+        }
+      ],
+      "limit": 1,
+      "offset": 1,
+      "total": 1
+    },
+    "minimal": {
+      "collection_id": "text",
+      "items": [],
+      "limit": 1,
+      "offset": 1,
+      "total": 1
+    }
+  },
+  "ConfigVersionRestoreResponse": {
+    "fields": {
+      "collection_id": {
+        "annotation": "str",
+        "required": true
+      },
+      "needs_reindex": {
+        "annotation": "bool",
+        "required": true
+      },
+      "restored_from": {
+        "annotation": "int",
+        "required": true
+      },
+      "version": {
+        "annotation": "int",
+        "required": true
+      }
+    },
+    "full": {
+      "collection_id": "text",
+      "needs_reindex": true,
+      "restored_from": 1,
+      "version": 1
+    },
+    "minimal": {
+      "collection_id": "text",
+      "needs_reindex": true,
+      "restored_from": 1,
+      "version": 1
+    }
+  },
+  "ConfigVersionSummary": {
+    "fields": {
+      "author_key_id": {
+        "annotation": "str | None",
+        "required": false
+      },
+      "author_label": {
+        "annotation": "str | None",
+        "required": false
+      },
+      "changes": {
+        "annotation": "list[str]",
+        "required": false
+      },
+      "created_at": {
+        "annotation": "datetime.datetime",
+        "required": true
+      },
+      "note": {
+        "annotation": "str | None",
+        "required": false
+      },
+      "version": {
+        "annotation": "int",
+        "required": true
+      }
+    },
+    "full": {
+      "author_key_id": "text",
+      "author_label": "text",
+      "changes": [
+        "text"
+      ],
+      "created_at": "2026-01-02T03:04:05Z",
+      "note": "text",
+      "version": 1
+    },
+    "minimal": {
+      "author_key_id": null,
+      "author_label": null,
+      "changes": [],
+      "created_at": "2026-01-02T03:04:05Z",
+      "note": null,
+      "version": 1
+    }
+  },
+  "ContextChunk": {
+    "fields": {
+      "chunk_id": {
+        "annotation": "str",
+        "required": true
+      },
+      "chunk_index": {
+        "annotation": "int",
+        "required": true
+      },
+      "heading_path": {
+        "annotation": "list[str]",
+        "required": false
+      },
+      "is_target": {
+        "annotation": "bool",
+        "required": true
+      },
+      "page_number": {
+        "annotation": "int | None",
+        "required": false
+      },
+      "text": {
+        "annotation": "str",
+        "required": true
+      },
+      "token_count": {
+        "annotation": "int",
+        "required": true
+      }
+    },
+    "full": {
+      "chunk_id": "text",
+      "chunk_index": 1,
+      "heading_path": [
+        "text"
+      ],
+      "is_target": true,
+      "page_number": 1,
+      "text": "text",
+      "token_count": 1
+    },
+    "minimal": {
+      "chunk_id": "text",
+      "chunk_index": 1,
+      "heading_path": [],
+      "is_target": true,
+      "page_number": null,
+      "text": "text",
+      "token_count": 1
+    }
+  },
+  "CostEstimate": {
+    "fields": {
+      "assumptions": {
+        "annotation": "EstimateAssumptions",
+        "required": true
+      },
+      "caveats": {
+        "annotation": "list[str]",
+        "required": false
+      },
+      "cost_complete": {
+        "annotation": "bool",
+        "required": true
+      },
+      "document_count": {
+        "annotation": "int",
+        "required": true
+      },
+      "stages": {
+        "annotation": "list[StageEstimate]",
+        "required": false
+      },
+      "total_completion_tokens": {
+        "annotation": "int",
+        "required": true
+      },
+      "total_cost_lower_bound_usd": {
+        "annotation": "float",
+        "required": false
+      },
+      "total_cost_usd": {
+        "annotation": "float | None",
+        "required": true
+      },
+      "total_prompt_tokens": {
+        "annotation": "int",
+        "required": true
+      },
+      "volume": {
+        "annotation": "VolumeEstimate",
+        "required": true
+      }
+    },
+    "full": {
+      "assumptions": {
+        "bytes_per_page": 0.5,
+        "bytes_per_token": 0.5,
+        "chunk_overlap_ratio": 0.5,
+        "embed_dense_dims": 1,
+        "images_per_page": 0.5,
+        "llm_output_tokens": 0.5,
+        "llm_prompt_overhead_tokens": 0.5,
+        "metagen_doc_context_tokens": 0.5,
+        "metagen_output_tokens_per_field": 0.5,
+        "scanned_page_ratio": 0.5,
+        "target_chunk_tokens": 1,
+        "tokens_per_page": 0.5,
+        "vlm_output_tokens": 0.5,
+        "vlm_prompt_tokens_per_image": 0.5
+      },
+      "caveats": [
+        "text"
+      ],
+      "cost_complete": true,
+      "document_count": 1,
+      "stages": [
+        {
+          "calls": 1,
+          "completion_tokens": 1,
+          "cost_usd": 0.5,
+          "family": "text",
+          "model": "text",
+          "pages": 1,
+          "prompt_tokens": 1,
+          "provider": "text",
+          "rate_known": true,
+          "stage": "text"
+        }
+      ],
+      "total_completion_tokens": 1,
+      "total_cost_lower_bound_usd": 0.5,
+      "total_cost_usd": 0.5,
+      "total_prompt_tokens": 1,
+      "volume": {
+        "chunks": 1,
+        "dense_vectors": 1,
+        "pages": 1,
+        "sparse_vectors": 1,
+        "storage_bytes": 1
+      }
+    },
+    "minimal": {
+      "assumptions": {
+        "bytes_per_page": 40000.0,
+        "bytes_per_token": 4.0,
+        "chunk_overlap_ratio": 0.0,
+        "embed_dense_dims": 1024,
+        "images_per_page": 0.5,
+        "llm_output_tokens": 250.0,
+        "llm_prompt_overhead_tokens": 400.0,
+        "metagen_doc_context_tokens": 2000.0,
+        "metagen_output_tokens_per_field": 40.0,
+        "scanned_page_ratio": 0.0,
+        "target_chunk_tokens": 512,
+        "tokens_per_page": 500.0,
+        "vlm_output_tokens": 300.0,
+        "vlm_prompt_tokens_per_image": 1000.0
+      },
+      "caveats": [],
+      "cost_complete": true,
+      "document_count": 1,
+      "stages": [],
+      "total_completion_tokens": 1,
+      "total_cost_lower_bound_usd": 0.0,
+      "total_cost_usd": 0.5,
+      "total_prompt_tokens": 1,
+      "volume": {
+        "chunks": 1,
+        "dense_vectors": 1,
+        "pages": 1,
+        "sparse_vectors": 1,
+        "storage_bytes": 1
+      }
+    }
+  },
+  "CreateCollectionRequest": {
+    "fields": {
+      "fields": {
+        "annotation": "list[FieldSpec]",
+        "required": false
+      },
+      "job_timeout_seconds": {
+        "annotation": "float | None",
+        "required": false
+      },
+      "max_file_size_bytes": {
+        "annotation": "int",
+        "required": true
+      },
+      "name": {
+        "annotation": "str",
+        "required": true
+      },
+      "pipeline": {
+        "annotation": "dict[str, typing.Any] | None",
+        "required": false
+      },
+      "preset": {
+        "annotation": "Optional[Literal['standard', 'light', 'ocr_scan', 'high_precision']]",
+        "required": false
+      },
+      "search_preset": {
+        "annotation": "Optional[Literal['hybrid', 'hybrid_rerank', 'dense_only']]",
+        "required": false
+      },
+      "supported_formats": {
+        "annotation": "list[str]",
+        "required": true
+      },
+      "tags": {
+        "annotation": "list[str] | None",
+        "required": false
+      },
+      "title_field": {
+        "annotation": "str | None",
+        "required": false
+      },
+      "trace_verbosity": {
+        "annotation": "Literal['shape', 'full']",
+        "required": false
+      }
+    },
+    "full": {
+      "fields": [
+        {
+          "description": "text",
+          "enum_values": [
+            "text"
+          ],
+          "field_name": "text",
+          "field_type": "string",
+          "filterable": true,
+          "lexical": true,
+          "origin": "system",
+          "required": true,
+          "scope": "document",
+          "semantic": true
+        }
+      ],
+      "job_timeout_seconds": 0.5,
+      "max_file_size_bytes": 1,
+      "name": "text",
+      "pipeline": {
+        "key0": "value"
+      },
+      "preset": "standard",
+      "search_preset": "hybrid",
+      "supported_formats": [
+        "text"
+      ],
+      "tags": [
+        "text"
+      ],
+      "title_field": "text",
+      "trace_verbosity": "shape"
+    },
+    "minimal": {
+      "fields": [],
+      "job_timeout_seconds": null,
+      "max_file_size_bytes": 1,
+      "name": "text",
+      "pipeline": null,
+      "preset": null,
+      "search_preset": null,
+      "supported_formats": [],
+      "tags": null,
+      "title_field": null,
+      "trace_verbosity": "shape"
+    }
+  },
+  "CreateKeyRequest": {
+    "fields": {
+      "expires_at": {
+        "annotation": "datetime.datetime | None",
+        "required": false
+      },
+      "name": {
+        "annotation": "str",
+        "required": true
+      },
+      "permissions": {
+        "annotation": "KeyPermissions | None",
+        "required": false
+      }
+    },
+    "full": {
+      "expires_at": "2026-01-02T03:04:05Z",
+      "name": "text",
+      "permissions": {
+        "capabilities": [
+          "read"
+        ],
+        "collections": [
+          "text"
+        ],
+        "profile": "agent_reader"
+      }
+    },
+    "minimal": {
+      "expires_at": null,
+      "name": "text",
+      "permissions": null
+    }
+  },
+  "CreatedKey": {
+    "fields": {
+      "created_at": {
+        "annotation": "datetime.datetime",
+        "required": true
+      },
+      "expires_at": {
+        "annotation": "datetime.datetime | None",
+        "required": false
+      },
+      "id": {
+        "annotation": "str",
+        "required": true
+      },
+      "key": {
+        "annotation": "str",
+        "required": true
+      },
+      "name": {
+        "annotation": "str",
+        "required": true
+      },
+      "permissions": {
+        "annotation": "dict[str, typing.Any] | None",
+        "required": false
+      },
+      "prefix": {
+        "annotation": "str",
+        "required": true
+      }
+    },
+    "full": {
+      "created_at": "2026-01-02T03:04:05Z",
+      "expires_at": "2026-01-02T03:04:05Z",
+      "id": "text",
+      "key": "text",
+      "name": "text",
+      "permissions": {
+        "key0": "value"
+      },
+      "prefix": "text"
+    },
+    "minimal": {
+      "created_at": "2026-01-02T03:04:05Z",
+      "expires_at": null,
+      "id": "text",
+      "key": "text",
+      "name": "text",
+      "permissions": null,
+      "prefix": "text"
+    }
+  },
+  "DateRange": {
+    "fields": {
+      "gte": {
+        "annotation": "datetime.datetime | None",
+        "required": false
+      },
+      "lte": {
+        "annotation": "datetime.datetime | None",
+        "required": false
+      }
+    },
+    "full": {
+      "gte": "2026-01-02T03:04:05Z",
+      "lte": "2026-01-02T03:04:05Z"
+    },
+    "minimal": {
+      "gte": null,
+      "lte": null
+    }
+  },
+  "DocumentDetail": {
+    "fields": {
+      "chunk_count": {
+        "annotation": "int | None",
+        "required": false
+      },
+      "collection_id": {
+        "annotation": "str",
+        "required": true
+      },
+      "created_at": {
+        "annotation": "datetime.datetime | None",
+        "required": false
+      },
+      "display_title": {
+        "annotation": "str",
+        "required": false
+      },
+      "enabled": {
+        "annotation": "bool",
+        "required": true
+      },
+      "failure_reason": {
+        "annotation": "str | None",
+        "required": false
+      },
+      "file_size": {
+        "annotation": "int",
+        "required": true
+      },
+      "filename": {
+        "annotation": "str",
+        "required": true
+      },
+      "format": {
+        "annotation": "str",
+        "required": true
+      },
+      "id": {
+        "annotation": "str",
+        "required": true
+      },
+      "language": {
+        "annotation": "str | None",
+        "required": false
+      },
+      "metadata": {
+        "annotation": "list[MetadataValue]",
+        "required": false
+      },
+      "mime_type": {
+        "annotation": "str",
+        "required": true
+      },
+      "page_count": {
+        "annotation": "int | None",
+        "required": false
+      },
+      "pdf_blob_hash": {
+        "annotation": "str | None",
+        "required": false
+      },
+      "pipeline_version": {
+        "annotation": "str",
+        "required": true
+      },
+      "searchable": {
+        "annotation": "bool",
+        "required": true
+      },
+      "simhash": {
+        "annotation": "str | None",
+        "required": false
+      },
+      "source_hash": {
+        "annotation": "str",
+        "required": true
+      },
+      "source_kind": {
+        "annotation": "SourceKind",
+        "required": true
+      },
+      "status": {
+        "annotation": "DocumentStatus",
+        "required": true
+      },
+      "title": {
+        "annotation": "str",
+        "required": true
+      },
+      "warning_reason": {
+        "annotation": "str | None",
+        "required": false
+      }
+    },
+    "full": {
+      "chunk_count": 1,
+      "collection_id": "text",
+      "created_at": "2026-01-02T03:04:05Z",
+      "display_title": "text",
+      "enabled": true,
+      "failure_reason": "text",
+      "file_size": 1,
+      "filename": "text",
+      "format": "text",
+      "id": "text",
+      "language": "text",
+      "metadata": [
+        {
+          "field_name": "text",
+          "origin": "system",
+          "value": "value"
+        }
+      ],
+      "mime_type": "text",
+      "page_count": 1,
+      "pdf_blob_hash": "text",
+      "pipeline_version": "text",
+      "searchable": true,
+      "simhash": "text",
+      "source_hash": "text",
+      "source_kind": "digital_born",
+      "status": "pending",
+      "title": "text",
+      "warning_reason": "text"
+    },
+    "minimal": {
+      "chunk_count": null,
+      "collection_id": "text",
+      "created_at": null,
+      "display_title": "",
+      "enabled": true,
+      "failure_reason": null,
+      "file_size": 1,
+      "filename": "text",
+      "format": "text",
+      "id": "text",
+      "language": null,
+      "metadata": [],
+      "mime_type": "text",
+      "page_count": null,
+      "pdf_blob_hash": null,
+      "pipeline_version": "text",
+      "searchable": true,
+      "simhash": null,
+      "source_hash": "text",
+      "source_kind": "digital_born",
+      "status": "pending",
+      "title": "text",
+      "warning_reason": null
+    }
+  },
+  "DocumentEnabledResponse": {
+    "fields": {
+      "document_id": {
+        "annotation": "str",
+        "required": true
+      },
+      "enabled": {
+        "annotation": "bool",
+        "required": true
+      }
+    },
+    "full": {
+      "document_id": "text",
+      "enabled": true
+    },
+    "minimal": {
+      "document_id": "text",
+      "enabled": true
+    }
+  },
+  "DocumentFilter": {
+    "fields": {
+      "created_at": {
+        "annotation": "DateRange | None",
+        "required": false
+      },
+      "enabled": {
+        "annotation": "bool | None",
+        "required": false
+      },
+      "file_size": {
+        "annotation": "NumberRange | None",
+        "required": false
+      },
+      "filename": {
+        "annotation": "TextFilter | None",
+        "required": false
+      },
+      "format": {
+        "annotation": "list[str] | None",
+        "required": false
+      },
+      "language": {
+        "annotation": "list[str] | None",
+        "required": false
+      },
+      "metadata": {
+        "annotation": "list[MetadataFilter]",
+        "required": false
+      },
+      "page_count": {
+        "annotation": "NumberRange | None",
+        "required": false
+      },
+      "status": {
+        "annotation": "list[DocumentStatus] | None",
+        "required": false
+      },
+      "title": {
+        "annotation": "TextFilter | None",
+        "required": false
+      }
+    },
+    "full": {
+      "created_at": {
+        "gte": "2026-01-02T03:04:05Z",
+        "lte": "2026-01-02T03:04:05Z"
+      },
+      "enabled": true,
+      "file_size": {
+        "gte": 0.5,
+        "lte": 0.5
+      },
+      "filename": {
+        "contains": "text",
+        "eq": "text"
+      },
+      "format": [
+        "text"
+      ],
+      "language": [
+        "text"
+      ],
+      "metadata": [
+        {
+          "field": "text",
+          "op": "eq",
+          "value": "value"
+        }
+      ],
+      "page_count": {
+        "gte": 0.5,
+        "lte": 0.5
+      },
+      "status": [
+        "pending"
+      ],
+      "title": {
+        "contains": "text",
+        "eq": "text"
+      }
+    },
+    "minimal": {
+      "created_at": null,
+      "enabled": null,
+      "file_size": null,
+      "filename": null,
+      "format": null,
+      "language": null,
+      "metadata": [],
+      "page_count": null,
+      "status": null,
+      "title": null
+    }
+  },
+  "DocumentGridRow": {
+    "fields": {
+      "chunk_count": {
+        "annotation": "int | None",
+        "required": false
+      },
+      "created_at": {
+        "annotation": "datetime.datetime | None",
+        "required": false
+      },
+      "display_title": {
+        "annotation": "str",
+        "required": false
+      },
+      "enabled": {
+        "annotation": "bool",
+        "required": true
+      },
+      "file_size": {
+        "annotation": "int",
+        "required": true
+      },
+      "filename": {
+        "annotation": "str",
+        "required": true
+      },
+      "format": {
+        "annotation": "str",
+        "required": true
+      },
+      "id": {
+        "annotation": "str",
+        "required": true
+      },
+      "language": {
+        "annotation": "str | None",
+        "required": false
+      },
+      "metadata": {
+        "annotation": "dict[str, typing.Any]",
+        "required": false
+      },
+      "page_count": {
+        "annotation": "int | None",
+        "required": false
+      },
+      "status": {
+        "annotation": "DocumentStatus",
+        "required": true
+      },
+      "title": {
+        "annotation": "str",
+        "required": true
+      },
+      "warning_reason": {
+        "annotation": "str | None",
+        "required": false
+      }
+    },
+    "full": {
+      "chunk_count": 1,
+      "created_at": "2026-01-02T03:04:05Z",
+      "display_title": "text",
+      "enabled": true,
+      "file_size": 1,
+      "filename": "text",
+      "format": "text",
+      "id": "text",
+      "language": "text",
+      "metadata": {
+        "key0": "value"
+      },
+      "page_count": 1,
+      "status": "pending",
+      "title": "text",
+      "warning_reason": "text"
+    },
+    "minimal": {
+      "chunk_count": null,
+      "created_at": null,
+      "display_title": "",
+      "enabled": true,
+      "file_size": 1,
+      "filename": "text",
+      "format": "text",
+      "id": "text",
+      "language": null,
+      "metadata": {},
+      "page_count": null,
+      "status": "pending",
+      "title": "text",
+      "warning_reason": null
+    }
+  },
+  "DocumentIRModel": {
+    "fields": {
+      "blocks": {
+        "annotation": "list[IRBlock]",
+        "required": false
+      },
+      "enrichments": {
+        "annotation": "list[IREnrichment]",
+        "required": false
+      },
+      "figures": {
+        "annotation": "list[IRFigure]",
+        "required": false
+      },
+      "tables": {
+        "annotation": "list[IRTable]",
+        "required": false
+      }
+    },
+    "full": {
+      "blocks": [
+        {
+          "bbox": [
+            0.5
+          ],
+          "block_type": "text",
+          "id": "text",
+          "is_boilerplate": true,
+          "language": "text",
+          "level": 1,
+          "page": 1,
+          "page_number": 1,
+          "parent_id": "text",
+          "reading_order": 1,
+          "text": "text"
+        }
+      ],
+      "enrichments": [
+        {
+          "block_id": "text",
+          "data": "value",
+          "id": "text",
+          "kind": "classify",
+          "status": "ok",
+          "text": "text"
+        }
+      ],
+      "figures": [
+        {
+          "block_id": "text",
+          "caption_block_id": "text",
+          "crop_blob_hash": "text"
+        }
+      ],
+      "tables": [
+        {
+          "block_id": "text",
+          "cells": "value",
+          "has_header": true,
+          "linearized_md": "text",
+          "n_cols": 1,
+          "n_rows": 1
+        }
+      ]
+    },
+    "minimal": {
+      "blocks": [],
+      "enrichments": [],
+      "figures": [],
+      "tables": []
+    }
+  },
+  "DocumentListItem": {
+    "fields": {
+      "chunk_count": {
+        "annotation": "int | None",
+        "required": false
+      },
+      "created_at": {
+        "annotation": "datetime.datetime | None",
+        "required": false
+      },
+      "display_title": {
+        "annotation": "str",
+        "required": false
+      },
+      "enabled": {
+        "annotation": "bool",
+        "required": true
+      },
+      "file_size": {
+        "annotation": "int",
+        "required": true
+      },
+      "filename": {
+        "annotation": "str",
+        "required": true
+      },
+      "format": {
+        "annotation": "str",
+        "required": true
+      },
+      "id": {
+        "annotation": "str",
+        "required": true
+      },
+      "language": {
+        "annotation": "str | None",
+        "required": false
+      },
+      "page_count": {
+        "annotation": "int | None",
+        "required": false
+      },
+      "status": {
+        "annotation": "DocumentStatus",
+        "required": true
+      },
+      "title": {
+        "annotation": "str",
+        "required": true
+      },
+      "warning_reason": {
+        "annotation": "str | None",
+        "required": false
+      }
+    },
+    "full": {
+      "chunk_count": 1,
+      "created_at": "2026-01-02T03:04:05Z",
+      "display_title": "text",
+      "enabled": true,
+      "file_size": 1,
+      "filename": "text",
+      "format": "text",
+      "id": "text",
+      "language": "text",
+      "page_count": 1,
+      "status": "pending",
+      "title": "text",
+      "warning_reason": "text"
+    },
+    "minimal": {
+      "chunk_count": null,
+      "created_at": null,
+      "display_title": "",
+      "enabled": true,
+      "file_size": 1,
+      "filename": "text",
+      "format": "text",
+      "id": "text",
+      "language": null,
+      "page_count": null,
+      "status": "pending",
+      "title": "text",
+      "warning_reason": null
+    }
+  },
+  "DocumentOutline": {
+    "fields": {
+      "display_title": {
+        "annotation": "str",
+        "required": true
+      },
+      "document_id": {
+        "annotation": "str",
+        "required": true
+      },
+      "headings": {
+        "annotation": "list[OutlineHeading]",
+        "required": false
+      },
+      "page_count": {
+        "annotation": "int | None",
+        "required": false
+      }
+    },
+    "full": {
+      "display_title": "text",
+      "document_id": "text",
+      "headings": [
+        {
+          "chunk_id": "text",
+          "level": 1,
+          "page_number": 1,
+          "text": "text"
+        }
+      ],
+      "page_count": 1
+    },
+    "minimal": {
+      "display_title": "text",
+      "document_id": "text",
+      "headings": [],
+      "page_count": null
+    }
+  },
+  "DocumentProvenance": {
+    "fields": {
+      "available": {
+        "annotation": "bool",
+        "required": true
+      },
+      "document_id": {
+        "annotation": "str",
+        "required": true
+      },
+      "job_id": {
+        "annotation": "str | None",
+        "required": false
+      },
+      "pipeline_version": {
+        "annotation": "str",
+        "required": true
+      },
+      "stages": {
+        "annotation": "list[JobEvent]",
+        "required": false
+      }
+    },
+    "full": {
+      "available": true,
+      "document_id": "text",
+      "job_id": "text",
+      "pipeline_version": "text",
+      "stages": [
+        {
+          "completion_tokens": 1,
+          "cost_usd": 0.5,
+          "depth": 1,
+          "detail": "text",
+          "event_id": "text",
+          "finished_at": "2026-01-02T03:04:05Z",
+          "has_full_input": true,
+          "has_full_output": true,
+          "input_summary": {
+            "key0": "value"
+          },
+          "item_index": 1,
+          "node_kind": "text",
+          "node_path": "text",
+          "output_summary": {
+            "key0": "value"
+          },
+          "parent_path": "text",
+          "prompt_tokens": 1,
+          "score": 0.5,
+          "stage": "text",
+          "started_at": "2026-01-02T03:04:05Z",
+          "status": "text"
+        }
+      ]
+    },
+    "minimal": {
+      "available": true,
+      "document_id": "text",
+      "job_id": null,
+      "pipeline_version": "text",
+      "stages": []
+    }
+  },
+  "DocumentQueryRequest": {
+    "fields": {
+      "filter": {
+        "annotation": "DocumentFilter | None",
+        "required": false
+      },
+      "pagination": {
+        "annotation": "Pagination",
+        "required": false
+      },
+      "sort": {
+        "annotation": "DocumentSort | None",
+        "required": false
+      }
+    },
+    "full": {
+      "filter": {
+        "created_at": {
+          "gte": "2026-01-02T03:04:05Z",
+          "lte": "2026-01-02T03:04:05Z"
+        },
+        "enabled": true,
+        "file_size": {
+          "gte": 0.5,
+          "lte": 0.5
+        },
+        "filename": {
+          "contains": "text",
+          "eq": "text"
+        },
+        "format": [
+          "text"
+        ],
+        "language": [
+          "text"
+        ],
+        "metadata": [
+          {
+            "field": "text",
+            "op": "eq",
+            "value": "value"
+          }
+        ],
+        "page_count": {
+          "gte": 0.5,
+          "lte": 0.5
+        },
+        "status": [
+          "pending"
+        ],
+        "title": {
+          "contains": "text",
+          "eq": "text"
+        }
+      },
+      "pagination": {
+        "limit": 1,
+        "offset": 1
+      },
+      "sort": {
+        "direction": "asc",
+        "field": "text"
+      }
+    },
+    "minimal": {
+      "filter": null,
+      "pagination": {
+        "limit": 50,
+        "offset": 0
+      },
+      "sort": null
+    }
+  },
+  "DocumentQueryResponse": {
+    "fields": {
+      "limit": {
+        "annotation": "int",
+        "required": true
+      },
+      "offset": {
+        "annotation": "int",
+        "required": true
+      },
+      "rows": {
+        "annotation": "list[DocumentGridRow]",
+        "required": true
+      },
+      "total": {
+        "annotation": "int",
+        "required": true
+      }
+    },
+    "full": {
+      "limit": 1,
+      "offset": 1,
+      "rows": [
+        {
+          "chunk_count": 1,
+          "created_at": "2026-01-02T03:04:05Z",
+          "display_title": "text",
+          "enabled": true,
+          "file_size": 1,
+          "filename": "text",
+          "format": "text",
+          "id": "text",
+          "language": "text",
+          "metadata": {
+            "key0": "value"
+          },
+          "page_count": 1,
+          "status": "pending",
+          "title": "text",
+          "warning_reason": "text"
+        }
+      ],
+      "total": 1
+    },
+    "minimal": {
+      "limit": 1,
+      "offset": 1,
+      "rows": [],
+      "total": 1
+    }
+  },
+  "DocumentSelector": {
+    "fields": {
+      "document_ids": {
+        "annotation": "list[str] | None",
+        "required": false
+      },
+      "exclude_ids": {
+        "annotation": "list[str]",
+        "required": false
+      },
+      "filter": {
+        "annotation": "DocumentFilter | None",
+        "required": false
+      }
+    },
+    "full": {
+      "document_ids": [
+        "text"
+      ],
+      "exclude_ids": [
+        "text"
+      ],
+      "filter": {
+        "created_at": {
+          "gte": "2026-01-02T03:04:05Z",
+          "lte": "2026-01-02T03:04:05Z"
+        },
+        "enabled": true,
+        "file_size": {
+          "gte": 0.5,
+          "lte": 0.5
+        },
+        "filename": {
+          "contains": "text",
+          "eq": "text"
+        },
+        "format": [
+          "text"
+        ],
+        "language": [
+          "text"
+        ],
+        "metadata": [
+          {
+            "field": "text",
+            "op": "eq",
+            "value": "value"
+          }
+        ],
+        "page_count": {
+          "gte": 0.5,
+          "lte": 0.5
+        },
+        "status": [
+          "pending"
+        ],
+        "title": {
+          "contains": "text",
+          "eq": "text"
+        }
+      }
+    },
+    "minimal": {
+      "document_ids": null,
+      "exclude_ids": [],
+      "filter": null
+    }
+  },
+  "DocumentSort": {
+    "fields": {
+      "direction": {
+        "annotation": "Literal['asc', 'desc']",
+        "required": false
+      },
+      "field": {
+        "annotation": "str",
+        "required": false
+      }
+    },
+    "full": {
+      "direction": "asc",
+      "field": "text"
+    },
+    "minimal": {
+      "direction": "desc",
+      "field": "created_at"
+    }
+  },
+  "DocumentStorageModel": {
+    "fields": {
+      "document_id": {
+        "annotation": "str",
+        "required": true
+      },
+      "filename": {
+        "annotation": "str",
+        "required": true
+      },
+      "postgres": {
+        "annotation": "PostgresFootprintModel",
+        "required": true
+      },
+      "qdrant": {
+        "annotation": "QdrantFootprintModel",
+        "required": true
+      },
+      "s3": {
+        "annotation": "S3FootprintModel",
+        "required": true
+      },
+      "total_bytes": {
+        "annotation": "int",
+        "required": true
+      },
+      "trace_bytes": {
+        "annotation": "int",
+        "required": true
+      }
+    },
+    "full": {
+      "document_id": "text",
+      "filename": "text",
+      "postgres": {
+        "chunks_bytes": 1,
+        "documents_bytes": 1,
+        "enrichment_bytes": 1,
+        "estimated": true,
+        "ir_blocks_bytes": 1,
+        "metadata_bytes": 1,
+        "observability_bytes": 1,
+        "total_bytes": 1
+      },
+      "qdrant": {
+        "dense_bytes": 1,
+        "estimated": true,
+        "payload_bytes": 1,
+        "points": 1,
+        "sparse_bytes": 1,
+        "total_bytes": 1
+      },
+      "s3": {
+        "estimated": true,
+        "original_bytes": 1,
+        "physical_unique_bytes": 1,
+        "rendered_bytes": 1,
+        "total_bytes": 1
+      },
+      "total_bytes": 1,
+      "trace_bytes": 1
+    },
+    "minimal": {
+      "document_id": "text",
+      "filename": "text",
+      "postgres": {
+        "chunks_bytes": 1,
+        "documents_bytes": 1,
+        "enrichment_bytes": 1,
+        "estimated": true,
+        "ir_blocks_bytes": 1,
+        "metadata_bytes": 1,
+        "observability_bytes": 1,
+        "total_bytes": 1
+      },
+      "qdrant": {
+        "dense_bytes": 1,
+        "estimated": true,
+        "payload_bytes": 1,
+        "points": 1,
+        "sparse_bytes": 1,
+        "total_bytes": 1
+      },
+      "s3": {
+        "estimated": true,
+        "original_bytes": 1,
+        "physical_unique_bytes": 1,
+        "rendered_bytes": 1,
+        "total_bytes": 1
+      },
+      "total_bytes": 1,
+      "trace_bytes": 1
+    }
+  },
+  "DocumentView": {
+    "fields": {
+      "content": {
+        "annotation": "str",
+        "required": true
+      },
+      "mime_type": {
+        "annotation": "str",
+        "required": true
+      }
+    },
+    "full": {
+      "content": "text",
+      "mime_type": "text"
+    },
+    "minimal": {
+      "content": "text",
+      "mime_type": "text"
+    }
+  },
+  "EditResponse": {
+    "fields": {
+      "blob": {
+        "annotation": "dict[str, typing.Any]",
+        "required": true
+      },
+      "edit_error": {
+        "annotation": "str | None",
+        "required": false
+      },
+      "explored": {
+        "annotation": "dict[str, typing.Any] | None",
+        "required": false
+      },
+      "issues": {
+        "annotation": "list[dict[str, typing.Any]]",
+        "required": false
+      },
+      "valid": {
+        "annotation": "bool",
+        "required": true
+      }
+    },
+    "full": {
+      "blob": {
+        "key0": "value"
+      },
+      "edit_error": "text",
+      "explored": {
+        "key0": "value"
+      },
+      "issues": [
+        {
+          "key0": "value"
+        }
+      ],
+      "valid": true
+    },
+    "minimal": {
+      "blob": {},
+      "edit_error": null,
+      "explored": null,
+      "issues": [],
+      "valid": true
+    }
+  },
+  "EnabledPatch": {
+    "fields": {
+      "enabled": {
+        "annotation": "bool",
+        "required": true
+      }
+    },
+    "full": {
+      "enabled": true
+    },
+    "minimal": {
+      "enabled": true
+    }
+  },
+  "EstimateAssumptions": {
+    "fields": {
+      "bytes_per_page": {
+        "annotation": "float",
+        "required": false
+      },
+      "bytes_per_token": {
+        "annotation": "float",
+        "required": false
+      },
+      "chunk_overlap_ratio": {
+        "annotation": "float",
+        "required": false
+      },
+      "embed_dense_dims": {
+        "annotation": "int",
+        "required": false
+      },
+      "images_per_page": {
+        "annotation": "float",
+        "required": false
+      },
+      "llm_output_tokens": {
+        "annotation": "float",
+        "required": false
+      },
+      "llm_prompt_overhead_tokens": {
+        "annotation": "float",
+        "required": false
+      },
+      "metagen_doc_context_tokens": {
+        "annotation": "float",
+        "required": false
+      },
+      "metagen_output_tokens_per_field": {
+        "annotation": "float",
+        "required": false
+      },
+      "scanned_page_ratio": {
+        "annotation": "float",
+        "required": false
+      },
+      "target_chunk_tokens": {
+        "annotation": "int",
+        "required": false
+      },
+      "tokens_per_page": {
+        "annotation": "float",
+        "required": false
+      },
+      "vlm_output_tokens": {
+        "annotation": "float",
+        "required": false
+      },
+      "vlm_prompt_tokens_per_image": {
+        "annotation": "float",
+        "required": false
+      }
+    },
+    "full": {
+      "bytes_per_page": 0.5,
+      "bytes_per_token": 0.5,
+      "chunk_overlap_ratio": 0.5,
+      "embed_dense_dims": 1,
+      "images_per_page": 0.5,
+      "llm_output_tokens": 0.5,
+      "llm_prompt_overhead_tokens": 0.5,
+      "metagen_doc_context_tokens": 0.5,
+      "metagen_output_tokens_per_field": 0.5,
+      "scanned_page_ratio": 0.5,
+      "target_chunk_tokens": 1,
+      "tokens_per_page": 0.5,
+      "vlm_output_tokens": 0.5,
+      "vlm_prompt_tokens_per_image": 0.5
+    },
+    "minimal": {
+      "bytes_per_page": 40000.0,
+      "bytes_per_token": 4.0,
+      "chunk_overlap_ratio": 0.0,
+      "embed_dense_dims": 1024,
+      "images_per_page": 0.5,
+      "llm_output_tokens": 250.0,
+      "llm_prompt_overhead_tokens": 400.0,
+      "metagen_doc_context_tokens": 2000.0,
+      "metagen_output_tokens_per_field": 40.0,
+      "scanned_page_ratio": 0.0,
+      "target_chunk_tokens": 512,
+      "tokens_per_page": 500.0,
+      "vlm_output_tokens": 300.0,
+      "vlm_prompt_tokens_per_image": 1000.0
+    }
+  },
+  "EstimateOverrides": {
+    "fields": {
+      "assumptions": {
+        "annotation": "AssumptionOverrides | None",
+        "required": false
+      },
+      "rates": {
+        "annotation": "RateOverrides | None",
+        "required": false
+      }
+    },
+    "full": {
+      "assumptions": {
+        "bytes_per_page": 0.5,
+        "bytes_per_token": 0.5,
+        "chunk_overlap_ratio": 0.5,
+        "embed_dense_dims": 1,
+        "images_per_page": 0.5,
+        "llm_output_tokens": 0.5,
+        "llm_prompt_overhead_tokens": 0.5,
+        "metagen_doc_context_tokens": 0.5,
+        "metagen_output_tokens_per_field": 0.5,
+        "scanned_page_ratio": 0.5,
+        "target_chunk_tokens": 1,
+        "tokens_per_page": 0.5,
+        "vlm_output_tokens": 0.5,
+        "vlm_prompt_tokens_per_image": 0.5
+      },
+      "rates": {
+        "embed": {
+          "key0": 0.5
+        },
+        "models": {
+          "key0": {
+            "input": 0.5,
+            "output": 0.5
+          }
+        },
+        "ocr": {
+          "key0": 0.5
+        }
+      }
+    },
+    "minimal": {
+      "assumptions": null,
+      "rates": null
+    }
+  },
+  "FailureBreakdown": {
+    "fields": {
+      "by_collection": {
+        "annotation": "list[CollectionFailureBucket]",
+        "required": false
+      },
+      "by_error_type": {
+        "annotation": "list[FailureBucket]",
+        "required": false
+      },
+      "by_stage": {
+        "annotation": "list[FailureBucket]",
+        "required": false
+      },
+      "collection_id": {
+        "annotation": "str | None",
+        "required": false
+      },
+      "since": {
+        "annotation": "datetime.datetime",
+        "required": true
+      },
+      "total_failed": {
+        "annotation": "int",
+        "required": true
+      },
+      "window_hours": {
+        "annotation": "int",
+        "required": true
+      }
+    },
+    "full": {
+      "by_collection": [
+        {
+          "collection_id": "text",
+          "collection_name": "text",
+          "count": 1
+        }
+      ],
+      "by_error_type": [
+        {
+          "count": 1,
+          "label": "text"
+        }
+      ],
+      "by_stage": [
+        {
+          "count": 1,
+          "label": "text"
+        }
+      ],
+      "collection_id": "text",
+      "since": "2026-01-02T03:04:05Z",
+      "total_failed": 1,
+      "window_hours": 1
+    },
+    "minimal": {
+      "by_collection": [],
+      "by_error_type": [],
+      "by_stage": [],
+      "collection_id": null,
+      "since": "2026-01-02T03:04:05Z",
+      "total_failed": 1,
+      "window_hours": 1
+    }
+  },
+  "FailureBucket": {
+    "fields": {
+      "count": {
+        "annotation": "int",
+        "required": true
+      },
+      "label": {
+        "annotation": "str",
+        "required": true
+      }
+    },
+    "full": {
+      "count": 1,
+      "label": "text"
+    },
+    "minimal": {
+      "count": 1,
+      "label": "text"
+    }
+  },
+  "FieldGuide": {
+    "fields": {
+      "description": {
+        "annotation": "str | None",
+        "required": false
+      },
+      "distinct_count": {
+        "annotation": "int",
+        "required": true
+      },
+      "enum_values": {
+        "annotation": "list[str] | None",
+        "required": false
+      },
+      "example_values": {
+        "annotation": "list[str]",
+        "required": false
+      },
+      "filterable": {
+        "annotation": "bool",
+        "required": true
+      },
+      "lexical": {
+        "annotation": "bool",
+        "required": true
+      },
+      "name": {
+        "annotation": "str",
+        "required": true
+      },
+      "note": {
+        "annotation": "str | None",
+        "required": false
+      },
+      "origin": {
+        "annotation": "FieldOrigin",
+        "required": true
+      },
+      "required": {
+        "annotation": "bool",
+        "required": true
+      },
+      "scope": {
+        "annotation": "FieldScope",
+        "required": true
+      },
+      "semantic": {
+        "annotation": "bool",
+        "required": true
+      },
+      "type": {
+        "annotation": "FieldType",
+        "required": true
+      }
+    },
+    "full": {
+      "description": "text",
+      "distinct_count": 1,
+      "enum_values": [
+        "text"
+      ],
+      "example_values": [
+        "text"
+      ],
+      "filterable": true,
+      "lexical": true,
+      "name": "text",
+      "note": "text",
+      "origin": "system",
+      "required": true,
+      "scope": "document",
+      "semantic": true,
+      "type": "string"
+    },
+    "minimal": {
+      "description": null,
+      "distinct_count": 1,
+      "enum_values": null,
+      "example_values": [],
+      "filterable": true,
+      "lexical": true,
+      "name": "text",
+      "note": null,
+      "origin": "system",
+      "required": true,
+      "scope": "document",
+      "semantic": true,
+      "type": "string"
+    }
+  },
+  "FieldPatch": {
+    "fields": {
+      "description": {
+        "annotation": "str | None",
+        "required": false
+      },
+      "enum_values": {
+        "annotation": "list[str] | None",
+        "required": false
+      },
+      "field_type": {
+        "annotation": "FieldType | None",
+        "required": false
+      },
+      "filterable": {
+        "annotation": "bool | None",
+        "required": false
+      },
+      "lexical": {
+        "annotation": "bool | None",
+        "required": false
+      },
+      "origin": {
+        "annotation": "FieldOrigin | None",
+        "required": false
+      },
+      "required": {
+        "annotation": "bool | None",
+        "required": false
+      },
+      "scope": {
+        "annotation": "FieldScope | None",
+        "required": false
+      },
+      "semantic": {
+        "annotation": "bool | None",
+        "required": false
+      }
+    },
+    "full": {
+      "description": "text",
+      "enum_values": [
+        "text"
+      ],
+      "field_type": "string",
+      "filterable": true,
+      "lexical": true,
+      "origin": "system",
+      "required": true,
+      "scope": "document",
+      "semantic": true
+    },
+    "minimal": {
+      "description": null,
+      "enum_values": null,
+      "field_type": null,
+      "filterable": null,
+      "lexical": null,
+      "origin": null,
+      "required": null,
+      "scope": null,
+      "semantic": null
+    }
+  },
+  "FieldSpec": {
+    "fields": {
+      "description": {
+        "annotation": "str | None",
+        "required": false
+      },
+      "enum_values": {
+        "annotation": "list[str] | None",
+        "required": false
+      },
+      "field_name": {
+        "annotation": "str",
+        "required": true
+      },
+      "field_type": {
+        "annotation": "FieldType",
+        "required": true
+      },
+      "filterable": {
+        "annotation": "bool",
+        "required": false
+      },
+      "lexical": {
+        "annotation": "bool",
+        "required": false
+      },
+      "origin": {
+        "annotation": "FieldOrigin",
+        "required": false
+      },
+      "required": {
+        "annotation": "bool",
+        "required": false
+      },
+      "scope": {
+        "annotation": "FieldScope",
+        "required": false
+      },
+      "semantic": {
+        "annotation": "bool",
+        "required": false
+      }
+    },
+    "full": {
+      "description": "text",
+      "enum_values": [
+        "text"
+      ],
+      "field_name": "text",
+      "field_type": "string",
+      "filterable": true,
+      "lexical": true,
+      "origin": "system",
+      "required": true,
+      "scope": "document",
+      "semantic": true
+    },
+    "minimal": {
+      "description": null,
+      "enum_values": null,
+      "field_name": "text",
+      "field_type": "string",
+      "filterable": false,
+      "lexical": false,
+      "origin": "user",
+      "required": false,
+      "scope": "document",
+      "semantic": false
+    }
+  },
+  "HealthStatus": {
+    "fields": {
+      "status": {
+        "annotation": "str",
+        "required": true
+      }
+    },
+    "full": {
+      "status": "text"
+    },
+    "minimal": {
+      "status": "text"
+    }
+  },
+  "IRBlock": {
+    "fields": {
+      "bbox": {
+        "annotation": "list[float]",
+        "required": true
+      },
+      "block_type": {
+        "annotation": "str",
+        "required": true
+      },
+      "id": {
+        "annotation": "str",
+        "required": true
+      },
+      "is_boilerplate": {
+        "annotation": "bool",
+        "required": true
+      },
+      "language": {
+        "annotation": "str | None",
+        "required": false
+      },
+      "level": {
+        "annotation": "int | None",
+        "required": false
+      },
+      "page": {
+        "annotation": "int",
+        "required": true
+      },
+      "page_number": {
+        "annotation": "int | None",
+        "required": false
+      },
+      "parent_id": {
+        "annotation": "str | None",
+        "required": false
+      },
+      "reading_order": {
+        "annotation": "int",
+        "required": true
+      },
+      "text": {
+        "annotation": "str | None",
+        "required": false
+      }
+    },
+    "full": {
+      "bbox": [
+        0.5
+      ],
+      "block_type": "text",
+      "id": "text",
+      "is_boilerplate": true,
+      "language": "text",
+      "level": 1,
+      "page": 1,
+      "page_number": 1,
+      "parent_id": "text",
+      "reading_order": 1,
+      "text": "text"
+    },
+    "minimal": {
+      "bbox": [],
+      "block_type": "text",
+      "id": "text",
+      "is_boilerplate": true,
+      "language": null,
+      "level": null,
+      "page": 1,
+      "page_number": null,
+      "parent_id": null,
+      "reading_order": 1,
+      "text": null
+    }
+  },
+  "IREnrichment": {
+    "fields": {
+      "block_id": {
+        "annotation": "str",
+        "required": true
+      },
+      "data": {
+        "annotation": "typing.Any | None",
+        "required": false
+      },
+      "id": {
+        "annotation": "str",
+        "required": true
+      },
+      "kind": {
+        "annotation": "EnrichmentKind",
+        "required": true
+      },
+      "status": {
+        "annotation": "EnrichmentStatus",
+        "required": true
+      },
+      "text": {
+        "annotation": "str | None",
+        "required": false
+      }
+    },
+    "full": {
+      "block_id": "text",
+      "data": "value",
+      "id": "text",
+      "kind": "classify",
+      "status": "ok",
+      "text": "text"
+    },
+    "minimal": {
+      "block_id": "text",
+      "data": null,
+      "id": "text",
+      "kind": "classify",
+      "status": "ok",
+      "text": null
+    }
+  },
+  "IRFigure": {
+    "fields": {
+      "block_id": {
+        "annotation": "str",
+        "required": true
+      },
+      "caption_block_id": {
+        "annotation": "str | None",
+        "required": false
+      },
+      "crop_blob_hash": {
+        "annotation": "str | None",
+        "required": false
+      }
+    },
+    "full": {
+      "block_id": "text",
+      "caption_block_id": "text",
+      "crop_blob_hash": "text"
+    },
+    "minimal": {
+      "block_id": "text",
+      "caption_block_id": null,
+      "crop_blob_hash": null
+    }
+  },
+  "IRTable": {
+    "fields": {
+      "block_id": {
+        "annotation": "str",
+        "required": true
+      },
+      "cells": {
+        "annotation": "Any",
+        "required": true
+      },
+      "has_header": {
+        "annotation": "bool",
+        "required": true
+      },
+      "linearized_md": {
+        "annotation": "str | None",
+        "required": false
+      },
+      "n_cols": {
+        "annotation": "int",
+        "required": true
+      },
+      "n_rows": {
+        "annotation": "int",
+        "required": true
+      }
+    },
+    "full": {
+      "block_id": "text",
+      "cells": "value",
+      "has_header": true,
+      "linearized_md": "text",
+      "n_cols": 1,
+      "n_rows": 1
+    },
+    "minimal": {
+      "block_id": "text",
+      "cells": "value",
+      "has_header": true,
+      "linearized_md": null,
+      "n_cols": 1,
+      "n_rows": 1
+    }
+  },
+  "IngestHealth": {
+    "fields": {
+      "build_error": {
+        "annotation": "str | None",
+        "required": false
+      },
+      "buildable": {
+        "annotation": "bool",
+        "required": true
+      },
+      "providers": {
+        "annotation": "list[ProviderProbeResult]",
+        "required": false
+      }
+    },
+    "full": {
+      "build_error": "text",
+      "buildable": true,
+      "providers": [
+        {
+          "detail": "text",
+          "endpoint": "text",
+          "family": "text",
+          "kind": "text",
+          "latency_ms": 1,
+          "node_id": "text",
+          "side": "text",
+          "status": "ok"
+        }
+      ]
+    },
+    "minimal": {
+      "build_error": null,
+      "buildable": true,
+      "providers": []
+    }
+  },
+  "InspectResponse": {
+    "fields": {
+      "build_error": {
+        "annotation": "str | None",
+        "required": false
+      },
+      "explored": {
+        "annotation": "dict[str, typing.Any] | None",
+        "required": false
+      },
+      "issues": {
+        "annotation": "list[dict[str, typing.Any]]",
+        "required": false
+      },
+      "valid": {
+        "annotation": "bool",
+        "required": true
+      }
+    },
+    "full": {
+      "build_error": "text",
+      "explored": {
+        "key0": "value"
+      },
+      "issues": [
+        {
+          "key0": "value"
+        }
+      ],
+      "valid": true
+    },
+    "minimal": {
+      "build_error": null,
+      "explored": null,
+      "issues": [],
+      "valid": true
+    }
+  },
+  "JobEvent": {
+    "fields": {
+      "completion_tokens": {
+        "annotation": "int | None",
+        "required": false
+      },
+      "cost_usd": {
+        "annotation": "float | None",
+        "required": false
+      },
+      "depth": {
+        "annotation": "int | None",
+        "required": false
+      },
+      "detail": {
+        "annotation": "str | None",
+        "required": false
+      },
+      "event_id": {
+        "annotation": "str",
+        "required": true
+      },
+      "finished_at": {
+        "annotation": "datetime.datetime | None",
+        "required": false
+      },
+      "has_full_input": {
+        "annotation": "bool | None",
+        "required": false
+      },
+      "has_full_output": {
+        "annotation": "bool | None",
+        "required": false
+      },
+      "input_summary": {
+        "annotation": "dict[str, typing.Any] | None",
+        "required": false
+      },
+      "item_index": {
+        "annotation": "int | None",
+        "required": false
+      },
+      "node_kind": {
+        "annotation": "str | None",
+        "required": false
+      },
+      "node_path": {
+        "annotation": "str | None",
+        "required": false
+      },
+      "output_summary": {
+        "annotation": "dict[str, typing.Any] | None",
+        "required": false
+      },
+      "parent_path": {
+        "annotation": "str | None",
+        "required": false
+      },
+      "prompt_tokens": {
+        "annotation": "int | None",
+        "required": false
+      },
+      "score": {
+        "annotation": "float | None",
+        "required": false
+      },
+      "stage": {
+        "annotation": "str",
+        "required": true
+      },
+      "started_at": {
+        "annotation": "datetime.datetime | None",
+        "required": false
+      },
+      "status": {
+        "annotation": "str",
+        "required": true
+      }
+    },
+    "full": {
+      "completion_tokens": 1,
+      "cost_usd": 0.5,
+      "depth": 1,
+      "detail": "text",
+      "event_id": "text",
+      "finished_at": "2026-01-02T03:04:05Z",
+      "has_full_input": true,
+      "has_full_output": true,
+      "input_summary": {
+        "key0": "value"
+      },
+      "item_index": 1,
+      "node_kind": "text",
+      "node_path": "text",
+      "output_summary": {
+        "key0": "value"
+      },
+      "parent_path": "text",
+      "prompt_tokens": 1,
+      "score": 0.5,
+      "stage": "text",
+      "started_at": "2026-01-02T03:04:05Z",
+      "status": "text"
+    },
+    "minimal": {
+      "completion_tokens": null,
+      "cost_usd": null,
+      "depth": null,
+      "detail": null,
+      "event_id": "text",
+      "finished_at": null,
+      "has_full_input": null,
+      "has_full_output": null,
+      "input_summary": null,
+      "item_index": null,
+      "node_kind": null,
+      "node_path": null,
+      "output_summary": null,
+      "parent_path": null,
+      "prompt_tokens": null,
+      "score": null,
+      "stage": "text",
+      "started_at": null,
+      "status": "text"
+    }
+  },
+  "JobEventPayload": {
+    "fields": {
+      "event_id": {
+        "annotation": "str",
+        "required": true
+      },
+      "job_id": {
+        "annotation": "str",
+        "required": true
+      },
+      "node_path": {
+        "annotation": "str | None",
+        "required": false
+      },
+      "payload": {
+        "annotation": "Any",
+        "required": false
+      },
+      "size_bytes": {
+        "annotation": "int",
+        "required": true
+      },
+      "slot": {
+        "annotation": "str",
+        "required": true
+      },
+      "stage": {
+        "annotation": "str",
+        "required": true
+      },
+      "truncated": {
+        "annotation": "bool",
+        "required": true
+      }
+    },
+    "full": {
+      "event_id": "text",
+      "job_id": "text",
+      "node_path": "text",
+      "payload": "value",
+      "size_bytes": 1,
+      "slot": "text",
+      "stage": "text",
+      "truncated": true
+    },
+    "minimal": {
+      "event_id": "text",
+      "job_id": "text",
+      "node_path": null,
+      "payload": null,
+      "size_bytes": 1,
+      "slot": "text",
+      "stage": "text",
+      "truncated": true
+    }
+  },
+  "JobPage": {
+    "fields": {
+      "jobs": {
+        "annotation": "list[JobStatus]",
+        "required": true
+      },
+      "limit": {
+        "annotation": "int",
+        "required": true
+      },
+      "offset": {
+        "annotation": "int",
+        "required": true
+      },
+      "total": {
+        "annotation": "int",
+        "required": true
+      }
+    },
+    "full": {
+      "jobs": [
+        {
+          "attempt": 1,
+          "cancel_requested": true,
+          "collection_id": "text",
+          "collection_name": "text",
+          "cost_usd": 0.5,
+          "current_stage": "text",
+          "display_title": "text",
+          "document_filename": "text",
+          "document_id": "text",
+          "document_title": "text",
+          "duration_seconds": 0.5,
+          "error": "text",
+          "error_type": "text",
+          "failed_item_index": 1,
+          "failed_node_id": "text",
+          "failed_node_kind": "text",
+          "finished_at": "2026-01-02T03:04:05Z",
+          "items_done": 1,
+          "items_total": 1,
+          "job_id": "text",
+          "kind": "text",
+          "progress": 1,
+          "replay_from": "text",
+          "stalled": true,
+          "started_at": "2026-01-02T03:04:05Z",
+          "status": "text",
+          "total_completion_tokens": 1,
+          "total_prompt_tokens": 1,
+          "updated_at": "2026-01-02T03:04:05Z"
+        }
+      ],
+      "limit": 1,
+      "offset": 1,
+      "total": 1
+    },
+    "minimal": {
+      "jobs": [],
+      "limit": 1,
+      "offset": 1,
+      "total": 1
+    }
+  },
+  "JobStatus": {
+    "fields": {
+      "attempt": {
+        "annotation": "int",
+        "required": true
+      },
+      "cancel_requested": {
+        "annotation": "bool",
+        "required": false
+      },
+      "collection_id": {
+        "annotation": "str",
+        "required": true
+      },
+      "collection_name": {
+        "annotation": "str | None",
+        "required": false
+      },
+      "cost_usd": {
+        "annotation": "float",
+        "required": true
+      },
+      "current_stage": {
+        "annotation": "str | None",
+        "required": false
+      },
+      "display_title": {
+        "annotation": "str | None",
+        "required": false
+      },
+      "document_filename": {
+        "annotation": "str | None",
+        "required": false
+      },
+      "document_id": {
+        "annotation": "str | None",
+        "required": true
+      },
+      "document_title": {
+        "annotation": "str | None",
+        "required": false
+      },
+      "duration_seconds": {
+        "annotation": "float | None",
+        "required": false
+      },
+      "error": {
+        "annotation": "str | None",
+        "required": false
+      },
+      "error_type": {
+        "annotation": "str | None",
+        "required": false
+      },
+      "failed_item_index": {
+        "annotation": "int | None",
+        "required": false
+      },
+      "failed_node_id": {
+        "annotation": "str | None",
+        "required": false
+      },
+      "failed_node_kind": {
+        "annotation": "str | None",
+        "required": false
+      },
+      "finished_at": {
+        "annotation": "datetime.datetime | None",
+        "required": false
+      },
+      "items_done": {
+        "annotation": "int | None",
+        "required": false
+      },
+      "items_total": {
+        "annotation": "int | None",
+        "required": false
+      },
+      "job_id": {
+        "annotation": "str",
+        "required": true
+      },
+      "kind": {
+        "annotation": "str",
+        "required": true
+      },
+      "progress": {
+        "annotation": "int",
+        "required": true
+      },
+      "replay_from": {
+        "annotation": "str | None",
+        "required": false
+      },
+      "stalled": {
+        "annotation": "bool",
+        "required": true
+      },
+      "started_at": {
+        "annotation": "datetime.datetime | None",
+        "required": false
+      },
+      "status": {
+        "annotation": "str",
+        "required": true
+      },
+      "total_completion_tokens": {
+        "annotation": "int",
+        "required": true
+      },
+      "total_prompt_tokens": {
+        "annotation": "int",
+        "required": true
+      },
+      "updated_at": {
+        "annotation": "datetime.datetime",
+        "required": true
+      }
+    },
+    "full": {
+      "attempt": 1,
+      "cancel_requested": true,
+      "collection_id": "text",
+      "collection_name": "text",
+      "cost_usd": 0.5,
+      "current_stage": "text",
+      "display_title": "text",
+      "document_filename": "text",
+      "document_id": "text",
+      "document_title": "text",
+      "duration_seconds": 0.5,
+      "error": "text",
+      "error_type": "text",
+      "failed_item_index": 1,
+      "failed_node_id": "text",
+      "failed_node_kind": "text",
+      "finished_at": "2026-01-02T03:04:05Z",
+      "items_done": 1,
+      "items_total": 1,
+      "job_id": "text",
+      "kind": "text",
+      "progress": 1,
+      "replay_from": "text",
+      "stalled": true,
+      "started_at": "2026-01-02T03:04:05Z",
+      "status": "text",
+      "total_completion_tokens": 1,
+      "total_prompt_tokens": 1,
+      "updated_at": "2026-01-02T03:04:05Z"
+    },
+    "minimal": {
+      "attempt": 1,
+      "cancel_requested": false,
+      "collection_id": "text",
+      "collection_name": null,
+      "cost_usd": 0.5,
+      "current_stage": null,
+      "display_title": null,
+      "document_filename": null,
+      "document_id": "text",
+      "document_title": null,
+      "duration_seconds": null,
+      "error": null,
+      "error_type": null,
+      "failed_item_index": null,
+      "failed_node_id": null,
+      "failed_node_kind": null,
+      "finished_at": null,
+      "items_done": null,
+      "items_total": null,
+      "job_id": "text",
+      "kind": "text",
+      "progress": 1,
+      "replay_from": null,
+      "stalled": true,
+      "started_at": null,
+      "status": "text",
+      "total_completion_tokens": 1,
+      "total_prompt_tokens": 1,
+      "updated_at": "2026-01-02T03:04:05Z"
+    }
+  },
+  "JobTimeseries": {
+    "fields": {
+      "bucket_seconds": {
+        "annotation": "int",
+        "required": true
+      },
+      "buckets": {
+        "annotation": "list[TimeseriesBucket]",
+        "required": false
+      },
+      "collection_id": {
+        "annotation": "str | None",
+        "required": false
+      },
+      "window_hours": {
+        "annotation": "int",
+        "required": true
+      }
+    },
+    "full": {
+      "bucket_seconds": 1,
+      "buckets": [
+        {
+          "backlog": 1,
+          "bucket_start": "2026-01-02T03:04:05Z",
+          "created": 1,
+          "done": 1,
+          "failed": 1
+        }
+      ],
+      "collection_id": "text",
+      "window_hours": 1
+    },
+    "minimal": {
+      "bucket_seconds": 1,
+      "buckets": [],
+      "collection_id": null,
+      "window_hours": 1
+    }
+  },
+  "JobTrace": {
+    "fields": {
+      "events": {
+        "annotation": "list[JobEvent]",
+        "required": false
+      },
+      "job_id": {
+        "annotation": "str",
+        "required": true
+      }
+    },
+    "full": {
+      "events": [
+        {
+          "completion_tokens": 1,
+          "cost_usd": 0.5,
+          "depth": 1,
+          "detail": "text",
+          "event_id": "text",
+          "finished_at": "2026-01-02T03:04:05Z",
+          "has_full_input": true,
+          "has_full_output": true,
+          "input_summary": {
+            "key0": "value"
+          },
+          "item_index": 1,
+          "node_kind": "text",
+          "node_path": "text",
+          "output_summary": {
+            "key0": "value"
+          },
+          "parent_path": "text",
+          "prompt_tokens": 1,
+          "score": 0.5,
+          "stage": "text",
+          "started_at": "2026-01-02T03:04:05Z",
+          "status": "text"
+        }
+      ],
+      "job_id": "text"
+    },
+    "minimal": {
+      "events": [],
+      "job_id": "text"
+    }
+  },
+  "KeyInfo": {
+    "fields": {
+      "created_at": {
+        "annotation": "datetime.datetime",
+        "required": true
+      },
+      "expires_at": {
+        "annotation": "datetime.datetime | None",
+        "required": false
+      },
+      "id": {
+        "annotation": "str",
+        "required": true
+      },
+      "last_used_at": {
+        "annotation": "datetime.datetime | None",
+        "required": false
+      },
+      "name": {
+        "annotation": "str",
+        "required": true
+      },
+      "permissions": {
+        "annotation": "dict[str, typing.Any] | None",
+        "required": false
+      },
+      "prefix": {
+        "annotation": "str",
+        "required": true
+      },
+      "revoked_at": {
+        "annotation": "datetime.datetime | None",
+        "required": false
+      }
+    },
+    "full": {
+      "created_at": "2026-01-02T03:04:05Z",
+      "expires_at": "2026-01-02T03:04:05Z",
+      "id": "text",
+      "last_used_at": "2026-01-02T03:04:05Z",
+      "name": "text",
+      "permissions": {
+        "key0": "value"
+      },
+      "prefix": "text",
+      "revoked_at": "2026-01-02T03:04:05Z"
+    },
+    "minimal": {
+      "created_at": "2026-01-02T03:04:05Z",
+      "expires_at": null,
+      "id": "text",
+      "last_used_at": null,
+      "name": "text",
+      "permissions": null,
+      "prefix": "text",
+      "revoked_at": null
+    }
+  },
+  "KeyPermissions": {
+    "fields": {
+      "capabilities": {
+        "annotation": "list[Capability]",
+        "required": false
+      },
+      "collections": {
+        "annotation": "list[str]",
+        "required": true
+      },
+      "profile": {
+        "annotation": "KeyProfile | None",
+        "required": false
+      }
+    },
+    "full": {
+      "capabilities": [
+        "read"
+      ],
+      "collections": [
+        "text"
+      ],
+      "profile": "agent_reader"
+    },
+    "minimal": {
+      "capabilities": [],
+      "collections": [],
+      "profile": null
+    }
+  },
+  "MetadataFilter": {
+    "fields": {
+      "field": {
+        "annotation": "str",
+        "required": true
+      },
+      "op": {
+        "annotation": "Literal['eq', 'contains', 'in', 'gte', 'lte']",
+        "required": true
+      },
+      "value": {
+        "annotation": "Any",
+        "required": true
+      }
+    },
+    "full": {
+      "field": "text",
+      "op": "eq",
+      "value": "value"
+    },
+    "minimal": {
+      "field": "text",
+      "op": "eq",
+      "value": "value"
+    }
+  },
+  "MetadataUpdateResponse": {
+    "fields": {
+      "job_id": {
+        "annotation": "str | None",
+        "required": false
+      },
+      "reembed_fields": {
+        "annotation": "list[str]",
+        "required": true
+      },
+      "reembedding": {
+        "annotation": "bool",
+        "required": true
+      },
+      "updated_fields": {
+        "annotation": "list[str]",
+        "required": true
+      }
+    },
+    "full": {
+      "job_id": "text",
+      "reembed_fields": [
+        "text"
+      ],
+      "reembedding": true,
+      "updated_fields": [
+        "text"
+      ]
+    },
+    "minimal": {
+      "job_id": null,
+      "reembed_fields": [],
+      "reembedding": true,
+      "updated_fields": []
+    }
+  },
+  "MetadataValue": {
+    "fields": {
+      "field_name": {
+        "annotation": "str",
+        "required": true
+      },
+      "origin": {
+        "annotation": "FieldOrigin",
+        "required": true
+      },
+      "value": {
+        "annotation": "Any",
+        "required": true
+      }
+    },
+    "full": {
+      "field_name": "text",
+      "origin": "system",
+      "value": "value"
+    },
+    "minimal": {
+      "field_name": "text",
+      "origin": "system",
+      "value": "value"
+    }
+  },
+  "MetadataValuesPatch": {
+    "fields": {
+      "values": {
+        "annotation": "dict[str, typing.Any]",
+        "required": true
+      }
+    },
+    "full": {
+      "values": {
+        "key0": "value"
+      }
+    },
+    "minimal": {
+      "values": {
+        "key0": "value"
+      }
+    }
+  },
+  "ModelRateOverride": {
+    "fields": {
+      "input": {
+        "annotation": "float",
+        "required": true
+      },
+      "output": {
+        "annotation": "float",
+        "required": true
+      }
+    },
+    "full": {
+      "input": 0.5,
+      "output": 0.5
+    },
+    "minimal": {
+      "input": 0.5,
+      "output": 0.5
+    }
+  },
+  "NewFailures": {
+    "fields": {
+      "count": {
+        "annotation": "int",
+        "required": true
+      },
+      "job_ids": {
+        "annotation": "list[str]",
+        "required": false
+      },
+      "latest_failed_at": {
+        "annotation": "datetime.datetime | None",
+        "required": false
+      },
+      "since": {
+        "annotation": "datetime.datetime",
+        "required": true
+      }
+    },
+    "full": {
+      "count": 1,
+      "job_ids": [
+        "text"
+      ],
+      "latest_failed_at": "2026-01-02T03:04:05Z",
+      "since": "2026-01-02T03:04:05Z"
+    },
+    "minimal": {
+      "count": 1,
+      "job_ids": [],
+      "latest_failed_at": null,
+      "since": "2026-01-02T03:04:05Z"
+    }
+  },
+  "NumberRange": {
+    "fields": {
+      "gte": {
+        "annotation": "float | None",
+        "required": false
+      },
+      "lte": {
+        "annotation": "float | None",
+        "required": false
+      }
+    },
+    "full": {
+      "gte": 0.5,
+      "lte": 0.5
+    },
+    "minimal": {
+      "gte": null,
+      "lte": null
+    }
+  },
+  "OutlineHeading": {
+    "fields": {
+      "chunk_id": {
+        "annotation": "str | None",
+        "required": false
+      },
+      "level": {
+        "annotation": "int",
+        "required": true
+      },
+      "page_number": {
+        "annotation": "int | None",
+        "required": false
+      },
+      "text": {
+        "annotation": "str",
+        "required": true
+      }
+    },
+    "full": {
+      "chunk_id": "text",
+      "level": 1,
+      "page_number": 1,
+      "text": "text"
+    },
+    "minimal": {
+      "chunk_id": null,
+      "level": 1,
+      "page_number": null,
+      "text": "text"
+    }
+  },
+  "PageInfo": {
+    "fields": {
+      "height": {
+        "annotation": "float | None",
+        "required": false
+      },
+      "is_scanned": {
+        "annotation": "bool",
+        "required": true
+      },
+      "language": {
+        "annotation": "str | None",
+        "required": false
+      },
+      "page_label": {
+        "annotation": "int | None",
+        "required": false
+      },
+      "page_number": {
+        "annotation": "int",
+        "required": true
+      },
+      "render_blob_hash": {
+        "annotation": "str | None",
+        "required": false
+      },
+      "width": {
+        "annotation": "float | None",
+        "required": false
+      }
+    },
+    "full": {
+      "height": 0.5,
+      "is_scanned": true,
+      "language": "text",
+      "page_label": 1,
+      "page_number": 1,
+      "render_blob_hash": "text",
+      "width": 0.5
+    },
+    "minimal": {
+      "height": null,
+      "is_scanned": true,
+      "language": null,
+      "page_label": null,
+      "page_number": 1,
+      "render_blob_hash": null,
+      "width": null
+    }
+  },
+  "Pagination": {
+    "fields": {
+      "limit": {
+        "annotation": "int",
+        "required": false
+      },
+      "offset": {
+        "annotation": "int",
+        "required": false
+      }
+    },
+    "full": {
+      "limit": 1,
+      "offset": 1
+    },
+    "minimal": {
+      "limit": 50,
+      "offset": 0
+    }
+  },
+  "PipelineDesignResponse": {
+    "fields": {
+      "blob": {
+        "annotation": "dict[str, typing.Any]",
+        "required": true
+      },
+      "issues": {
+        "annotation": "list[dict[str, typing.Any]]",
+        "required": false
+      },
+      "palette": {
+        "annotation": "dict[str, typing.Any]",
+        "required": true
+      },
+      "presets": {
+        "annotation": "list[PipelinePreset]",
+        "required": false
+      }
+    },
+    "full": {
+      "blob": {
+        "key0": "value"
+      },
+      "issues": [
+        {
+          "key0": "value"
+        }
+      ],
+      "palette": {
+        "key0": "value"
+      },
+      "presets": [
+        {
+          "description": "text",
+          "is_default": true,
+          "label": "text",
+          "name": "text"
+        }
+      ]
+    },
+    "minimal": {
+      "blob": {},
+      "issues": [],
+      "palette": {},
+      "presets": []
+    }
+  },
+  "PipelineIndexResponse": {
+    "fields": {
+      "pipelines": {
+        "annotation": "list[PipelineSurface]",
+        "required": false
+      }
+    },
+    "full": {
+      "pipelines": [
+        {
+          "description": "text",
+          "design_url": "text",
+          "edit_url": "text",
+          "inspect_url": "text",
+          "key": "text",
+          "stages_apply_url": "text",
+          "stages_view_url": "text",
+          "title": "text"
+        }
+      ]
+    },
+    "minimal": {
+      "pipelines": []
+    }
+  },
+  "PipelinePreset": {
+    "fields": {
+      "description": {
+        "annotation": "str",
+        "required": true
+      },
+      "is_default": {
+        "annotation": "bool",
+        "required": false
+      },
+      "label": {
+        "annotation": "str",
+        "required": true
+      },
+      "name": {
+        "annotation": "str",
+        "required": true
+      }
+    },
+    "full": {
+      "description": "text",
+      "is_default": true,
+      "label": "text",
+      "name": "text"
+    },
+    "minimal": {
+      "description": "text",
+      "is_default": false,
+      "label": "text",
+      "name": "text"
+    }
+  },
+  "PipelineSurface": {
+    "fields": {
+      "description": {
+        "annotation": "str",
+        "required": true
+      },
+      "design_url": {
+        "annotation": "str",
+        "required": true
+      },
+      "edit_url": {
+        "annotation": "str",
+        "required": true
+      },
+      "inspect_url": {
+        "annotation": "str",
+        "required": true
+      },
+      "key": {
+        "annotation": "str",
+        "required": true
+      },
+      "stages_apply_url": {
+        "annotation": "str | None",
+        "required": false
+      },
+      "stages_view_url": {
+        "annotation": "str | None",
+        "required": false
+      },
+      "title": {
+        "annotation": "str",
+        "required": true
+      }
+    },
+    "full": {
+      "description": "text",
+      "design_url": "text",
+      "edit_url": "text",
+      "inspect_url": "text",
+      "key": "text",
+      "stages_apply_url": "text",
+      "stages_view_url": "text",
+      "title": "text"
+    },
+    "minimal": {
+      "description": "text",
+      "design_url": "text",
+      "edit_url": "text",
+      "inspect_url": "text",
+      "key": "text",
+      "stages_apply_url": null,
+      "stages_view_url": null,
+      "title": "text"
+    }
+  },
+  "PostgresFootprintModel": {
+    "fields": {
+      "chunks_bytes": {
+        "annotation": "int",
+        "required": true
+      },
+      "documents_bytes": {
+        "annotation": "int",
+        "required": true
+      },
+      "enrichment_bytes": {
+        "annotation": "int",
+        "required": true
+      },
+      "estimated": {
+        "annotation": "bool",
+        "required": true
+      },
+      "ir_blocks_bytes": {
+        "annotation": "int",
+        "required": true
+      },
+      "metadata_bytes": {
+        "annotation": "int",
+        "required": true
+      },
+      "observability_bytes": {
+        "annotation": "int",
+        "required": true
+      },
+      "total_bytes": {
+        "annotation": "int",
+        "required": true
+      }
+    },
+    "full": {
+      "chunks_bytes": 1,
+      "documents_bytes": 1,
+      "enrichment_bytes": 1,
+      "estimated": true,
+      "ir_blocks_bytes": 1,
+      "metadata_bytes": 1,
+      "observability_bytes": 1,
+      "total_bytes": 1
+    },
+    "minimal": {
+      "chunks_bytes": 1,
+      "documents_bytes": 1,
+      "enrichment_bytes": 1,
+      "estimated": true,
+      "ir_blocks_bytes": 1,
+      "metadata_bytes": 1,
+      "observability_bytes": 1,
+      "total_bytes": 1
+    }
+  },
+  "PreviewChunk": {
+    "fields": {
+      "chunk_id": {
+        "annotation": "str",
+        "required": true
+      },
+      "context": {
+        "annotation": "str",
+        "required": true
+      },
+      "generated_meta": {
+        "annotation": "dict[str, typing.Any]",
+        "required": true
+      },
+      "heading_path": {
+        "annotation": "list[str]",
+        "required": true
+      },
+      "ordinal": {
+        "annotation": "int",
+        "required": true
+      },
+      "page_end": {
+        "annotation": "int",
+        "required": true
+      },
+      "page_start": {
+        "annotation": "int",
+        "required": true
+      },
+      "role": {
+        "annotation": "str",
+        "required": true
+      },
+      "text": {
+        "annotation": "str",
+        "required": true
+      },
+      "text_truncated": {
+        "annotation": "bool",
+        "required": true
+      },
+      "token_count": {
+        "annotation": "int",
+        "required": true
+      }
+    },
+    "full": {
+      "chunk_id": "text",
+      "context": "text",
+      "generated_meta": {
+        "key0": "value"
+      },
+      "heading_path": [
+        "text"
+      ],
+      "ordinal": 1,
+      "page_end": 1,
+      "page_start": 1,
+      "role": "text",
+      "text": "text",
+      "text_truncated": true,
+      "token_count": 1
+    },
+    "minimal": {
+      "chunk_id": "text",
+      "context": "text",
+      "generated_meta": {},
+      "heading_path": [],
+      "ordinal": 1,
+      "page_end": 1,
+      "page_start": 1,
+      "role": "text",
+      "text": "text",
+      "text_truncated": true,
+      "token_count": 1
+    }
+  },
+  "PreviewCost": {
+    "fields": {
+      "completion_tokens": {
+        "annotation": "int",
+        "required": true
+      },
+      "cost_usd": {
+        "annotation": "float | None",
+        "required": true
+      },
+      "priced_call_count": {
+        "annotation": "int",
+        "required": true
+      },
+      "prompt_tokens": {
+        "annotation": "int",
+        "required": true
+      }
+    },
+    "full": {
+      "completion_tokens": 1,
+      "cost_usd": 0.5,
+      "priced_call_count": 1,
+      "prompt_tokens": 1
+    },
+    "minimal": {
+      "completion_tokens": 1,
+      "cost_usd": 0.5,
+      "priced_call_count": 1,
+      "prompt_tokens": 1
+    }
+  },
+  "PreviewIrSummary": {
+    "fields": {
+      "block_count": {
+        "annotation": "int",
+        "required": true
+      },
+      "block_type_counts": {
+        "annotation": "dict[str, int]",
+        "required": true
+      },
+      "figure_count": {
+        "annotation": "int",
+        "required": true
+      },
+      "file_size": {
+        "annotation": "int",
+        "required": true
+      },
+      "language": {
+        "annotation": "str",
+        "required": true
+      },
+      "page_count": {
+        "annotation": "int",
+        "required": true
+      },
+      "source_format": {
+        "annotation": "str",
+        "required": true
+      },
+      "source_hash": {
+        "annotation": "str",
+        "required": true
+      },
+      "title": {
+        "annotation": "str",
+        "required": true
+      }
+    },
+    "full": {
+      "block_count": 1,
+      "block_type_counts": {
+        "key0": 1
+      },
+      "figure_count": 1,
+      "file_size": 1,
+      "language": "text",
+      "page_count": 1,
+      "source_format": "text",
+      "source_hash": "text",
+      "title": "text"
+    },
+    "minimal": {
+      "block_count": 1,
+      "block_type_counts": {},
+      "figure_count": 1,
+      "file_size": 1,
+      "language": "text",
+      "page_count": 1,
+      "source_format": "text",
+      "source_hash": "text",
+      "title": "text"
+    }
+  },
+  "PreviewJobAccepted": {
+    "fields": {
+      "preview_id": {
+        "annotation": "str",
+        "required": true
+      },
+      "status": {
+        "annotation": "str",
+        "required": true
+      }
+    },
+    "full": {
+      "preview_id": "text",
+      "status": "text"
+    },
+    "minimal": {
+      "preview_id": "text",
+      "status": "text"
+    }
+  },
+  "PreviewJobResult": {
+    "fields": {
+      "error": {
+        "annotation": "str | None",
+        "required": false
+      },
+      "preview_id": {
+        "annotation": "str",
+        "required": true
+      },
+      "result": {
+        "annotation": "PreviewResponse | None",
+        "required": false
+      },
+      "status": {
+        "annotation": "str",
+        "required": true
+      }
+    },
+    "full": {
+      "error": "text",
+      "preview_id": "text",
+      "result": {
+        "chunk_count": 1,
+        "chunks": [
+          {
+            "chunk_id": "text",
+            "context": "text",
+            "generated_meta": {
+              "key0": "value"
+            },
+            "heading_path": [
+              "text"
+            ],
+            "ordinal": 1,
+            "page_end": 1,
+            "page_start": 1,
+            "role": "text",
+            "text": "text",
+            "text_truncated": true,
+            "token_count": 1
+          }
+        ],
+        "chunks_truncated": true,
+        "cost": {
+          "completion_tokens": 1,
+          "cost_usd": 0.5,
+          "priced_call_count": 1,
+          "prompt_tokens": 1
+        },
+        "error": "text",
+        "failed_node_id": "text",
+        "failed_node_kind": "text",
+        "ir": {
+          "block_count": 1,
+          "block_type_counts": {
+            "key0": 1
+          },
+          "figure_count": 1,
+          "file_size": 1,
+          "language": "text",
+          "page_count": 1,
+          "source_format": "text",
+          "source_hash": "text",
+          "title": "text"
+        },
+        "ok": true,
+        "source_filename": "text",
+        "trace": [
+          {
+            "depth": 1,
+            "duration_ms": 0.5,
+            "error_message": "text",
+            "error_type": "text",
+            "item_index": 1,
+            "kind": "text",
+            "node_id": "text",
+            "node_path": "text",
+            "parent_path": "text",
+            "score": 0.5,
+            "status": "text"
+          }
+        ],
+        "vector_set_count": 1,
+        "warnings": [
+          "text"
+        ]
+      },
+      "status": "text"
+    },
+    "minimal": {
+      "error": null,
+      "preview_id": "text",
+      "result": null,
+      "status": "text"
+    }
+  },
+  "PreviewResponse": {
+    "fields": {
+      "chunk_count": {
+        "annotation": "int",
+        "required": true
+      },
+      "chunks": {
+        "annotation": "list[PreviewChunk]",
+        "required": true
+      },
+      "chunks_truncated": {
+        "annotation": "bool",
+        "required": true
+      },
+      "cost": {
+        "annotation": "PreviewCost",
+        "required": true
+      },
+      "error": {
+        "annotation": "str | None",
+        "required": false
+      },
+      "failed_node_id": {
+        "annotation": "str | None",
+        "required": false
+      },
+      "failed_node_kind": {
+        "annotation": "str | None",
+        "required": false
+      },
+      "ir": {
+        "annotation": "PreviewIrSummary | None",
+        "required": true
+      },
+      "ok": {
+        "annotation": "bool",
+        "required": true
+      },
+      "source_filename": {
+        "annotation": "str",
+        "required": true
+      },
+      "trace": {
+        "annotation": "list[PreviewTraceNode]",
+        "required": true
+      },
+      "vector_set_count": {
+        "annotation": "int",
+        "required": true
+      },
+      "warnings": {
+        "annotation": "list[str]",
+        "required": false
+      }
+    },
+    "full": {
+      "chunk_count": 1,
+      "chunks": [
+        {
+          "chunk_id": "text",
+          "context": "text",
+          "generated_meta": {
+            "key0": "value"
+          },
+          "heading_path": [
+            "text"
+          ],
+          "ordinal": 1,
+          "page_end": 1,
+          "page_start": 1,
+          "role": "text",
+          "text": "text",
+          "text_truncated": true,
+          "token_count": 1
+        }
+      ],
+      "chunks_truncated": true,
+      "cost": {
+        "completion_tokens": 1,
+        "cost_usd": 0.5,
+        "priced_call_count": 1,
+        "prompt_tokens": 1
+      },
+      "error": "text",
+      "failed_node_id": "text",
+      "failed_node_kind": "text",
+      "ir": {
+        "block_count": 1,
+        "block_type_counts": {
+          "key0": 1
+        },
+        "figure_count": 1,
+        "file_size": 1,
+        "language": "text",
+        "page_count": 1,
+        "source_format": "text",
+        "source_hash": "text",
+        "title": "text"
+      },
+      "ok": true,
+      "source_filename": "text",
+      "trace": [
+        {
+          "depth": 1,
+          "duration_ms": 0.5,
+          "error_message": "text",
+          "error_type": "text",
+          "item_index": 1,
+          "kind": "text",
+          "node_id": "text",
+          "node_path": "text",
+          "parent_path": "text",
+          "score": 0.5,
+          "status": "text"
+        }
+      ],
+      "vector_set_count": 1,
+      "warnings": [
+        "text"
+      ]
+    },
+    "minimal": {
+      "chunk_count": 1,
+      "chunks": [],
+      "chunks_truncated": true,
+      "cost": {
+        "completion_tokens": 1,
+        "cost_usd": 0.5,
+        "priced_call_count": 1,
+        "prompt_tokens": 1
+      },
+      "error": null,
+      "failed_node_id": null,
+      "failed_node_kind": null,
+      "ir": {
+        "block_count": 1,
+        "block_type_counts": {},
+        "figure_count": 1,
+        "file_size": 1,
+        "language": "text",
+        "page_count": 1,
+        "source_format": "text",
+        "source_hash": "text",
+        "title": "text"
+      },
+      "ok": true,
+      "source_filename": "text",
+      "trace": [],
+      "vector_set_count": 1,
+      "warnings": []
+    }
+  },
+  "PreviewTraceNode": {
+    "fields": {
+      "depth": {
+        "annotation": "int",
+        "required": true
+      },
+      "duration_ms": {
+        "annotation": "float",
+        "required": true
+      },
+      "error_message": {
+        "annotation": "str | None",
+        "required": true
+      },
+      "error_type": {
+        "annotation": "str | None",
+        "required": true
+      },
+      "item_index": {
+        "annotation": "int | None",
+        "required": true
+      },
+      "kind": {
+        "annotation": "str",
+        "required": true
+      },
+      "node_id": {
+        "annotation": "str",
+        "required": true
+      },
+      "node_path": {
+        "annotation": "str",
+        "required": true
+      },
+      "parent_path": {
+        "annotation": "str | None",
+        "required": true
+      },
+      "score": {
+        "annotation": "float | None",
+        "required": true
+      },
+      "status": {
+        "annotation": "str",
+        "required": true
+      }
+    },
+    "full": {
+      "depth": 1,
+      "duration_ms": 0.5,
+      "error_message": "text",
+      "error_type": "text",
+      "item_index": 1,
+      "kind": "text",
+      "node_id": "text",
+      "node_path": "text",
+      "parent_path": "text",
+      "score": 0.5,
+      "status": "text"
+    },
+    "minimal": {
+      "depth": 1,
+      "duration_ms": 0.5,
+      "error_message": "text",
+      "error_type": "text",
+      "item_index": 1,
+      "kind": "text",
+      "node_id": "text",
+      "node_path": "text",
+      "parent_path": "text",
+      "score": 0.5,
+      "status": "text"
+    }
+  },
+  "ProviderProbeResult": {
+    "fields": {
+      "detail": {
+        "annotation": "str | None",
+        "required": false
+      },
+      "endpoint": {
+        "annotation": "str | None",
+        "required": false
+      },
+      "family": {
+        "annotation": "str | None",
+        "required": false
+      },
+      "kind": {
+        "annotation": "str",
+        "required": true
+      },
+      "latency_ms": {
+        "annotation": "int | None",
+        "required": false
+      },
+      "node_id": {
+        "annotation": "str",
+        "required": true
+      },
+      "side": {
+        "annotation": "str",
+        "required": true
+      },
+      "status": {
+        "annotation": "ProbeStatus",
+        "required": true
+      }
+    },
+    "full": {
+      "detail": "text",
+      "endpoint": "text",
+      "family": "text",
+      "kind": "text",
+      "latency_ms": 1,
+      "node_id": "text",
+      "side": "text",
+      "status": "ok"
+    },
+    "minimal": {
+      "detail": null,
+      "endpoint": null,
+      "family": null,
+      "kind": "text",
+      "latency_ms": null,
+      "node_id": "text",
+      "side": "text",
+      "status": "ok"
+    }
+  },
+  "QdrantFootprintModel": {
+    "fields": {
+      "dense_bytes": {
+        "annotation": "int",
+        "required": true
+      },
+      "estimated": {
+        "annotation": "bool",
+        "required": true
+      },
+      "payload_bytes": {
+        "annotation": "int",
+        "required": true
+      },
+      "points": {
+        "annotation": "int",
+        "required": true
+      },
+      "sparse_bytes": {
+        "annotation": "int",
+        "required": true
+      },
+      "total_bytes": {
+        "annotation": "int",
+        "required": true
+      }
+    },
+    "full": {
+      "dense_bytes": 1,
+      "estimated": true,
+      "payload_bytes": 1,
+      "points": 1,
+      "sparse_bytes": 1,
+      "total_bytes": 1
+    },
+    "minimal": {
+      "dense_bytes": 1,
+      "estimated": true,
+      "payload_bytes": 1,
+      "points": 1,
+      "sparse_bytes": 1,
+      "total_bytes": 1
+    }
+  },
+  "QueueDepth": {
+    "fields": {
+      "pending": {
+        "annotation": "int",
+        "required": true
+      },
+      "running": {
+        "annotation": "int",
+        "required": true
+      }
+    },
+    "full": {
+      "pending": 1,
+      "running": 1
+    },
+    "minimal": {
+      "pending": 1,
+      "running": 1
+    }
+  },
+  "RateOverrides": {
+    "fields": {
+      "embed": {
+        "annotation": "dict[str, float] | None",
+        "required": false
+      },
+      "models": {
+        "annotation": "dict[str, ModelRateOverride] | None",
+        "required": false
+      },
+      "ocr": {
+        "annotation": "dict[str, float] | None",
+        "required": false
+      }
+    },
+    "full": {
+      "embed": {
+        "key0": 0.5
+      },
+      "models": {
+        "key0": {
+          "input": 0.5,
+          "output": 0.5
+        }
+      },
+      "ocr": {
+        "key0": 0.5
+      }
+    },
+    "minimal": {
+      "embed": null,
+      "models": null,
+      "ocr": null
+    }
+  },
+  "RebuildIndexAccepted": {
+    "fields": {
+      "collection_id": {
+        "annotation": "str",
+        "required": true
+      },
+      "job_id": {
+        "annotation": "str",
+        "required": true
+      }
+    },
+    "full": {
+      "collection_id": "text",
+      "job_id": "text"
+    },
+    "minimal": {
+      "collection_id": "text",
+      "job_id": "text"
+    }
+  },
+  "ReingestJobHandle": {
+    "fields": {
+      "document_id": {
+        "annotation": "str",
+        "required": true
+      },
+      "job_id": {
+        "annotation": "str",
+        "required": true
+      }
+    },
+    "full": {
+      "document_id": "text",
+      "job_id": "text"
+    },
+    "minimal": {
+      "document_id": "text",
+      "job_id": "text"
+    }
+  },
+  "RemoveFieldOp": {
+    "fields": {
+      "field_name": {
+        "annotation": "str",
+        "required": true
+      },
+      "op": {
+        "annotation": "Literal['remove']",
+        "required": true
+      }
+    },
+    "full": {
+      "field_name": "text",
+      "op": "remove"
+    },
+    "minimal": {
+      "field_name": "text",
+      "op": "remove"
+    }
+  },
+  "RenameFieldOp": {
+    "fields": {
+      "field_name": {
+        "annotation": "str",
+        "required": true
+      },
+      "new_name": {
+        "annotation": "str",
+        "required": true
+      },
+      "op": {
+        "annotation": "Literal['rename']",
+        "required": true
+      }
+    },
+    "full": {
+      "field_name": "text",
+      "new_name": "text",
+      "op": "rename"
+    },
+    "minimal": {
+      "field_name": "text",
+      "new_name": "text",
+      "op": "rename"
+    }
+  },
+  "RotateKeyRequest": {
+    "fields": {
+      "expires_at": {
+        "annotation": "datetime.datetime | None",
+        "required": false
+      },
+      "name": {
+        "annotation": "str | None",
+        "required": false
+      },
+      "permissions": {
+        "annotation": "KeyPermissions | None",
+        "required": false
+      }
+    },
+    "full": {
+      "expires_at": "2026-01-02T03:04:05Z",
+      "name": "text",
+      "permissions": {
+        "capabilities": [
+          "read"
+        ],
+        "collections": [
+          "text"
+        ],
+        "profile": "agent_reader"
+      }
+    },
+    "minimal": {
+      "expires_at": null,
+      "name": null,
+      "permissions": null
+    }
+  },
+  "S3FootprintModel": {
+    "fields": {
+      "estimated": {
+        "annotation": "bool",
+        "required": true
+      },
+      "original_bytes": {
+        "annotation": "int",
+        "required": true
+      },
+      "physical_unique_bytes": {
+        "annotation": "int",
+        "required": true
+      },
+      "rendered_bytes": {
+        "annotation": "int",
+        "required": true
+      },
+      "total_bytes": {
+        "annotation": "int",
+        "required": true
+      }
+    },
+    "full": {
+      "estimated": true,
+      "original_bytes": 1,
+      "physical_unique_bytes": 1,
+      "rendered_bytes": 1,
+      "total_bytes": 1
+    },
+    "minimal": {
+      "estimated": true,
+      "original_bytes": 1,
+      "physical_unique_bytes": 1,
+      "rendered_bytes": 1,
+      "total_bytes": 1
+    }
+  },
+  "SchemaDiff": {
+    "fields": {
+      "added": {
+        "annotation": "list[str]",
+        "required": false
+      },
+      "modified": {
+        "annotation": "list[SchemaDiffModifiedField]",
+        "required": false
+      },
+      "reindex_required_fields": {
+        "annotation": "list[str]",
+        "required": false
+      },
+      "removed": {
+        "annotation": "list[str]",
+        "required": false
+      },
+      "renamed": {
+        "annotation": "list[SchemaDiffRename]",
+        "required": false
+      },
+      "values_lost": {
+        "annotation": "dict[str, int]",
+        "required": false
+      }
+    },
+    "full": {
+      "added": [
+        "text"
+      ],
+      "modified": [
+        {
+          "changed_attrs": [
+            "text"
+          ],
+          "field_name": "text"
+        }
+      ],
+      "reindex_required_fields": [
+        "text"
+      ],
+      "removed": [
+        "text"
+      ],
+      "renamed": [
+        {
+          "from_name": "text",
+          "to_name": "text"
+        }
+      ],
+      "values_lost": {
+        "key0": 1
+      }
+    },
+    "minimal": {
+      "added": [],
+      "modified": [],
+      "reindex_required_fields": [],
+      "removed": [],
+      "renamed": [],
+      "values_lost": {}
+    }
+  },
+  "SchemaDiffModifiedField": {
+    "fields": {
+      "changed_attrs": {
+        "annotation": "list[str]",
+        "required": true
+      },
+      "field_name": {
+        "annotation": "str",
+        "required": true
+      }
+    },
+    "full": {
+      "changed_attrs": [
+        "text"
+      ],
+      "field_name": "text"
+    },
+    "minimal": {
+      "changed_attrs": [],
+      "field_name": "text"
+    }
+  },
+  "SchemaDiffRename": {
+    "fields": {
+      "from_name": {
+        "annotation": "str",
+        "required": true
+      },
+      "to_name": {
+        "annotation": "str",
+        "required": true
+      }
+    },
+    "full": {
+      "from_name": "text",
+      "to_name": "text"
+    },
+    "minimal": {
+      "from_name": "text",
+      "to_name": "text"
+    }
+  },
+  "SearchHealth": {
+    "fields": {
+      "build_error": {
+        "annotation": "str | None",
+        "required": false
+      },
+      "buildable": {
+        "annotation": "bool",
+        "required": true
+      },
+      "index": {
+        "annotation": "SearchIndex",
+        "required": true
+      },
+      "providers": {
+        "annotation": "list[ProviderProbeResult]",
+        "required": false
+      },
+      "search_operational": {
+        "annotation": "Union[bool, Literal['degraded']]",
+        "required": true
+      }
+    },
+    "full": {
+      "build_error": "text",
+      "buildable": true,
+      "index": {
+        "last_ingest_at": "2026-01-02T03:04:05Z",
+        "vector_count": 1
+      },
+      "providers": [
+        {
+          "detail": "text",
+          "endpoint": "text",
+          "family": "text",
+          "kind": "text",
+          "latency_ms": 1,
+          "node_id": "text",
+          "side": "text",
+          "status": "ok"
+        }
+      ],
+      "search_operational": true
+    },
+    "minimal": {
+      "build_error": null,
+      "buildable": true,
+      "index": {
+        "last_ingest_at": null,
+        "vector_count": 1
+      },
+      "providers": [],
+      "search_operational": true
+    }
+  },
+  "SearchHealthSummary": {
+    "fields": {
+      "avg_hits": {
+        "annotation": "float | None",
+        "required": true
+      },
+      "error_rate": {
+        "annotation": "float",
+        "required": true
+      },
+      "p95_latency_ms": {
+        "annotation": "float | None",
+        "required": true
+      },
+      "total_runs": {
+        "annotation": "int",
+        "required": true
+      },
+      "zero_result_rate": {
+        "annotation": "float",
+        "required": true
+      }
+    },
+    "full": {
+      "avg_hits": 0.5,
+      "error_rate": 0.5,
+      "p95_latency_ms": 0.5,
+      "total_runs": 1,
+      "zero_result_rate": 0.5
+    },
+    "minimal": {
+      "avg_hits": 0.5,
+      "error_rate": 0.5,
+      "p95_latency_ms": 0.5,
+      "total_runs": 1,
+      "zero_result_rate": 0.5
+    }
+  },
+  "SearchHint": {
+    "fields": {
+      "field": {
+        "annotation": "str",
+        "required": true
+      },
+      "message": {
+        "annotation": "str",
+        "required": true
+      },
+      "suggestions": {
+        "annotation": "list[str]",
+        "required": false
+      },
+      "value": {
+        "annotation": "Any",
+        "required": true
+      }
+    },
+    "full": {
+      "field": "text",
+      "message": "text",
+      "suggestions": [
+        "text"
+      ],
+      "value": "value"
+    },
+    "minimal": {
+      "field": "text",
+      "message": "text",
+      "suggestions": [],
+      "value": "value"
+    }
+  },
+  "SearchHit": {
+    "fields": {
+      "bbox": {
+        "annotation": "list[float] | None",
+        "required": false
+      },
+      "block_ids": {
+        "annotation": "list[str]",
+        "required": false
+      },
+      "block_locations": {
+        "annotation": "list[BlockLocation]",
+        "required": false
+      },
+      "chunk_id": {
+        "annotation": "str",
+        "required": true
+      },
+      "chunk_index": {
+        "annotation": "int",
+        "required": false
+      },
+      "document_id": {
+        "annotation": "str",
+        "required": true
+      },
+      "document_title": {
+        "annotation": "str | None",
+        "required": false
+      },
+      "filename": {
+        "annotation": "str | None",
+        "required": false
+      },
+      "fusion_score": {
+        "annotation": "float | None",
+        "required": false
+      },
+      "heading_path": {
+        "annotation": "list[str]",
+        "required": false
+      },
+      "metadata": {
+        "annotation": "dict[str, typing.Any]",
+        "required": false
+      },
+      "page": {
+        "annotation": "int | None",
+        "required": false
+      },
+      "page_number": {
+        "annotation": "int | None",
+        "required": false
+      },
+      "rerank_score": {
+        "annotation": "float | None",
+        "required": false
+      },
+      "score": {
+        "annotation": "float",
+        "required": false
+      },
+      "text": {
+        "annotation": "str",
+        "required": false
+      },
+      "token_count": {
+        "annotation": "int",
+        "required": false
+      }
+    },
+    "full": {
+      "bbox": [
+        0.5
+      ],
+      "block_ids": [
+        "text"
+      ],
+      "block_locations": [
+        {
+          "bbox": [
+            0.5
+          ],
+          "page": 1,
+          "page_number": 1
+        }
+      ],
+      "chunk_id": "text",
+      "chunk_index": 1,
+      "document_id": "text",
+      "document_title": "text",
+      "filename": "text",
+      "fusion_score": 0.5,
+      "heading_path": [
+        "text"
+      ],
+      "metadata": {
+        "key0": "value"
+      },
+      "page": 1,
+      "page_number": 1,
+      "rerank_score": 0.5,
+      "score": 0.5,
+      "text": "text",
+      "token_count": 1
+    },
+    "minimal": {
+      "bbox": null,
+      "block_ids": [],
+      "block_locations": [],
+      "chunk_id": "text",
+      "chunk_index": 0,
+      "document_id": "text",
+      "document_title": null,
+      "filename": null,
+      "fusion_score": null,
+      "heading_path": [],
+      "metadata": {},
+      "page": null,
+      "page_number": null,
+      "rerank_score": null,
+      "score": 0.0,
+      "text": "",
+      "token_count": 0
+    }
+  },
+  "SearchIndex": {
+    "fields": {
+      "last_ingest_at": {
+        "annotation": "datetime.datetime | None",
+        "required": false
+      },
+      "vector_count": {
+        "annotation": "int",
+        "required": true
+      }
+    },
+    "full": {
+      "last_ingest_at": "2026-01-02T03:04:05Z",
+      "vector_count": 1
+    },
+    "minimal": {
+      "last_ingest_at": null,
+      "vector_count": 1
+    }
+  },
+  "SearchRequest": {
+    "fields": {
+      "debug": {
+        "annotation": "bool",
+        "required": false
+      },
+      "filters": {
+        "annotation": "dict[str, typing.Any] | None",
+        "required": false
+      },
+      "fusion": {
+        "annotation": "Optional[Literal['rrf', 'dbsf']]",
+        "required": false
+      },
+      "group_by": {
+        "annotation": "Optional[Literal['document']]",
+        "required": false
+      },
+      "limit": {
+        "annotation": "int",
+        "required": false
+      },
+      "max_per_document": {
+        "annotation": "int",
+        "required": false
+      },
+      "min_score": {
+        "annotation": "float | None",
+        "required": false
+      },
+      "query": {
+        "annotation": "str",
+        "required": true
+      },
+      "rerank": {
+        "annotation": "bool | None",
+        "required": false
+      },
+      "return_fields": {
+        "annotation": "list[str] | None",
+        "required": false
+      },
+      "search_in": {
+        "annotation": "list[SearchTarget] | None",
+        "required": false
+      }
+    },
+    "full": {
+      "debug": true,
+      "filters": {
+        "key0": "value"
+      },
+      "fusion": "rrf",
+      "group_by": "document",
+      "limit": 1,
+      "max_per_document": 1,
+      "min_score": 0.5,
+      "query": "text",
+      "rerank": true,
+      "return_fields": [
+        "text"
+      ],
+      "search_in": [
+        {
+          "field": "text",
+          "lexical": true,
+          "semantic": true
+        }
+      ]
+    },
+    "minimal": {
+      "debug": false,
+      "filters": null,
+      "fusion": null,
+      "group_by": null,
+      "limit": 10,
+      "max_per_document": 1,
+      "min_score": null,
+      "query": "text",
+      "rerank": null,
+      "return_fields": null,
+      "search_in": null
+    }
+  },
+  "SearchResponse": {
+    "fields": {
+      "cost": {
+        "annotation": "SearchCost | None",
+        "required": false
+      },
+      "debug_info": {
+        "annotation": "dict[str, typing.Any] | None",
+        "required": false
+      },
+      "hints": {
+        "annotation": "list[SearchHint]",
+        "required": false
+      },
+      "hits": {
+        "annotation": "list[SearchHit]",
+        "required": false
+      },
+      "query": {
+        "annotation": "str",
+        "required": true
+      },
+      "score_kind": {
+        "annotation": "str",
+        "required": false
+      }
+    },
+    "full": {
+      "cost": {
+        "call_count": 1,
+        "completion_tokens": 1,
+        "cost_usd": 0.5,
+        "prompt_tokens": 1
+      },
+      "debug_info": {
+        "key0": "value"
+      },
+      "hints": [
+        {
+          "field": "text",
+          "message": "text",
+          "suggestions": [
+            "text"
+          ],
+          "value": "value"
+        }
+      ],
+      "hits": [
+        {
+          "bbox": [
+            0.5
+          ],
+          "block_ids": [
+            "text"
+          ],
+          "block_locations": [
+            {
+              "bbox": [
+                0.5
+              ],
+              "page": 1,
+              "page_number": 1
+            }
+          ],
+          "chunk_id": "text",
+          "chunk_index": 1,
+          "document_id": "text",
+          "document_title": "text",
+          "filename": "text",
+          "fusion_score": 0.5,
+          "heading_path": [
+            "text"
+          ],
+          "metadata": {
+            "key0": "value"
+          },
+          "page": 1,
+          "page_number": 1,
+          "rerank_score": 0.5,
+          "score": 0.5,
+          "text": "text",
+          "token_count": 1
+        }
+      ],
+      "query": "text",
+      "score_kind": "text"
+    },
+    "minimal": {
+      "cost": null,
+      "debug_info": null,
+      "hints": [],
+      "hits": [],
+      "query": "text",
+      "score_kind": "rrf_fusion"
+    }
+  },
+  "SearchTarget": {
+    "fields": {
+      "field": {
+        "annotation": "str",
+        "required": false
+      },
+      "lexical": {
+        "annotation": "bool",
+        "required": false
+      },
+      "semantic": {
+        "annotation": "bool",
+        "required": false
+      }
+    },
+    "full": {
+      "field": "text",
+      "lexical": true,
+      "semantic": true
+    },
+    "minimal": {
+      "field": "content",
+      "lexical": false,
+      "semantic": false
+    }
+  },
+  "SearchTargetGuide": {
+    "fields": {
+      "field": {
+        "annotation": "str",
+        "required": true
+      },
+      "lexical": {
+        "annotation": "bool",
+        "required": true
+      },
+      "semantic": {
+        "annotation": "bool",
+        "required": true
+      }
+    },
+    "full": {
+      "field": "text",
+      "lexical": true,
+      "semantic": true
+    },
+    "minimal": {
+      "field": "text",
+      "lexical": true,
+      "semantic": true
+    }
+  },
+  "ServiceInfo": {
+    "fields": {
+      "detail": {
+        "annotation": "str | None",
+        "required": false
+      },
+      "device": {
+        "annotation": "str | None",
+        "required": false
+      },
+      "name": {
+        "annotation": "str",
+        "required": true
+      },
+      "provides": {
+        "annotation": "list[str]",
+        "required": false
+      },
+      "reachable": {
+        "annotation": "bool",
+        "required": true
+      },
+      "role": {
+        "annotation": "str",
+        "required": true
+      }
+    },
+    "full": {
+      "detail": "text",
+      "device": "text",
+      "name": "text",
+      "provides": [
+        "text"
+      ],
+      "reachable": true,
+      "role": "text"
+    },
+    "minimal": {
+      "detail": null,
+      "device": null,
+      "name": "text",
+      "provides": [],
+      "reachable": true,
+      "role": "text"
+    }
+  },
+  "SetCollectionAliasRequest": {
+    "fields": {
+      "collection_id": {
+        "annotation": "str",
+        "required": true
+      }
+    },
+    "full": {
+      "collection_id": "text"
+    },
+    "minimal": {
+      "collection_id": "text"
+    }
+  },
+  "SetCollectionAliasResponse": {
+    "fields": {
+      "collection_id": {
+        "annotation": "str",
+        "required": true
+      },
+      "collection_name": {
+        "annotation": "str",
+        "required": true
+      },
+      "created": {
+        "annotation": "bool",
+        "required": true
+      },
+      "created_at": {
+        "annotation": "datetime.datetime",
+        "required": true
+      },
+      "name": {
+        "annotation": "str",
+        "required": true
+      },
+      "previous_collection_id": {
+        "annotation": "str | None",
+        "required": false
+      },
+      "updated_at": {
+        "annotation": "datetime.datetime",
+        "required": true
+      }
+    },
+    "full": {
+      "collection_id": "text",
+      "collection_name": "text",
+      "created": true,
+      "created_at": "2026-01-02T03:04:05Z",
+      "name": "text",
+      "previous_collection_id": "text",
+      "updated_at": "2026-01-02T03:04:05Z"
+    },
+    "minimal": {
+      "collection_id": "text",
+      "collection_name": "text",
+      "created": true,
+      "created_at": "2026-01-02T03:04:05Z",
+      "name": "text",
+      "previous_collection_id": null,
+      "updated_at": "2026-01-02T03:04:05Z"
+    }
+  },
+  "SnippetImportResult": {
+    "fields": {
+      "collection_id": {
+        "annotation": "str",
+        "required": true
+      },
+      "kind": {
+        "annotation": "Literal['pipeline', 'search', 'schema']",
+        "required": true
+      },
+      "needs_reindex": {
+        "annotation": "bool",
+        "required": true
+      }
+    },
+    "full": {
+      "collection_id": "text",
+      "kind": "pipeline",
+      "needs_reindex": true
+    },
+    "minimal": {
+      "collection_id": "text",
+      "kind": "pipeline",
+      "needs_reindex": true
+    }
+  },
+  "StageApplyResponse": {
+    "fields": {
+      "blob": {
+        "annotation": "dict[str, typing.Any]",
+        "required": true
+      },
+      "build_error": {
+        "annotation": "str | None",
+        "required": false
+      },
+      "issues": {
+        "annotation": "list[dict[str, typing.Any]]",
+        "required": false
+      },
+      "notices": {
+        "annotation": "list[str]",
+        "required": false
+      },
+      "stages": {
+        "annotation": "list[dict[str, typing.Any]]",
+        "required": true
+      },
+      "valid": {
+        "annotation": "bool",
+        "required": true
+      }
+    },
+    "full": {
+      "blob": {
+        "key0": "value"
+      },
+      "build_error": "text",
+      "issues": [
+        {
+          "key0": "value"
+        }
+      ],
+      "notices": [
+        "text"
+      ],
+      "stages": [
+        {
+          "key0": "value"
+        }
+      ],
+      "valid": true
+    },
+    "minimal": {
+      "blob": {},
+      "build_error": null,
+      "issues": [],
+      "notices": [],
+      "stages": [],
+      "valid": true
+    }
+  },
+  "StageDurations": {
+    "fields": {
+      "collection_id": {
+        "annotation": "str",
+        "required": true
+      },
+      "stage_seconds": {
+        "annotation": "dict[str, float]",
+        "required": false
+      }
+    },
+    "full": {
+      "collection_id": "text",
+      "stage_seconds": {
+        "key0": 0.5
+      }
+    },
+    "minimal": {
+      "collection_id": "text",
+      "stage_seconds": {}
+    }
+  },
+  "StageEstimate": {
+    "fields": {
+      "calls": {
+        "annotation": "int",
+        "required": true
+      },
+      "completion_tokens": {
+        "annotation": "int",
+        "required": true
+      },
+      "cost_usd": {
+        "annotation": "float | None",
+        "required": true
+      },
+      "family": {
+        "annotation": "str",
+        "required": true
+      },
+      "model": {
+        "annotation": "str | None",
+        "required": false
+      },
+      "pages": {
+        "annotation": "int",
+        "required": false
+      },
+      "prompt_tokens": {
+        "annotation": "int",
+        "required": true
+      },
+      "provider": {
+        "annotation": "str",
+        "required": true
+      },
+      "rate_known": {
+        "annotation": "bool",
+        "required": true
+      },
+      "stage": {
+        "annotation": "str",
+        "required": true
+      }
+    },
+    "full": {
+      "calls": 1,
+      "completion_tokens": 1,
+      "cost_usd": 0.5,
+      "family": "text",
+      "model": "text",
+      "pages": 1,
+      "prompt_tokens": 1,
+      "provider": "text",
+      "rate_known": true,
+      "stage": "text"
+    },
+    "minimal": {
+      "calls": 1,
+      "completion_tokens": 1,
+      "cost_usd": 0.5,
+      "family": "text",
+      "model": null,
+      "pages": 0,
+      "prompt_tokens": 1,
+      "provider": "text",
+      "rate_known": true,
+      "stage": "text"
+    }
+  },
+  "StageViewResponse": {
+    "fields": {
+      "build_error": {
+        "annotation": "str | None",
+        "required": false
+      },
+      "issues": {
+        "annotation": "list[dict[str, typing.Any]]",
+        "required": false
+      },
+      "stages": {
+        "annotation": "list[dict[str, typing.Any]]",
+        "required": true
+      },
+      "valid": {
+        "annotation": "bool",
+        "required": true
+      }
+    },
+    "full": {
+      "build_error": "text",
+      "issues": [
+        {
+          "key0": "value"
+        }
+      ],
+      "stages": [
+        {
+          "key0": "value"
+        }
+      ],
+      "valid": true
+    },
+    "minimal": {
+      "build_error": null,
+      "issues": [],
+      "stages": [],
+      "valid": true
+    }
+  },
+  "TextFilter": {
+    "fields": {
+      "contains": {
+        "annotation": "str | None",
+        "required": false
+      },
+      "eq": {
+        "annotation": "str | None",
+        "required": false
+      }
+    },
+    "full": {
+      "contains": "text",
+      "eq": "text"
+    },
+    "minimal": {
+      "contains": null,
+      "eq": null
+    }
+  },
+  "TimeseriesBucket": {
+    "fields": {
+      "backlog": {
+        "annotation": "int",
+        "required": true
+      },
+      "bucket_start": {
+        "annotation": "datetime.datetime",
+        "required": true
+      },
+      "created": {
+        "annotation": "int",
+        "required": true
+      },
+      "done": {
+        "annotation": "int",
+        "required": true
+      },
+      "failed": {
+        "annotation": "int",
+        "required": true
+      }
+    },
+    "full": {
+      "backlog": 1,
+      "bucket_start": "2026-01-02T03:04:05Z",
+      "created": 1,
+      "done": 1,
+      "failed": 1
+    },
+    "minimal": {
+      "backlog": 1,
+      "bucket_start": "2026-01-02T03:04:05Z",
+      "created": 1,
+      "done": 1,
+      "failed": 1
+    }
+  },
+  "TracePurgeResult": {
+    "fields": {
+      "deleted_objects": {
+        "annotation": "int",
+        "required": true
+      },
+      "purged_jobs": {
+        "annotation": "int",
+        "required": true
+      }
+    },
+    "full": {
+      "deleted_objects": 1,
+      "purged_jobs": 1
+    },
+    "minimal": {
+      "deleted_objects": 1,
+      "purged_jobs": 1
+    }
+  },
+  "TransferAccepted": {
+    "fields": {
+      "kind": {
+        "annotation": "str",
+        "required": true
+      },
+      "status": {
+        "annotation": "str",
+        "required": true
+      },
+      "transfer_id": {
+        "annotation": "str",
+        "required": true
+      }
+    },
+    "full": {
+      "kind": "text",
+      "status": "text",
+      "transfer_id": "text"
+    },
+    "minimal": {
+      "kind": "text",
+      "status": "text",
+      "transfer_id": "text"
+    }
+  },
+  "TransferStatus": {
+    "fields": {
+      "collection_id": {
+        "annotation": "str | None",
+        "required": false
+      },
+      "collection_name": {
+        "annotation": "str | None",
+        "required": false
+      },
+      "counts": {
+        "annotation": "dict[str, typing.Any] | None",
+        "required": false
+      },
+      "created_at": {
+        "annotation": "datetime.datetime",
+        "required": true
+      },
+      "dense_dim": {
+        "annotation": "int | None",
+        "required": false
+      },
+      "error": {
+        "annotation": "str | None",
+        "required": false
+      },
+      "expires_at": {
+        "annotation": "datetime.datetime | None",
+        "required": false
+      },
+      "finished_at": {
+        "annotation": "datetime.datetime | None",
+        "required": false
+      },
+      "format_version": {
+        "annotation": "int | None",
+        "required": false
+      },
+      "kind": {
+        "annotation": "str",
+        "required": true
+      },
+      "progress": {
+        "annotation": "int",
+        "required": true
+      },
+      "size_bytes": {
+        "annotation": "int | None",
+        "required": false
+      },
+      "stage": {
+        "annotation": "str | None",
+        "required": false
+      },
+      "started_at": {
+        "annotation": "datetime.datetime | None",
+        "required": false
+      },
+      "status": {
+        "annotation": "str",
+        "required": true
+      },
+      "transfer_id": {
+        "annotation": "str",
+        "required": true
+      },
+      "updated_at": {
+        "annotation": "datetime.datetime",
+        "required": true
+      }
+    },
+    "full": {
+      "collection_id": "text",
+      "collection_name": "text",
+      "counts": {
+        "key0": "value"
+      },
+      "created_at": "2026-01-02T03:04:05Z",
+      "dense_dim": 1,
+      "error": "text",
+      "expires_at": "2026-01-02T03:04:05Z",
+      "finished_at": "2026-01-02T03:04:05Z",
+      "format_version": 1,
+      "kind": "text",
+      "progress": 1,
+      "size_bytes": 1,
+      "stage": "text",
+      "started_at": "2026-01-02T03:04:05Z",
+      "status": "text",
+      "transfer_id": "text",
+      "updated_at": "2026-01-02T03:04:05Z"
+    },
+    "minimal": {
+      "collection_id": null,
+      "collection_name": null,
+      "counts": null,
+      "created_at": "2026-01-02T03:04:05Z",
+      "dense_dim": null,
+      "error": null,
+      "expires_at": null,
+      "finished_at": null,
+      "format_version": null,
+      "kind": "text",
+      "progress": 1,
+      "size_bytes": null,
+      "stage": null,
+      "started_at": null,
+      "status": "text",
+      "transfer_id": "text",
+      "updated_at": "2026-01-02T03:04:05Z"
+    }
+  },
+  "UpdateCollectionRequest": {
+    "fields": {
+      "dry_run": {
+        "annotation": "bool",
+        "required": false
+      },
+      "estimate_overrides": {
+        "annotation": "EstimateOverrides | None",
+        "required": false
+      },
+      "field_ops": {
+        "annotation": "list[typing.Annotated[AddFieldOp | UpdateFieldOp | RemoveFieldOp | RenameFieldOp, FieldInfo(annotation=NoneType, required=True, discriminator='op')]] | None",
+        "required": false
+      },
+      "fields": {
+        "annotation": "list[FieldSpec] | None",
+        "required": false
+      },
+      "job_timeout_seconds": {
+        "annotation": "float | None",
+        "required": false
+      },
+      "max_file_size_bytes": {
+        "annotation": "int | None",
+        "required": false
+      },
+      "name": {
+        "annotation": "str | None",
+        "required": false
+      },
+      "note": {
+        "annotation": "str | None",
+        "required": false
+      },
+      "pipeline": {
+        "annotation": "dict[str, typing.Any] | None",
+        "required": false
+      },
+      "search": {
+        "annotation": "dict[str, typing.Any] | None",
+        "required": false
+      },
+      "supported_formats": {
+        "annotation": "list[str] | None",
+        "required": false
+      },
+      "tags": {
+        "annotation": "list[str] | None",
+        "required": false
+      },
+      "title_field": {
+        "annotation": "str | None",
+        "required": false
+      },
+      "trace_verbosity": {
+        "annotation": "Optional[Literal['shape', 'full']]",
+        "required": false
+      }
+    },
+    "full": {
+      "dry_run": true,
+      "estimate_overrides": {
+        "assumptions": {
+          "bytes_per_page": 0.5,
+          "bytes_per_token": 0.5,
+          "chunk_overlap_ratio": 0.5,
+          "embed_dense_dims": 1,
+          "images_per_page": 0.5,
+          "llm_output_tokens": 0.5,
+          "llm_prompt_overhead_tokens": 0.5,
+          "metagen_doc_context_tokens": 0.5,
+          "metagen_output_tokens_per_field": 0.5,
+          "scanned_page_ratio": 0.5,
+          "target_chunk_tokens": 1,
+          "tokens_per_page": 0.5,
+          "vlm_output_tokens": 0.5,
+          "vlm_prompt_tokens_per_image": 0.5
+        },
+        "rates": {
+          "embed": {
+            "key0": 0.5
+          },
+          "models": {
+            "key0": {
+              "input": 0.5,
+              "output": 0.5
+            }
+          },
+          "ocr": {
+            "key0": 0.5
+          }
+        }
+      },
+      "field_ops": [
+        {
+          "field": {
+            "description": "text",
+            "enum_values": [
+              "text"
+            ],
+            "field_name": "text",
+            "field_type": "string",
+            "filterable": true,
+            "lexical": true,
+            "origin": "system",
+            "required": true,
+            "scope": "document",
+            "semantic": true
+          },
+          "op": "add"
+        }
+      ],
+      "fields": [
+        {
+          "description": "text",
+          "enum_values": [
+            "text"
+          ],
+          "field_name": "text",
+          "field_type": "string",
+          "filterable": true,
+          "lexical": true,
+          "origin": "system",
+          "required": true,
+          "scope": "document",
+          "semantic": true
+        }
+      ],
+      "job_timeout_seconds": 0.5,
+      "max_file_size_bytes": 1,
+      "name": "text",
+      "note": "text",
+      "pipeline": {
+        "key0": "value"
+      },
+      "search": {
+        "key0": "value"
+      },
+      "supported_formats": [
+        "text"
+      ],
+      "tags": [
+        "text"
+      ],
+      "title_field": "text",
+      "trace_verbosity": "shape"
+    },
+    "minimal": {
+      "dry_run": false,
+      "estimate_overrides": null,
+      "field_ops": null,
+      "fields": null,
+      "job_timeout_seconds": null,
+      "max_file_size_bytes": null,
+      "name": null,
+      "note": null,
+      "pipeline": null,
+      "search": null,
+      "supported_formats": null,
+      "tags": null,
+      "title_field": null,
+      "trace_verbosity": null
+    }
+  },
+  "UpdateCollectionResponse": {
+    "fields": {
+      "aliases": {
+        "annotation": "list[str] | None",
+        "required": false
+      },
+      "created_at": {
+        "annotation": "datetime.datetime | None",
+        "required": false
+      },
+      "dry_run": {
+        "annotation": "bool",
+        "required": true
+      },
+      "estimate_overrides": {
+        "annotation": "EstimateOverrides | None",
+        "required": false
+      },
+      "fields": {
+        "annotation": "list[FieldSpec]",
+        "required": false
+      },
+      "id": {
+        "annotation": "str",
+        "required": true
+      },
+      "job_timeout_seconds": {
+        "annotation": "float | None",
+        "required": false
+      },
+      "max_file_size_bytes": {
+        "annotation": "int",
+        "required": true
+      },
+      "missing_vectors": {
+        "annotation": "list[str] | None",
+        "required": false
+      },
+      "name": {
+        "annotation": "str",
+        "required": true
+      },
+      "needs_reindex": {
+        "annotation": "bool",
+        "required": true
+      },
+      "pipeline": {
+        "annotation": "dict[str, typing.Any] | None",
+        "required": true
+      },
+      "schema_diff": {
+        "annotation": "SchemaDiff",
+        "required": true
+      },
+      "search": {
+        "annotation": "dict[str, typing.Any] | None",
+        "required": true
+      },
+      "supported_formats": {
+        "annotation": "list[str]",
+        "required": true
+      },
+      "tags": {
+        "annotation": "list[str]",
+        "required": false
+      },
+      "title_field": {
+        "annotation": "str | None",
+        "required": false
+      },
+      "trace_verbosity": {
+        "annotation": "Literal['shape', 'full']",
+        "required": false
+      }
+    },
+    "full": {
+      "aliases": [
+        "text"
+      ],
+      "created_at": "2026-01-02T03:04:05Z",
+      "dry_run": true,
+      "estimate_overrides": {
+        "assumptions": {
+          "bytes_per_page": 0.5,
+          "bytes_per_token": 0.5,
+          "chunk_overlap_ratio": 0.5,
+          "embed_dense_dims": 1,
+          "images_per_page": 0.5,
+          "llm_output_tokens": 0.5,
+          "llm_prompt_overhead_tokens": 0.5,
+          "metagen_doc_context_tokens": 0.5,
+          "metagen_output_tokens_per_field": 0.5,
+          "scanned_page_ratio": 0.5,
+          "target_chunk_tokens": 1,
+          "tokens_per_page": 0.5,
+          "vlm_output_tokens": 0.5,
+          "vlm_prompt_tokens_per_image": 0.5
+        },
+        "rates": {
+          "embed": {
+            "key0": 0.5
+          },
+          "models": {
+            "key0": {
+              "input": 0.5,
+              "output": 0.5
+            }
+          },
+          "ocr": {
+            "key0": 0.5
+          }
+        }
+      },
+      "fields": [
+        {
+          "description": "text",
+          "enum_values": [
+            "text"
+          ],
+          "field_name": "text",
+          "field_type": "string",
+          "filterable": true,
+          "lexical": true,
+          "origin": "system",
+          "required": true,
+          "scope": "document",
+          "semantic": true
+        }
+      ],
+      "id": "text",
+      "job_timeout_seconds": 0.5,
+      "max_file_size_bytes": 1,
+      "missing_vectors": [
+        "text"
+      ],
+      "name": "text",
+      "needs_reindex": true,
+      "pipeline": {
+        "key0": "value"
+      },
+      "schema_diff": {
+        "added": [
+          "text"
+        ],
+        "modified": [
+          {
+            "changed_attrs": [
+              "text"
+            ],
+            "field_name": "text"
+          }
+        ],
+        "reindex_required_fields": [
+          "text"
+        ],
+        "removed": [
+          "text"
+        ],
+        "renamed": [
+          {
+            "from_name": "text",
+            "to_name": "text"
+          }
+        ],
+        "values_lost": {
+          "key0": 1
+        }
+      },
+      "search": {
+        "key0": "value"
+      },
+      "supported_formats": [
+        "text"
+      ],
+      "tags": [
+        "text"
+      ],
+      "title_field": "text",
+      "trace_verbosity": "shape"
+    },
+    "minimal": {
+      "aliases": null,
+      "created_at": null,
+      "dry_run": true,
+      "estimate_overrides": null,
+      "fields": [],
+      "id": "text",
+      "job_timeout_seconds": null,
+      "max_file_size_bytes": 1,
+      "missing_vectors": null,
+      "name": "text",
+      "needs_reindex": true,
+      "pipeline": {},
+      "schema_diff": {
+        "added": [],
+        "modified": [],
+        "reindex_required_fields": [],
+        "removed": [],
+        "renamed": [],
+        "values_lost": {}
+      },
+      "search": {},
+      "supported_formats": [],
+      "tags": [],
+      "title_field": null,
+      "trace_verbosity": "shape"
+    }
+  },
+  "UpdateFieldOp": {
+    "fields": {
+      "changes": {
+        "annotation": "FieldPatch",
+        "required": true
+      },
+      "field_name": {
+        "annotation": "str",
+        "required": true
+      },
+      "op": {
+        "annotation": "Literal['update']",
+        "required": true
+      }
+    },
+    "full": {
+      "changes": {
+        "description": "text",
+        "enum_values": [
+          "text"
+        ],
+        "field_type": "string",
+        "filterable": true,
+        "lexical": true,
+        "origin": "system",
+        "required": true,
+        "scope": "document",
+        "semantic": true
+      },
+      "field_name": "text",
+      "op": "update"
+    },
+    "minimal": {
+      "changes": {
+        "description": null,
+        "enum_values": null,
+        "field_type": null,
+        "filterable": null,
+        "lexical": null,
+        "origin": null,
+        "required": null,
+        "scope": null,
+        "semantic": null
+      },
+      "field_name": "text",
+      "op": "update"
+    }
+  },
+  "UploadAccepted": {
+    "fields": {
+      "document_id": {
+        "annotation": "str",
+        "required": true
+      },
+      "duplicate": {
+        "annotation": "bool",
+        "required": false
+      },
+      "job_id": {
+        "annotation": "str",
+        "required": true
+      }
+    },
+    "full": {
+      "document_id": "text",
+      "duplicate": true,
+      "job_id": "text"
+    },
+    "minimal": {
+      "document_id": "text",
+      "duplicate": false,
+      "job_id": "text"
+    }
+  },
+  "VolumeEstimate": {
+    "fields": {
+      "chunks": {
+        "annotation": "int",
+        "required": true
+      },
+      "dense_vectors": {
+        "annotation": "int",
+        "required": true
+      },
+      "pages": {
+        "annotation": "int",
+        "required": true
+      },
+      "sparse_vectors": {
+        "annotation": "int",
+        "required": true
+      },
+      "storage_bytes": {
+        "annotation": "int",
+        "required": true
+      }
+    },
+    "full": {
+      "chunks": 1,
+      "dense_vectors": 1,
+      "pages": 1,
+      "sparse_vectors": 1,
+      "storage_bytes": 1
+    },
+    "minimal": {
+      "chunks": 1,
+      "dense_vectors": 1,
+      "pages": 1,
+      "sparse_vectors": 1,
+      "storage_bytes": 1
+    }
+  },
+  "WhoAmI": {
+    "fields": {
+      "authenticated": {
+        "annotation": "bool",
+        "required": true
+      },
+      "capabilities": {
+        "annotation": "list[str]",
+        "required": true
+      },
+      "collections": {
+        "annotation": "list[str]",
+        "required": true
+      },
+      "profile": {
+        "annotation": "KeyProfile | None",
+        "required": false
+      },
+      "root": {
+        "annotation": "bool",
+        "required": true
+      }
+    },
+    "full": {
+      "authenticated": true,
+      "capabilities": [
+        "text"
+      ],
+      "collections": [
+        "text"
+      ],
+      "profile": "agent_reader",
+      "root": true
+    },
+    "minimal": {
+      "authenticated": true,
+      "capabilities": [],
+      "collections": [],
+      "profile": null,
+      "root": true
+    }
+  },
+  "WorkerActivity": {
+    "fields": {
+      "alive": {
+        "annotation": "bool",
+        "required": true
+      },
+      "busy": {
+        "annotation": "bool",
+        "required": true
+      },
+      "cpu_percent": {
+        "annotation": "float | None",
+        "required": false
+      },
+      "jobs": {
+        "annotation": "list[JobStatus]",
+        "required": false
+      },
+      "last_seen": {
+        "annotation": "datetime.datetime | None",
+        "required": false
+      },
+      "max_jobs": {
+        "annotation": "int | None",
+        "required": false
+      },
+      "mem_mb": {
+        "annotation": "float | None",
+        "required": false
+      },
+      "mem_percent": {
+        "annotation": "float | None",
+        "required": false
+      },
+      "started_at": {
+        "annotation": "datetime.datetime | None",
+        "required": false
+      },
+      "worker_id": {
+        "annotation": "str",
+        "required": true
+      },
+      "worker_name": {
+        "annotation": "str | None",
+        "required": false
+      }
+    },
+    "full": {
+      "alive": true,
+      "busy": true,
+      "cpu_percent": 0.5,
+      "jobs": [
+        {
+          "attempt": 1,
+          "cancel_requested": true,
+          "collection_id": "text",
+          "collection_name": "text",
+          "cost_usd": 0.5,
+          "current_stage": "text",
+          "display_title": "text",
+          "document_filename": "text",
+          "document_id": "text",
+          "document_title": "text",
+          "duration_seconds": 0.5,
+          "error": "text",
+          "error_type": "text",
+          "failed_item_index": 1,
+          "failed_node_id": "text",
+          "failed_node_kind": "text",
+          "finished_at": "2026-01-02T03:04:05Z",
+          "items_done": 1,
+          "items_total": 1,
+          "job_id": "text",
+          "kind": "text",
+          "progress": 1,
+          "replay_from": "text",
+          "stalled": true,
+          "started_at": "2026-01-02T03:04:05Z",
+          "status": "text",
+          "total_completion_tokens": 1,
+          "total_prompt_tokens": 1,
+          "updated_at": "2026-01-02T03:04:05Z"
+        }
+      ],
+      "last_seen": "2026-01-02T03:04:05Z",
+      "max_jobs": 1,
+      "mem_mb": 0.5,
+      "mem_percent": 0.5,
+      "started_at": "2026-01-02T03:04:05Z",
+      "worker_id": "text",
+      "worker_name": "text"
+    },
+    "minimal": {
+      "alive": true,
+      "busy": true,
+      "cpu_percent": null,
+      "jobs": [],
+      "last_seen": null,
+      "max_jobs": null,
+      "mem_mb": null,
+      "mem_percent": null,
+      "started_at": null,
+      "worker_id": "text",
+      "worker_name": null
+    }
+  },
+  "WorkersLive": {
+    "fields": {
+      "workers": {
+        "annotation": "list[WorkerActivity]",
+        "required": false
+      }
+    },
+    "full": {
+      "workers": [
+        {
+          "alive": true,
+          "busy": true,
+          "cpu_percent": 0.5,
+          "jobs": [
+            {
+              "attempt": 1,
+              "cancel_requested": true,
+              "collection_id": "text",
+              "collection_name": "text",
+              "cost_usd": 0.5,
+              "current_stage": "text",
+              "display_title": "text",
+              "document_filename": "text",
+              "document_id": "text",
+              "document_title": "text",
+              "duration_seconds": 0.5,
+              "error": "text",
+              "error_type": "text",
+              "failed_item_index": 1,
+              "failed_node_id": "text",
+              "failed_node_kind": "text",
+              "finished_at": "2026-01-02T03:04:05Z",
+              "items_done": 1,
+              "items_total": 1,
+              "job_id": "text",
+              "kind": "text",
+              "progress": 1,
+              "replay_from": "text",
+              "stalled": true,
+              "started_at": "2026-01-02T03:04:05Z",
+              "status": "text",
+              "total_completion_tokens": 1,
+              "total_prompt_tokens": 1,
+              "updated_at": "2026-01-02T03:04:05Z"
+            }
+          ],
+          "last_seen": "2026-01-02T03:04:05Z",
+          "max_jobs": 1,
+          "mem_mb": 0.5,
+          "mem_percent": 0.5,
+          "started_at": "2026-01-02T03:04:05Z",
+          "worker_id": "text",
+          "worker_name": "text"
+        }
+      ]
+    },
+    "minimal": {
+      "workers": []
+    }
+  }
+}

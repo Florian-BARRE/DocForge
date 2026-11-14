@@ -1,7 +1,6 @@
 # ====== Code Summary ======
-# Request/response models for the collections resource, mirrored field-for-field from the DocForge
-# backend router models. The pipeline (ingest graph) and search blobs are opaque server-shaped JSON,
-# so they are typed as plain dicts rather than the engine's structured blob models.
+# Collection models: the full collection contract and its create / update request and response.
+# The pipeline (ingest graph) and search blobs are opaque server-shaped JSON, typed as plain dicts.
 
 # ====== Standard Library Imports ======
 from datetime import datetime
@@ -11,12 +10,10 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 # ====== Local Project Imports ======
-from ._shared import FieldOrigin, FieldScope, FieldType
-from .estimate import EstimateOverrides
-from .field_spec import FieldSpec
-from .health import CollectionHealthSummary
-from .reingest import ReingestJobHandle
-from .schema_ops import FieldOp, SchemaDiff
+from ..estimate import EstimateOverrides
+from ..field_spec import FieldSpec
+from ..health import CollectionHealthSummary
+from ..schema_ops import FieldOp, SchemaDiff
 
 
 class CollectionModel(BaseModel):
@@ -281,190 +278,3 @@ class UpdateCollectionResponse(CollectionModel):
 
     schema_diff: SchemaDiff = Field(description="The metadata-schema change applied or previewed.")
     dry_run: bool = Field(description="True when nothing was written (preview only).")
-
-
-class BulkReingestRequest(BaseModel):
-    """
-    The re-run request over a collection's corpus (a full-pipeline re-ingest).
-
-    Attributes:
-        document_ids (list[str] | None): The explicit subset to re-run. Omit or null → EVERY document
-            in the collection. An empty list is rejected by the API (an ambiguous no-op).
-        force (bool): Bypass the stage cache and recompute every stage from scratch (no cache
-            read/write). Use to rebuild after a code change that did not bump a node's CACHE_VERSION.
-        replay_from (str | None): Replay from this post-IR stage (no re-parse); None = full re-run.
-        confirm_estimate (bool): Acknowledge the estimate of a reingest above the confirm threshold.
-    """
-
-    document_ids: list[str] | None = Field(
-        default=None,
-        description="Explicit document UUIDs to re-run; omit for the whole collection.",
-    )
-    force: bool = Field(
-        default=False,
-        description="Bypass the stage cache and recompute every stage from scratch (no cache "
-        "read/write). Use to rebuild after a code change that did not bump a node's CACHE_VERSION.",
-    )
-    replay_from: str | None = Field(
-        default=None,
-        description="Replay only this post-IR stage and its downstream from each document's PERSISTED "
-        "IR (no re-parse): one of enrich, chunk, metagen_chunk, metagen_document, embed — as the "
-        "collection's pipeline allows (422 lists the allowed stages). Omit for a full re-run.",
-    )
-    confirm_estimate: bool = Field(
-        default=False,
-        description="Acknowledge the cost estimate of a LARGE reingest (above the server's confirm "
-        "threshold). Without it such a call is refused 409 estimate_required carrying the estimate "
-        "summary; review it and resend with true.",
-    )
-
-
-class BulkReingestAccepted(BaseModel):
-    """
-    The accepted bulk re-run — the runs execute asynchronously (poll each job).
-
-    A match count above the server's per-call fan-out ceiling enqueues only the first N and reports
-    ``capped=true`` with the full ``matched`` count, so one call never floods the queue.
-
-    Attributes:
-        collection_id (str): The target collection.
-        count (int): Jobs enqueued (= ``enqueued``; kept for backward compatibility).
-        matched (int): Documents the request resolved to (before the cap).
-        enqueued (int): Jobs actually enqueued (<= the fan-out ceiling).
-        capped (bool): True when ``matched`` exceeded the per-call fan-out ceiling.
-        max_fanout (int): The per-call fan-out ceiling that was applied.
-        skipped_in_flight (int): Documents skipped because a run was already active for them.
-        jobs (list[ReingestJobHandle]): One handle per enqueued run.
-    """
-
-    collection_id: str = Field(description="The target collection's UUID.")
-    count: int = Field(description="Jobs enqueued (= enqueued; kept for backward compatibility).")
-    matched: int = Field(description="Documents the request resolved to (before the cap).")
-    enqueued: int = Field(description="Jobs actually enqueued (<= the fan-out ceiling).")
-    capped: bool = Field(
-        description="True when the match count exceeded the per-call fan-out ceiling."
-    )
-    max_fanout: int = Field(description="The per-call fan-out ceiling that was applied.")
-    skipped_in_flight: int = Field(
-        default=0,
-        description="Documents skipped because an ingestion job was already active for them.",
-    )
-    skipped_not_replayable: int = Field(
-        default=0,
-        description="Documents skipped by a replay_from run because they have no persisted IR.",
-    )
-    jobs: list[ReingestJobHandle] = Field(description="One handle per enqueued run.")
-
-
-class CollectionContractSchemaResponse(BaseModel):
-    """The full discoverable vocabulary of a collection contract — no value has to be guessed."""
-
-    config_schema: dict[str, Any] = Field(
-        description="JSON Schema of the collection identity/limits contract (drives the UI form)."
-    )
-    field_schema: dict[str, Any] = Field(
-        description="JSON Schema of one metadata FieldSpec — carries the field_type/origin/scope "
-        "enums the identity/limits contract omits."
-    )
-    supported_format_tokens: list[str] = Field(
-        description="Every upload format token a collection may declare in supported_formats "
-        "(e.g. 'pdf', 'docx', 'md')."
-    )
-
-
-class FieldGuide(BaseModel):
-    """
-    One metadata field, described for a client that wants to filter or search on it.
-
-    Attributes:
-        name (str): The field name (the key used in ``filters`` / ``search_in``).
-        type (FieldType): The declared data type.
-        description (str | None): What the field means (None when the schema sets none).
-        scope (FieldScope): Where the value lives — one per document, or one per chunk.
-        origin (FieldOrigin): Who fills it.
-        filterable (bool): Usable as a ``filters`` key.
-        semantic (bool): Searchable on its dense vector.
-        lexical (bool): Searchable on its sparse vector.
-        required (bool): Required at upload.
-        enum_values (list[str] | None): The allowed values of an enum field.
-        example_values (list[str]): Up to 10 stored values, most frequent first.
-        distinct_count (int): Number of distinct stored values.
-        note (str | None): Why examples are omitted, when they are.
-    """
-
-    name: str = Field(description="The field name (key used in filters / search_in).")
-    type: FieldType = Field(description="The declared data type.")
-    description: str | None = Field(default=None, description="What the field means.")
-    scope: FieldScope = Field(description="One value per document, or one per chunk.")
-    origin: FieldOrigin = Field(description="Who fills the field.")
-    filterable: bool = Field(description="Usable as a filters key.")
-    semantic: bool = Field(description="Searchable on its dense vector.")
-    lexical: bool = Field(description="Searchable on its sparse vector.")
-    required: bool = Field(description="Required at upload.")
-    enum_values: list[str] | None = Field(default=None, description="Allowed values of an enum.")
-    example_values: list[str] = Field(
-        default_factory=list, description="Up to 10 stored values, most frequent first."
-    )
-    distinct_count: int = Field(description="Number of distinct stored values.")
-    note: str | None = Field(default=None, description="Why examples are omitted, when they are.")
-
-
-class SearchTargetGuide(BaseModel):
-    """
-    One valid ``search_in`` entry of the collection.
-
-    Attributes:
-        field (str): ``"content"`` (the chunk body) or a metadata field name.
-        semantic (bool): The field has a dense vector to query.
-        lexical (bool): The field has a sparse vector to query.
-    """
-
-    field: str = Field(description="'content' or a metadata field name.")
-    semantic: bool = Field(description="The field has a dense vector to query.")
-    lexical: bool = Field(description="The field has a sparse vector to query.")
-
-
-class CollectionDescription(BaseModel):
-    """
-    The lean agent guide to one collection — what is in it and how to query it.
-
-    Attributes:
-        collection_id (str): The collection id.
-        name (str): The collection name.
-        document_count (int): Number of documents in the collection.
-        title_field (str | None): The document-scope field used as each hit's display title.
-        page_numbering (str): How hits locate pages (which field to cite).
-        fields (list[FieldGuide]): Every metadata field of the schema.
-        searchable_targets (list[SearchTargetGuide]): The valid ``search_in`` entries.
-        filter_grammar (list[str]): The filter value forms the search route accepts.
-        example_requests (list[dict[str, Any]]): Ready-to-send search request bodies.
-    """
-
-    collection_id: str = Field(description="The collection id.")
-    name: str = Field(description="The collection name.")
-    document_count: int = Field(description="Number of documents in the collection.")
-    title_field: str | None = Field(default=None, description="Display-title field, if any.")
-    page_numbering: str = Field(description="How hits locate pages (which field to cite).")
-    fields: list[FieldGuide] = Field(description="Every metadata field of the schema.")
-    searchable_targets: list[SearchTargetGuide] = Field(description="Valid search_in entries.")
-    filter_grammar: list[str] = Field(description="The accepted filter value forms.")
-    example_requests: list[dict[str, Any]] = Field(
-        description="Ready-to-send search request bodies for this collection."
-    )
-
-
-__all__ = [
-    "FieldSpec",
-    "CollectionModel",
-    "CollectionListItem",
-    "CreateCollectionRequest",
-    "UpdateCollectionRequest",
-    "UpdateCollectionResponse",
-    "BulkReingestRequest",
-    "ReingestJobHandle",
-    "BulkReingestAccepted",
-    "CollectionContractSchemaResponse",
-    "FieldGuide",
-    "SearchTargetGuide",
-    "CollectionDescription",
-]
