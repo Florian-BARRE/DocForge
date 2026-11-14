@@ -1,0 +1,22 @@
+{
+ "block_types": [
+  "table",
+  "formula",
+  "figure"
+ ],
+ "n_blocks": 3,
+ "request": {
+  "content": "%PDF-1.7 characterization",
+  "headers": {
+   "Authorization": "Bearer token",
+   "Content-Type": "application/pdf"
+  },
+  "params": {
+   "use_chart_recognition": false,
+   "use_ocr_for_image_block": false,
+   "use_seal_recognition": false
+  },
+  "url": "/vl-parse"
+ },
+ "score": 0.6666666666666666
+}

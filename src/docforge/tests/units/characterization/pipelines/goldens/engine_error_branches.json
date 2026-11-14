@@ -1,0 +1,1146 @@
+{
+ "cache_lookup_raises": {
+  "cache_calls": [
+   [
+    "before",
+    "p"
+   ],
+   [
+    "after",
+    "p"
+   ]
+  ],
+  "events": [
+   [
+    "start",
+    "p",
+    "charact_cacheable_producer",
+    null,
+    null
+   ],
+   [
+    "end",
+    "p",
+    "charact_cacheable_producer",
+    null,
+    "success"
+   ],
+   [
+    "start",
+    "c",
+    "charact_consumer",
+    null,
+    null
+   ],
+   [
+    "end",
+    "c",
+    "charact_consumer",
+    null,
+    "success"
+   ]
+  ],
+  "output": {
+   "doc": {
+    "text": "parsed -> C"
+   }
+  },
+  "record": {
+   "children": [
+    {
+     "children": [],
+     "error": null,
+     "kind": "charact_cacheable_producer",
+     "node_id": "p",
+     "score": null,
+     "status": "success"
+    },
+    {
+     "children": [],
+     "error": null,
+     "kind": "charact_consumer",
+     "node_id": "c",
+     "score": null,
+     "status": "success"
+    }
+   ],
+   "error": null,
+   "kind": "group",
+   "node_id": "g",
+   "score": null,
+   "status": "success"
+  }
+ },
+ "cache_store_raises": {
+  "cache_calls": [
+   [
+    "before",
+    "p"
+   ],
+   [
+    "after",
+    "p"
+   ]
+  ],
+  "events": [
+   [
+    "start",
+    "p",
+    "charact_cacheable_producer",
+    null,
+    null
+   ],
+   [
+    "end",
+    "p",
+    "charact_cacheable_producer",
+    null,
+    "success"
+   ],
+   [
+    "start",
+    "c",
+    "charact_consumer",
+    null,
+    null
+   ],
+   [
+    "end",
+    "c",
+    "charact_consumer",
+    null,
+    "success"
+   ]
+  ],
+  "output": {
+   "doc": {
+    "text": "parsed -> C"
+   }
+  },
+  "record": {
+   "children": [
+    {
+     "children": [],
+     "error": null,
+     "kind": "charact_cacheable_producer",
+     "node_id": "p",
+     "score": null,
+     "status": "success"
+    },
+    {
+     "children": [],
+     "error": null,
+     "kind": "charact_consumer",
+     "node_id": "c",
+     "score": null,
+     "status": "success"
+    }
+   ],
+   "error": null,
+   "kind": "group",
+   "node_id": "g",
+   "score": null,
+   "status": "success"
+  }
+ },
+ "cycle_guard": {
+  "events": [
+   [
+    "start",
+    "a",
+    "charact_producer",
+    null,
+    null
+   ],
+   [
+    "end",
+    "a",
+    "charact_producer",
+    null,
+    "success"
+   ],
+   [
+    "start",
+    "b",
+    "charact_producer",
+    null,
+    null
+   ],
+   [
+    "end",
+    "b",
+    "charact_producer",
+    null,
+    "success"
+   ],
+   [
+    "start",
+    "c",
+    "charact_producer",
+    null,
+    null
+   ],
+   [
+    "end",
+    "c",
+    "charact_producer",
+    null,
+    "success"
+   ]
+  ],
+  "output": null,
+  "record": {
+   "children": [],
+   "error": {
+    "message": "Cycle detected in group 'g' at node 'b'.",
+    "type": "ValueError"
+   },
+   "kind": "group",
+   "node_id": "g",
+   "score": null,
+   "status": "failed"
+  }
+ },
+ "dangling_transition_target": {
+  "events": [
+   [
+    "start",
+    "a",
+    "charact_producer",
+    null,
+    null
+   ],
+   [
+    "end",
+    "a",
+    "charact_producer",
+    null,
+    "success"
+   ]
+  ],
+  "output": null,
+  "record": {
+   "children": [],
+   "error": {
+    "message": "Group 'g' has no child 'ghost' referenced by a transition.",
+    "type": "ValueError"
+   },
+   "kind": "group",
+   "node_id": "g",
+   "score": null,
+   "status": "failed"
+  }
+ },
+ "foreach_body_two_slot_terminal": {
+  "events": [
+   [
+    "start",
+    "src",
+    "charact_docs_producer",
+    null,
+    null
+   ],
+   [
+    "end",
+    "src",
+    "charact_docs_producer",
+    null,
+    "success"
+   ],
+   [
+    "start",
+    "each",
+    "foreach",
+    2,
+    null
+   ],
+   [
+    "end",
+    "each",
+    "foreach",
+    null,
+    "failed"
+   ]
+  ],
+  "output": null,
+  "record": {
+   "children": [
+    {
+     "children": [],
+     "error": null,
+     "kind": "charact_docs_producer",
+     "node_id": "src",
+     "score": null,
+     "status": "success"
+    },
+    {
+     "children": [],
+     "error": {
+      "message": "the body violates the collection contract (uniform single-slot terminals)",
+      "type": "ValueError"
+     },
+     "kind": "foreach",
+     "node_id": "each",
+     "score": null,
+     "status": "failed"
+    }
+   ],
+   "error": null,
+   "kind": "group",
+   "node_id": "g",
+   "score": null,
+   "status": "failed"
+  }
+ },
+ "foreach_item_ends_off_contract": {
+  "events": [
+   [
+    "start",
+    "src",
+    "charact_docs_producer",
+    null,
+    null
+   ],
+   [
+    "end",
+    "src",
+    "charact_docs_producer",
+    null,
+    "success"
+   ],
+   [
+    "start",
+    "each",
+    "foreach",
+    1,
+    null
+   ],
+   [
+    "start",
+    "first",
+    "charact_item_other",
+    null,
+    null
+   ],
+   [
+    "end",
+    "first",
+    "charact_item_other",
+    null,
+    "success"
+   ],
+   [
+    "end",
+    "each",
+    "foreach",
+    null,
+    "failed"
+   ]
+  ],
+  "output": null,
+  "record": {
+   "children": [
+    {
+     "children": [],
+     "error": null,
+     "kind": "charact_docs_producer",
+     "node_id": "src",
+     "score": null,
+     "status": "success"
+    },
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "children": [],
+         "error": null,
+         "kind": "charact_item_other",
+         "node_id": "first",
+         "score": null,
+         "status": "success"
+        }
+       ],
+       "error": null,
+       "kind": "group",
+       "node_id": "body[0]",
+       "score": null,
+       "status": "success"
+      }
+     ],
+     "error": {
+      "message": "item 0 ended on 'OtherOut' — every runtime path must end on the body's terminal artefact 'Doc'",
+      "type": "ForEachError"
+     },
+     "kind": "foreach",
+     "node_id": "each",
+     "score": null,
+     "status": "failed"
+    }
+   ],
+   "error": null,
+   "kind": "group",
+   "node_id": "g",
+   "score": null,
+   "status": "failed"
+  }
+ },
+ "foreach_item_fails": {
+  "events": [
+   [
+    "start",
+    "src",
+    "charact_docs_producer",
+    null,
+    null
+   ],
+   [
+    "end",
+    "src",
+    "charact_docs_producer",
+    null,
+    "success"
+   ],
+   [
+    "start",
+    "each",
+    "foreach",
+    4,
+    null
+   ],
+   [
+    "start",
+    "echo",
+    "charact_item_echo",
+    null,
+    null
+   ],
+   [
+    "end",
+    "echo",
+    "charact_item_echo",
+    null,
+    "success"
+   ],
+   [
+    "start",
+    "echo",
+    "charact_item_echo",
+    null,
+    null
+   ],
+   [
+    "end",
+    "echo",
+    "charact_item_echo",
+    null,
+    "failed"
+   ],
+   [
+    "start",
+    "echo",
+    "charact_item_echo",
+    null,
+    null
+   ],
+   [
+    "end",
+    "echo",
+    "charact_item_echo",
+    null,
+    "success"
+   ],
+   [
+    "start",
+    "echo",
+    "charact_item_echo",
+    null,
+    null
+   ],
+   [
+    "end",
+    "echo",
+    "charact_item_echo",
+    null,
+    "failed"
+   ],
+   [
+    "end",
+    "each",
+    "foreach",
+    null,
+    "failed"
+   ]
+  ],
+  "output": null,
+  "record": {
+   "children": [
+    {
+     "children": [],
+     "error": null,
+     "kind": "charact_docs_producer",
+     "node_id": "src",
+     "score": null,
+     "status": "success"
+    },
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "children": [],
+         "error": null,
+         "kind": "charact_item_echo",
+         "node_id": "echo",
+         "score": null,
+         "status": "success"
+        }
+       ],
+       "error": null,
+       "kind": "group",
+       "node_id": "body[0]",
+       "score": null,
+       "status": "success"
+      },
+      {
+       "children": [
+        {
+         "children": [],
+         "error": {
+          "message": "item exploded",
+          "type": "RuntimeError"
+         },
+         "kind": "charact_item_echo",
+         "node_id": "echo",
+         "score": null,
+         "status": "failed"
+        }
+       ],
+       "error": null,
+       "kind": "group",
+       "node_id": "body[1]",
+       "score": null,
+       "status": "failed"
+      },
+      {
+       "children": [
+        {
+         "children": [],
+         "error": null,
+         "kind": "charact_item_echo",
+         "node_id": "echo",
+         "score": null,
+         "status": "success"
+        }
+       ],
+       "error": null,
+       "kind": "group",
+       "node_id": "body[2]",
+       "score": null,
+       "status": "success"
+      },
+      {
+       "children": [
+        {
+         "children": [],
+         "error": {
+          "message": "item exploded",
+          "type": "RuntimeError"
+         },
+         "kind": "charact_item_echo",
+         "node_id": "echo",
+         "score": null,
+         "status": "failed"
+        }
+       ],
+       "error": null,
+       "kind": "group",
+       "node_id": "body[3]",
+       "score": null,
+       "status": "failed"
+      }
+     ],
+     "error": {
+      "message": "item 1 failed",
+      "type": "ForEachError"
+     },
+     "kind": "foreach",
+     "node_id": "each",
+     "score": null,
+     "status": "failed"
+    }
+   ],
+   "error": null,
+   "kind": "group",
+   "node_id": "g",
+   "score": null,
+   "status": "failed"
+  }
+ },
+ "foreach_over_not_a_list": {
+  "events": [
+   [
+    "start",
+    "src",
+    "charact_docs_producer",
+    null,
+    null
+   ],
+   [
+    "end",
+    "src",
+    "charact_docs_producer",
+    null,
+    "success"
+   ],
+   [
+    "end",
+    "each",
+    "foreach",
+    null,
+    "failed"
+   ]
+  ],
+  "output": null,
+  "record": {
+   "children": [
+    {
+     "children": [],
+     "error": null,
+     "kind": "charact_docs_producer",
+     "node_id": "src",
+     "score": null,
+     "status": "success"
+    },
+    {
+     "children": [],
+     "error": {
+      "message": "'over' must resolve to a list, got str",
+      "type": "ValueError"
+     },
+     "kind": "foreach",
+     "node_id": "each",
+     "score": null,
+     "status": "failed"
+    }
+   ],
+   "error": null,
+   "kind": "group",
+   "node_id": "g",
+   "score": null,
+   "status": "failed"
+  }
+ },
+ "foreach_over_run_input_missing": {
+  "events": [
+   [
+    "start",
+    "src",
+    "charact_docs_producer",
+    null,
+    null
+   ],
+   [
+    "end",
+    "src",
+    "charact_docs_producer",
+    null,
+    "success"
+   ],
+   [
+    "end",
+    "each",
+    "foreach",
+    null,
+    "failed"
+   ]
+  ],
+  "output": null,
+  "record": {
+   "children": [
+    {
+     "children": [],
+     "error": null,
+     "kind": "charact_docs_producer",
+     "node_id": "src",
+     "score": null,
+     "status": "success"
+    },
+    {
+     "children": [],
+     "error": {
+      "message": "run input has no field 'items'.",
+      "type": "ResolutionError"
+     },
+     "kind": "foreach",
+     "node_id": "each",
+     "score": null,
+     "status": "failed"
+    }
+   ],
+   "error": null,
+   "kind": "group",
+   "node_id": "g",
+   "score": null,
+   "status": "failed"
+  }
+ },
+ "input_binds_a_missing_output_field": {
+  "events": [
+   [
+    "start",
+    "p",
+    "charact_producer",
+    null,
+    null
+   ],
+   [
+    "end",
+    "p",
+    "charact_producer",
+    null,
+    "success"
+   ],
+   [
+    "start",
+    "c",
+    "charact_consumer",
+    null,
+    null
+   ],
+   [
+    "end",
+    "c",
+    "charact_consumer",
+    null,
+    "failed"
+   ]
+  ],
+  "output": null,
+  "record": {
+   "children": [
+    {
+     "children": [],
+     "error": null,
+     "kind": "charact_producer",
+     "node_id": "p",
+     "score": null,
+     "status": "success"
+    },
+    {
+     "children": [],
+     "error": {
+      "message": "Node 'p' output has no field 'nope'.",
+      "type": "ResolutionError"
+     },
+     "kind": "charact_consumer",
+     "node_id": "c",
+     "score": null,
+     "status": "failed"
+    }
+   ],
+   "error": null,
+   "kind": "group",
+   "node_id": "g",
+   "score": null,
+   "status": "failed"
+  }
+ },
+ "input_binds_a_missing_run_input_field": {
+  "events": [
+   [
+    "start",
+    "p",
+    "charact_producer",
+    null,
+    null
+   ],
+   [
+    "end",
+    "p",
+    "charact_producer",
+    null,
+    "success"
+   ],
+   [
+    "start",
+    "c",
+    "charact_consumer",
+    null,
+    null
+   ],
+   [
+    "end",
+    "c",
+    "charact_consumer",
+    null,
+    "failed"
+   ]
+  ],
+  "output": null,
+  "record": {
+   "children": [
+    {
+     "children": [],
+     "error": null,
+     "kind": "charact_producer",
+     "node_id": "p",
+     "score": null,
+     "status": "success"
+    },
+    {
+     "children": [],
+     "error": {
+      "message": "run input has no field 'absent'.",
+      "type": "ResolutionError"
+     },
+     "kind": "charact_consumer",
+     "node_id": "c",
+     "score": null,
+     "status": "failed"
+    }
+   ],
+   "error": null,
+   "kind": "group",
+   "node_id": "g",
+   "score": null,
+   "status": "failed"
+  }
+ },
+ "input_binds_a_node_that_never_ran": {
+  "events": [
+   [
+    "start",
+    "p",
+    "charact_producer",
+    null,
+    null
+   ],
+   [
+    "end",
+    "p",
+    "charact_producer",
+    null,
+    "success"
+   ],
+   [
+    "start",
+    "c",
+    "charact_consumer",
+    null,
+    null
+   ],
+   [
+    "end",
+    "c",
+    "charact_consumer",
+    null,
+    "failed"
+   ]
+  ],
+  "output": null,
+  "record": {
+   "children": [
+    {
+     "children": [],
+     "error": null,
+     "kind": "charact_producer",
+     "node_id": "p",
+     "score": null,
+     "status": "success"
+    },
+    {
+     "children": [],
+     "error": {
+      "message": "Slot 'doc' binds to node 'ghost', which has produced no output (not run yet or failed).",
+      "type": "ResolutionError"
+     },
+     "kind": "charact_consumer",
+     "node_id": "c",
+     "score": null,
+     "status": "failed"
+    }
+   ],
+   "error": null,
+   "kind": "group",
+   "node_id": "g",
+   "score": null,
+   "status": "failed"
+  }
+ },
+ "input_slot_without_binding": {
+  "events": [
+   [
+    "start",
+    "p",
+    "charact_producer",
+    null,
+    null
+   ],
+   [
+    "end",
+    "p",
+    "charact_producer",
+    null,
+    "success"
+   ],
+   [
+    "start",
+    "c",
+    "charact_consumer",
+    null,
+    null
+   ],
+   [
+    "end",
+    "c",
+    "charact_consumer",
+    null,
+    "failed"
+   ]
+  ],
+  "output": null,
+  "record": {
+   "children": [
+    {
+     "children": [],
+     "error": null,
+     "kind": "charact_producer",
+     "node_id": "p",
+     "score": null,
+     "status": "success"
+    },
+    {
+     "children": [],
+     "error": {
+      "message": "Input slot 'doc' has no binding.",
+      "type": "ResolutionError"
+     },
+     "kind": "charact_consumer",
+     "node_id": "c",
+     "score": null,
+     "status": "failed"
+    }
+   ],
+   "error": null,
+   "kind": "group",
+   "node_id": "g",
+   "score": null,
+   "status": "failed"
+  }
+ },
+ "input_type_violation": {
+  "events": [
+   [
+    "start",
+    "src",
+    "charact_docs_producer",
+    null,
+    null
+   ],
+   [
+    "end",
+    "src",
+    "charact_docs_producer",
+    null,
+    "success"
+   ],
+   [
+    "start",
+    "c",
+    "charact_consumer",
+    null,
+    null
+   ],
+   [
+    "end",
+    "c",
+    "charact_consumer",
+    null,
+    "failed"
+   ]
+  ],
+  "output": null,
+  "record": {
+   "children": [
+    {
+     "children": [],
+     "error": null,
+     "kind": "charact_docs_producer",
+     "node_id": "src",
+     "score": null,
+     "status": "success"
+    },
+    {
+     "children": [],
+     "error": {
+      "message": "1 validation error for DocIn",
+      "type": "ValidationError"
+     },
+     "kind": "charact_consumer",
+     "node_id": "c",
+     "score": null,
+     "status": "failed"
+    }
+   ],
+   "error": null,
+   "kind": "group",
+   "node_id": "g",
+   "score": null,
+   "status": "failed"
+  }
+ },
+ "node_failure_with_fail_policy": {
+  "events": [
+   [
+    "start",
+    "f",
+    "charact_failer",
+    null,
+    null
+   ],
+   [
+    "end",
+    "f",
+    "charact_failer",
+    null,
+    "failed"
+   ]
+  ],
+  "output": null,
+  "record": {
+   "children": [
+    {
+     "children": [],
+     "error": {
+      "message": "boom",
+      "type": "RuntimeError"
+     },
+     "kind": "charact_failer",
+     "node_id": "f",
+     "score": null,
+     "status": "failed"
+    }
+   ],
+   "error": null,
+   "kind": "group",
+   "node_id": "g",
+   "score": null,
+   "status": "failed"
+  }
+ },
+ "resume_at_unknown_node": {
+  "events": [],
+  "output": null,
+  "record": {
+   "children": [],
+   "error": {
+    "message": "Group 'g' has no child 'ghost' referenced by a transition.",
+    "type": "ValueError"
+   },
+   "kind": "group",
+   "node_id": "g",
+   "score": null,
+   "status": "failed"
+  }
+ },
+ "run_timeout": {
+  "events": [
+   [
+    "start",
+    "slow",
+    "charact_sleeper",
+    null,
+    null
+   ]
+  ],
+  "output": null,
+  "record": {
+   "children": [],
+   "error": {
+    "message": "pipeline exceeded 0.05s",
+    "type": "TimeoutError"
+   },
+   "kind": "group",
+   "node_id": "g",
+   "score": null,
+   "status": "failed"
+  }
+ },
+ "subgroup_input_resolution_fails": {
+  "events": [
+   [
+    "start",
+    "p",
+    "charact_producer",
+    null,
+    null
+   ],
+   [
+    "end",
+    "p",
+    "charact_producer",
+    null,
+    "success"
+   ],
+   [
+    "start",
+    "inner",
+    "group",
+    null,
+    null
+   ],
+   [
+    "end",
+    "inner",
+    "group",
+    null,
+    "failed"
+   ]
+  ],
+  "output": null,
+  "record": {
+   "children": [
+    {
+     "children": [],
+     "error": null,
+     "kind": "charact_producer",
+     "node_id": "p",
+     "score": null,
+     "status": "success"
+    },
+    {
+     "children": [],
+     "error": {
+      "message": "Slot 'doc' binds to node 'ghost', which has produced no output (not run yet or failed).",
+      "type": "ResolutionError"
+     },
+     "kind": "group",
+     "node_id": "inner",
+     "score": null,
+     "status": "failed"
+    }
+   ],
+   "error": null,
+   "kind": "group",
+   "node_id": "g",
+   "score": null,
+   "status": "failed"
+  }
+ },
+ "two_entry_nodes": {
+  "events": [],
+  "output": null,
+  "record": {
+   "children": [],
+   "error": {
+    "message": "Group 'g' must have exactly one entry node, found 2.",
+    "type": "ValueError"
+   },
+   "kind": "group",
+   "node_id": "g",
+   "score": null,
+   "status": "failed"
+  }
+ }
+}

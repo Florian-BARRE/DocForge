@@ -1,0 +1,40 @@
+{
+ "block_types": [
+  "caption",
+  "table",
+  "paragraph",
+  "paragraph",
+  "paragraph",
+  "heading",
+  "paragraph",
+  "paragraph",
+  "paragraph",
+  "paragraph",
+  "heading",
+  "heading",
+  "paragraph",
+  "figure",
+  "caption",
+  "heading",
+  "paragraph",
+  "figure",
+  "caption",
+  "heading",
+  "paragraph"
+ ],
+ "n_blocks": 21,
+ "request": {
+  "content": "%PDF-1.7 characterization",
+  "headers": {
+   "Authorization": "Bearer token",
+   "Content-Type": "application/pdf"
+  },
+  "params": {
+   "use_chart_recognition": false,
+   "use_ocr_for_image_block": false,
+   "use_seal_recognition": false
+  },
+  "url": "/vl-parse"
+ },
+ "score": 0.9047619047619048
+}

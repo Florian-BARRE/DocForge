@@ -1,0 +1,67 @@
+{
+ "embed_slot_unbound": {
+  "issues": [
+   {
+    "code": "missing_binding",
+    "location": "group 'ingest_pipeline' / node 'embed'",
+    "message": "required input slot 'contract' has no binding"
+   }
+  ],
+  "message": "failed structural validation (group 'ingest_pipeline' / node 'embed': required input slot 'contract' has no binding)"
+ },
+ "search_blob_in_ingest_palette": {
+  "codes": [
+   "kind_not_in_palette"
+  ],
+  "issue_count": 5
+ },
+ "second_unique_parser": {
+  "issues": [
+   {
+    "code": "no_single_entry",
+    "location": "group 'ingest_pipeline'",
+    "message": "must have exactly one entry node, found 2"
+   },
+   {
+    "code": "missing_binding",
+    "location": "group 'ingest_pipeline' / node 'parse_again'",
+    "message": "required input slot 'source' has no binding"
+   },
+   {
+    "code": "duplicate_unique_node",
+    "location": "group 'ingest_pipeline'",
+    "message": "node kind 'docling' is single-use but appears 2 times (parse, parse_again)"
+   }
+  ],
+  "message": "failed structural validation (group 'ingest_pipeline': must have exactly one entry node, found 2; group 'ingest_pipeline' / node 'parse_again': required input slot 'source' has no binding; group 'ingest_pipeline': node kind 'docling' is single-use but appears 2 times (parse, parse_again))"
+ },
+ "transition_closing_a_cycle": {
+  "issues": [
+   {
+    "code": "no_single_entry",
+    "location": "group 'ingest_pipeline'",
+    "message": "must have exactly one entry node, found 0"
+   },
+   {
+    "code": "cycle",
+    "location": "group 'ingest_pipeline'",
+    "message": "the transitions form a cycle"
+   }
+  ],
+  "message": "failed structural validation (group 'ingest_pipeline': must have exactly one entry node, found 0; group 'ingest_pipeline': the transitions form a cycle)"
+ },
+ "transition_to_unknown_node": {
+  "issues": [
+   {
+    "code": "unknown_node",
+    "location": "group 'ingest_pipeline'",
+    "message": "transition 'bundle' -> 'ghost' references an unknown node"
+   }
+  ],
+  "message": "failed structural validation (group 'ingest_pipeline': transition 'bundle' -> 'ghost' references an unknown node)"
+ },
+ "unknown_node_kind": {
+  "issues": [],
+  "message": "cannot be built: node 'parse': \"No node registered for family 'parser', kind 'no_such_parser'.\""
+ }
+}

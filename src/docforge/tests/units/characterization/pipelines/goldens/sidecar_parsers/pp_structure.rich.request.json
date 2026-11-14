@@ -1,0 +1,24 @@
+{
+ "block_types": [
+  "table",
+  "formula",
+  "figure"
+ ],
+ "n_blocks": 3,
+ "request": {
+  "content": "%PDF-1.7 characterization",
+  "headers": {
+   "Authorization": "Bearer token",
+   "Content-Type": "application/pdf"
+  },
+  "params": {
+   "use_doc_orientation_classify": false,
+   "use_doc_unwarping": false,
+   "use_formula_recognition": false,
+   "use_seal_recognition": false,
+   "use_table_recognition": true
+  },
+  "url": "/layout-parsing"
+ },
+ "score": 0.6666666666666666
+}

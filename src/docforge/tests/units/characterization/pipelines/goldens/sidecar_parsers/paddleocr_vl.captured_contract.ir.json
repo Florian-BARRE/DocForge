@@ -1,0 +1,785 @@
+{
+ "doc_id": "characterization-hash",
+ "source_hash": "characterization-hash",
+ "title": "",
+ "n_pages": 2,
+ "language": "",
+ "blocks": [
+  {
+   "id": "characterization-hash:p0:b0",
+   "block_type": "caption",
+   "provenance": {
+    "page": 0,
+    "bbox": [
+     0.1707516339869281,
+     0.08838383838383838,
+     0.8276143790849673,
+     0.14583333333333334
+    ],
+    "char_span": null
+   },
+   "reading_order": 0,
+   "parent_id": null,
+   "level": null,
+   "text": "Table 3: Variations on the Transformer architecture. Unlisted values are identical to those of the base model. All metrics are on the English-to-German translation development set, newstest2013. Listed perplexities are per-wordpiece, according to our byte-pair encoding, and should not be compared to per-word perplexities.",
+   "table": null,
+   "figure": null,
+   "language": null
+  },
+  {
+   "id": "characterization-hash:p0:b1",
+   "block_type": "table",
+   "provenance": {
+    "page": 0,
+    "bbox": [
+     0.17320261437908496,
+     0.16287878787878787,
+     0.8325163398692811,
+     0.48737373737373735
+    ],
+    "char_span": null
+   },
+   "reading_order": 1,
+   "parent_id": null,
+   "level": null,
+   "text": null,
+   "table": {
+    "cells": [
+     [
+      "",
+      "N",
+      "$ d_{model} $",
+      "$ d_{ff} $",
+      "h",
+      "$ d_{k} $",
+      "$ d_{v} $",
+      "$ P_{drop} $",
+      "$ \\epsilon_{ls} $",
+      "train steps",
+      "PPL (dev)",
+      "BLEU (dev)",
+      "params $ \\times 10^{6} $"
+     ],
+     [
+      "base",
+      "6",
+      "512",
+      "2048",
+      "8",
+      "64",
+      "64",
+      "0.1",
+      "0.1",
+      "100K",
+      "4.92",
+      "25.8",
+      "65"
+     ],
+     [
+      "(A)",
+      "",
+      "",
+      "",
+      "1",
+      "512",
+      "512",
+      "",
+      "",
+      "",
+      "5.29",
+      "24.9",
+      ""
+     ],
+     [
+      "",
+      "",
+      "",
+      "",
+      "4",
+      "128",
+      "128",
+      "",
+      "",
+      "",
+      "5.00",
+      "25.5",
+      ""
+     ],
+     [
+      "",
+      "",
+      "",
+      "",
+      "16",
+      "32",
+      "32",
+      "",
+      "",
+      "",
+      "4.91",
+      "25.8",
+      ""
+     ],
+     [
+      "",
+      "",
+      "",
+      "",
+      "32",
+      "16",
+      "16",
+      "",
+      "",
+      "",
+      "5.01",
+      "25.4",
+      ""
+     ],
+     [
+      "(B)",
+      "",
+      "",
+      "",
+      "",
+      "16",
+      "",
+      "",
+      "",
+      "",
+      "5.16",
+      "25.1",
+      "58"
+     ],
+     [
+      "",
+      "",
+      "",
+      "",
+      "",
+      "32",
+      "",
+      "",
+      "",
+      "",
+      "5.01",
+      "25.4",
+      "60"
+     ],
+     [
+      "(C)",
+      "2",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "6.11",
+      "23.7",
+      "36"
+     ],
+     [
+      "",
+      "4",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "5.19",
+      "25.3",
+      "50"
+     ],
+     [
+      "",
+      "8",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "4.88",
+      "25.5",
+      "80"
+     ],
+     [
+      "",
+      "",
+      "256",
+      "",
+      "",
+      "32",
+      "32",
+      "",
+      "",
+      "",
+      "5.75",
+      "24.5",
+      "28"
+     ],
+     [
+      "",
+      "",
+      "1024",
+      "",
+      "",
+      "128",
+      "128",
+      "",
+      "",
+      "",
+      "4.66",
+      "26.0",
+      "168"
+     ],
+     [
+      "",
+      "",
+      "",
+      "1024",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "5.12",
+      "25.4",
+      "53"
+     ],
+     [
+      "",
+      "",
+      "",
+      "4096",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "4.75",
+      "26.2",
+      "90"
+     ],
+     [
+      "(D)",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "0.0",
+      "",
+      "",
+      "5.77",
+      "24.6",
+      ""
+     ],
+     [
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "0.2",
+      "",
+      "",
+      "4.95",
+      "25.5",
+      ""
+     ],
+     [
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "0.0",
+      "",
+      "4.67",
+      "25.3",
+      ""
+     ],
+     [
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "0.2",
+      "",
+      "5.47",
+      "25.7",
+      ""
+     ],
+     [
+      "(E)",
+      "",
+      "positional embedding instead of sinusoids",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "4.92",
+      "25.7",
+      ""
+     ],
+     [
+      "big",
+      "6",
+      "1024",
+      "4096",
+      "16",
+      "",
+      "",
+      "0.3",
+      "",
+      "300K",
+      "4.33",
+      "26.4",
+      "213"
+     ]
+    ],
+    "n_rows": 21,
+    "n_cols": 13,
+    "has_header": true
+   },
+   "figure": null,
+   "language": null
+  },
+  {
+   "id": "characterization-hash:p0:b2",
+   "block_type": "paragraph",
+   "provenance": {
+    "page": 0,
+    "bbox": [
+     0.1715686274509804,
+     0.5214646464646465,
+     0.8259803921568627,
+     0.5498737373737373
+    ],
+    "char_span": null
+   },
+   "reading_order": 2,
+   "parent_id": null,
+   "level": null,
+   "text": "development set, newstest2013. We used beam search as described in the previous section, but no checkpoint averaging. We present these results in Table 3.",
+   "table": null,
+   "figure": null,
+   "language": null
+  },
+  {
+   "id": "characterization-hash:p0:b3",
+   "block_type": "paragraph",
+   "provenance": {
+    "page": 0,
+    "bbox": [
+     0.1715686274509804,
+     0.5561868686868687,
+     0.8276143790849673,
+     0.5984848484848485
+    ],
+    "char_span": null
+   },
+   "reading_order": 3,
+   "parent_id": null,
+   "level": null,
+   "text": "In Table 3 rows (A), we vary the number of attention heads and the attention key and value dimensions, keeping the amount of computation constant, as described in Section 3.2.2. While single-head attention is 0.9 BLEU worse than the best setting, quality also drops off with too many heads.",
+   "table": null,
+   "figure": null,
+   "language": null
+  },
+  {
+   "id": "characterization-hash:p0:b4",
+   "block_type": "paragraph",
+   "provenance": {
+    "page": 0,
+    "bbox": [
+     0.1715686274509804,
+     0.6041666666666666,
+     0.8284313725490197,
+     0.6881313131313131
+    ],
+    "char_span": null
+   },
+   "reading_order": 4,
+   "parent_id": null,
+   "level": null,
+   "text": "In Table 3 rows (B), we observe that reducing the attention key size  $ d_k $ hurts model quality. This suggests that determining compatibility is not easy and that a more sophisticated compatibility function than dot product may be beneficial. We further observe in rows (C) and (D) that, as expected, bigger models are better, and dropout is very helpful in avoiding over-fitting. In row (E) we replace our sinusoidal positional encoding with learned positional embeddings [9], and observe nearly identical results to the base model.",
+   "table": null,
+   "figure": null,
+   "language": null
+  },
+  {
+   "id": "characterization-hash:p0:b5",
+   "block_type": "heading",
+   "provenance": {
+    "page": 0,
+    "bbox": [
+     0.17238562091503268,
+     0.7064393939393939,
+     0.4207516339869281,
+     0.7215909090909091
+    ],
+    "char_span": null
+   },
+   "reading_order": 5,
+   "parent_id": null,
+   "level": 2,
+   "text": "6.3 English Constituency Parsing",
+   "table": null,
+   "figure": null,
+   "language": null
+  },
+  {
+   "id": "characterization-hash:p0:b6",
+   "block_type": "paragraph",
+   "provenance": {
+    "page": 0,
+    "bbox": [
+     0.1707516339869281,
+     0.7335858585858586,
+     0.826797385620915,
+     0.7897727272727273
+    ],
+    "char_span": null
+   },
+   "reading_order": 6,
+   "parent_id": "characterization-hash:p0:b5",
+   "level": null,
+   "text": "To evaluate if the Transformer can generalize to other tasks we performed experiments on English constituency parsing. This task presents specific challenges: the output is subject to strong structural constraints and is significantly longer than the input. Furthermore, RNN sequence-to-sequence models have not been able to attain state-of-the-art results in small-data regimes [37].",
+   "table": null,
+   "figure": null,
+   "language": null
+  },
+  {
+   "id": "characterization-hash:p0:b7",
+   "block_type": "paragraph",
+   "provenance": {
+    "page": 0,
+    "bbox": [
+     0.1715686274509804,
+     0.7948232323232324,
+     0.8276143790849673,
+     0.8661616161616161
+    ],
+    "char_span": null
+   },
+   "reading_order": 7,
+   "parent_id": "characterization-hash:p0:b5",
+   "level": null,
+   "text": "We trained a 4-layer transformer with  $ d_{model} = 1024 $ on the Wall Street Journal (WSJ) portion of the Penn Treebank [25], about 40K training sentences. We also trained it in a semi-supervised setting, using the larger high-confidence and BerkleyParser corpora from with approximately 17M sentences [37]. We used a vocabulary of 16K tokens for the WSJ only setting and a vocabulary of 32K tokens for the semi-supervised setting.",
+   "table": null,
+   "figure": null,
+   "language": null
+  },
+  {
+   "id": "characterization-hash:p0:b8",
+   "block_type": "paragraph",
+   "provenance": {
+    "page": 0,
+    "bbox": [
+     0.1715686274509804,
+     0.8705808080808081,
+     0.8276143790849673,
+     0.913510101010101
+    ],
+    "char_span": null
+   },
+   "reading_order": 8,
+   "parent_id": "characterization-hash:p0:b5",
+   "level": null,
+   "text": "We performed only a small number of experiments to select the dropout, both attention and residual (section 5.4), learning rates and beam size on the Section 22 development set, all other parameters remained unchanged from the English-to-German base translation model. During inference, we",
+   "table": null,
+   "figure": null,
+   "language": null
+  },
+  {
+   "id": "characterization-hash:p0:b9",
+   "block_type": "paragraph",
+   "provenance": {
+    "page": 0,
+    "bbox": [
+     0.4934640522875817,
+     0.9375,
+     0.505718954248366,
+     0.9482323232323232
+    ],
+    "char_span": null
+   },
+   "reading_order": 9,
+   "parent_id": "characterization-hash:p0:b5",
+   "level": null,
+   "text": "9",
+   "table": null,
+   "figure": null,
+   "language": null
+  },
+  {
+   "id": "characterization-hash:p0:b10",
+   "block_type": "heading",
+   "provenance": {
+    "page": 0,
+    "bbox": [
+     0.05065359477124183,
+     0.045454545454545456,
+     0.4027777777777778,
+     0.07828282828282829
+    ],
+    "char_span": null
+   },
+   "reading_order": 10,
+   "parent_id": null,
+   "level": 1,
+   "text": "Multi-Figure Report",
+   "table": null,
+   "figure": null,
+   "language": null
+  },
+  {
+   "id": "characterization-hash:p0:b11",
+   "block_type": "heading",
+   "provenance": {
+    "page": 0,
+    "bbox": [
+     0.05065359477124183,
+     0.09911616161616162,
+     0.1715686274509804,
+     0.12184343434343434
+    ],
+    "char_span": null
+   },
+   "reading_order": 11,
+   "parent_id": "characterization-hash:p0:b10",
+   "level": 2,
+   "text": "Section 1",
+   "table": null,
+   "figure": null,
+   "language": null
+  },
+  {
+   "id": "characterization-hash:p0:b12",
+   "block_type": "paragraph",
+   "provenance": {
+    "page": 0,
+    "bbox": [
+     0.05065359477124183,
+     0.1414141414141414,
+     0.7116013071895425,
+     0.16161616161616163
+    ],
+    "char_span": null
+   },
+   "reading_order": 12,
+   "parent_id": "characterization-hash:p0:b11",
+   "level": null,
+   "text": "Body text paragraph 1 with enough words to be a real chunk of prose about topic 1.",
+   "table": null,
+   "figure": null,
+   "language": null
+  },
+  {
+   "id": "characterization-hash:p0:b13",
+   "block_type": "figure",
+   "provenance": {
+    "page": 0,
+    "bbox": [
+     0.10212418300653595,
+     0.1717171717171717,
+     0.49673202614379086,
+     0.36047979797979796
+    ],
+    "char_span": null
+   },
+   "reading_order": 13,
+   "parent_id": "characterization-hash:p0:b11",
+   "level": null,
+   "text": null,
+   "table": null,
+   "figure": {
+    "kind": "photo",
+    "crop": null,
+    "relevance": 1.0,
+    "ocr_text": null,
+    "description": null,
+    "data_table": null
+   },
+   "language": null
+  },
+  {
+   "id": "characterization-hash:p0:b14",
+   "block_type": "caption",
+   "provenance": {
+    "page": 0,
+    "bbox": [
+     0.10049019607843138,
+     0.36426767676767674,
+     0.505718954248366,
+     0.38257575757575757
+    ],
+    "char_span": null
+   },
+   "reading_order": 14,
+   "parent_id": "characterization-hash:p0:b11",
+   "level": null,
+   "text": "Figure 1: sample chart number 1 showing metric 1.",
+   "table": null,
+   "figure": null,
+   "language": null
+  },
+  {
+   "id": "characterization-hash:p0:b15",
+   "block_type": "heading",
+   "provenance": {
+    "page": 0,
+    "bbox": [
+     0.051470588235294115,
+     0.4015151515151515,
+     0.1715686274509804,
+     0.42424242424242425
+    ],
+    "char_span": null
+   },
+   "reading_order": 15,
+   "parent_id": "characterization-hash:p0:b10",
+   "level": 2,
+   "text": "Section 2",
+   "table": null,
+   "figure": null,
+   "language": null
+  },
+  {
+   "id": "characterization-hash:p0:b16",
+   "block_type": "paragraph",
+   "provenance": {
+    "page": 0,
+    "bbox": [
+     0.051470588235294115,
+     0.4444444444444444,
+     0.7124183006535948,
+     0.4640151515151515
+    ],
+    "char_span": null
+   },
+   "reading_order": 16,
+   "parent_id": "characterization-hash:p0:b15",
+   "level": null,
+   "text": "Body text paragraph 2 with enough words to be a real chunk of prose about topic 2.",
+   "table": null,
+   "figure": null,
+   "language": null
+  },
+  {
+   "id": "characterization-hash:p0:b17",
+   "block_type": "figure",
+   "provenance": {
+    "page": 0,
+    "bbox": [
+     0.10212418300653595,
+     0.47474747474747475,
+     0.49673202614379086,
+     0.6628787878787878
+    ],
+    "char_span": null
+   },
+   "reading_order": 17,
+   "parent_id": "characterization-hash:p0:b15",
+   "level": null,
+   "text": null,
+   "table": null,
+   "figure": {
+    "kind": "photo",
+    "crop": null,
+    "relevance": 1.0,
+    "ocr_text": null,
+    "description": null,
+    "data_table": null
+   },
+   "language": null
+  },
+  {
+   "id": "characterization-hash:p0:b18",
+   "block_type": "caption",
+   "provenance": {
+    "page": 0,
+    "bbox": [
+     0.10049019607843138,
+     0.6666666666666666,
+     0.5065359477124183,
+     0.6849747474747475
+    ],
+    "char_span": null
+   },
+   "reading_order": 18,
+   "parent_id": "characterization-hash:p0:b15",
+   "level": null,
+   "text": "Figure 2: sample chart number 2 showing metric 2.",
+   "table": null,
+   "figure": null,
+   "language": null
+  },
+  {
+   "id": "characterization-hash:p0:b19",
+   "block_type": "heading",
+   "provenance": {
+    "page": 0,
+    "bbox": [
+     0.051470588235294115,
+     0.7026515151515151,
+     0.17238562091503268,
+     0.726010101010101
+    ],
+    "char_span": null
+   },
+   "reading_order": 19,
+   "parent_id": "characterization-hash:p0:b10",
+   "level": 2,
+   "text": "Section 3",
+   "table": null,
+   "figure": null,
+   "language": null
+  },
+  {
+   "id": "characterization-hash:p0:b20",
+   "block_type": "paragraph",
+   "provenance": {
+    "page": 0,
+    "bbox": [
+     0.05065359477124183,
+     0.7455808080808081,
+     0.7124183006535948,
+     0.7657828282828283
+    ],
+    "char_span": null
+   },
+   "reading_order": 20,
+   "parent_id": "characterization-hash:p0:b19",
+   "level": null,
+   "text": "Body text paragraph 3 with enough words to be a real chunk of prose about topic 3.",
+   "table": null,
+   "figure": null,
+   "language": null
+  }
+ ]
+}

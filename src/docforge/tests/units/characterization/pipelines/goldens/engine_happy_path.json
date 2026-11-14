@@ -1,0 +1,1293 @@
+{
+ "cache_hit_serves": {
+  "cache_calls": [
+   [
+    "before",
+    "p"
+   ]
+  ],
+  "events": [
+   [
+    "start",
+    "p",
+    "charact_cacheable_producer",
+    null,
+    null
+   ],
+   [
+    "end",
+    "p",
+    "charact_cacheable_producer",
+    null,
+    "success"
+   ],
+   [
+    "start",
+    "c",
+    "charact_consumer",
+    null,
+    null
+   ],
+   [
+    "end",
+    "c",
+    "charact_consumer",
+    null,
+    "success"
+   ]
+  ],
+  "output": {
+   "doc": {
+    "text": "cached -> C"
+   }
+  },
+  "record": {
+   "children": [
+    {
+     "children": [],
+     "error": null,
+     "kind": "charact_cacheable_producer",
+     "node_id": "p",
+     "score": null,
+     "status": "success"
+    },
+    {
+     "children": [],
+     "error": null,
+     "kind": "charact_consumer",
+     "node_id": "c",
+     "score": null,
+     "status": "success"
+    }
+   ],
+   "error": null,
+   "kind": "group",
+   "node_id": "g",
+   "score": null,
+   "status": "success"
+  }
+ },
+ "cache_miss_stores": {
+  "cache_calls": [
+   [
+    "before",
+    "p"
+   ],
+   [
+    "after",
+    "p"
+   ]
+  ],
+  "events": [
+   [
+    "start",
+    "p",
+    "charact_cacheable_producer",
+    null,
+    null
+   ],
+   [
+    "end",
+    "p",
+    "charact_cacheable_producer",
+    null,
+    "success"
+   ],
+   [
+    "start",
+    "c",
+    "charact_consumer",
+    null,
+    null
+   ],
+   [
+    "end",
+    "c",
+    "charact_consumer",
+    null,
+    "success"
+   ]
+  ],
+  "output": {
+   "doc": {
+    "text": "parsed -> C"
+   }
+  },
+  "record": {
+   "children": [
+    {
+     "children": [],
+     "error": null,
+     "kind": "charact_cacheable_producer",
+     "node_id": "p",
+     "score": null,
+     "status": "success"
+    },
+    {
+     "children": [],
+     "error": null,
+     "kind": "charact_consumer",
+     "node_id": "c",
+     "score": null,
+     "status": "success"
+    }
+   ],
+   "error": null,
+   "kind": "group",
+   "node_id": "g",
+   "score": null,
+   "status": "success"
+  }
+ },
+ "foreach_empty_list": {
+  "events": [
+   [
+    "start",
+    "src",
+    "charact_docs_producer",
+    null,
+    null
+   ],
+   [
+    "end",
+    "src",
+    "charact_docs_producer",
+    null,
+    "success"
+   ],
+   [
+    "start",
+    "each",
+    "foreach",
+    0,
+    null
+   ],
+   [
+    "end",
+    "each",
+    "foreach",
+    null,
+    "success"
+   ]
+  ],
+  "output": {
+   "items": []
+  },
+  "record": {
+   "children": [
+    {
+     "children": [],
+     "error": null,
+     "kind": "charact_docs_producer",
+     "node_id": "src",
+     "score": null,
+     "status": "success"
+    },
+    {
+     "children": [],
+     "error": null,
+     "kind": "foreach",
+     "node_id": "each",
+     "score": null,
+     "status": "success"
+    }
+   ],
+   "error": null,
+   "kind": "group",
+   "node_id": "g",
+   "score": null,
+   "status": "success"
+  }
+ },
+ "foreach_three_items": {
+  "events": [
+   [
+    "start",
+    "src",
+    "charact_docs_producer",
+    null,
+    null
+   ],
+   [
+    "end",
+    "src",
+    "charact_docs_producer",
+    null,
+    "success"
+   ],
+   [
+    "start",
+    "each",
+    "foreach",
+    3,
+    null
+   ],
+   [
+    "start",
+    "echo",
+    "charact_item_echo",
+    null,
+    null
+   ],
+   [
+    "end",
+    "echo",
+    "charact_item_echo",
+    null,
+    "success"
+   ],
+   [
+    "start",
+    "echo",
+    "charact_item_echo",
+    null,
+    null
+   ],
+   [
+    "end",
+    "echo",
+    "charact_item_echo",
+    null,
+    "success"
+   ],
+   [
+    "start",
+    "echo",
+    "charact_item_echo",
+    null,
+    null
+   ],
+   [
+    "end",
+    "echo",
+    "charact_item_echo",
+    null,
+    "success"
+   ],
+   [
+    "end",
+    "each",
+    "foreach",
+    null,
+    "success"
+   ]
+  ],
+  "output": {
+   "items": [
+    {},
+    {},
+    {}
+   ]
+  },
+  "record": {
+   "children": [
+    {
+     "children": [],
+     "error": null,
+     "input_summary": {
+      "fields": [],
+      "hash": "1dabc331",
+      "item_count": {},
+      "sizes": {},
+      "type": "EmptyIn"
+     },
+     "kind": "charact_docs_producer",
+     "node_id": "src",
+     "output": {
+      "docs": [
+       {
+        "text": "a"
+       },
+       {
+        "text": "b"
+       },
+       {
+        "text": "c"
+       }
+      ],
+      "note": "not-a-list"
+     },
+     "output_summary": {
+      "fields": [
+       "docs",
+       "note"
+      ],
+      "hash": "923431dc",
+      "item_count": {
+       "docs": 3
+      },
+      "sizes": {
+       "note": 10
+      },
+      "type": "DocsOut"
+     },
+     "score": null,
+     "status": "success"
+    },
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "children": [],
+         "error": null,
+         "input_summary": {
+          "fields": [
+           "item"
+          ],
+          "hash": "c9dd1c76",
+          "item_count": {},
+          "sizes": {},
+          "type": "ItemIn"
+         },
+         "kind": "charact_item_echo",
+         "node_id": "echo",
+         "output": {
+          "entry": {
+           "text": "echo:a"
+          }
+         },
+         "output_summary": {
+          "fields": [
+           "entry"
+          ],
+          "hash": "cd4efa5b",
+          "item_count": {},
+          "sizes": {},
+          "type": "EntryOut"
+         },
+         "score": null,
+         "status": "success"
+        }
+       ],
+       "error": null,
+       "input_summary": null,
+       "kind": "group",
+       "node_id": "body[0]",
+       "output": {
+        "entry": {
+         "text": "echo:a"
+        }
+       },
+       "output_summary": {
+        "fields": [
+         "entry"
+        ],
+        "hash": "cd4efa5b",
+        "item_count": {},
+        "sizes": {},
+        "type": "EntryOut"
+       },
+       "score": null,
+       "status": "success"
+      },
+      {
+       "children": [
+        {
+         "children": [],
+         "error": null,
+         "input_summary": {
+          "fields": [
+           "item"
+          ],
+          "hash": "c9dd1c76",
+          "item_count": {},
+          "sizes": {},
+          "type": "ItemIn"
+         },
+         "kind": "charact_item_echo",
+         "node_id": "echo",
+         "output": {
+          "entry": {
+           "text": "echo:b"
+          }
+         },
+         "output_summary": {
+          "fields": [
+           "entry"
+          ],
+          "hash": "cd4efa5b",
+          "item_count": {},
+          "sizes": {},
+          "type": "EntryOut"
+         },
+         "score": null,
+         "status": "success"
+        }
+       ],
+       "error": null,
+       "input_summary": null,
+       "kind": "group",
+       "node_id": "body[1]",
+       "output": {
+        "entry": {
+         "text": "echo:b"
+        }
+       },
+       "output_summary": {
+        "fields": [
+         "entry"
+        ],
+        "hash": "cd4efa5b",
+        "item_count": {},
+        "sizes": {},
+        "type": "EntryOut"
+       },
+       "score": null,
+       "status": "success"
+      },
+      {
+       "children": [
+        {
+         "children": [],
+         "error": null,
+         "input_summary": {
+          "fields": [
+           "item"
+          ],
+          "hash": "c9dd1c76",
+          "item_count": {},
+          "sizes": {},
+          "type": "ItemIn"
+         },
+         "kind": "charact_item_echo",
+         "node_id": "echo",
+         "output": {
+          "entry": {
+           "text": "echo:c"
+          }
+         },
+         "output_summary": {
+          "fields": [
+           "entry"
+          ],
+          "hash": "cd4efa5b",
+          "item_count": {},
+          "sizes": {},
+          "type": "EntryOut"
+         },
+         "score": null,
+         "status": "success"
+        }
+       ],
+       "error": null,
+       "input_summary": null,
+       "kind": "group",
+       "node_id": "body[2]",
+       "output": {
+        "entry": {
+         "text": "echo:c"
+        }
+       },
+       "output_summary": {
+        "fields": [
+         "entry"
+        ],
+        "hash": "cd4efa5b",
+        "item_count": {},
+        "sizes": {},
+        "type": "EntryOut"
+       },
+       "score": null,
+       "status": "success"
+      }
+     ],
+     "error": null,
+     "input_summary": null,
+     "kind": "foreach",
+     "node_id": "each",
+     "output": {
+      "items_count": 3
+     },
+     "output_summary": null,
+     "score": null,
+     "status": "success"
+    }
+   ],
+   "error": null,
+   "input_summary": null,
+   "kind": "group",
+   "node_id": "g",
+   "output": {
+    "items": [
+     {},
+     {},
+     {}
+    ]
+   },
+   "output_summary": {
+    "fields": [
+     "items"
+    ],
+    "hash": "c9beb1ed",
+    "item_count": {
+     "items": 3
+    },
+    "sizes": {},
+    "type": "ForEachItems"
+   },
+   "score": null,
+   "status": "success"
+  }
+ },
+ "linear_chain": {
+  "events": [
+   [
+    "start",
+    "p",
+    "charact_producer",
+    null,
+    null
+   ],
+   [
+    "end",
+    "p",
+    "charact_producer",
+    null,
+    "success"
+   ],
+   [
+    "start",
+    "c",
+    "charact_consumer",
+    null,
+    null
+   ],
+   [
+    "end",
+    "c",
+    "charact_consumer",
+    null,
+    "success"
+   ]
+  ],
+  "output": {
+   "doc": {
+    "text": "hello -> C"
+   }
+  },
+  "record": {
+   "children": [
+    {
+     "children": [],
+     "error": null,
+     "kind": "charact_producer",
+     "node_id": "p",
+     "score": null,
+     "status": "success"
+    },
+    {
+     "children": [],
+     "error": null,
+     "kind": "charact_consumer",
+     "node_id": "c",
+     "score": null,
+     "status": "success"
+    }
+   ],
+   "error": null,
+   "kind": "group",
+   "node_id": "g",
+   "score": null,
+   "status": "success"
+  }
+ },
+ "linear_chain_full_trace_summaries": {
+  "events": [
+   [
+    "start",
+    "p",
+    "charact_producer",
+    null,
+    null
+   ],
+   [
+    "end",
+    "p",
+    "charact_producer",
+    null,
+    "success"
+   ],
+   [
+    "start",
+    "c",
+    "charact_consumer",
+    null,
+    null
+   ],
+   [
+    "end",
+    "c",
+    "charact_consumer",
+    null,
+    "success"
+   ]
+  ],
+  "output": {
+   "doc": {
+    "text": "hello -> C"
+   }
+  },
+  "record": {
+   "children": [
+    {
+     "children": [],
+     "error": null,
+     "input_summary": {
+      "fields": [],
+      "hash": "1dabc331",
+      "item_count": {},
+      "sizes": {},
+      "type": "EmptyIn"
+     },
+     "kind": "charact_producer",
+     "node_id": "p",
+     "output": {
+      "doc": {
+       "text": "hello"
+      }
+     },
+     "output_summary": {
+      "fields": [
+       "doc"
+      ],
+      "hash": "d540796a",
+      "item_count": {},
+      "sizes": {},
+      "type": "DocOut"
+     },
+     "score": null,
+     "status": "success"
+    },
+    {
+     "children": [],
+     "error": null,
+     "input_summary": {
+      "fields": [
+       "doc"
+      ],
+      "hash": "71db8d9c",
+      "item_count": {},
+      "sizes": {},
+      "type": "DocIn"
+     },
+     "kind": "charact_consumer",
+     "node_id": "c",
+     "output": {
+      "doc": {
+       "text": "hello -> C"
+      }
+     },
+     "output_summary": {
+      "fields": [
+       "doc"
+      ],
+      "hash": "d540796a",
+      "item_count": {},
+      "sizes": {},
+      "type": "DocOut"
+     },
+     "score": null,
+     "status": "success"
+    }
+   ],
+   "error": null,
+   "input_summary": null,
+   "kind": "group",
+   "node_id": "g",
+   "output": {
+    "doc": {
+     "text": "hello -> C"
+    }
+   },
+   "output_summary": {
+    "fields": [
+     "doc"
+    ],
+    "hash": "d540796a",
+    "item_count": {},
+    "sizes": {},
+    "type": "DocOut"
+   },
+   "score": null,
+   "status": "success"
+  }
+ },
+ "linear_chain_off_trace_summaries": {
+  "events": [
+   [
+    "start",
+    "p",
+    "charact_producer",
+    null,
+    null
+   ],
+   [
+    "end",
+    "p",
+    "charact_producer",
+    null,
+    "success"
+   ],
+   [
+    "start",
+    "c",
+    "charact_consumer",
+    null,
+    null
+   ],
+   [
+    "end",
+    "c",
+    "charact_consumer",
+    null,
+    "success"
+   ]
+  ],
+  "output": {
+   "doc": {
+    "text": "hello -> C"
+   }
+  },
+  "record": {
+   "children": [
+    {
+     "children": [],
+     "error": null,
+     "input_summary": null,
+     "kind": "charact_producer",
+     "node_id": "p",
+     "output": null,
+     "output_summary": null,
+     "score": null,
+     "status": "success"
+    },
+    {
+     "children": [],
+     "error": null,
+     "input_summary": null,
+     "kind": "charact_consumer",
+     "node_id": "c",
+     "output": null,
+     "output_summary": null,
+     "score": null,
+     "status": "success"
+    }
+   ],
+   "error": null,
+   "input_summary": null,
+   "kind": "group",
+   "node_id": "g",
+   "output": null,
+   "output_summary": null,
+   "score": null,
+   "status": "success"
+  }
+ },
+ "linear_chain_shape_trace_summaries": {
+  "events": [
+   [
+    "start",
+    "p",
+    "charact_producer",
+    null,
+    null
+   ],
+   [
+    "end",
+    "p",
+    "charact_producer",
+    null,
+    "success"
+   ],
+   [
+    "start",
+    "c",
+    "charact_consumer",
+    null,
+    null
+   ],
+   [
+    "end",
+    "c",
+    "charact_consumer",
+    null,
+    "success"
+   ]
+  ],
+  "output": {
+   "doc": {
+    "text": "hello -> C"
+   }
+  },
+  "record": {
+   "children": [
+    {
+     "children": [],
+     "error": null,
+     "input_summary": {
+      "fields": [],
+      "hash": "1dabc331",
+      "item_count": {},
+      "sizes": {},
+      "type": "EmptyIn"
+     },
+     "kind": "charact_producer",
+     "node_id": "p",
+     "output": null,
+     "output_summary": {
+      "fields": [
+       "doc"
+      ],
+      "hash": "d540796a",
+      "item_count": {},
+      "sizes": {},
+      "type": "DocOut"
+     },
+     "score": null,
+     "status": "success"
+    },
+    {
+     "children": [],
+     "error": null,
+     "input_summary": {
+      "fields": [
+       "doc"
+      ],
+      "hash": "71db8d9c",
+      "item_count": {},
+      "sizes": {},
+      "type": "DocIn"
+     },
+     "kind": "charact_consumer",
+     "node_id": "c",
+     "output": null,
+     "output_summary": {
+      "fields": [
+       "doc"
+      ],
+      "hash": "d540796a",
+      "item_count": {},
+      "sizes": {},
+      "type": "DocOut"
+     },
+     "score": null,
+     "status": "success"
+    }
+   ],
+   "error": null,
+   "input_summary": null,
+   "kind": "group",
+   "node_id": "g",
+   "output": null,
+   "output_summary": {
+    "fields": [
+     "doc"
+    ],
+    "hash": "d540796a",
+    "item_count": {},
+    "sizes": {},
+    "type": "DocOut"
+   },
+   "score": null,
+   "status": "success"
+  }
+ },
+ "nested_group": {
+  "events": [
+   [
+    "start",
+    "seed",
+    "charact_producer",
+    null,
+    null
+   ],
+   [
+    "end",
+    "seed",
+    "charact_producer",
+    null,
+    "success"
+   ],
+   [
+    "start",
+    "inner",
+    "group",
+    null,
+    null
+   ],
+   [
+    "start",
+    "ic",
+    "charact_consumer",
+    null,
+    null
+   ],
+   [
+    "end",
+    "ic",
+    "charact_consumer",
+    null,
+    "success"
+   ],
+   [
+    "end",
+    "inner",
+    "group",
+    null,
+    "success"
+   ]
+  ],
+  "output": {
+   "doc": {
+    "text": "seed -> C"
+   }
+  },
+  "record": {
+   "children": [
+    {
+     "children": [],
+     "error": null,
+     "kind": "charact_producer",
+     "node_id": "seed",
+     "score": null,
+     "status": "success"
+    },
+    {
+     "children": [
+      {
+       "children": [],
+       "error": null,
+       "kind": "charact_consumer",
+       "node_id": "ic",
+       "score": null,
+       "status": "success"
+      }
+     ],
+     "error": null,
+     "kind": "group",
+     "node_id": "inner",
+     "score": null,
+     "status": "success"
+    }
+   ],
+   "error": null,
+   "kind": "group",
+   "node_id": "g",
+   "score": null,
+   "status": "success"
+  }
+ },
+ "on_failure_escalates": {
+  "events": [
+   [
+    "start",
+    "f",
+    "charact_failer",
+    null,
+    null
+   ],
+   [
+    "end",
+    "f",
+    "charact_failer",
+    null,
+    "failed"
+   ],
+   [
+    "start",
+    "fb",
+    "charact_producer",
+    null,
+    null
+   ],
+   [
+    "end",
+    "fb",
+    "charact_producer",
+    null,
+    "success"
+   ]
+  ],
+  "output": {
+   "doc": {
+    "text": "recovered"
+   }
+  },
+  "record": {
+   "children": [
+    {
+     "children": [],
+     "error": {
+      "message": "boom",
+      "type": "RuntimeError"
+     },
+     "kind": "charact_failer",
+     "node_id": "f",
+     "score": null,
+     "status": "failed"
+    },
+    {
+     "children": [],
+     "error": null,
+     "kind": "charact_producer",
+     "node_id": "fb",
+     "score": null,
+     "status": "success"
+    }
+   ],
+   "error": null,
+   "kind": "group",
+   "node_id": "g",
+   "score": null,
+   "status": "success"
+  }
+ },
+ "resume_from_a_stage": {
+  "events": [
+   [
+    "start",
+    "c",
+    "charact_consumer",
+    null,
+    null
+   ],
+   [
+    "end",
+    "c",
+    "charact_consumer",
+    null,
+    "success"
+   ]
+  ],
+  "output": {
+   "doc": {
+    "text": "seeded -> C"
+   }
+  },
+  "record": {
+   "children": [
+    {
+     "children": [],
+     "error": null,
+     "kind": "charact_consumer",
+     "node_id": "c",
+     "score": null,
+     "status": "success"
+    }
+   ],
+   "error": null,
+   "kind": "group",
+   "node_id": "g",
+   "score": null,
+   "status": "success"
+  }
+ },
+ "score_above_stays": {
+  "events": [
+   [
+    "start",
+    "sc",
+    "charact_scorer",
+    null,
+    null
+   ],
+   [
+    "end",
+    "sc",
+    "charact_scorer",
+    null,
+    "success"
+   ]
+  ],
+  "output": {
+   "doc": {
+    "text": "scored"
+   },
+   "score": 0.9
+  },
+  "record": {
+   "children": [
+    {
+     "children": [],
+     "error": null,
+     "kind": "charact_scorer",
+     "node_id": "sc",
+     "score": 0.9,
+     "status": "success"
+    }
+   ],
+   "error": null,
+   "kind": "group",
+   "node_id": "g",
+   "score": null,
+   "status": "success"
+  }
+ },
+ "score_below_escalates": {
+  "events": [
+   [
+    "start",
+    "sc",
+    "charact_scorer",
+    null,
+    null
+   ],
+   [
+    "end",
+    "sc",
+    "charact_scorer",
+    null,
+    "success"
+   ],
+   [
+    "start",
+    "fb",
+    "charact_producer",
+    null,
+    null
+   ],
+   [
+    "end",
+    "fb",
+    "charact_producer",
+    null,
+    "success"
+   ]
+  ],
+  "output": {
+   "doc": {
+    "text": "fallback"
+   }
+  },
+  "record": {
+   "children": [
+    {
+     "children": [],
+     "error": null,
+     "kind": "charact_scorer",
+     "node_id": "sc",
+     "score": 0.3,
+     "status": "success"
+    },
+    {
+     "children": [],
+     "error": null,
+     "kind": "charact_producer",
+     "node_id": "fb",
+     "score": null,
+     "status": "success"
+    }
+   ],
+   "error": null,
+   "kind": "group",
+   "node_id": "g",
+   "score": null,
+   "status": "success"
+  }
+ },
+ "skip_policy_continues": {
+  "events": [
+   [
+    "start",
+    "f",
+    "charact_failer",
+    null,
+    null
+   ],
+   [
+    "end",
+    "f",
+    "charact_failer",
+    null,
+    "skipped"
+   ],
+   [
+    "start",
+    "after",
+    "charact_producer",
+    null,
+    null
+   ],
+   [
+    "end",
+    "after",
+    "charact_producer",
+    null,
+    "success"
+   ]
+  ],
+  "output": {
+   "doc": {
+    "text": "after"
+   }
+  },
+  "record": {
+   "children": [
+    {
+     "children": [],
+     "error": {
+      "message": "boom",
+      "type": "RuntimeError"
+     },
+     "kind": "charact_failer",
+     "node_id": "f",
+     "score": null,
+     "status": "skipped"
+    },
+    {
+     "children": [],
+     "error": null,
+     "kind": "charact_producer",
+     "node_id": "after",
+     "score": null,
+     "status": "success"
+    }
+   ],
+   "error": null,
+   "kind": "group",
+   "node_id": "g",
+   "score": null,
+   "status": "success"
+  }
+ },
+ "skip_policy_terminal": {
+  "events": [
+   [
+    "start",
+    "f",
+    "charact_failer",
+    null,
+    null
+   ],
+   [
+    "end",
+    "f",
+    "charact_failer",
+    null,
+    "skipped"
+   ]
+  ],
+  "output": null,
+  "record": {
+   "children": [
+    {
+     "children": [],
+     "error": {
+      "message": "boom",
+      "type": "RuntimeError"
+     },
+     "kind": "charact_failer",
+     "node_id": "f",
+     "score": null,
+     "status": "skipped"
+    }
+   ],
+   "error": null,
+   "kind": "group",
+   "node_id": "g",
+   "score": null,
+   "status": "success"
+  }
+ }
+}
