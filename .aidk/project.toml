@@ -34,10 +34,11 @@ tests = ["src/docforge/tests/**", "src/docforge_sdk/tests/**", "src/mcp/tests/**
 # The checks run with the CI's variables, never with the real environment (shared database...).
 # The kit's git hooks (every commit and every push, whatever the agent's tool): the names of [checks]
 # run at each commit (keep them fast: a few seconds) and before each push.
-# Measured on the dev center (2026-10-27, warm caches): pre_commit 0.2 s together (ruff, cached); pre_push
-# about 76 s (docforge-tests 54 s, sdk-parity 5 s, mcp-tests 5 s, frontend-types 5 s, frontend-lint 3 s,
-# sdk-tests 2 s, the rest under a second each; the seven *-lock checks 0.2 s together, 2026-10-29). bge and
-# paddle stay out of both hooks but for their lock checks (no venv needed): their other checks run --no-sync
+# Push is a fast structural gate (P2, 2026-11-15; ~30 s target): the seven *-lock checks, sdk-types, mcp-types,
+# frontend-lint, frontend-types, sdk-parity and secrets-files, plus the kit's built-ins. The full test suites
+# (docforge-tests, docforge-rag-eval, sdk/mcp/mineru/dots-ocr tests) run in [[on.done]] and the CI, not at push:
+# aidk work done runs done first, then the push, so a pushed suite only ran twice (push was 119.3 s before P2).
+# bge and paddle stay out of both hooks but for their lock checks (no venv needed): their other checks run --no-sync
 # on the CPU torch/paddle venv, which a worktree only has after aidk rules run done's bge-deps/paddle-deps.
 # src/docforge/uv.lock is ~1.05 MB, over the 1024 KiB default: a lock change would be refused at commit.
 # Never merged without florian: the CI and release, the version, the database schema, production compose, gitleaks.
@@ -255,36 +256,8 @@ env_from = "services/docforge/.env.example"
 
 [[on.push]]
 rule = "aidk.command"
-name = "sdk-tests"
-run = ["uv", "run", "--frozen", "--directory", "src/docforge_sdk", "pytest", "-q", "-m", "not live"]
-timeout = 900
-env_from = "services/docforge/.env.example"
-
-[[on.push]]
-rule = "aidk.command"
 name = "mcp-types"
 run = ["uv", "run", "--frozen", "--directory", "src/mcp", "mypy", "."]
-timeout = 900
-env_from = "services/docforge/.env.example"
-
-[[on.push]]
-rule = "aidk.command"
-name = "mcp-tests"
-run = ["uv", "run", "--frozen", "--directory", "src/mcp", "pytest", "-q"]
-timeout = 900
-env_from = "services/docforge/.env.example"
-
-[[on.push]]
-rule = "aidk.command"
-name = "mineru-tests"
-run = ["uv", "run", "--frozen", "--directory", "src/mineru_server", "pytest", "-q"]
-timeout = 900
-env_from = "services/docforge/.env.example"
-
-[[on.push]]
-rule = "aidk.command"
-name = "dots-ocr-tests"
-run = ["uv", "run", "--frozen", "--directory", "src/dots_ocr_server", "pytest", "-q"]
 timeout = 900
 env_from = "services/docforge/.env.example"
 
@@ -304,13 +277,6 @@ env_from = "services/docforge/.env.example"
 
 [[on.push]]
 rule = "aidk.command"
-name = "docforge-rag-eval"
-run = ["uv", "run", "--frozen", "--directory", "src/docforge", "python", "-m", "pytest", "tests/rag_eval", "-q", "-m", "not live"]
-timeout = 900
-env_from = "services/docforge/.env.example"
-
-[[on.push]]
-rule = "aidk.command"
 name = "sdk-parity"
 run = ["sh", "-c", "set -e; f=$(mktemp); trap 'rm -f \"$f\"' EXIT; LOGGING_ENABLE_CONSOLE=false LOGGING_ENABLE_FILE=false uv run --frozen --directory src/docforge python app/scripts/dump_openapi.py > \"$f\"; uv run --frozen --directory src/docforge_sdk python tests/check_schema_drift.py \"$f\""]
 timeout = 900
@@ -320,13 +286,6 @@ env_from = "services/docforge/.env.example"
 rule = "aidk.command"
 name = "secrets-files"
 run = ["sh", "-c", "hits=$(git ls-files | grep -E '(^|/)\\.env$|(^|/)[^/]*\\.env$|(^|/)\\.env\\.worktree$|(^|/)s3_config\\.json$|\\.(pem|key|p12|pfx)$|(^|/)id_(rsa|ed25519|ecdsa)$' | grep -v '\\.example$' || true); if [ -n \"$hits\" ]; then echo \"Tracked secret file(s):\"; echo \"$hits\"; exit 1; fi; echo \"No tracked secret file.\""]
-timeout = 900
-env_from = "services/docforge/.env.example"
-
-[[on.push]]
-rule = "aidk.command"
-name = "docforge-tests"
-run = ["uv", "run", "--frozen", "--directory", "src/docforge", "pytest", "tests/units", "-q", "--cov=app", "--cov=worker", "--cov=shared", "--cov-report=term-missing"]
 timeout = 900
 env_from = "services/docforge/.env.example"
 
