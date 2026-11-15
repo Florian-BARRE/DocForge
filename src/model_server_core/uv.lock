@@ -6,6 +6,45 @@ resolution-markers = [
     "python_full_version < '3.15'",
 ]
 
+[manifest]
+constraints = [
+    { name = "annotated-doc", specifier = "==0.0.5" },
+    { name = "annotated-types", specifier = "==0.8.0" },
+    { name = "anyio", specifier = "==4.15.1" },
+    { name = "ast-serialize", specifier = "==0.13.1" },
+    { name = "certifi", specifier = "==2026.10.23" },
+    { name = "click", specifier = "==8.5.0" },
+    { name = "colorama", specifier = "==0.4.6" },
+    { name = "configplusplus", specifier = "==0.4.0" },
+    { name = "fastapi", specifier = "==0.162.0" },
+    { name = "h11", specifier = "==0.16.0" },
+    { name = "httpcore", specifier = "==1.0.9" },
+    { name = "httpx", specifier = "==0.28.1" },
+    { name = "idna", specifier = "==3.20" },
+    { name = "iniconfig", specifier = "==2.3.1" },
+    { name = "librt", specifier = "==0.16.0" },
+    { name = "loggerplusplus", specifier = "==1.2.0" },
+    { name = "loguru", specifier = "==0.7.3" },
+    { name = "mypy", specifier = "==2.4.1" },
+    { name = "mypy-extensions", specifier = "==1.1.0" },
+    { name = "opentelemetry-api", specifier = "==1.45.1" },
+    { name = "packaging", specifier = "==26.3" },
+    { name = "pathspec", specifier = "==1.1.1" },
+    { name = "pluggy", specifier = "==1.7.0" },
+    { name = "pydantic", specifier = "==2.14.1" },
+    { name = "pydantic-core", specifier = "==2.50.1" },
+    { name = "pygments", specifier = "==2.21.0" },
+    { name = "pytest", specifier = "==9.2.0" },
+    { name = "python-dotenv", specifier = "==1.2.4" },
+    { name = "pyyaml", specifier = "==6.0.3" },
+    { name = "ruff", specifier = "==0.17.4" },
+    { name = "starlette", specifier = "==1.10.0" },
+    { name = "typing-extensions", specifier = "==4.16.0" },
+    { name = "typing-inspection", specifier = "==0.4.4" },
+    { name = "uvicorn", specifier = "==0.54.0" },
+    { name = "win32-setctime", specifier = "==1.2.1" },
+]
+
 [[package]]
 name = "annotated-doc"
 version = "0.0.5"
