@@ -33,17 +33,19 @@ by the server that owns the heavy dependency.
 ```python
 # config_loader.py
 class MyServerConfig(ServerConfig):
-    MAX_BODY_BYTES = env("MY_MAX_BODY_BYTES", cast=int, default="104857600")  # keep a historical name
+    MAX_BODY_BYTES = env(
+        "MY_MAX_BODY_BYTES", cast=int, default="104857600"
+    )  # keep a historical name
     MY_MODEL_PATH: str = env("MY_MODEL_PATH", default="/models/my")
 
 
 # backend/my_server.py
 class MyServer(ModelServer[MyServerConfig]):
     @property
-    def title(self) -> str:                      # abstract
+    def title(self) -> str:  # abstract
         return "My model service"
 
-    def model_service(self) -> ModelService:     # abstract
+    def model_service(self) -> ModelService:  # abstract
         return self._service
 
     def build_routes(self, app: FastAPI) -> None:  # abstract
@@ -52,7 +54,7 @@ class MyServer(ModelServer[MyServerConfig]):
 
 # entrypoint.py  (zero logic)
 entrypoint = ServerEntrypoint(MyServer(MyServerConfig))
-app = entrypoint.app            # uvicorn entrypoint:app
+app = entrypoint.app  # uvicorn entrypoint:app
 
 if __name__ == "__main__":
     entrypoint.run()
