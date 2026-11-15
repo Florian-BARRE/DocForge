@@ -1,12 +1,20 @@
-# AI Dev Kit: what aidk rules run done checks before a task is declared done (agents and the Stop hook).
-# Each check is the command as a list of arguments, run from the repository root, in this order.
+# AI Dev Kit: what the kit runs at each event for docforge (agents, the git hooks and the Stop hook).
+# Three gates, each a list of [[on.*]] rules below; a check is the command as a list of arguments, run from the
+# repository root, in the order written:
+# - commit: format + lint of docforge, sdk, mcp, mineru and dots-ocr (a few seconds), plus the kit's built-ins.
+# - push: a fast structural gate (~14 s): the seven *-lock checks, sdk-types, mcp-types, frontend-lint,
+#   frontend-types, sdk-parity, secrets-files and docforge-ratchets (the four invariant ratchets, ~3.5 s).
+# - done (aidk rules run done, what aidk work done runs first): the full coverage, the push checks plus the
+#   *-deps syncs, formats, lints, types, test suites, frontend tests and build, gitleaks and the detect-secrets
+#   baseline check (aidk.secrets_baseline: the committed .secrets.baseline, which .gitleaks.toml allowlists).
 # The CI gate's commands (.github/workflows/gate.yml, run by ci.yml and by release-sdk.yml's gate), job by
 # job: docforge, docforge_sdk, mcp, bge_server, paddle_server (CPU wheels, then never re-synced),
 # mineru_server and dots_ocr_server (gate.yml sidecar-servers: format, lint, mypy, tests on the base sync,
 # their engines are GPU extras the pure code does not need), frontend, sdk-parity; then ci.yml's secrets
 # job. env_from below plays the gate's
 # `cp services/docforge/.env.example services/docforge/.env` (placeholder config, nothing is dialed).
-# Beyond the CI: the *-lock checks (uv lock --check per uv project); gate.yml has none yet (florian's).
+# Beyond the CI: the *-lock checks (uv lock --check per uv project) and the docforge-ratchets check (a subset of
+# the docforge tests the gate already runs); gate.yml has no lock check yet (florian's).
 # Left to the CI, on purpose:
 # - gate.yml db-tests: a real Postgres service (tests/db, -m db, TEST_POSTGRES_*), not a worktree's.
 # - gate.yml docker-build: 7 multi-GB image builds (torch, paddle), far over a check's timeout.
@@ -32,16 +40,18 @@ tests = ["src/docforge/tests/**", "src/docforge_sdk/tests/**", "src/mcp/tests/**
 # it is installed here (the CI downloads it; the kit's commit hook scans each commit anyway, [hooks] secrets).
 
 # The checks run with the CI's variables, never with the real environment (shared database...).
-# The kit's git hooks (every commit and every push, whatever the agent's tool): the names of [checks]
-# run at each commit (keep them fast: a few seconds) and before each push.
-# Push is a fast structural gate (P2, 2026-11-15; ~30 s target): the seven *-lock checks, sdk-types, mcp-types,
+# The kit's git hooks (every commit and every push, whatever the agent's tool): the named checks of
+# [[on.commit]] run at each commit (keep them fast: a few seconds) and before each push.
+# Push is a fast structural gate (P2, ~14 s measured): the seven *-lock checks, sdk-types, mcp-types,
 # frontend-lint, frontend-types, sdk-parity, secrets-files and docforge-ratchets (the four invariant ratchets of
-# tests/units/coherence, ~3 s), plus the kit's built-ins. The full test suites
-# (docforge-tests, docforge-rag-eval, sdk/mcp/mineru/dots-ocr tests) run in [[on.done]] and the CI, not at push:
-# aidk work done runs done first, then the push, so a pushed suite only ran twice (push was 119.3 s before P2).
+# tests/units/coherence: node purity, layers, file size, IR canonical; ~3.5 s of that), plus the kit's built-ins.
+# The full test suites (docforge-tests, docforge-rag-eval, sdk/mcp/mineru/dots-ocr tests) run in [[on.done]] and
+# the CI, not at push: aidk work done runs done first, then the push, so a pushed suite would only run twice
+# (push was 119.3 s before P2).
 # bge and paddle stay out of both hooks but for their lock checks (no venv needed): their other checks run --no-sync
 # on the CPU torch/paddle venv, which a worktree only has after aidk rules run done's bge-deps/paddle-deps.
-# src/docforge/uv.lock is ~1.05 MB, over the 1024 KiB default: a lock change would be refused at commit.
+# src/docforge/uv.lock is ~1.2 MB, over aidk.file_size's 1024 KiB default: the max_kb = 2048 of [[on.commit]] was
+# set so a lock change is not refused at commit (raise it before the lock nears 2 MB).
 # Never merged without florian: the CI and release, the version, the database schema, production compose, gitleaks.
 
 [merge]
