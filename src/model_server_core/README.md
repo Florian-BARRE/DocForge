@@ -69,5 +69,7 @@ fields in `/health`), `configure_middlewares()`. Injectable through the construc
 uv sync --directory src/model_server_core
 uv run --frozen --directory src/model_server_core pytest -q
 uv run --frozen --directory src/model_server_core mypy --strict model_server_core
+# the tests too (strict typing over the package and its tests)
+MYPYPATH=tests uv run --frozen --directory src/model_server_core mypy --strict --explicit-package-bases model_server_core tests
 uv run --frozen --directory src/model_server_core ruff check .
 ```
