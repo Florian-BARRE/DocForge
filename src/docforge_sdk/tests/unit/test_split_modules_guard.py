@@ -1,5 +1,5 @@
 # ====== Code Summary ======
-# Structure guard for the R-24 split of the oversized resource/model modules: each split module is a
+# Structure guard for the R-24/R-25 split of the resource/model modules: each split module is a
 # package whose ``__init__`` re-exports its classes at the path they always had, no SDK source file
 # under ``resources/`` or ``models/`` exceeds the 400-line unit size, and ``pin_module_path`` only
 # rewrites the ``__module__`` of classes defined in a sub-module of the package.
@@ -27,6 +27,19 @@ _SPLIT_PACKAGES = (
     "docforge_sdk.resources.collections",
     "docforge_sdk.resources.jobs",
     "docforge_sdk.resources.explorer",
+    "docforge_sdk.resources.audit",
+    "docforge_sdk.resources.auth",
+    "docforge_sdk.resources.blobs",
+    "docforge_sdk.resources.capabilities",
+    "docforge_sdk.resources.collection_aliases",
+    "docforge_sdk.resources.config_versions",
+    "docforge_sdk.resources.corpus",
+    "docforge_sdk.resources.documents",
+    "docforge_sdk.resources.health",
+    "docforge_sdk.resources.pipelines",
+    "docforge_sdk.resources.search",
+    "docforge_sdk.resources.snippets",
+    "docforge_sdk.resources.transfers",
 )
 
 
