@@ -28,7 +28,7 @@ dependencies = [
     # cap tight at the next minor, where its API can break.
     "arq>=0.28.0,<0.29",
     # LLM — LangChain message types + adapted chat clients (per provider node)
-    "langchain-core>=1.7.6,<2",
+    "langchain-core>=1.8.0,<2",
     "langchain-openai>=1.7.4,<2",
     "langchain-mistralai>=1.1.6,<2",
     "sqlalchemy[asyncio]>=2.1.8,<3",
@@ -37,7 +37,7 @@ dependencies = [
     "alembic>=1.20.1,<2",
     "qdrant-client>=1.20.0,<2",
     "aioboto3>=15.5.0,<16",
-    "pypdf>=7.0.0,<8",
+    "pypdf>=7.0.1,<8",
     "httpx>=0.28.1,<1",
     # Token counting (chunker) — transitive via langchain-openai anyway; declared for intent.
     # Left unbounded: its effective version is driven by langchain-openai's own resolution.
@@ -104,9 +104,9 @@ dev = [
     "fakeredis>=2.40.0",
     "psycopg2-binary>=2.9.13",
     "pytest>=8.3.0",
-    "pytest-asyncio>=1.4.1.post1",
+    "pytest-asyncio>=1.5.0",
     "pytest-cov>=6.0.0",
-    "ruff>=0.17.4",
+    "ruff>=0.17.5",
 ]
 worker = [
     "docling>=2.148.0,<3",
