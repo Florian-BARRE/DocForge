@@ -1,7 +1,10 @@
 # ====== Code Summary ======
-# The synchronous HTTP transport (over httpx.Client). Inherits every pure helper from _TransportBase
-# and supplies only the sync I/O primitive (_send); spec execution, upload and raw byte fetch route
-# through that single chokepoint, so no endpoint hand-rolls its own parsing.
+# GENERATED FILE — DO NOT EDIT. Derived from _transport_async.py by scripts/generate_sync.py;
+# regenerate with `uv run --frozen python scripts/generate_sync.py` from src/docforge_sdk
+# (tests/unit/test_sync_codegen.py fails when this file drifts from its async source).
+# The synchronous HTTP transport (over httpx.Client). Inherits every pure helper from
+# _TransportBase and supplies only the sync I/O primitive (_send); spec execution, upload and raw
+# byte fetch route through that single chokepoint, so no endpoint hand-rolls its own parsing.
 
 # ====== Standard Library Imports ======
 from collections.abc import Iterator

@@ -1,4 +1,7 @@
 # ====== Code Summary ======
+# GENERATED FILE — DO NOT EDIT. Derived from async_collections.py by scripts/generate_sync.py;
+# regenerate with `uv run --frozen python scripts/generate_sync.py` from src/docforge_sdk
+# (tests/unit/test_sync_codegen.py fails when this file drifts from its async source).
 # The synchronous collections (CRUD over a collection's full contract) resource: the blocking shell
 # over the shared ``_CollectionsSpecs`` builders.
 
@@ -138,13 +141,17 @@ class SyncCollections(SyncResource, _CollectionsSpecs):
 
     def purge_trace_payloads(self, collection_id: str) -> TracePurgeResult:
         """
-        Reclaim a collection's stored full execution-trace payloads (idempotent, best-effort).
+        Reclaim a collection's stored full execution-trace payloads (the heavy per-node raw bytes).
+
+        Idempotent: a collection that stored no full-trace payloads returns zeros, not an error
+        (404 only when the collection itself is unknown). Best-effort server-side, so the call always
+        succeeds and reports the counts.
 
         Args:
             collection_id (str): The collection whose trace payloads are purged.
 
         Returns:
-            TracePurgeResult: Jobs considered + object-store objects deleted (404 only when unknown).
+            TracePurgeResult: Jobs considered + object-store objects deleted.
         """
         return self._transport.request(
             self._purge_trace_payloads_spec(collection_id), TracePurgeResult
@@ -154,11 +161,17 @@ class SyncCollections(SyncResource, _CollectionsSpecs):
         """
         Rebuild the collection's vector index from its current schema — no content re-embed.
 
+        Declares the named vectors of fields made semantic/lexical after first ingest, then refills
+        the metadata vectors from Postgres (the dense metadata values go through the embed provider).
+        Uploads and reingests are refused (409 ``rebuild_index_active``) while it runs. Poll
+        ``jobs.get(job_id)`` — the job's ``document_id`` is None.
+
         Args:
             collection_id (str): The collection whose index is rebuilt.
 
         Returns:
-            RebuildIndexAccepted: The queued job (202); poll ``jobs.get(job_id)`` (document_id None).
+            RebuildIndexAccepted: The queued job (202). 409 ``rebuild_index_active`` /
+                ``collection_busy`` surface as a ConflictError.
         """
         return self._transport.request(
             self._rebuild_index_spec(collection_id), RebuildIndexAccepted

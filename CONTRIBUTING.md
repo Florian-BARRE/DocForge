@@ -61,7 +61,11 @@ coherent or CI's `sdk-parity` job goes red:
    uv run python app/scripts/dump_openapi.py > ../docforge_sdk/tests/openapi_snapshot.json
    ```
 2. Update the matching model(s) in `src/docforge_sdk/docforge_sdk/models/` and, if the change adds an
-   endpoint, its resource method (async **and** sync — a parity test enforces both) and the MCP tool.
+   endpoint, its resource method and the MCP tool. Write the resource method **once**, in the async
+   module (`resources/<name>/async_<name>.py`): the sync twin (`sync_<name>.py`) and
+   `_transport_sync.py` are generated from the async source, never edited by hand. Regenerate them
+   with `cd src/docforge_sdk && uv run python scripts/generate_sync.py` (a drift test fails when a
+   committed sync file differs from the generator output).
 3. `cd src/docforge_sdk && uv run pytest -q -m "not live"` (and `-m live` against a running stack if you can).
 
 ## Commit & PR conventions
