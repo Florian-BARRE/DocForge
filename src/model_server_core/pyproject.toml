@@ -1,0 +1,110 @@
+[project]
+name = "docforge-model-server-core"
+version = "0.1.0"
+description = "Shared core of the DocForge model-host micro-services (bge, paddle, mineru, dots_ocr): ServerConfig, abstract ModelServer facade, request guards, health models, typed error handler"
+requires-python = ">=3.12"
+license = "GPL-3.0-or-later"
+dependencies = [
+    # Same ranges as the four model servers, so a server can adopt this library without moving its
+    # lock. torch / paddle / transformers are DELIBERATELY absent: the core is model-free, any
+    # device-specific probe is injected by the server that owns the heavy dependency.
+    "fastapi>=0.162.0,<1",
+    "uvicorn>=0.54.0,<1",
+    "pydantic>=2.11.0,<3",
+    # paddle_server stays on configplusplus 0.3 (paddlex pins pyyaml==6.0.2), so the floor is the
+    # one paddle_server declares.
+    "configplusplus>=0.1.0",
+    "loggerplusplus>=1.2.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3.0",
+    "ruff>=0.17.2",
+    "mypy>=1.13.0",
+    "httpx>=0.28.0",   # For FastAPI TestClient
+]
+
+[tool.uv]
+# Every package of this lock stays at the version bge_server locks (never newer), so a server can
+# adopt the library without its lock moving. Refresh from src/bge_server/uv.lock on a dependency round.
+constraint-dependencies = [
+    "annotated-doc==0.0.5",
+    "annotated-types==0.8.0",
+    "anyio==4.15.1",
+    "ast-serialize==0.13.1",
+    "certifi==2026.10.23",
+    "click==8.5.0",
+    "colorama==0.4.6",
+    "configplusplus==0.4.0",
+    "fastapi==0.162.0",
+    "h11==0.16.0",
+    "httpcore==1.0.9",
+    "httpx==0.28.1",
+    "idna==3.20",
+    "iniconfig==2.3.1",
+    "librt==0.16.0",
+    "loggerplusplus==1.2.0",
+    "loguru==0.7.3",
+    "mypy==2.4.1",
+    "mypy-extensions==1.1.0",
+    "opentelemetry-api==1.45.1",
+    "packaging==26.3",
+    "pathspec==1.1.1",
+    "pluggy==1.7.0",
+    "pydantic==2.14.1",
+    "pydantic-core==2.50.1",
+    "pygments==2.21.0",
+    "pytest==9.2.0",
+    "python-dotenv==1.2.4",
+    "pyyaml==6.0.3",
+    "ruff==0.17.4",
+    "starlette==1.10.0",
+    "typing-extensions==4.16.0",
+    "typing-inspection==0.4.4",
+    "uvicorn==0.54.0",
+    "win32-setctime==1.2.1",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["model_server_core"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+ignore = [
+    "F541",   # f-string without placeholder (loggerplusplus convention)
+    "E501",   # line too long (handled by formatter)
+    "UP042",  # class X(str, Enum): the project convention
+    "UP046",  # Generic[TypeVar]: the project convention (coding-standards, python.md)
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["model_server_core", "support"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = [".", "tests"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = ["model_server_core"]
+
+# Pillow and pypdfium2 are optional: the model server that uses ImageDecoder / PdfDecoder depends on
+# them, the core imports them lazily and never declares them.
+[[tool.mypy.overrides]]
+module = ["PIL", "PIL.*", "pypdfium2"]
+ignore_missing_imports = true
+
+[tool.ruff.lint.per-file-ignores]
+# A package facade groups its re-exports under banner comments (coding-standards, python-service.md
+# section 7); the import sorter would scatter the banners.
+"**/__init__.py" = ["I001"]
