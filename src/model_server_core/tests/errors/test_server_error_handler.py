@@ -18,7 +18,7 @@ from model_server_core import (
     ServerErrorHandler,
 )
 
-SECRET = "secret internal detail: /srv/models/weights.bin"
+LEAKY_DETAIL = "secret internal detail: /srv/models/weights.bin"
 
 
 def _client(handler: ServerErrorHandler) -> TestClient:
@@ -27,7 +27,7 @@ def _client(handler: ServerErrorHandler) -> TestClient:
 
     @app.get("/boom")
     async def boom() -> None:
-        raise RuntimeError(SECRET)
+        raise RuntimeError(LEAKY_DETAIL)
 
     @app.get("/teapot")
     async def teapot() -> None:
@@ -55,7 +55,7 @@ def test_unexpected_exception_is_a_typed_500_with_a_correlation_id() -> None:
 def test_the_body_never_leaks_the_exception_or_its_type() -> None:
     response = _client(ServerErrorHandler()).get("/boom")
 
-    assert SECRET not in response.text
+    assert LEAKY_DETAIL not in response.text
     assert "weights.bin" not in response.text
     assert "RuntimeError" not in response.text
     assert "Traceback" not in response.text
@@ -69,7 +69,7 @@ def test_the_full_exception_is_logged_with_the_same_correlation_id() -> None:
 
     assert "correlation_id=abc123" in logs
     assert "RuntimeError" in logs
-    assert SECRET in logs  # full detail belongs in the LOGS, never in the body
+    assert LEAKY_DETAIL in logs  # full detail belongs in the LOGS, never in the body
     assert "Traceback" in logs
     assert "GET /boom" in logs
 
