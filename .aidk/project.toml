@@ -35,7 +35,8 @@ tests = ["src/docforge/tests/**", "src/docforge_sdk/tests/**", "src/mcp/tests/**
 # The kit's git hooks (every commit and every push, whatever the agent's tool): the names of [checks]
 # run at each commit (keep them fast: a few seconds) and before each push.
 # Push is a fast structural gate (P2, 2026-11-15; ~30 s target): the seven *-lock checks, sdk-types, mcp-types,
-# frontend-lint, frontend-types, sdk-parity and secrets-files, plus the kit's built-ins. The full test suites
+# frontend-lint, frontend-types, sdk-parity, secrets-files and docforge-ratchets (the four invariant ratchets of
+# tests/units/coherence, ~3 s), plus the kit's built-ins. The full test suites
 # (docforge-tests, docforge-rag-eval, sdk/mcp/mineru/dots-ocr tests) run in [[on.done]] and the CI, not at push:
 # aidk work done runs done first, then the push, so a pushed suite only ran twice (push was 119.3 s before P2).
 # bge and paddle stay out of both hooks but for their lock checks (no venv needed): their other checks run --no-sync
@@ -207,6 +208,13 @@ env_from = "services/docforge/.env.example"
 
 [[on.push]]
 rule = "aidk.command"
+name = "docforge-ratchets"
+run = ["uv", "run", "--frozen", "--directory", "src/docforge", "pytest", "tests/units/coherence/test_node_purity_ratchet.py", "tests/units/coherence/test_layer_ratchet.py", "tests/units/coherence/test_file_size_ratchet.py", "tests/units/coherence/test_ir_canonical_ratchet.py", "-q"]
+timeout = 900
+env_from = "services/docforge/.env.example"
+
+[[on.push]]
+rule = "aidk.command"
 name = "sdk-lock"
 run = ["uv", "lock", "--check", "--directory", "src/docforge_sdk"]
 timeout = 900
@@ -346,6 +354,13 @@ env_from = "services/docforge/.env.example"
 rule = "aidk.command"
 name = "docforge-lint"
 run = ["uv", "run", "--frozen", "--directory", "src/docforge", "ruff", "check", "."]
+timeout = 900
+env_from = "services/docforge/.env.example"
+
+[[on.done]]
+rule = "aidk.command"
+name = "docforge-ratchets"
+run = ["uv", "run", "--frozen", "--directory", "src/docforge", "pytest", "tests/units/coherence/test_node_purity_ratchet.py", "tests/units/coherence/test_layer_ratchet.py", "tests/units/coherence/test_file_size_ratchet.py", "tests/units/coherence/test_ir_canonical_ratchet.py", "-q"]
 timeout = 900
 env_from = "services/docforge/.env.example"
 
