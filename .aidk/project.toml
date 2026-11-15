@@ -6,7 +6,7 @@
 #   frontend-types, sdk-parity, secrets-files and docforge-ratchets (the four invariant ratchets, ~3.5 s).
 # - done (aidk rules run done, what aidk work done runs first): the full coverage, the push checks plus the
 #   *-deps syncs, formats, lints, types, test suites, frontend tests and build, gitleaks and the detect-secrets
-#   baseline check (aidk.secrets_baseline: the committed .secrets.baseline, which .gitleaks.toml allowlists).
+#   baseline check (the aidk secrets-baseline rule: the committed .secrets.baseline, which .gitleaks.toml allowlists).
 # The CI gate's commands (.github/workflows/gate.yml, run by ci.yml and by release-sdk.yml's gate), job by
 # job: docforge, docforge_sdk, mcp, bge_server, paddle_server (CPU wheels, then never re-synced),
 # mineru_server and dots_ocr_server (gate.yml sidecar-servers: format, lint, mypy, tests on the base sync,
