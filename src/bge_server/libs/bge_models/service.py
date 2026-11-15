@@ -5,7 +5,7 @@
 # units: BgeModelLoader (load), BgeEmbedEncoder (encode_*) and BgeRerankScorer
 # (compute_rerank_scores_flat). Models are loaded lazily inside `load()` so that importing this
 # module never triggers the heavy torch/FlagEmbedding import chain. Called exclusively from the
-# FastAPI lifespan -- routes access it through CONTEXT.
+# FastAPI lifespan, which the core ModelServer drives through the ModelService contract.
 #
 # Device handling and revision pinning live in BgeModelLoader (see model_loader.py).
 
@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Any
 
 # ====== Third-Party Library Imports ======
 from loggerplusplus import LoggerClass
+from model_server_core import ModelService
 
 # ====== Local Project Imports ======
 from .embed_encoder import BgeEmbedEncoder
@@ -28,7 +29,7 @@ if TYPE_CHECKING:
     from FlagEmbedding import BGEM3FlagModel, FlagReranker
 
 
-class BgeModelsService(LoggerClass):
+class BgeModelsService(ModelService, LoggerClass):
     """
     Manages the lifecycle of the BGE embedding and reranking models.
 
@@ -67,7 +68,7 @@ class BgeModelsService(LoggerClass):
                 keeps the combined intra-op thread usage of concurrent calls within the real core
                 budget instead of each one alone claiming the full budget and doubling it under
                 load.
-                cpu_budget comes from CpuBudgetResolver — the cgroup v2 CFS quota when the
+                cpu_budget comes from the core CpuBudget — the cgroup v2 CFS quota when the
                 process runs under one, else the scheduler affinity/cpu_count fallback.
                 Stored here; applied at the start of load() before any torch model call.
             embed_revision (str | None): BGE_M3_REVISION — commit sha to pin the embed model
@@ -170,6 +171,17 @@ class BgeModelsService(LoggerClass):
             bool: True when the reranker is loaded and ready to serve /rerank requests.
         """
         return self._reranker is not None
+
+    @property
+    def ready(self) -> bool:
+        """
+        Whether the service can serve: the embed model is loaded and, unless the reranker is gated
+        off (BGE_LOAD_RERANKER=false, an embed-only deployment), the reranker is loaded too.
+
+        Returns:
+            bool: The readiness reported by GET /health.
+        """
+        return self._embed_model is not None and (self.reranker_loaded or not self._load_reranker)
 
     @property
     def resolved_device(self) -> str | None:

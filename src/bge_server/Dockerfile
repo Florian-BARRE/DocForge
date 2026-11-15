@@ -44,15 +44,22 @@ ENV UV_PROJECT_ENVIRONMENT=/opt/venv \
 # change, not when application source code changes.
 COPY bge_server/pyproject.toml bge_server/uv.lock /workspace/bge_server/
 
+# docforge-model-server-core is declared as a relative path source (../model_server_core from
+# bge_server/pyproject.toml), so it must exist at /workspace/model_server_core — a sibling of
+# /workspace/bge_server — before `uv sync` runs.
+COPY model_server_core /workspace/model_server_core
+
 # Sync the locked production dependencies, activating the selected torch variant extra.
 # --frozen: fail if uv.lock is out of sync with pyproject.toml (CI safety net).
 # --no-dev: omit development-only groups (pytest, ruff, mypy, httpx).
 # --no-install-project: the project itself is not a package (package = false in pyproject.toml).
+# --no-editable: build docforge-model-server-core into a real wheel in the venv instead of an
+#   editable .pth link to /workspace/model_server_core, a path absent from the runtime stage.
 # --extra ${TORCH_VARIANT}: activates either the `cpu` or `gpu` optional-dependency extra,
 #   which gates the correct torch wheel + (for gpu) all nvidia-cu12-* runtime libs.
 #   The two extras are mutually exclusive (declared as conflicting in pyproject.toml).
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-dev --no-install-project --extra "${TORCH_VARIANT}" --project /workspace/bge_server
+    uv sync --frozen --no-dev --no-install-project --no-editable --extra "${TORCH_VARIANT}" --project /workspace/bge_server
 
 ###############################################################################
 # Stage 2: Runtime image (minimal Python 3.12)

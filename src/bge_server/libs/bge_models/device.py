@@ -17,9 +17,7 @@ from dataclasses import dataclass
 
 # ====== Third-Party Library Imports ======
 from loggerplusplus import loggerplusplus
-
-# Accepted policy values — validated in BgeServerConfig.validate()
-VALID_BGE_DEVICE_POLICIES: frozenset[str] = frozenset({"auto", "cuda", "cpu"})
+from model_server_core import VALID_DEVICE_POLICIES
 
 
 @dataclass(frozen=True)
@@ -76,13 +74,13 @@ class DeviceResolver:
         Raises:
             RuntimeError: When policy is "cuda" but torch.cuda.is_available() returns False.
             ValueError: When policy is not one of the accepted values (defensive; primary
-                validation is in BgeServerConfig.validate()).
+                validation is in ServerConfig.validate()).
         """
-        # 1. Reject unknown policies defensively (primary guard is in BgeServerConfig.validate)
-        if policy not in VALID_BGE_DEVICE_POLICIES:
+        # 1. Reject unknown policies defensively (primary guard is in ServerConfig.validate)
+        if policy not in VALID_DEVICE_POLICIES:
             raise ValueError(
                 f"Unknown BGE_DEVICE policy '{policy}'. "
-                f"Accepted values: {sorted(VALID_BGE_DEVICE_POLICIES)}"
+                f"Accepted values: {sorted(VALID_DEVICE_POLICIES)}"
             )
 
         # 2. Resolve the concrete device — defer torch import to here

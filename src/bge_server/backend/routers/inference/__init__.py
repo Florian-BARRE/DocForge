@@ -1,7 +1,7 @@
 # ------------------- Router ------------------- #
-from .router import router as inference_router
+from .router import InferenceRoutes
 
 # ------------------- Public API ------------------- #
 __all__ = [
-    "inference_router",
+    "InferenceRoutes",
 ]

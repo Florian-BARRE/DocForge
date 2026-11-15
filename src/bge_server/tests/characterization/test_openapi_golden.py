@@ -5,17 +5,33 @@
 # a diff is a refactor decision to review (shared-core extraction, router moves), never a test to
 # fix by regenerating blindly. The app is built without running its lifespan, so no model loads.
 #
+# R-27 step 2 (bge adopts model_server_core): the inference routes are byte-identical; only GET /health
+# changed, because it is now the core HealthRoute (schema BgeHealthResponse = core HealthResponse +
+# the two model ids, so the body gains a `detail: null` field; operationId and summary follow the
+# core handler). The typed 500 is not declared in OpenAPI (see test_inference_routes_golden.py).
+#
 # To regenerate after a REVIEWED, intended contract change (from src/bge_server):
-#   uv run --no-sync python -c "import json; from backend.app import create_app; \
-#     print(json.dumps(create_app().openapi(), indent=2, sort_keys=True, ensure_ascii=False))" \
+#   uv run --no-sync python -c "import json; from backend import BgeServer; \
+#     from config_loader import BgeServerConfig; print(json.dumps( \
+#     BgeServer(BgeServerConfig).create_app().openapi(), indent=2, sort_keys=True, \
+#     ensure_ascii=False))" \
 #     > tests/characterization/goldens/openapi.json
 
 # ====== Standard Library Imports ======
 import json
 from pathlib import Path
 
+# ====== Third-Party Library Imports ======
+from fastapi import FastAPI
+
 # ====== Internal Project Imports ======
-from backend.app import create_app
+from backend import BgeServer
+from config_loader import BgeServerConfig
+
+
+def create_app() -> FastAPI:
+    return BgeServer(BgeServerConfig).create_app()
+
 
 GOLDEN_PATH = Path(__file__).parent / "goldens" / "openapi.json"
 

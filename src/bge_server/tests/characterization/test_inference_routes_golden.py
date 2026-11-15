@@ -17,18 +17,19 @@
 import json
 from collections.abc import Iterator
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 # ====== Third-Party Library Imports ======
 import pytest
 from fastapi.testclient import TestClient
+from model_server_core import CORRELATION_ID_HEADER, INTERNAL_ERROR_MESSAGE
 
 # ====== Internal Project Imports ======
-from backend.app import create_app
-from backend.context import CONTEXT
+from backend import BgeServer
 from config_loader import BgeServerConfig
 from libs.batching import QueueFullError
+from tests.support.bge_app import build_server
 
 GOLDEN_PATH = Path(__file__).parent / "goldens" / "inference_routes.json"
 
@@ -66,21 +67,18 @@ def _build_engine() -> MagicMock:
     return engine
 
 
-def _wire_context() -> MagicMock:
-    """Point CONTEXT at the real config, a fake engine and a fake model service; return the engine."""
+def _build_server() -> tuple[BgeServer, MagicMock, MagicMock]:
+    """A real BgeServer over a fake engine and a fake model service; also return both fakes."""
     engine = _build_engine()
     models = MagicMock()
     models.reranker_loaded = True
-    CONTEXT.CONFIG = BgeServerConfig
-    CONTEXT.batching_engine = engine
-    CONTEXT.bge_models = models
-    return engine
+    return build_server(engine=engine, models=models), engine, models
 
 
 def record_all() -> dict[str, dict[str, Any]]:
     """Run every golden case against a fresh app and return {case: {status, body}} (raw text)."""
-    _wire_context()
-    client = TestClient(create_app())
+    server, _, _ = _build_server()
+    client = TestClient(server.create_app())
     recorded: dict[str, dict[str, Any]] = {}
     for name, (path, body) in CASES.items():
         response = client.post(path, json=body)
@@ -89,13 +87,25 @@ def record_all() -> dict[str, dict[str, Any]]:
 
 
 @pytest.fixture
-def engine() -> MagicMock:
-    return _wire_context()
+def wiring() -> tuple[BgeServer, MagicMock, MagicMock]:
+    return _build_server()
 
 
 @pytest.fixture
-def client(engine: MagicMock) -> TestClient:
-    return TestClient(create_app())
+def engine(wiring: tuple[BgeServer, MagicMock, MagicMock]) -> MagicMock:
+    return wiring[1]
+
+
+@pytest.fixture
+def models(wiring: tuple[BgeServer, MagicMock, MagicMock]) -> MagicMock:
+    return wiring[2]
+
+
+@pytest.fixture
+def client(wiring: tuple[BgeServer, MagicMock, MagicMock]) -> TestClient:
+    # raise_server_exceptions=False: the typed 500 is an HTTP answer the tests assert on, not an
+    # exception to re-raise into the test client.
+    return TestClient(wiring[0].create_app(), raise_server_exceptions=False)
 
 
 # ── Golden: the happy-path wire format ───────────────────────────────────────
@@ -250,9 +260,9 @@ def test_queue_full_is_503_with_retry_after_on_every_queued_route(
 
 
 def test_reranker_not_loaded_is_503_without_retry_after(
-    client: TestClient, engine: MagicMock
+    client: TestClient, engine: MagicMock, models: MagicMock
 ) -> None:
-    cast(MagicMock, CONTEXT.bge_models).reranker_loaded = False
+    models.reranker_loaded = False
 
     response = client.post("/rerank", json={"query": "q", "texts": ["a"]})
 
@@ -261,15 +271,20 @@ def test_reranker_not_loaded_is_503_without_retry_after(
     assert "Retry-After" not in response.headers
 
 
-def test_engine_failure_is_a_500_carrying_the_error_text(
+def test_engine_failure_is_a_typed_500_that_hides_the_error_text(
     client: TestClient, engine: MagicMock
 ) -> None:
+    """R-27 (the one approved behaviour change): the 500 body is a generic typed error plus a
+    correlation id, never `str(exc)` (was `{"detail": {"error": "model exploded"}}`)."""
     engine.submit_embed_dense = AsyncMock(side_effect=RuntimeError("model exploded"))
 
     response = client.post("/embed", json={"inputs": ["t"]})
 
     assert response.status_code == 500
-    assert response.json() == {"detail": {"error": "model exploded"}}
+    detail = response.json()["detail"]
+    assert detail["error"] == INTERNAL_ERROR_MESSAGE
+    assert detail["correlation_id"] == response.headers[CORRELATION_ID_HEADER]
+    assert "model exploded" not in response.text
 
 
 # ── Transport ────────────────────────────────────────────────────────────────
