@@ -3,7 +3,7 @@
 #
 # One entry per ecosystem x directory that actually holds a manifest Dependabot can parse:
 #   - github-actions : action versions pinned in .github/workflows/*.yml
-#   - uv             : each of the 7 independent Python projects in this monorepo (own
+#   - uv             : each of the 8 independent Python projects in this monorepo (own
 #                       pyproject.toml + uv.lock — mirrors the gate.yml job split)
 #   - npm            : the frontend (package.json + package-lock.json)
 #   - docker         : base images in each Dockerfile (FROM lines), one entry per directory
@@ -190,6 +190,15 @@ updates:
       # load). So >=4.57 (and the 5.x line with it) is held. Lift when dots.ocr supports a newer one.
       - dependency-name: "transformers"
         versions: [">=4.57"]
+
+  - package-ecosystem: "uv"
+    directory: "/src/model_server_core"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    groups:
+      model-server-core-minor-patch:
+        update-types: ["minor", "patch"]
 
   # --- Frontend (npm: package.json + package-lock.json) ---
   - package-ecosystem: "npm"
