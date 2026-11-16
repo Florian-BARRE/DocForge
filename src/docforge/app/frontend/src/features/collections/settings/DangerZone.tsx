@@ -13,20 +13,20 @@ import { useState } from "react";
 import { reingestCollection } from "../../../api/collections";
 import { Button } from "../../../components/Button";
 import { useToast } from "../../../shell/toast";
-import type { Navigate } from "../../../shell/view";
 import { theme } from "../../../theme";
 import { formatBytes } from "../../explorer/format";
 import { useDeleteCollection } from "../state/useDeleteCollection";
 import { useCollectionTraceBytes } from "../trace/useCollectionTraceBytes";
 import { useCollectionTracePurge } from "../trace/useCollectionTracePurge";
+import { useNavigate } from "../../../shell/navigation";
 
 interface DangerZoneProps {
   collectionId: string;
   collectionName: string;
-  onNavigate: Navigate;
 }
 
-export function DangerZone({ collectionId, collectionName, onNavigate }: DangerZoneProps) {
+export function DangerZone({ collectionId, collectionName }: DangerZoneProps) {
+  const navigate = useNavigate();
   const toast = useToast();
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const { deleting, error: deleteError, remove } = useDeleteCollection();
@@ -39,7 +39,7 @@ export function DangerZone({ collectionId, collectionName, onNavigate }: DangerZ
 
   const handleDelete = async () => {
     const ok = await remove({ id: collectionId, name: collectionName });
-    if (ok) onNavigate({ name: "collections" });
+    if (ok) navigate({ name: "collections" });
   };
 
   const handlePurgeTraces = async () => {
@@ -57,7 +57,7 @@ export function DangerZone({ collectionId, collectionName, onNavigate }: DangerZ
         ? ` (${result.skipped_in_flight} skipped — already in flight)`
         : "";
       toast.success(`Full reingest queued for ${result.count} document${result.count === 1 ? "" : "s"}.${skippedNote}`);
-      onNavigate({ name: "collection-activity", collectionId });
+      navigate({ name: "collection-activity", collectionId });
     } catch (e) {
       setReingestError(e instanceof Error ? e.message : String(e));
     } finally {

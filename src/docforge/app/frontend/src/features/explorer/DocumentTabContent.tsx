@@ -8,7 +8,6 @@ import type { DraftValues } from "./metadata/edit/metadataDraft";
 import type { FieldSpec } from "../../api/collections";
 import { ErrorState } from "../../components/ErrorState";
 import { LoadingState } from "../../components/LoadingState";
-import type { Navigate } from "../../shell/view";
 import { ChunksTab } from "./chunks/ChunksTab";
 import { IRTab } from "./ir/IRTab";
 import { LayoutTab } from "./layout/LayoutTab";
@@ -24,18 +23,17 @@ interface DocumentTabContentProps {
   collectionId: string;
   tabs: ReturnType<typeof useDocumentTabs>;
   focusBlockId: string | null;
-  onNavigate: Navigate;
   onJumpToBlock: (blockId: string) => void;
   onMetadataSaved: (updated: DraftValues, specs: FieldSpec[]) => void;
 }
 
 export function DocumentTabContent({
-  activeTab, document, documentId, collectionId, tabs, focusBlockId, onNavigate, onJumpToBlock, onMetadataSaved,
+  activeTab, document, documentId, collectionId, tabs, focusBlockId, onJumpToBlock, onMetadataSaved,
 }: DocumentTabContentProps) {
   return (
     <>
       {activeTab === "overview" && (
-        <OverviewTab document={document} pages={tabs.pages} collectionId={collectionId} onNavigate={onNavigate} onMetadataSaved={onMetadataSaved} />
+        <OverviewTab document={document} pages={tabs.pages} collectionId={collectionId} onMetadataSaved={onMetadataSaved} />
       )}
       {activeTab === "pages" &&
         (tabs.pagesError ? (

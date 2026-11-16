@@ -7,26 +7,26 @@
 
 import type { KeyboardEvent } from "react";
 import { theme as t } from "../../theme";
-import type { Navigate } from "../view";
 import type { SidebarPage } from "./sidebarConfig";
+import { useNavigate } from "../navigation";
 
 interface SidebarNavItemProps {
   page: SidebarPage;
   expanded: boolean;
   active: boolean;
   softActive: boolean;
-  onNavigate: Navigate;
   registerRef: (key: string) => (el: HTMLElement | null) => void;
   onItemKeyDown: (e: KeyboardEvent, key: string) => void;
 }
 
-export function SidebarNavItem({ page, expanded, active, softActive, onNavigate, registerRef, onItemKeyDown }: SidebarNavItemProps) {
+export function SidebarNavItem({ page, expanded, active, softActive, registerRef, onItemKeyDown }: SidebarNavItemProps) {
+  const navigate = useNavigate();
   const soft = !active && softActive;
   return (
     <button
       ref={registerRef(page.key)}
       onKeyDown={(e) => onItemKeyDown(e, page.key)}
-      onClick={() => onNavigate(page.view)}
+      onClick={() => navigate(page.view)}
       aria-current={active ? "page" : undefined}
       title={page.label}
       style={{

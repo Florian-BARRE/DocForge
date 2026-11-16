@@ -110,12 +110,12 @@ export function CollectionShell({ collectionId, onNavigate, children, pipelineSt
       <div style={{ padding: `${t.space.m}px ${t.space.xl}px 0`, maxWidth: 1200, margin: "0 auto", width: "100%" }}>
         <PageHeader
           compact
-          eyebrow={<Breadcrumb items={breadcrumbItems} onNavigate={onNavigate} />}
+          eyebrow={<Breadcrumb items={breadcrumbItems} />}
           title={
             <span style={{ display: "inline-flex", alignItems: "center", gap: t.space.s }}>
               {collection.name}
               {collection.needs_reindex && <Chip tone="warn">needs reindex</Chip>}
-              <CollectionAliasChips collectionId={collectionId} aliases={aliasesByCollection.get(collectionId) ?? []} onNavigate={onNavigate} />
+              <CollectionAliasChips collectionId={collectionId} aliases={aliasesByCollection.get(collectionId) ?? []} />
             </span>
           }
           subtitle={subtitle}
@@ -146,7 +146,7 @@ export function CollectionShell({ collectionId, onNavigate, children, pipelineSt
           </div>
         )}
 
-        <CollectionSubNav collectionId={collectionId} onNavigate={onNavigate} pipelineStage={pipelineStage} settingsSection={settingsSection} />
+        <CollectionSubNav collectionId={collectionId} pipelineStage={pipelineStage} settingsSection={settingsSection} />
       </div>
       <div id="collection-panel" style={{ flex: 1, minHeight: 0 }}>
         <HideHeaderUploadContext.Provider value={hideUploadAction}>

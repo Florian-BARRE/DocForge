@@ -9,6 +9,7 @@
 
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import { NavigateProvider } from "../navigation";
 import type { Navigate, View } from "../view";
 import { Sidebar } from "./Sidebar";
 import { useSidebarCompact } from "./useSidebarCompact";
@@ -23,13 +24,15 @@ function renderSidebar(props: Partial<Parameters<typeof Sidebar>[0]> = {}) {
   const view: View = props.view ?? { name: "collections" };
   const expanded = props.expanded ?? true;
   render(
-    <Sidebar
-      view={view}
-      onNavigate={onNavigate}
-      expanded={expanded}
-      onToggleExpanded={onToggleExpanded}
-      onExpandedChange={props.onExpandedChange}
-    />,
+    <NavigateProvider navigate={onNavigate}>
+      <Sidebar
+        view={view}
+        onNavigate={onNavigate}
+        expanded={expanded}
+        onToggleExpanded={onToggleExpanded}
+        onExpandedChange={props.onExpandedChange}
+      />
+    </NavigateProvider>,
   );
   return { onNavigate, onToggleExpanded };
 }
@@ -91,13 +94,13 @@ describe("Sidebar", () => {
   it("fires onOpenPalette from the ⌘K trigger near the brand mark", () => {
     const onOpenPalette = vi.fn();
     render(
-      <Sidebar
+      <NavigateProvider navigate={vi.fn()}><Sidebar
         view={{ name: "overview" }}
         onNavigate={vi.fn()}
         expanded
         onToggleExpanded={vi.fn()}
         onOpenPalette={onOpenPalette}
-      />,
+      /></NavigateProvider>,
     );
     fireEvent.click(screen.getByTitle("Command palette (⌘K)"));
     expect(onOpenPalette).toHaveBeenCalledTimes(1);

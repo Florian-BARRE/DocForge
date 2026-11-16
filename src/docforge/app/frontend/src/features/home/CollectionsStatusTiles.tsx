@@ -8,8 +8,8 @@
 // of large stateful logic the isolation rule was never meant to force-duplicate.
 
 import { StatTile } from "../../components/StatTile";
-import type { Navigate } from "../../shell/view";
 import { useCollectionsFleet, type FleetEntry } from "../collections/state/useCollectionsFleet";
+import { useNavigate } from "../../shell/navigation";
 
 /** Mirrors CollectionsToolbar's own "attention" bucket (down/degraded/ingest_unavailable) — also
  *  reused by NeedsAttentionPanel, which lists these same entries out in full below the tile row. */
@@ -18,11 +18,8 @@ export function needsAttention(entry: FleetEntry): boolean {
   return verdict === "down" || verdict === "degraded" || verdict === "ingest_unavailable";
 }
 
-interface CollectionsStatusTilesProps {
-  onNavigate: Navigate;
-}
-
-export function CollectionsStatusTiles({ onNavigate }: CollectionsStatusTilesProps) {
+export function CollectionsStatusTiles() {
+  const navigate = useNavigate();
   const { collections, visibleEntries } = useCollectionsFleet("all");
 
   if (!collections) {
@@ -44,14 +41,14 @@ export function CollectionsStatusTiles({ onNavigate }: CollectionsStatusTilesPro
         label="Need attention"
         tone={attentionCount > 0 ? "warn" : "neutral"}
         caption="down · degraded · ingest unavailable"
-        onClick={() => onNavigate({ name: "collections", health: "attention" })}
+        onClick={() => navigate({ name: "collections", health: "attention" })}
       />
       <StatTile
         value={operationalCount}
         label="Operational"
         tone="ok"
         caption={`of ${collections.length} collection${collections.length === 1 ? "" : "s"}`}
-        onClick={() => onNavigate({ name: "collections", health: "operational" })}
+        onClick={() => navigate({ name: "collections", health: "operational" })}
       />
     </>
   );

@@ -31,7 +31,12 @@ import { usePolling } from "../../hooks/usePolling";
 const POLL_MS = 3000;
 const GRID_MIN_PX = 320;
 
-export function WorkersPanel({ onNavigate }: { onNavigate: Navigate }) {
+interface WorkersPanelProps {
+  /** Handed over by the route table (the pinned routed-page boundary) but unused: the children reach navigation through useNavigate(). */
+  onNavigate: Navigate;
+}
+
+export function WorkersPanel(_props: WorkersPanelProps) {
   const [workers, setWorkers] = useState<WorkerActivity[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const { mode, setMode } = useViewMode("docforge_view_workers");
@@ -64,7 +69,6 @@ export function WorkersPanel({ onNavigate }: { onNavigate: Navigate }) {
         page="Fleet"
         subtitle="Live worker resources, queue depth, and fleet health."
         actions={<ViewModeToggle mode={mode} onChange={setMode} label="Workers" />}
-        onNavigate={onNavigate}
       />
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: theme.space.l, marginBottom: theme.space.xl }}>
@@ -94,7 +98,7 @@ export function WorkersPanel({ onNavigate }: { onNavigate: Navigate }) {
             }}
           >
             {workers.map((activity) => (
-              <WorkerCard key={activity.worker_id} activity={activity} onNavigate={onNavigate} onJobUpdated={updateJob} />
+              <WorkerCard key={activity.worker_id} activity={activity} onJobUpdated={updateJob} />
             ))}
           </div>
         </>
@@ -104,7 +108,6 @@ export function WorkersPanel({ onNavigate }: { onNavigate: Navigate }) {
           title="Recent activity across the fleet"
           status={["running", "done"]}
           emptyLabel="No running or completed jobs yet."
-          onNavigate={onNavigate}
         />
       )}
 

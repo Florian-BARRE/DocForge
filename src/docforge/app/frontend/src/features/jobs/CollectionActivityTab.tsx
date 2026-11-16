@@ -32,10 +32,11 @@ function toCreatedBeforeIso(dateOnly: string): string | undefined {
 
 interface CollectionActivityTabProps {
   collectionId: string;
+  /** Handed over by the route table (the pinned routed-page boundary) but unused: the children reach navigation through useNavigate(). */
   onNavigate: Navigate;
 }
 
-export function CollectionActivityTab({ collectionId, onNavigate }: CollectionActivityTabProps) {
+export function CollectionActivityTab({ collectionId }: CollectionActivityTabProps) {
   const [tab, setTab] = useState<JobFleetTab>("all");
   const [offset, setOffset] = useState(0);
   const [filters, setFilters] = useState<JobFilters>(EMPTY_JOB_FILTERS);
@@ -91,7 +92,7 @@ export function CollectionActivityTab({ collectionId, onNavigate }: CollectionAc
           <div style={{ marginBottom: theme.space.m }}>
             <JobsPager total={page.total} limit={page.limit} offset={page.offset} onOffsetChange={setOffset} />
           </div>
-          <JobFleetList jobs={page.jobs} workerMap={workerMap} onNavigate={onNavigate} onJobUpdated={patchJob} />
+          <JobFleetList jobs={page.jobs} workerMap={workerMap} onJobUpdated={patchJob} />
         </>
       )}
     </div>

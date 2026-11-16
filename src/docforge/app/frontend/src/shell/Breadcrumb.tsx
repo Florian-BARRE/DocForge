@@ -1,14 +1,15 @@
 // ====== Code Summary ======
 // Shared "where am I" trail rendered above a page's own tab strip. Every segment but the last is a
-// clickable link (calls `onNavigate` with that segment's View); the last segment is the current
+// clickable link (calls `navigate` with that segment's View); the last segment is the current
 // location — plain ink, `aria-current="page"`, never a link (per brand.md, the accent is reserved
 // for the one active/primary action elsewhere on the page, not a breadcrumb tail). A segment
 // without a `view` (e.g. a sidebar section label with no page of its own, like "Admin") renders as
 // plain text even mid-trail. Long labels (collection names, ids) are CSS-ellipsised with a `title`
 // tooltip carrying the full value — brand.md: let names lead, truncate ids.
 
-import type { Navigate, View } from "./view";
+import type { View } from "./view";
 import { theme as t } from "../theme";
+import { useNavigate } from "./navigation";
 
 export interface BreadcrumbItem {
   /** Segment text. */
@@ -21,7 +22,6 @@ export interface BreadcrumbItem {
 
 interface BreadcrumbProps {
   items: BreadcrumbItem[];
-  onNavigate: Navigate;
 }
 
 const SEGMENT_MAX_WIDTH = 220;
@@ -36,7 +36,8 @@ const segmentBaseStyle = {
 };
 
 /** One breadcrumb segment — a steel-toned link for a mid-trail item with a view, plain ink text otherwise. */
-function BreadcrumbSegment({ item, isLast, onNavigate }: { item: BreadcrumbItem; isLast: boolean; onNavigate: Navigate }) {
+function BreadcrumbSegment({ item, isLast }: { item: BreadcrumbItem; isLast: boolean }) {
+  const navigate = useNavigate();
   const fontFamily = item.mono ? t.font.mono : t.font.family;
 
   if (isLast || !item.view) {
@@ -54,7 +55,7 @@ function BreadcrumbSegment({ item, isLast, onNavigate }: { item: BreadcrumbItem;
   return (
     <button
       type="button"
-      onClick={() => onNavigate(item.view!)}
+      onClick={() => navigate(item.view!)}
       title={item.label}
       style={{
         ...segmentBaseStyle, fontFamily, fontSize: t.font.size.s,
@@ -72,7 +73,7 @@ function BreadcrumbSegment({ item, isLast, onNavigate }: { item: BreadcrumbItem;
  *
  * Every item but the last is a link; the last is the current page and carries `aria-current="page"`.
  */
-export function Breadcrumb({ items, onNavigate }: BreadcrumbProps) {
+export function Breadcrumb({ items }: BreadcrumbProps) {
   return (
     <nav aria-label="Breadcrumb" style={{ display: "flex", alignItems: "center", gap: t.space.xs, flexWrap: "wrap" }}>
       {items.map((item, index) => (
@@ -80,7 +81,7 @@ export function Breadcrumb({ items, onNavigate }: BreadcrumbProps) {
           {index > 0 && (
             <span style={{ color: t.color.mute, fontSize: t.font.size.s }} aria-hidden="true">/</span>
           )}
-          <BreadcrumbSegment item={item} isLast={index === items.length - 1} onNavigate={onNavigate} />
+          <BreadcrumbSegment item={item} isLast={index === items.length - 1} />
         </span>
       ))}
     </nav>

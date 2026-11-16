@@ -8,11 +8,11 @@ import { useState } from "react";
 import { listJobsPage, type JobStatus, type JobStatusValue } from "../../api/jobs";
 import { ErrorState } from "../../components/ErrorState";
 import { LoadingState } from "../../components/LoadingState";
-import type { Navigate } from "../../shell/view";
 import { theme } from "../../theme";
 import { JobRow } from "./JobRow";
 import { errorMessage } from "../../hooks/errorMessage";
 import { usePolling } from "../../hooks/usePolling";
+import { useNavigate } from "../../shell/navigation";
 
 const POLL_MS = 5000;
 
@@ -21,10 +21,10 @@ interface RecentJobsPanelProps {
   status: JobStatusValue[];
   limit?: number;
   emptyLabel: string;
-  onNavigate: Navigate;
 }
 
-export function RecentJobsPanel({ title, status, limit = 8, emptyLabel, onNavigate }: RecentJobsPanelProps) {
+export function RecentJobsPanel({ title, status, limit = 8, emptyLabel }: RecentJobsPanelProps) {
+  const navigate = useNavigate();
   const [jobs, setJobs] = useState<JobStatus[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -61,7 +61,7 @@ export function RecentJobsPanel({ title, status, limit = 8, emptyLabel, onNaviga
             <JobRow
               key={job.job_id}
               job={job}
-              onClick={() => onNavigate({ name: "job", collectionId: job.collection_id, jobId: job.job_id })}
+              onClick={() => navigate({ name: "job", collectionId: job.collection_id, jobId: job.job_id })}
               onUpdated={(patch) =>
                 setJobs((prev) => (prev ? prev.map((j) => (j.job_id === job.job_id ? { ...j, ...patch } : j)) : prev))
               }

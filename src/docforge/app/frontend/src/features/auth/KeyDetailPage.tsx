@@ -100,7 +100,6 @@ export function KeyDetailPage({ keyId, onNavigate }: KeyDetailPageProps) {
               { label: "Settings", view: { name: "settings" } },
               { label: apiKey.name },
             ]}
-            onNavigate={onNavigate}
           />
         }
         title={

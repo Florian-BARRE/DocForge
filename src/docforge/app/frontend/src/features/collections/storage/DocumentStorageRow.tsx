@@ -4,23 +4,23 @@
 // and keeps the full name as a tooltip so a long filename never pushes the byte columns off-screen.
 
 import type { DocumentStorageBreakdown } from "../../../api/collections";
-import type { Navigate } from "../../../shell/view";
 import { theme as t } from "../../../theme";
 import { formatBytes } from "../../explorer/format";
+import { useNavigate } from "../../../shell/navigation";
 
 interface DocumentStorageRowProps {
   document: DocumentStorageBreakdown;
   collectionId: string;
-  onNavigate: Navigate;
 }
 
 const cellStyle: React.CSSProperties = { padding: `${t.space.s}px ${t.space.m}px`, fontSize: t.font.size.s };
 const byteCellStyle: React.CSSProperties = { ...cellStyle, textAlign: "right", fontFamily: t.font.mono, color: t.color.dim };
 
-export function DocumentStorageRow({ document, collectionId, onNavigate }: DocumentStorageRowProps) {
+export function DocumentStorageRow({ document, collectionId }: DocumentStorageRowProps) {
+  const navigate = useNavigate();
   return (
     <tr
-      onClick={() => onNavigate({ name: "document", collectionId, documentId: document.document_id })}
+      onClick={() => navigate({ name: "document", collectionId, documentId: document.document_id })}
       style={{ cursor: "pointer", borderBottom: `1px solid ${t.color.line}`, transition: "background .12s ease" }}
       onMouseEnter={(e) => (e.currentTarget.style.background = t.color.surface2)}
       onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}

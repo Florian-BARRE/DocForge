@@ -13,10 +13,11 @@ import type { UploadAccepted } from "../../api/documents";
 import { HttpError } from "../../api/http";
 import type { Navigate } from "../../shell/view";
 import { ToastProvider } from "../../shell/toast";
+import { NavigateProvider } from "../../shell/navigation";
 import { JobRerunControl } from "./JobRerunControl";
 
-function renderWithProviders(ui: ReactElement) {
-  return render(<ToastProvider>{ui}</ToastProvider>);
+function renderWithProviders(ui: ReactElement, navigate: Navigate = vi.fn()) {
+  return render(<ToastProvider><NavigateProvider navigate={navigate}>{ui}</NavigateProvider></ToastProvider>);
 }
 
 vi.mock("../../api/documents", async (importOriginal) => ({
@@ -44,7 +45,7 @@ describe("JobRerunControl", () => {
     vi.mocked(reingestDocument).mockResolvedValue(accepted);
     const onNavigate: Navigate = vi.fn();
 
-    renderWithProviders(<JobRerunControl job={jobFixture({})} collectionId="col-1" onNavigate={onNavigate} />);
+    renderWithProviders(<JobRerunControl job={jobFixture({})} collectionId="col-1" />, onNavigate);
     fireEvent.click(screen.getByText("Re-run (cached)"));
 
     await waitFor(() => expect(onNavigate).toHaveBeenCalledWith({ name: "job", collectionId: "col-1", jobId: "job-2" }));
@@ -55,7 +56,7 @@ describe("JobRerunControl", () => {
     vi.mocked(reingestDocument).mockRejectedValue(new HttpError(409, [{ message: "already active" }]));
     const onNavigate: Navigate = vi.fn();
 
-    renderWithProviders(<JobRerunControl job={jobFixture({ status: "done" })} collectionId="col-1" onNavigate={onNavigate} />);
+    renderWithProviders(<JobRerunControl job={jobFixture({ status: "done" })} collectionId="col-1" />, onNavigate);
     fireEvent.click(screen.getByText("Re-run (cached)"));
 
     await waitFor(() => expect(screen.getByText(/already active/i)).toBeInTheDocument());
@@ -65,7 +66,8 @@ describe("JobRerunControl", () => {
   it("renders no re-run button while the job is still pending/running", () => {
     const onNavigate: Navigate = vi.fn();
     renderWithProviders(
-      <JobRerunControl job={jobFixture({ status: "running" })} collectionId="col-1" onNavigate={onNavigate} />,
+      <JobRerunControl job={jobFixture({ status: "running" })} collectionId="col-1" />,
+      onNavigate,
     );
     // The control renders nothing actionable mid-run (the ToastProvider's own portal container aside).
     expect(screen.queryByRole("button", { name: /re-?run|reingest/i })).toBeNull();
@@ -77,7 +79,7 @@ describe("JobRerunControl", () => {
     const callsBefore = vi.mocked(reingestDocument).mock.calls.length;
     const onNavigate: Navigate = vi.fn();
 
-    renderWithProviders(<JobRerunControl job={jobFixture({})} collectionId="col-1" onNavigate={onNavigate} />);
+    renderWithProviders(<JobRerunControl job={jobFixture({})} collectionId="col-1" />, onNavigate);
     fireEvent.click(screen.getByText("Force (no cache)"));
 
     expect(vi.mocked(reingestDocument).mock.calls.length).toBe(callsBefore);
@@ -93,7 +95,7 @@ describe("JobRerunControl", () => {
     // mock is module-scoped and earlier tests in this file already invoked it.
     const callsBefore = vi.mocked(reingestDocument).mock.calls.length;
     renderWithProviders(
-      <JobRerunControl job={jobFixture({})} collectionId="col-1" onNavigate={vi.fn()} />,
+      <JobRerunControl job={jobFixture({})} collectionId="col-1" />,
     );
     fireEvent.click(screen.getByText("Force (no cache)"));
     fireEvent.click(screen.getByText("Back"));

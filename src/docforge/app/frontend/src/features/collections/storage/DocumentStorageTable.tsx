@@ -5,7 +5,6 @@
 
 import { useMemo, useState } from "react";
 import type { DocumentStorageBreakdown } from "../../../api/collections";
-import type { Navigate } from "../../../shell/view";
 import { theme as t } from "../../../theme";
 import { DocumentStorageRow } from "./DocumentStorageRow";
 import { STORAGE_STORES, type StoreKey } from "./storageStores";
@@ -16,7 +15,6 @@ type SortDirection = "asc" | "desc";
 interface DocumentStorageTableProps {
   documents: DocumentStorageBreakdown[];
   collectionId: string;
-  onNavigate: Navigate;
 }
 
 const STORE_COLOR: Record<StoreKey, string> = Object.fromEntries(STORAGE_STORES.map(({ key, color }) => [key, color])) as Record<StoreKey, string>;
@@ -45,7 +43,7 @@ function sortValue(document: DocumentStorageBreakdown, key: SortKey): string | n
   }
 }
 
-export function DocumentStorageTable({ documents, collectionId, onNavigate }: DocumentStorageTableProps) {
+export function DocumentStorageTable({ documents, collectionId }: DocumentStorageTableProps) {
   const [sortKey, setSortKey] = useState<SortKey>("total");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
 
@@ -100,7 +98,7 @@ export function DocumentStorageTable({ documents, collectionId, onNavigate }: Do
         </thead>
         <tbody>
           {sorted.map((document) => (
-            <DocumentStorageRow key={document.document_id} document={document} collectionId={collectionId} onNavigate={onNavigate} />
+            <DocumentStorageRow key={document.document_id} document={document} collectionId={collectionId} />
           ))}
         </tbody>
       </table>

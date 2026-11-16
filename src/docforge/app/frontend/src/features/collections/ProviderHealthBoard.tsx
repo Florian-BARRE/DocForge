@@ -16,11 +16,11 @@
 import type { CollectionHealth, ProviderHealth } from "../../api/collections";
 import { Button } from "../../components/Button";
 import { Chip } from "../../components/Chip";
-import type { Navigate } from "../../shell/view";
 import { theme as t } from "../../theme";
 import type { HealthFixTarget, HealthVerdict } from "./collectionHealth";
 import { ProviderHealthRow, ProviderHealthTableHeader } from "./ProviderHealthRow";
 import { humanizeRelativeTime } from "./relativeTime";
+import { useNavigate } from "../../shell/navigation";
 
 interface ProviderHealthBoardProps {
   health: CollectionHealth | null;
@@ -31,7 +31,6 @@ interface ProviderHealthBoardProps {
   /** Where the verdict's actual cause can be repaired — null when nothing is actionable (the
    *  "operational" state, or a genuinely empty collection whose fix is the Overview's own upload hero). */
   fixTarget: HealthFixTarget | null;
-  onNavigate: Navigate;
 }
 
 /**
@@ -103,7 +102,8 @@ function StageGroup({ title, providers }: { title: string; providers: ProviderHe
   );
 }
 
-export function ProviderHealthBoard({ health, verdict, loading, error, onRecheck, fixTarget, onNavigate }: ProviderHealthBoardProps) {
+export function ProviderHealthBoard({ health, verdict, loading, error, onRecheck, fixTarget }: ProviderHealthBoardProps) {
+  const navigate = useNavigate();
   const allProviders = health ? [...health.ingest.providers, ...health.search.providers] : [];
   const skippedCount = allProviders.filter((p) => p.status === "skipped").length;
   const visibleCount = allProviders.length - skippedCount;
@@ -159,7 +159,7 @@ export function ProviderHealthBoard({ health, verdict, loading, error, onRecheck
         >
           <span style={{ flex: 1 }}>{verdict.detail}</span>
           {fixTarget && (
-            <Button size="sm" variant="primary" onClick={() => onNavigate(fixTarget.view)}>
+            <Button size="sm" variant="primary" onClick={() => navigate(fixTarget.view)}>
               {fixTarget.label} →
             </Button>
           )}

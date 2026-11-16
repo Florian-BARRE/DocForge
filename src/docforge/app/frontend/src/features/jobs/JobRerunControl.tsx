@@ -19,18 +19,18 @@ import { HttpError } from "../../api/http";
 import type { JobStatus } from "../../api/jobs";
 import { Button } from "../../components/Button";
 import { useToast } from "../../shell/toast";
-import type { Navigate } from "../../shell/view";
 import { theme } from "../../theme";
+import { useNavigate } from "../../shell/navigation";
 
 interface JobRerunControlProps {
   job: JobStatus;
   collectionId: string;
-  onNavigate: Navigate;
 }
 
 const RERUNNABLE = new Set(["done", "failed", "cancelled"]);
 
-export function JobRerunControl({ job, collectionId, onNavigate }: JobRerunControlProps) {
+export function JobRerunControl({ job, collectionId }: JobRerunControlProps) {
+  const navigate = useNavigate();
   const toast = useToast();
   const [busy, setBusy] = useState(false);
   const [confirmingForce, setConfirmingForce] = useState(false);
@@ -44,7 +44,7 @@ export function JobRerunControl({ job, collectionId, onNavigate }: JobRerunContr
     try {
       const { job_id } = await reingestDocument(documentId, { force });
       toast.success(force ? "Force re-run started (no cache)" : "Re-run started");
-      onNavigate({ name: "job", collectionId, jobId: job_id });
+      navigate({ name: "job", collectionId, jobId: job_id });
     } catch (e) {
       if (e instanceof HttpError && e.status === 409) {
         toast.info("A run is already active for this document.");

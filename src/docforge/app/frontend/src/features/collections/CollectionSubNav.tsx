@@ -5,7 +5,8 @@
 // sub-key on the page's View).
 
 import { TabNav, type TabItem } from "../../components/TabNav";
-import type { CollectionSettingsSection, Navigate } from "../../shell/view";
+import type { CollectionSettingsSection } from "../../shell/view";
+import { useNavigate } from "../../shell/navigation";
 
 /** Which pipeline editor is showing. */
 export type PipelineStage = "ingestion" | "search";
@@ -24,18 +25,18 @@ const SETTINGS_SECTIONS: TabItem<CollectionSettingsSection>[] = [
 
 interface CollectionSubNavProps {
   collectionId: string;
-  onNavigate: Navigate;
   pipelineStage?: PipelineStage;
   settingsSection?: CollectionSettingsSection;
 }
 
-export function CollectionSubNav({ collectionId, onNavigate, pipelineStage, settingsSection }: CollectionSubNavProps) {
+export function CollectionSubNav({ collectionId, pipelineStage, settingsSection }: CollectionSubNavProps) {
+  const navigate = useNavigate();
   if (pipelineStage) {
     return (
       <TabNav
         tabs={PIPELINE_STAGES}
         active={pipelineStage}
-        onSelect={(stage) => onNavigate({ name: "collection-pipelines", collectionId, stage })}
+        onSelect={(stage) => navigate({ name: "collection-pipelines", collectionId, stage })}
         navId="collection-pipeline-stage"
         ariaLabel="Pipeline editors"
         panelId="collection-panel"
@@ -47,7 +48,7 @@ export function CollectionSubNav({ collectionId, onNavigate, pipelineStage, sett
       <TabNav
         tabs={SETTINGS_SECTIONS}
         active={settingsSection}
-        onSelect={(section) => onNavigate({ name: "collection-settings", collectionId, section })}
+        onSelect={(section) => navigate({ name: "collection-settings", collectionId, section })}
         navId="collection-settings-section"
         ariaLabel="Settings sections"
         panelId="collection-panel"

@@ -6,6 +6,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { HttpError } from "../../api/http";
 import { ToastProvider } from "../../shell/toast";
+import { NavigateProvider } from "../../shell/navigation";
 import { DocumentPageActions } from "./DocumentPageActions";
 
 vi.mock("../../api/documents", async (importOriginal) => ({
@@ -20,7 +21,9 @@ const mocked = vi.mocked(reingestDocument);
 function renderActions() {
   render(
     <ToastProvider>
-      <DocumentPageActions documentId="d1" collectionId="c1" enabled onEnabledChanged={vi.fn()} onNavigate={vi.fn()} />
+      <NavigateProvider navigate={vi.fn()}>
+        <DocumentPageActions documentId="d1" collectionId="c1" enabled onEnabledChanged={vi.fn()} />
+      </NavigateProvider>
     </ToastProvider>,
   );
 }

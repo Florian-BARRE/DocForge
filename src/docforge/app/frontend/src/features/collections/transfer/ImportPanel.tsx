@@ -9,15 +9,10 @@ import { Button } from "../../../components/Button";
 import { Dropzone } from "../../../components/Dropzone";
 import { FormField } from "../../../components/FormField";
 import { inputStyle } from "../../../components/inputStyle";
-import type { Navigate } from "../../../shell/view";
 import { theme } from "../../../theme";
 import { ImportProgress } from "./ImportProgress";
 
-interface ImportPanelProps {
-  onNavigate: Navigate;
-}
-
-export function ImportPanel({ onNavigate }: ImportPanelProps) {
+export function ImportPanel() {
   const [file, setFile] = useState<File | null>(null);
   const [targetName, setTargetName] = useState("");
   const [transferId, setTransferId] = useState<string | null>(null);
@@ -76,7 +71,7 @@ export function ImportPanel({ onNavigate }: ImportPanelProps) {
         </>
       )}
 
-      {transferId && <ImportProgress transferId={transferId} onNavigate={onNavigate} />}
+      {transferId && <ImportProgress transferId={transferId} />}
     </div>
   );
 }

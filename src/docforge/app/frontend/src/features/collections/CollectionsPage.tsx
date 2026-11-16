@@ -45,7 +45,6 @@ export function CollectionsPage({ onNavigate, initialHealthFilter }: Collections
     <div className="df-rise" style={{ padding: `${theme.space.xl}px`, overflowY: "auto", height: "100%", maxWidth: 1200, margin: "0 auto", width: "100%" }}>
       <TopContentBar
         page="Collections"
-        onNavigate={onNavigate}
         subtitle={collections ? `${totalCount} collection${totalCount === 1 ? "" : "s"} — each with its own schema, ingestion and search pipeline` : " "}
         actions={
           <>
@@ -61,7 +60,7 @@ export function CollectionsPage({ onNavigate, initialHealthFilter }: Collections
       />
       {showImport && (
         <div className="df-rise" style={{ marginBottom: theme.space.l }}>
-          <ImportPanel onNavigate={onNavigate} />
+          <ImportPanel />
         </div>
       )}
       {loadError && <ErrorState message={loadError} onRetry={load} />}
@@ -105,7 +104,6 @@ export function CollectionsPage({ onNavigate, initialHealthFilter }: Collections
                   docCount={docCount}
                   jobRunning={jobRunning}
                   aliases={aliasesByCollection.get(collection.id) ?? []}
-                  onNavigate={onNavigate}
                   onClick={() => onNavigate({ name: "collection", collectionId: collection.id })}
                   onDeleted={load}
                 />

@@ -4,7 +4,6 @@
 // without leaving the tab. Every bucket/banner click routes into Jobs pre-filtered via `onFocusJobs`
 // (see JobsFocusRequest) rather than duplicating the triage list here.
 
-import type { Navigate } from "../../shell/view";
 import { FailureBreakdownPanel } from "./FailureBreakdownPanel";
 import type { JobsFocusRequest } from "./ActivityJobsTab";
 import { NewFailuresBanner } from "./NewFailuresBanner";
@@ -13,11 +12,10 @@ import { RecentJobsPanel } from "./RecentJobsPanel";
 const BREAKDOWN_WINDOW_HOURS = 24;
 
 interface ActivityFailuresTabProps {
-  onNavigate: Navigate;
   onFocusJobs: (patch: JobsFocusRequest) => void;
 }
 
-export function ActivityFailuresTab({ onNavigate, onFocusJobs }: ActivityFailuresTabProps) {
+export function ActivityFailuresTab({ onFocusJobs }: ActivityFailuresTabProps) {
   return (
     <div>
       <NewFailuresBanner onViewFailures={() => onFocusJobs({})} />
@@ -32,7 +30,6 @@ export function ActivityFailuresTab({ onNavigate, onFocusJobs }: ActivityFailure
         status={["failed"]}
         limit={10}
         emptyLabel="No failed jobs yet."
-        onNavigate={onNavigate}
       />
     </div>
   );

@@ -12,7 +12,6 @@ import { Button } from "../../components/Button";
 import { ErrorState } from "../../components/ErrorState";
 import { LoadingState } from "../../components/LoadingState";
 import { TabNav } from "../../components/TabNav";
-import type { Navigate } from "../../shell/view";
 import { theme } from "../../theme";
 import { ApiKeyRow } from "./ApiKeyRow";
 import { AuthOffBanner } from "./AuthOffBanner";
@@ -20,14 +19,12 @@ import { CreatedKeyModal } from "./CreatedKeyModal";
 import { CreateKeyForm } from "./CreateKeyForm";
 import { deriveRotateInitial } from "./rotateInitial";
 import { useAuthEnabled } from "../../hooks/useAuthEnabled";
+import { useNavigate } from "../../shell/navigation";
 
 type StatusFilter = "active" | "revoked" | "all";
 
-interface AuthKeysPageProps {
-  onNavigate: Navigate;
-}
-
-export function AuthKeysPage({ onNavigate }: AuthKeysPageProps) {
+export function AuthKeysPage() {
+  const navigate = useNavigate();
   const authEnabled = useAuthEnabled();
   const [keys, setKeys] = useState<ApiKeyInfo[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -153,7 +150,7 @@ export function AuthKeysPage({ onNavigate }: AuthKeysPageProps) {
               apiKey={key}
               onRevoked={load}
               onRotate={() => setRotatingKey(key)}
-              onOpen={() => onNavigate({ name: "api-key", keyId: key.id })}
+              onOpen={() => navigate({ name: "api-key", keyId: key.id })}
               collectionNames={collectionNames}
               writesDisabled={writesDisabled}
             />

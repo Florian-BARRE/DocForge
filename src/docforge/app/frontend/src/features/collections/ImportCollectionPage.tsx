@@ -22,7 +22,7 @@ export function ImportCollectionPage({ onNavigate }: ImportCollectionPageProps) 
         subtitle="Restore a portable .dcexport bundle produced by another DocForge server."
       />
       <div style={{ marginTop: theme.space.l }}>
-        <ImportPanel onNavigate={onNavigate} />
+        <ImportPanel />
       </div>
     </div>
   );

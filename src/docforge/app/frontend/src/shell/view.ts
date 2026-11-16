@@ -1,7 +1,9 @@
 // ====== Code Summary ======
 // The app's whole navigation surface as one discriminated union — hand-rolled, in-memory routing
-// (no router dependency). Every page receives the current view's params as props and a single
-// `onNavigate` callback; App.tsx is the only place that switches on `view.name`.
+// (no router dependency). Every page receives the current view's params as props; navigation is
+// reached through `useNavigate()` (shell/navigation.tsx). The routed entry pages additionally
+// receive the same function as `onNavigate` from the route table (src/routes.tsx), the only place
+// that switches on `view.name`.
 
 /** The collection Settings sub-tabs. */
 export type CollectionSettingsSection = "general" | "aliases" | "history" | "transfer";
