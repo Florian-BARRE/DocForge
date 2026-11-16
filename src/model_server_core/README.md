@@ -8,8 +8,8 @@ It is **model-free**: its only dependencies are `fastapi`, `uvicorn`, `pydantic`
 `loggerplusplus`. Nothing here imports torch, paddle or transformers; whatever needs them is injected
 by the server that owns the heavy dependency.
 
-> Status: the library exists and is tested, but **no server uses it yet** — each server adopts it in
-> its own step.
+> Status: all four model hosts (`bge_server`, `paddle_server`, `mineru_server`, `dots_ocr_server`)
+> adopt this core (R-27).
 
 ## The bricks
 
@@ -26,7 +26,7 @@ by the server that owns the heavy dependency.
 | `DeviceProbe` | `cuda` / `cpu`, memoized, from an injected chain of `CudaDetector`s (`NvidiaDriverDetector` ships, torch-free). |
 | `CpuFeatureProbe` | `/proc/cpuinfo` flag probe (`supports("avx")`), assumes supported when it cannot prove absence. |
 | `CpuBudget` | Effective CPU count honouring a cgroup v2 quota. |
-| `HealthResponse` / `HealthStatus` / `HealthRoute` | The shared `/health` body and route. |
+| `HealthResponse` / `HealthStatus` / `HealthRoute` / `HealthSource` | The shared `/health` body, status enum, route, and the port the route reads from (`ModelServer` implements it). |
 
 ## Plugging a new server in
 

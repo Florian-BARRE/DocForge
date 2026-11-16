@@ -122,7 +122,7 @@ What the core provides (see `src/model_server_core/README.md` for the full table
 | `ServerErrorHandler` | every unexpected exception becomes a typed 500 `{"detail": {"error": "Internal server error. The details were logged.", "correlation_id": "…"}}` plus an `X-Correlation-ID` header; the full exception is logged with the **same** `correlation_id`, and `str(exc)` never reaches the client. |
 | `RequestBodyGuard`, `InputValidator` | body-size cap (413) and pre-model input checks (empty or undecodable body: 422). |
 | `DeviceProbe`, `CpuFeatureProbe` | `cuda`/`cpu` from an injected chain of CUDA detectors, and an AVX-style CPU-flag probe; both torch-free. |
-| `HealthRoute`, `HealthModels` | the shared `GET /health` (503 while unhealthy). |
+| `HealthRoute`, `HealthResponse`, `HealthStatus`, `HealthSource` | the shared `GET /health` (503 while unhealthy): the route, its response model and status enum, and the port (`HealthSource`, implemented structurally by `ModelServer`) the route reads from. |
 
 The device chain is the one per-family difference: `mineru_server` and `dots_ocr_server` ask the NVIDIA
 driver nodes first (`NvidiaDriverDetector`) and then torch; `bge_server` and `paddle_server` ship dual
