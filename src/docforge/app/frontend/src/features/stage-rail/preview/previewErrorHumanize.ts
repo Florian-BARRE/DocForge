@@ -1,7 +1,7 @@
 // ====== Code Summary ======
 // Strips the internal exception-chain prefix off a preview job's top-level `error`/`failed` string
 // (worker-side `"PipelineRunError: ...: ValueError: <useful message>"`) down to the last useful
-// segment. A LOCAL copy of `features/monitoring/jobErrorHumanize.ts`'s regex — deliberately not
+// segment. A LOCAL copy of `features/jobs/jobErrorHumanize.ts`'s regex — deliberately not
 // cross-imported (feature slices stay independently movable); this is the one small pure helper,
 // not a growing shared module.
 

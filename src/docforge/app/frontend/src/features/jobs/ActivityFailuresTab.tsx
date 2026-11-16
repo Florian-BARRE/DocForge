@@ -8,7 +8,7 @@ import type { Navigate } from "../../shell/view";
 import { FailureBreakdownPanel } from "./FailureBreakdownPanel";
 import type { JobsFocusRequest } from "./ActivityJobsTab";
 import { NewFailuresBanner } from "./NewFailuresBanner";
-import { RecentJobsPanel } from "../monitoring/RecentJobsPanel";
+import { RecentJobsPanel } from "./RecentJobsPanel";
 
 const BREAKDOWN_WINDOW_HOURS = 24;
 

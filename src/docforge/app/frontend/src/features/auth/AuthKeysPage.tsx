@@ -19,7 +19,7 @@ import { AuthOffBanner } from "./AuthOffBanner";
 import { CreatedKeyModal } from "./CreatedKeyModal";
 import { CreateKeyForm } from "./CreateKeyForm";
 import { deriveRotateInitial } from "./rotateInitial";
-import { useAuthEnabled } from "./useAuthEnabled";
+import { useAuthEnabled } from "../../hooks/useAuthEnabled";
 
 type StatusFilter = "active" | "revoked" | "all";
 

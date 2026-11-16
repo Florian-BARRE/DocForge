@@ -7,7 +7,7 @@
 // plain text even mid-trail. Long labels (collection names, ids) are CSS-ellipsised with a `title`
 // tooltip carrying the full value — brand.md: let names lead, truncate ids.
 
-import type { Navigate, View } from "../shell/view";
+import type { Navigate, View } from "./view";
 import { theme as t } from "../theme";
 
 export interface BreadcrumbItem {

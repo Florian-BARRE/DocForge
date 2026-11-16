@@ -1,6 +1,6 @@
 // ====== Code Summary ======
 // Polls one transfer's status until it reaches a terminal state (done/failed). Mirrors the
-// monitoring feature's job-polling idiom (see features/monitoring/state/useJobDetail.ts) but kept
+// monitoring feature's job-polling idiom (see features/jobs/state/useJobDetail.ts) but kept
 // local to this feature per the codebase's slice-isolation convention — transfers have no SSE
 // stream, so this is a usePolling loop, armed only while a transfer id is set.
 

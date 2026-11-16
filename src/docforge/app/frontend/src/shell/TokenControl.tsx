@@ -14,8 +14,8 @@
 
 import { useEffect, useState } from "react";
 import { API_TOKEN_CLEARED_EVENT, clearApiToken, getApiToken, setApiToken } from "../api/http";
-import { WarningGlyph } from "../features/auth/AuthOffBanner";
-import { useAuthEnabled } from "../features/auth/useAuthEnabled";
+import { WarningGlyph } from "../components/WarningGlyph";
+import { useAuthEnabled } from "../hooks/useAuthEnabled";
 import { theme } from "../theme";
 
 const AUTH_OFF_TITLE = "Authentication is disabled on this deployment — API keys are not enforced.";

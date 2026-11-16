@@ -5,7 +5,7 @@
 // `cancelled` (skip tone — a deliberate stop, never the error red, per brand.md) documents; renders
 // nothing otherwise. Links to the collection's Jobs tab since a document doesn't carry its job id.
 
-import { humanizeJobError } from "../../monitoring/jobErrorHumanize";
+import { humanizeJobError } from "../../jobs/jobErrorHumanize";
 import type { DocumentDetail } from "../../../api/explorer";
 import type { Navigate } from "../../../shell/view";
 import { theme } from "../../../theme";

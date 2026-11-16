@@ -16,7 +16,7 @@ import { useId, type CSSProperties, type KeyboardEvent, type ReactNode } from "r
 import { createPortal } from "react-dom";
 
 // ====== Internal Project Imports ======
-import { useFocusTrap } from "../../shell/useFocusTrap";
+import { useFocusTrap } from "../../hooks/useFocusTrap";
 import { theme } from "../../theme";
 
 // ====== Local Project Imports ======

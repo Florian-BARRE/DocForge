@@ -11,7 +11,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import { getCollection, type Collection } from "../../api/collections";
-import { Breadcrumb, type BreadcrumbItem } from "../../components/Breadcrumb";
+import { Breadcrumb, type BreadcrumbItem } from "../../shell/Breadcrumb";
 import { Button } from "../../components/Button";
 import { Chip } from "../../components/Chip";
 import { ErrorState } from "../../components/ErrorState";

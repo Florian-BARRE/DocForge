@@ -9,7 +9,7 @@
 // `JobSummaryCard`. This component is pure top-level layout.
 
 import { isIngestJob, jobDisplayName } from "../../api/jobs";
-import { Breadcrumb } from "../../components/Breadcrumb";
+import { Breadcrumb } from "../../shell/Breadcrumb";
 import { ErrorState } from "../../components/ErrorState";
 import { LoadingState } from "../../components/LoadingState";
 import { PageHeader } from "../../components/PageHeader";

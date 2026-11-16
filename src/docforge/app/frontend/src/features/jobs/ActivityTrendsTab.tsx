@@ -6,7 +6,7 @@
 // Activity mirror instead (see docforge/app/backend/routers/jobs/router.py).
 
 import { useState } from "react";
-import { QueueDepthTile } from "../monitoring/QueueDepthTile";
+import { QueueDepthTile } from "./QueueDepthTile";
 import { JobTrendsPanel } from "./JobTrendsPanel";
 
 export function ActivityTrendsTab() {
