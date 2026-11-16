@@ -191,8 +191,8 @@ def test_dead_compute_rerank_scores_wrapper_is_gone() -> None:
 
 
 def test_split_units_stay_within_400_lines() -> None:
-    """Every unit of the batching, models and lifespan packages is at most 400 lines."""
-    paths = [*(_ROOT / "libs").rglob("*.py"), _ROOT / "backend" / "lifespan.py"]
+    """Every unit of the batching, models and backend packages is at most 400 lines."""
+    paths = [*(_ROOT / "libs").rglob("*.py"), *(_ROOT / "backend").rglob("*.py")]
     too_long = {
         str(p.relative_to(_ROOT)): n for p in paths if (n := len(p.read_text().splitlines())) > 400
     }

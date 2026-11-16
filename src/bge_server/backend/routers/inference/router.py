@@ -3,7 +3,7 @@
 # /embed, /embed_sparse, and /rerank implement the TEI HTTP contract so the DocForge `tei` embed
 # provider and `bge_reranker` rerank provider can drive this service with zero provider-side
 # changes. /embed_colbert is an internal DocForge convention (not part of TEI) exposing BGE-M3's
-# native ColBERT multi-vector head. All inference is delegated to CONTEXT.batching_engine; no
+# native ColBERT multi-vector head. All inference is delegated to the BgeRuntime's batching engine; no
 # model logic here. Back-pressure: QueueFullError from the engine is translated to HTTP 503 with
 # Retry-After.
 #
@@ -15,11 +15,11 @@
 # ====== Third-Party Library Imports ======
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import ORJSONResponse, Response
-from loggerplusplus import loggerplusplus
+from loggerplusplus import LoggerClass
 
 # ====== Internal Project Imports ======
-from backend.context import CONTEXT
-from backend.libs.utils.error_handling import auto_handle_errors
+from backend.runtime import BgeRuntime
+from config_loader import BgeServerConfig
 from libs.batching import QueueFullError
 
 # ====== Local Project Imports ======
@@ -33,271 +33,289 @@ from .models import (
     SparseToken,
 )
 
-router = APIRouter()
-
 # Nobody reads this (the client is gone); 499 is the nginx "client closed request" convention.
 DISCONNECTED_RESPONSE = Response(status_code=499)
 
-# Module-level logger for per-request tracing. All inference request lines go through
-# this logger at DEBUG level — never INFO, to avoid flooding logs when polled at high rate.
-logger = loggerplusplus.bind(identifier="InferenceRouter")
 
-
-@router.post("/embed", response_model=list[list[float]])
-@auto_handle_errors
-async def embed(request: Request, req: EmbedRequest) -> Response:
+class InferenceRoutes(LoggerClass):
     """
-    Dense embeddings -- mirrors TEI's POST /embed.
+    The TEI-contract inference routes of the BGE host, bound to its runtime.
 
-    Encodes each input text into a 1024-dimensional L2-normalized float vector using
-    BGE-M3's dense head. FlagEmbedding always normalizes dense output, so the ``normalize``
-    field is accepted for TEI parity but has no additional effect.
-
-    Concurrency: requests are submitted to the batching engine's dense queue. Multiple
-    concurrent requests are coalesced into single batches to maximize GPU/CPU utilization.
-    When the queue is full, HTTP 503 + Retry-After is returned immediately.
+    Per-request tracing goes through this class's logger at DEBUG level -- never INFO, to avoid
+    flooding logs under load. Unexpected exceptions are NOT caught here: the core's
+    ServerErrorHandler turns them into a typed 500 with a correlation id.
 
     Args:
-        req (EmbedRequest): Request body with texts to embed.
-
-    Returns:
-        ORJSONResponse: One 1024-dim dense vector per input text (``list[list[float]]``),
-            serialized directly with orjson — no Pydantic re-validation of the float matrix.
+        config (type[BgeServerConfig]): The injected configuration (poll and retry knobs).
+        runtime (BgeRuntime): Provides the batching engine and the model service.
     """
-    # 1. Normalize the TEI inputs field (str | list[str]) into a list
-    texts = InferenceHelpers.as_list(req.inputs)
 
-    # 2. Log batch size at DEBUG — never log text contents (may be large / sensitive)
-    logger.debug(f"POST /embed: {len(texts)} inputs")
+    # Public attributes
+    router: APIRouter
 
-    # 3. Empty input — return immediately without touching the engine
-    if not texts:
-        return ORJSONResponse([])
+    def __init__(self, config: type[BgeServerConfig], runtime: BgeRuntime) -> None:
+        LoggerClass.__init__(self)
+        self._config = config
+        self._runtime = runtime
+        self.router = APIRouter()
+        # `response_model` is declared for OpenAPI accuracy; /embed and /embed_all return a built
+        # Response, so FastAPI skips the Pydantic re-validation of every float.
+        for path, handler, response_model in (
+            ("/embed", self.embed, list[list[float]]),
+            ("/embed_sparse", self.embed_sparse, list[list[SparseToken]]),
+            ("/embed_all", self.embed_all, EmbedAllResponse),
+            ("/embed_colbert", self.embed_colbert, list[list[list[float]]]),
+            ("/rerank", self.rerank, list[RerankResult]),
+        ):
+            self.router.add_api_route(
+                path, handler, methods=["POST"], response_model=response_model
+            )
 
-    # 4. Submit to the dense batching worker; translate back-pressure to HTTP 503
-    try:
-        dense = await InferenceHelpers.await_unless_disconnected(
-            request,
-            CONTEXT.batching_engine.submit_embed_dense(texts),
-            CONTEXT.CONFIG.BGE_DISCONNECT_POLL_SECONDS,
-        )
-    except QueueFullError:
-        raise InferenceHelpers.overloaded(CONTEXT.CONFIG.BGE_RETRY_AFTER_SECONDS)
-    except ClientDisconnected:
-        return DISCONNECTED_RESPONSE
+    async def embed(self, request: Request, req: EmbedRequest) -> Response:
+        """
+        Dense embeddings -- mirrors TEI's POST /embed.
 
-    # 5. Return the plain float matrix directly via ORJSONResponse — bypasses FastAPI's
-    #    serialize_response() (Pydantic field.validate + field.serialize walk) entirely, since
-    #    the endpoint already returns a Response instance.
-    return ORJSONResponse(dense)
+        Encodes each input text into a 1024-dimensional L2-normalized float vector using
+        BGE-M3's dense head. FlagEmbedding always normalizes dense output, so the ``normalize``
+        field is accepted for TEI parity but has no additional effect.
 
+        Concurrency: requests are submitted to the batching engine's dense queue. Multiple
+        concurrent requests are coalesced into single batches to maximize GPU/CPU utilization.
+        When the queue is full, HTTP 503 + Retry-After is returned immediately.
 
-@router.post("/embed_sparse", response_model=list[list[SparseToken]])
-@auto_handle_errors
-async def embed_sparse(request: Request, req: EmbedRequest) -> list[list[SparseToken]] | Response:
-    """
-    Sparse (lexical) embeddings -- mirrors TEI's POST /embed_sparse response shape.
+        Args:
+            req (EmbedRequest): Request body with texts to embed.
 
-    BGE-M3's ``lexical_weights`` dict is re-shaped to TEI's
-    ``[[{"index": int, "value": float}, ...], ...]`` format so the DocForge ``tei`` provider
-    parses it unchanged.
+        Returns:
+            ORJSONResponse: One 1024-dim dense vector per input text (``list[list[float]]``),
+                serialized directly with orjson — no Pydantic re-validation of the float matrix.
+        """
+        # 1. Normalize the TEI inputs field (str | list[str]) into a list
+        texts = InferenceHelpers.as_list(req.inputs)
 
-    Concurrency: requests are submitted to the batching engine's sparse queue.
+        # 2. Log batch size at DEBUG — never log text contents (may be large / sensitive)
+        self.logger.debug(f"POST /embed: {len(texts)} inputs")
 
-    Args:
-        req (EmbedRequest): Request body with texts to embed.
+        # 3. Empty input — return immediately without touching the engine
+        if not texts:
+            return ORJSONResponse([])
 
-    Returns:
-        list[list[SparseToken]]: Per text, a list of token index/weight pairs.
-    """
-    # 1. Normalize the TEI inputs field (str | list[str]) into a list
-    texts = InferenceHelpers.as_list(req.inputs)
+        # 4. Submit to the dense batching worker; translate back-pressure to HTTP 503
+        try:
+            dense = await InferenceHelpers.await_unless_disconnected(
+                request,
+                self._runtime.engine.submit_embed_dense(texts),
+                self._config.BGE_DISCONNECT_POLL_SECONDS,
+            )
+        except QueueFullError:
+            raise InferenceHelpers.overloaded(self._config.BGE_RETRY_AFTER_SECONDS)
+        except ClientDisconnected:
+            return DISCONNECTED_RESPONSE
 
-    # 2. Log batch size at DEBUG
-    logger.debug(f"POST /embed_sparse: {len(texts)} inputs")
+        # 5. Return the plain float matrix directly via ORJSONResponse — bypasses FastAPI's
+        #    serialize_response() (Pydantic field.validate + field.serialize walk) entirely, since
+        #    the endpoint already returns a Response instance.
+        return ORJSONResponse(dense)
 
-    # 3. Empty input — return immediately
-    if not texts:
-        return []
+    async def embed_sparse(
+        self, request: Request, req: EmbedRequest
+    ) -> list[list[SparseToken]] | Response:
+        """
+        Sparse (lexical) embeddings -- mirrors TEI's POST /embed_sparse response shape.
 
-    # 4. Submit to the sparse batching worker
-    try:
-        raw = await InferenceHelpers.await_unless_disconnected(
-            request,
-            CONTEXT.batching_engine.submit_embed_sparse(texts),
-            CONTEXT.CONFIG.BGE_DISCONNECT_POLL_SECONDS,
-        )
-    except QueueFullError:
-        raise InferenceHelpers.overloaded(CONTEXT.CONFIG.BGE_RETRY_AFTER_SECONDS)
-    except ClientDisconnected:
-        return DISCONNECTED_RESPONSE
+        BGE-M3's ``lexical_weights`` dict is re-shaped to TEI's
+        ``[[{"index": int, "value": float}, ...], ...]`` format so the DocForge ``tei`` provider
+        parses it unchanged.
 
-    # 5. Wrap each dict into the typed SparseToken model for response validation. The batching
-    #    worker types weights as int | float, so pin each field to its declared type explicitly.
-    return [
-        [SparseToken(index=int(tok["index"]), value=float(tok["value"])) for tok in row]
-        for row in raw
-    ]
+        Concurrency: requests are submitted to the batching engine's sparse queue.
 
+        Args:
+            req (EmbedRequest): Request body with texts to embed.
 
-@router.post("/embed_all", response_model=EmbedAllResponse)
-@auto_handle_errors
-async def embed_all(request: Request, req: EmbedRequest) -> Response:
-    """
-    Combined dense + sparse embeddings in ONE forward pass.
+        Returns:
+            list[list[SparseToken]]: Per text, a list of token index/weight pairs.
+        """
+        # 1. Normalize the TEI inputs field (str | list[str]) into a list
+        texts = InferenceHelpers.as_list(req.inputs)
 
-    A caller needing both representations would otherwise hit /embed and /embed_sparse and pay
-    two BGE-M3 forward passes; this route requests both heads from a single pass and returns the
-    two sub-shapes unchanged (``dense`` identical to POST /embed, ``sparse`` identical to POST
-    /embed_sparse). Not part of the TEI contract — the DocForge app falls back to the two
-    separate routes when this one is unavailable.
+        # 2. Log batch size at DEBUG
+        self.logger.debug(f"POST /embed_sparse: {len(texts)} inputs")
 
-    Like /embed and /embed_sparse, this route is submitted to its own BatchQueueWorker so
-    concurrent callers are coalesced into a single model call (cross-request batching), and it
-    is still serialised on the shared embed lock, so it never overlaps a dense or sparse batch
-    on the shared model instance. Request-size ceilings are enforced by EmbedRequest (HTTP 422),
-    exactly as for /embed and /embed_sparse. Back-pressure: QueueFullError from the engine's
-    embed_all worker queue is translated to HTTP 503 + Retry-After here, exactly like the
-    other queued routes.
+        # 3. Empty input — return immediately
+        if not texts:
+            return []
 
-    Args:
-        req (EmbedRequest): Request body with texts to embed.
+        # 4. Submit to the sparse batching worker
+        try:
+            raw = await InferenceHelpers.await_unless_disconnected(
+                request,
+                self._runtime.engine.submit_embed_sparse(texts),
+                self._config.BGE_DISCONNECT_POLL_SECONDS,
+            )
+        except QueueFullError:
+            raise InferenceHelpers.overloaded(self._config.BGE_RETRY_AFTER_SECONDS)
+        except ClientDisconnected:
+            return DISCONNECTED_RESPONSE
 
-    Returns:
-        ORJSONResponse: ``{dense, sparse}`` for the input texts, serialized directly with orjson
-            — no Pydantic re-validation of the ``EmbedAllResponse`` model / float matrix.
-    """
-    # 1. Normalize the TEI inputs field (str | list[str]) into a list
-    texts = InferenceHelpers.as_list(req.inputs)
+        # 5. Wrap each dict into the typed SparseToken model for response validation. The batching
+        #    worker types weights as int | float, so pin each field to its declared type explicitly.
+        return [
+            [SparseToken(index=int(tok["index"]), value=float(tok["value"])) for tok in row]
+            for row in raw
+        ]
 
-    # 2. Log batch size at DEBUG — never log text contents (may be large / sensitive)
-    logger.debug(f"POST /embed_all: {len(texts)} inputs")
+    async def embed_all(self, request: Request, req: EmbedRequest) -> Response:
+        """
+        Combined dense + sparse embeddings in ONE forward pass.
 
-    # 3. Empty input — return immediately without touching the engine
-    if not texts:
-        return ORJSONResponse({"dense": [], "sparse": []})
+        A caller needing both representations would otherwise hit /embed and /embed_sparse and pay
+        two BGE-M3 forward passes; this route requests both heads from a single pass and returns the
+        two sub-shapes unchanged (``dense`` identical to POST /embed, ``sparse`` identical to POST
+        /embed_sparse). Not part of the TEI contract — the DocForge app falls back to the two
+        separate routes when this one is unavailable.
 
-    # 4. Submit to the embed_all batching worker — coalesces with other concurrent embed_all
-    #    calls into one combined forward pass (serialised on the shared embed lock). Uses the
-    #    engine's configured max_length (same config the dense/sparse workers use), so the
-    #    returned vectors are identical to the two separate routes.
-    try:
-        dense, sparse_raw = await InferenceHelpers.await_unless_disconnected(
-            request,
-            CONTEXT.batching_engine.embed_all(texts),
-            CONTEXT.CONFIG.BGE_DISCONNECT_POLL_SECONDS,
-        )
-    except QueueFullError:
-        raise InferenceHelpers.overloaded(CONTEXT.CONFIG.BGE_RETRY_AFTER_SECONDS)
-    except ClientDisconnected:
-        return DISCONNECTED_RESPONSE
+        Like /embed and /embed_sparse, this route is submitted to its own BatchQueueWorker so
+        concurrent callers are coalesced into a single model call (cross-request batching), and it
+        is still serialised on the shared embed lock, so it never overlaps a dense or sparse batch
+        on the shared model instance. Request-size ceilings are enforced by EmbedRequest (HTTP 422),
+        exactly as for /embed and /embed_sparse. Back-pressure: QueueFullError from the engine's
+        embed_all worker queue is translated to HTTP 503 + Retry-After here, exactly like the
+        other queued routes.
 
-    # 5. Build the sparse sub-shape as plain dicts (matching what SparseToken would serialize to)
-    #    and return via ORJSONResponse directly — this bypasses FastAPI's serialize_response()
-    #    (which would otherwise construct+validate an EmbedAllResponse/SparseToken tree), while
-    #    still pinning each field to its declared type (the engine types weights as int | float).
-    sparse = [
-        [{"index": int(tok["index"]), "value": float(tok["value"])} for tok in row]
-        for row in sparse_raw
-    ]
-    return ORJSONResponse({"dense": dense, "sparse": sparse})
+        Args:
+            req (EmbedRequest): Request body with texts to embed.
 
+        Returns:
+            ORJSONResponse: ``{dense, sparse}`` for the input texts, serialized directly with orjson
+                — no Pydantic re-validation of the ``EmbedAllResponse`` model / float matrix.
+        """
+        # 1. Normalize the TEI inputs field (str | list[str]) into a list
+        texts = InferenceHelpers.as_list(req.inputs)
 
-@router.post("/embed_colbert", response_model=list[list[list[float]]])
-@auto_handle_errors
-async def embed_colbert(request: Request, req: EmbedRequest) -> ColbertTokenVectors | Response:
-    """
-    ColBERT multi-vector embeddings -- BGE-M3 native, NOT part of the TEI contract.
+        # 2. Log batch size at DEBUG — never log text contents (may be large / sensitive)
+        self.logger.debug(f"POST /embed_all: {len(texts)} inputs")
 
-    Encodes each input text into a variable-length list of per-token 1024-dim
-    L2-normalized float vectors using BGE-M3's colbert head. Internal DocForge
-    convention only; no upstream TEI endpoint to mirror.
+        # 3. Empty input — return immediately without touching the engine
+        if not texts:
+            return ORJSONResponse({"dense": [], "sparse": []})
 
-    Concurrency: requests are submitted to the batching engine's colbert queue.
+        # 4. Submit to the embed_all batching worker — coalesces with other concurrent embed_all
+        #    calls into one combined forward pass (serialised on the shared embed lock). Uses the
+        #    engine's configured max_length (same config the dense/sparse workers use), so the
+        #    returned vectors are identical to the two separate routes.
+        try:
+            dense, sparse_raw = await InferenceHelpers.await_unless_disconnected(
+                request,
+                self._runtime.engine.embed_all(texts),
+                self._config.BGE_DISCONNECT_POLL_SECONDS,
+            )
+        except QueueFullError:
+            raise InferenceHelpers.overloaded(self._config.BGE_RETRY_AFTER_SECONDS)
+        except ClientDisconnected:
+            return DISCONNECTED_RESPONSE
 
-    Args:
-        req (EmbedRequest): Request body with texts to embed.
+        # 5. Build the sparse sub-shape as plain dicts (matching what SparseToken would serialize to)
+        #    and return via ORJSONResponse directly — this bypasses FastAPI's serialize_response()
+        #    (which would otherwise construct+validate an EmbedAllResponse/SparseToken tree), while
+        #    still pinning each field to its declared type (the engine types weights as int | float).
+        sparse = [
+            [{"index": int(tok["index"]), "value": float(tok["value"])} for tok in row]
+            for row in sparse_raw
+        ]
+        return ORJSONResponse({"dense": dense, "sparse": sparse})
 
-    Returns:
-        list[list[list[float]]]: Per input text, a list of per-token 1024-dim vectors.
-    """
-    # 1. Normalize the TEI inputs field (str | list[str]) into a list
-    texts = InferenceHelpers.as_list(req.inputs)
+    async def embed_colbert(
+        self, request: Request, req: EmbedRequest
+    ) -> ColbertTokenVectors | Response:
+        """
+        ColBERT multi-vector embeddings -- BGE-M3 native, NOT part of the TEI contract.
 
-    # 2. Log batch size at DEBUG — never log text contents (may be large / sensitive)
-    logger.debug(f"POST /embed_colbert: {len(texts)} inputs")
+        Encodes each input text into a variable-length list of per-token 1024-dim
+        L2-normalized float vectors using BGE-M3's colbert head. Internal DocForge
+        convention only; no upstream TEI endpoint to mirror.
 
-    # 3. Empty input — return immediately without touching the engine
-    if not texts:
-        return []
+        Concurrency: requests are submitted to the batching engine's colbert queue.
 
-    # 4. Submit to the colbert batching worker; translate back-pressure to HTTP 503
-    try:
-        return await InferenceHelpers.await_unless_disconnected(
-            request,
-            CONTEXT.batching_engine.submit_embed_colbert(texts),
-            CONTEXT.CONFIG.BGE_DISCONNECT_POLL_SECONDS,
-        )
-    except QueueFullError:
-        raise InferenceHelpers.overloaded(CONTEXT.CONFIG.BGE_RETRY_AFTER_SECONDS)
-    except ClientDisconnected:
-        return DISCONNECTED_RESPONSE
+        Args:
+            req (EmbedRequest): Request body with texts to embed.
 
+        Returns:
+            list[list[list[float]]]: Per input text, a list of per-token 1024-dim vectors.
+        """
+        # 1. Normalize the TEI inputs field (str | list[str]) into a list
+        texts = InferenceHelpers.as_list(req.inputs)
 
-@router.post("/rerank", response_model=list[RerankResult])
-@auto_handle_errors
-async def rerank(request: Request, req: RerankRequest) -> list[RerankResult] | Response:
-    """
-    Cross-encoder rerank -- mirrors TEI's POST /rerank.
+        # 2. Log batch size at DEBUG — never log text contents (may be large / sensitive)
+        self.logger.debug(f"POST /embed_colbert: {len(texts)} inputs")
 
-    Scores each candidate text against the query using BGE-reranker-v2-m3. Scores are
-    sigmoid-normalized to [0, 1]. Results are returned score-descending, matching TEI's own
-    /rerank response order. The DocForge ``bge_reranker`` provider maps each result back onto
-    its candidate by ``index`` and does not depend on response order, so this ordering is a
-    TEI-parity concern, not a correctness one.
+        # 3. Empty input — return immediately without touching the engine
+        if not texts:
+            return []
 
-    Concurrency: requests are submitted to the batching engine's rerank queue.
+        # 4. Submit to the colbert batching worker; translate back-pressure to HTTP 503
+        try:
+            return await InferenceHelpers.await_unless_disconnected(
+                request,
+                self._runtime.engine.submit_embed_colbert(texts),
+                self._config.BGE_DISCONNECT_POLL_SECONDS,
+            )
+        except QueueFullError:
+            raise InferenceHelpers.overloaded(self._config.BGE_RETRY_AFTER_SECONDS)
+        except ClientDisconnected:
+            return DISCONNECTED_RESPONSE
 
-    Args:
-        req (RerankRequest): Request body with query and candidate texts.
+    async def rerank(self, request: Request, req: RerankRequest) -> list[RerankResult] | Response:
+        """
+        Cross-encoder rerank -- mirrors TEI's POST /rerank.
 
-    Returns:
-        list[RerankResult]: One ``{"index": i, "score": s}`` per candidate text, sorted
-            score-descending (best match first).
+        Scores each candidate text against the query using BGE-reranker-v2-m3. Scores are
+        sigmoid-normalized to [0, 1]. Results are returned score-descending, matching TEI's own
+        /rerank response order. The DocForge ``bge_reranker`` provider maps each result back onto
+        its candidate by ``index`` and does not depend on response order, so this ordering is a
+        TEI-parity concern, not a correctness one.
 
-    Raises:
-        HTTPException: HTTP 503 when the reranker was never loaded (BGE_LOAD_RERANKER=false —
-            an embed-only deployment). Checked BEFORE touching the batching engine so the
-            failure is a clean, explicit 503 rather than a RuntimeError surfacing from deep
-            inside BgeModelsService.reranker.
-    """
-    # 1. Reranker gate — BGE_LOAD_RERANKER=false skips loading the reranker entirely (embed-only
-    #    deployments route production rerank to a hosted/GPU reranker instead). Fail clean here.
-    if not CONTEXT.bge_models.reranker_loaded:
-        raise HTTPException(
-            status_code=503,
-            detail={"error": "reranker not loaded (BGE_LOAD_RERANKER=false)"},
-        )
+        Concurrency: requests are submitted to the batching engine's rerank queue.
 
-    # 2. Log batch size at DEBUG — never log query text or candidate contents
-    logger.debug(f"POST /rerank: {len(req.texts)} candidates")
+        Args:
+            req (RerankRequest): Request body with query and candidate texts.
 
-    # 3. Empty candidate list — return immediately (no engine call needed)
-    if not req.texts:
-        return []
+        Returns:
+            list[RerankResult]: One ``{"index": i, "score": s}`` per candidate text, sorted
+                score-descending (best match first).
 
-    # 4. Submit to the rerank batching worker
-    try:
-        raw = await InferenceHelpers.await_unless_disconnected(
-            request,
-            CONTEXT.batching_engine.submit_rerank(req.query, req.texts),
-            CONTEXT.CONFIG.BGE_DISCONNECT_POLL_SECONDS,
-        )
-    except QueueFullError:
-        raise InferenceHelpers.overloaded(CONTEXT.CONFIG.BGE_RETRY_AFTER_SECONDS)
-    except ClientDisconnected:
-        return DISCONNECTED_RESPONSE
+        Raises:
+            HTTPException: HTTP 503 when the reranker was never loaded (BGE_LOAD_RERANKER=false —
+                an embed-only deployment). Checked BEFORE touching the batching engine so the
+                failure is a clean, explicit 503 rather than a RuntimeError surfacing from deep
+                inside BgeModelsService.reranker.
+        """
+        # 1. Reranker gate — BGE_LOAD_RERANKER=false skips loading the reranker entirely (embed-only
+        #    deployments route production rerank to a hosted/GPU reranker instead). Fail clean here.
+        if not self._runtime.models.reranker_loaded:
+            raise HTTPException(
+                status_code=503,
+                detail={"error": "reranker not loaded (BGE_LOAD_RERANKER=false)"},
+            )
 
-    # 4. Wrap each dict into the typed RerankResult model for response validation, pinning each
-    #    field to its declared type (the worker types the payload as int | float).
-    return [RerankResult(index=int(item["index"]), score=float(item["score"])) for item in raw]
+        # 2. Log batch size at DEBUG — never log query text or candidate contents
+        self.logger.debug(f"POST /rerank: {len(req.texts)} candidates")
+
+        # 3. Empty candidate list — return immediately (no engine call needed)
+        if not req.texts:
+            return []
+
+        # 4. Submit to the rerank batching worker
+        try:
+            raw = await InferenceHelpers.await_unless_disconnected(
+                request,
+                self._runtime.engine.submit_rerank(req.query, req.texts),
+                self._config.BGE_DISCONNECT_POLL_SECONDS,
+            )
+        except QueueFullError:
+            raise InferenceHelpers.overloaded(self._config.BGE_RETRY_AFTER_SECONDS)
+        except ClientDisconnected:
+            return DISCONNECTED_RESPONSE
+
+        # 4. Wrap each dict into the typed RerankResult model for response validation, pinning each
+        #    field to its declared type (the worker types the payload as int | float).
+        return [RerankResult(index=int(item["index"]), score=float(item["score"])) for item in raw]

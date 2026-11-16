@@ -1,40 +1,19 @@
 # ====== Code Summary ======
-# Defines BgeServerConfig (env-based settings) and configures the loggerplusplus sinks for the
-# BGE model-suite micro-service. This file is imported FIRST in entrypoint.py so that the class
-# body registers the app root on sys.path before any `libs.*` or `backend.*` import is resolved.
+# BgeServerConfig: the env-based settings of the BGE model-suite micro-service. It extends the shared
+# model_server_core ServerConfig (logging, host/port, DEV_MODE, gzip floor, device policy, thread
+# budget), re-declaring the base fields the service has always read under a BGE_* name, and adds the
+# BGE-specific knobs (model identities, revisions, batching, request ceilings). The logging sinks
+# are applied by the core's ServerEntrypoint, not at import time.
 #
-# Single runtime config, no YAML — using the flat config_loader.py exception from python.md (same
-# pattern as the sibling src/mcp/config_loader.py). No .env file is required at runtime; the
-# service receives env vars directly from docker compose.
-
-# ====== Standard Library Imports ======
-import pathlib
-import sys
+# Single runtime config, no YAML. No .env file is required at runtime; the service receives env vars
+# directly from docker compose.
 
 # ====== Third-Party Library Imports ======
-from configplusplus import EnvConfigLoader, env
-from loggerplusplus import formats as lpp_formats
-from loggerplusplus import loggerplusplus
-
-# ─── Reset logger before anything else ───
-loggerplusplus.remove()
-
-# ─── Optional DEV_MODE early logger ───
-# DEV_MODE is read directly from os.environ (not via env()) because it must activate a temporary
-# debug sink BEFORE the BgeServerConfig class is evaluated. This sink is removed immediately
-# after and replaced by the real sinks below.
-import os as _os
-
-if _os.environ.get("DEV_MODE"):
-    loggerplusplus.add(sink=sys.stdout, level="DEBUG", format=lpp_formats.ShortFormat())
-    _dev_logger = loggerplusplus.bind(identifier="DEV")
-    _dev_logger.warning(f"DEV MODE is activated !")
-    loggerplusplus.remove()
-
-del _os
+from configplusplus import env
+from model_server_core import ServerConfig
 
 
-class BgeServerConfig(EnvConfigLoader):
+class BgeServerConfig(ServerConfig):
     """
     Environment-driven configuration for the BGE model-suite micro-service.
 
@@ -42,21 +21,6 @@ class BgeServerConfig(EnvConfigLoader):
     object-store credentials are needed — this service is a pure model host. All env vars have
     safe defaults so the container starts out-of-the-box without any .env file.
     """
-
-    # ───── Paths & dirs ─────
-    # Root of the bge_server application (this file's directory, i.e. src/bge_server/).
-    PATH_ROOT_DIR: pathlib.Path = pathlib.Path(__file__).resolve().parent
-
-    # Register the app root on sys.path so `from libs.*` and `from backend.*` resolve regardless
-    # of how the entry point is invoked (uvicorn bge_server.entrypoint:app, pytest, direct run).
-    sys.path.append(str(PATH_ROOT_DIR))
-
-    # ───── Logging (mandatory 5 — drive the logging setup) ─────
-    LOGGING_CONSOLE_LEVEL: str = env("LOGGING_CONSOLE_LEVEL", default="INFO")
-    LOGGING_FILE_LEVEL: str = env("LOGGING_FILE_LEVEL", default="DEBUG")
-    LOGGING_ENABLE_CONSOLE: bool = env("LOGGING_ENABLE_CONSOLE", cast=bool, default="true")
-    LOGGING_ENABLE_FILE: bool = env("LOGGING_ENABLE_FILE", cast=bool, default="false")
-    LOGGING_LPP_FORMAT: str = env("LOGGING_LPP_FORMAT", default="ShortFormat")
 
     # ───── BGE model identities ─────
     # HuggingFace model ID for the dense + sparse embedding model (BGEM3FlagModel).
@@ -90,12 +54,13 @@ class BgeServerConfig(EnvConfigLoader):
     )
 
     # ───── BGE device policy ─────
-    # Controls which compute device the models are loaded on.
+    # Controls which compute device the models are loaded on (the core's DEVICE field, kept under
+    # its historical BGE_DEVICE variable name).
     # "auto"  → prefer GPU if torch.cuda.is_available(), else fall back to CPU silently.
     # "cuda"  → require GPU; fail loud at load time if CUDA is not available (no silent fallback).
     # "cpu"   → always use CPU regardless of GPU availability.
     # DeviceResolver (libs/bge_models/device.py) translates this into a concrete device string.
-    BGE_DEVICE: str = env("BGE_DEVICE", default="auto")
+    DEVICE: str = env("BGE_DEVICE", default="auto")
 
     # ───── BGE model runtime knobs ─────
     # Request fp16 precision. GATED: fp16 is only applied when the resolved device is "cuda".
@@ -142,11 +107,12 @@ class BgeServerConfig(EnvConfigLoader):
     BGE_DISCONNECT_POLL_SECONDS: float = env(
         "BGE_DISCONNECT_POLL_SECONDS", cast=float, default="0.25"
     )
-    # Number of intra-op threads torch may use PER inference call (torch.set_num_threads).
+    # Number of intra-op threads torch may use PER inference call (torch.set_num_threads) -- the
+    # core's NUM_THREADS field, kept under its historical BGE_TORCH_NUM_THREADS variable name.
     # 0 = auto: the service derives a reasonable value at startup as cpu_count/max_concurrency
     # (rounded up, minimum 1) so the combined thread budget stays near the total core count.
     # Set explicitly to override the auto derivation (e.g. BGE_TORCH_NUM_THREADS=4).
-    BGE_TORCH_NUM_THREADS: int = env("BGE_TORCH_NUM_THREADS", cast=int, default="0")
+    NUM_THREADS: int = env("BGE_TORCH_NUM_THREADS", cast=int, default="0")
     # Keep-warm interval in seconds. A background task runs a tiny forward pass on every model
     # (dense/sparse/rerank) every this-many seconds so their weights stay RESIDENT: on a
     # memory-constrained host the OS pages out an idle process's ~GB working set, and the next real
@@ -194,20 +160,12 @@ class BgeServerConfig(EnvConfigLoader):
         Validate env-derived config values beyond simple type casting.
 
         Raises:
-            ValueError: When BGE_DEVICE is not one of the accepted policy values, or when
-                any of the batching knobs has a value that would make the engine behave
-                incorrectly (e.g. zero or negative batch size / queue size).
+            ValueError: When a shared field is invalid (see ServerConfig.validate), or when any of
+                the batching knobs has a value that would make the engine behave incorrectly
+                (e.g. zero or negative batch size / queue size).
         """
+        # The core validates the shared fields first (device policy, thread budget, limits).
         super().validate()
-        # Import here to avoid a circular dep at class-body evaluation time;
-        # VALID_BGE_DEVICE_POLICIES is a plain frozenset with no ML deps.
-        from libs.bge_models.device import VALID_BGE_DEVICE_POLICIES  # noqa: PLC0415
-
-        if cls.BGE_DEVICE not in VALID_BGE_DEVICE_POLICIES:
-            raise ValueError(
-                f"BGE_DEVICE='{cls.BGE_DEVICE}' is not a valid device policy. "
-                f"Accepted values: {sorted(VALID_BGE_DEVICE_POLICIES)}"
-            )
         if cls.BGE_MAX_BATCH_SIZE < 1:
             raise ValueError(f"BGE_MAX_BATCH_SIZE must be >= 1, got {cls.BGE_MAX_BATCH_SIZE}")
         if cls.BGE_MAX_WAIT_MS < 0:
@@ -234,29 +192,3 @@ class BgeServerConfig(EnvConfigLoader):
             raise ValueError(f"BGE_KEEPWARM_SECONDS must be >= 0, got {cls.BGE_KEEPWARM_SECONDS}")
         if not 1 <= cls.BGE_GZIP_LEVEL <= 9:
             raise ValueError(f"BGE_GZIP_LEVEL must be between 1 and 9, got {cls.BGE_GZIP_LEVEL}")
-
-
-# ─── Apply logging configuration AFTER class definition ───
-_lpp_format_cls = getattr(lpp_formats, BgeServerConfig.LOGGING_LPP_FORMAT, lpp_formats.ShortFormat)
-_lpp_format = _lpp_format_cls()
-
-if BgeServerConfig.LOGGING_ENABLE_CONSOLE:
-    loggerplusplus.add(
-        sink=sys.stdout,
-        level=BgeServerConfig.LOGGING_CONSOLE_LEVEL,
-        format=_lpp_format,
-    )
-
-if BgeServerConfig.LOGGING_ENABLE_FILE:
-    loggerplusplus.add(
-        pathlib.Path("logs"),
-        level=BgeServerConfig.LOGGING_FILE_LEVEL,
-        format=_lpp_format,
-        rotation="1 week",
-        retention="30 days",
-        compression="zip",
-        encoding="utf-8",
-        enqueue=True,
-        backtrace=True,
-        diagnose=False,
-    )

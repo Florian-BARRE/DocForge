@@ -1,6 +1,57 @@
 {
   "components": {
     "schemas": {
+      "BgeHealthResponse": {
+        "description": "Response model for the GET /health liveness probe.\n\nMirrors the TEI /health response shape so DocForge and external callers can probe the\nservice without any client-side changes. When models are still loading the response carries\nstatus=\"loading\" and ready=False — callers should treat HTTP 503 as transient.\n\nAttributes:\n    embed_model (str): HuggingFace model ID of the embedding model (from config).\n    rerank_model (str): HuggingFace model ID of the reranking model (from config).",
+        "properties": {
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Reason the service is not ready; None when status is 'ok'.",
+            "title": "Detail"
+          },
+          "device": {
+            "description": "Runtime compute device: 'cuda' when a GPU is present, else 'cpu'.",
+            "title": "Device",
+            "type": "string"
+          },
+          "embed_model": {
+            "description": "HuggingFace model ID of the embed model.",
+            "title": "Embed Model",
+            "type": "string"
+          },
+          "ready": {
+            "description": "True when the host can serve inference.",
+            "title": "Ready",
+            "type": "boolean"
+          },
+          "rerank_model": {
+            "description": "HuggingFace model ID of the rerank model.",
+            "title": "Rerank Model",
+            "type": "string"
+          },
+          "status": {
+            "description": "'ok' when ready, 'loading' during startup, 'unhealthy' when unserviceable.",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "ready",
+          "device",
+          "embed_model",
+          "rerank_model"
+        ],
+        "title": "BgeHealthResponse",
+        "type": "object"
+      },
       "EmbedAllResponse": {
         "description": "Combined dense + sparse response for POST /embed_all.\n\nReturned when a caller needs BOTH representations for the same texts: the two sub-shapes are\nidentical to what POST /embed and POST /embed_sparse return separately, but a single\nforward pass produces them. Not part of the TEI contract — an internal DocForge convention;\ncallers fall back to /embed + /embed_sparse when this route is unavailable.\n\nAttributes:\n    dense (list[list[float]]): One 1024-dim dense vector per input text (as POST /embed).\n    sparse (list[list[SparseToken]]): Per text, a list of token index/weight pairs\n        (as POST /embed_sparse).",
         "properties": {
@@ -82,45 +133,6 @@
           }
         },
         "title": "HTTPValidationError",
-        "type": "object"
-      },
-      "HealthResponse": {
-        "description": "Response model for the GET /health liveness probe.\n\nMirrors the TEI /health response shape so DocForge and external callers can probe the\nservice without any client-side changes. When models are still loading the response carries\nstatus=\"loading\" and ready=False — callers should treat HTTP 503 as transient.\n\nAttributes:\n    status (str): \"ok\" when models are loaded and ready; \"loading\" while startup is in progress.\n    ready (bool): True only when both models are loaded and inference requests will be served.\n    embed_model (str): HuggingFace model ID of the embedding model (from config).\n    rerank_model (str): HuggingFace model ID of the reranking model (from config).\n    device (str): Runtime compute device — \"cuda\" when a GPU is present, else \"cpu\". Read by the\n        DocForge app's GET /capabilities probe to decide whether this sidecar runs on a GPU.",
-        "properties": {
-          "device": {
-            "description": "Runtime compute device: 'cuda' when a GPU is present, else 'cpu'.",
-            "title": "Device",
-            "type": "string"
-          },
-          "embed_model": {
-            "description": "HuggingFace model ID of the embed model.",
-            "title": "Embed Model",
-            "type": "string"
-          },
-          "ready": {
-            "description": "True when both models are loaded and inference is available.",
-            "title": "Ready",
-            "type": "boolean"
-          },
-          "rerank_model": {
-            "description": "HuggingFace model ID of the rerank model.",
-            "title": "Rerank Model",
-            "type": "string"
-          },
-          "status": {
-            "description": "'ok' when ready, 'loading' during startup.",
-            "title": "Status",
-            "type": "string"
-          }
-        },
-        "required": [
-          "status",
-          "ready",
-          "embed_model",
-          "rerank_model",
-          "device"
-        ],
-        "title": "HealthResponse",
         "type": "object"
       },
       "RerankRequest": {
@@ -427,21 +439,21 @@
     },
     "/health": {
       "get": {
-        "description": "Liveness + readiness probe — mirrors TEI's GET /health.\n\nReturns HTTP 200 with status=\"ok\" and ready=True once both BGE models are fully loaded.\nReturns HTTP 503 with status=\"loading\" and ready=False while startup is in progress, so\ncompose healthchecks and clients can distinguish a booting container from a healthy one.\n\nArgs:\n    response (Response): FastAPI response object used to set the HTTP status code.\n\nReturns:\n    HealthResponse: Service status, readiness flag, and model identities.",
-        "operationId": "health_health_get",
+        "description": "Liveness + readiness probe.\n\nArgs:\n    response (Response): FastAPI response object used to set the HTTP status code.\n\nReturns:\n    HealthResponse: 200 \"ok\" when ready; 503 \"unhealthy\" or \"loading\" otherwise.",
+        "operationId": "handle_health_get",
         "responses": {
           "200": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HealthResponse"
+                  "$ref": "#/components/schemas/BgeHealthResponse"
                 }
               }
             },
             "description": "Successful Response"
           }
         },
-        "summary": "Health"
+        "summary": "Handle"
       }
     },
     "/rerank": {

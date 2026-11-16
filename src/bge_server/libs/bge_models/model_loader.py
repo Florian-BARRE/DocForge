@@ -21,9 +21,9 @@ from typing import Any
 
 # ====== Third-Party Library Imports ======
 from loggerplusplus import LoggerClass
+from model_server_core import CpuBudget
 
 # ====== Local Project Imports ======
-from .cpu_budget import CpuBudgetResolver
 from .device import DeviceResolver, ResolvedDevice
 from .revision import ModelRevisionResolver
 
@@ -107,7 +107,7 @@ class BgeModelLoader(LoggerClass):
              device string and gated fp16 flag (torch.cuda.is_available() is called here).
           2. Import FlagEmbedding (deferred -- avoids ML stack at module import time) and resolve
              the effective forward-pass concurrency.
-          3. Cap torch intra-op threads via CpuBudgetResolver (cgroup-aware).
+          3. Cap torch intra-op threads via CpuBudget (cgroup-aware).
           4. Resolve the embed model id to a pinned local snapshot path via
              ModelRevisionResolver (no-op, returns the bare id unchanged, when no revision is
              configured).
@@ -198,7 +198,7 @@ class BgeModelLoader(LoggerClass):
             budget_source = "explicit override"
             cpu_budget = self._torch_num_threads
         else:
-            resolved_budget = CpuBudgetResolver.resolve()
+            resolved_budget = CpuBudget().resolve()
             n_threads = max(
                 1, math.ceil(resolved_budget.cpu_budget / max(1, self._max_concurrency))
             )

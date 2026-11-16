@@ -24,7 +24,7 @@ no new provider code needed**. `/embed_colbert` is an additional, internal-only 
 
 | Method | Path | Request body | Response |
 |---|---|---|---|
-| GET  | `/health` | -- | `{"status":"ok","embed_model":"...","rerank_model":"..."}` |
+| GET  | `/health` | -- | `{"status":"ok","ready":true,"detail":null,"device":"cpu","embed_model":"...","rerank_model":"..."}` (HTTP 503, `"status":"loading"`, while the models load) |
 | POST | `/embed` | `{"inputs": "..." or ["..."], "normalize": true, "truncate": true}` | `[[float, ...], ...]` (dense 1024-dim) |
 | POST | `/embed_sparse` | `{"inputs": "..." or ["..."], "truncate": true}` | `[[{"index": int, "value": float}, ...], ...]` |
 | POST | `/rerank` | `{"query": "...", "texts": ["..."], "truncate": true}` | `[{"index": int, "score": float}, ...]` |
@@ -44,35 +44,49 @@ upstream contract to mirror; it exists solely for DocForge-internal late-interac
 
 ## Source layout
 
+The service is built on the shared `src/model_server_core` library: the core owns the app skeleton
+(config base, lifespan with fail-fast config validation, gzip, `GET /health`, typed error handler,
+request guards, device probe, CPU budget, logging bootstrap); this folder only holds what is BGE's own.
+
 ```
 src/bge_server/
-  entrypoint.py          # uvicorn target (module-level app); wires CONTEXT + creates FastAPI app
-  config_loader.py       # BgeServerConfig(EnvConfigLoader) -- all env vars + logging setup
-  pyproject.toml         # uv-managed dependencies (FlagEmbedding, fastapi, uvicorn, loggerplusplus...)
+  entrypoint.py          # uvicorn target: ServerEntrypoint(BgeServer(BgeServerConfig)), zero logic
+  config_loader.py       # BgeServerConfig(ServerConfig) -- the BGE_* env vars
+  pyproject.toml         # uv-managed dependencies (FlagEmbedding, fastapi, ..., model_server_core path dep)
   uv.lock                # locked dependency graph
-  Dockerfile             # 2-stage uv build; CPU torch installed from PyTorch wheel index
+  Dockerfile             # 2-stage uv build; copies ../model_server_core; CPU torch from the PyTorch index
   libs/
     bge_models/
-      service.py         # BgeModelsService(LoggerClass) -- loads/unloads both models, encode/rerank
+      service.py         # BgeModelsService(ModelService) -- loads/unloads both models, encode/rerank
       device.py          # DeviceResolver -- BGE_DEVICE policy -> concrete device + fp16 gate
+      torch_cuda_detector.py  # TorchCudaDetector -- the torch GPU check injected into the core DeviceProbe
     batching/
       models.py          # BatchItem/EmbedItem/RerankItem dataclasses + QueueFullError
       worker.py          # BatchQueueWorker(LoggerClass) -- one generic micro-batcher per op
-      engine.py          # BatchingEngine(LoggerClass) -- owns 5 workers + shared model_lock
+      engine.py          # BatchingEngine(LoggerClass) -- owns 5 workers + the embed/rerank locks
   backend/
-    app.py               # create_app() -- FastAPI factory, registers routers
-    context.py           # CONTEXT static service locator (CONFIG + bge_models + batching_engine)
-    lifespan.py          # lifespan() -- banner + config log + model load + engine start/stop
-    libs/utils/
-      error_handling.py  # @auto_handle_errors decorator for all routes
-    routers/
-      health/            # GET /health
-      inference/         # POST /embed, /embed_sparse, /embed_colbert, /rerank (through batching engine)
-  tests/unit/
-    test_batching.py     # unit tests for the batching engine (mocked models, no torch)
+    bge_server.py        # BgeServer(ModelServer) -- title, model service, routes, gzip level, /health body
+    bge_health_response.py   # BgeHealthResponse -- core HealthResponse + the two model ids
+    runtime/             # BgeRuntime: batching engine start/stop, warmup, keep-warm, ready summary
+    routers/inference/   # InferenceRoutes: POST /embed, /embed_sparse, /embed_all, /embed_colbert, /rerank
+  tests/
+    unit/                # batching engine, admission, routes, health, runtime (mocked models, no torch)
+    characterization/    # OpenAPI golden + wire goldens of the inference routes
 services/bge_server/
   .env.example           # all env var defaults
 ```
+
+## Errors
+
+An unexpected exception answers **HTTP 500** with a generic typed body and a correlation id; the
+exception itself (type, message, traceback) is only in the server log, under the same id:
+
+```json
+{"detail": {"error": "Internal server error. The details were logged.", "correlation_id": "<uuid hex>"}}
+```
+
+The id is also sent as the `X-Correlation-ID` response header. Deliberate `503` answers
+(queue full, reranker not loaded) and `422` validation errors are unchanged.
 
 ## Build — two torch variants
 

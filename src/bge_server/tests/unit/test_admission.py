@@ -14,15 +14,14 @@ from unittest.mock import MagicMock
 # ====== Third-Party Library Imports ======
 import httpx
 import pytest
-from fastapi import FastAPI, Request
+from fastapi import Request
 
 # ====== Internal Project Imports ======
-from backend.context import CONTEXT
-from backend.routers import health_router, inference_router
 from backend.routers.inference.helpers import ClientDisconnected, InferenceHelpers
 from config_loader import BgeServerConfig
 from libs.batching.engine import BatchingEngine
 from libs.batching.models import QueueFullError
+from tests.support.bge_app import build_server
 
 
 def _engine(models: MagicMock, **kwargs: int) -> BatchingEngine:
@@ -201,16 +200,13 @@ async def test_queue_full_rejects_immediately_with_queue_full_error() -> None:
 
 
 async def test_route_returns_503_with_retry_after_when_queue_full() -> None:
-    app = FastAPI()
-    app.include_router(inference_router)
     engine = MagicMock()
 
     async def full(_texts: list[str]) -> None:
         raise QueueFullError("full")
 
     engine.submit_embed_dense = full
-    CONTEXT.CONFIG = BgeServerConfig
-    CONTEXT.batching_engine = engine
+    app = build_server(engine=engine).create_app()
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url="http://t"
     ) as client:
@@ -224,14 +220,8 @@ async def test_health_stays_fast_while_inference_is_saturated() -> None:
     engine = _engine(models, max_concurrent=1)  # type: ignore[arg-type]
     engine.start()
     stub = MagicMock()
-    stub._embed_model = object()
-    stub.reranker_loaded = True
-    CONTEXT.CONFIG = BgeServerConfig
-    CONTEXT.bge_models = stub
-    CONTEXT.batching_engine = engine
-    app = FastAPI()
-    app.include_router(inference_router)
-    app.include_router(health_router)
+    stub.ready = True
+    app = build_server(engine=engine, models=stub).create_app()
     try:
         async with httpx.AsyncClient(
             transport=httpx.ASGITransport(app=app), base_url="http://t"
