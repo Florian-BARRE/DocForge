@@ -39,8 +39,10 @@ Public repository.
   `app/frontend/`), `worker/` (arq worker), `shared/libs/` (pure graph engine, IR models, `Database`
   façade), `tests/` (`units`, `db`, `live`, `rag_eval`), `PIPELINE.md` (living pipeline reference).
 - `src/docforge_sdk/` (published client), `src/mcp/` (MCP server over the SDK), `src/bge_server/`,
-  `src/paddle_server/`, `src/mineru_server/`, `src/dots_ocr_server/` (model hosts). Each is its own uv
-  project with its own `uv.lock`.
+  `src/paddle_server/`, `src/mineru_server/`, `src/dots_ocr_server/` (model hosts),
+  `src/model_server_core/` (the model-free skeleton the four model hosts share). Each is its own uv
+  project with its own `uv.lock`; the four hosts depend on the core as a path dependency, like `mcp`
+  does on `docforge_sdk`.
 - `compose/` — compose scenarios and overlays, indexed in `compose/README.md`.
 - `services/` — per-service config: gitignored `.env` files next to committed `.env.example` templates.
 - `docs/` — product docs, indexed in `docs/README.md` (`docs/archive/` is frozen legacy prose);
@@ -73,6 +75,7 @@ Public repository.
 | a repo path named in backticks in the top-level docs | the doc (the path must exist) | `test_doc_coherence.py` |
 | a compose file | keep the `compose.*.yml` name; run `make config-check-all` (Docker, not in `aidk rules run done`) | `test_doc_coherence.py` |
 | a service in `compose/compose.base.yml` or `compose/overlays/compose.dev.yml` | `compose/overlays/compose.worktree.yml` (container name, ports, profile) | `test_worktree_compose_overlay.py` |
+| a model server's structure (`src/bge_server`, `src/paddle_server`, `src/mineru_server`, `src/dots_ocr_server`) or the `src/model_server_core` contract | the four servers stay SYMMETRIC (config, `<Name>Server(ModelServer)`, thin entrypoint, `ModelService`, Dockerfile, `uv.lock` path dependency), `docs/architecture.md` §2 | review |
 | the version | `scripts/set_version.sh X.Y.Z` (docforge, mcp and SDK in lockstep; bge and paddle version on their own) | `test_version_alignment.py` |
 
 These tests live under `src/docforge/tests/units/` (`coherence/` for the first ones).

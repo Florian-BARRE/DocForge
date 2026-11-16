@@ -49,7 +49,7 @@ stage-by-stage reference.
 
 ## 2. Monorepo layout
 
-DocForge is a monorepo of five packages plus per-service config.
+DocForge is a monorepo of eight packages (each its own `uv` project) plus per-service config.
 
 ```
 src/
@@ -63,6 +63,9 @@ src/
   mcp/                 # standalone MCP server — a pure HTTP client of the API (AI bridge)
   bge_server/          # local BGE-M3 embed/rerank host (TEI-compatible)
   paddle_server/       # PP-StructureV3 layout-parsing sidecar (POST /layout-parsing, GET /health)
+  mineru_server/       # MinerU2.5-Pro VLM layout-parsing sidecar (POST /parse, GET /health)
+  dots_ocr_server/     # dots.ocr per-element layout VLM sidecar (POST /parse, GET /health)
+  model_server_core/   # shared, model-free skeleton of the four model hosts above (path dependency)
 services/              # per-service .env (gitignored) + .env.example templates
 compose/               # per-scenario compose files (base + overlays + prod/dev × cpu/gpu) — see compose/README.md
 docker-compose.yml     # thin root default: include: [compose/compose.prod-cpu.yml]
@@ -94,6 +97,60 @@ The pipeline's `pp_structure` parser node calls it as a network provider (in-net
 `http://paddle_server:80`, dev-published on host port `10049`). It requires an AVX-capable CPU with
 `enable_mkldnn=False` (handled) and a generous memory limit — PP-StructureV3 loads several models and
 peaks a few GB. It stays OFF in every shipped blob, so the service being up costs idle memory only.
+
+**`mineru_server`**, **`dots_ocr_server`** — GPU-only VLM layout-parsing sidecars (MinerU2.5-Pro,
+dots.ocr) that return the same sidecar wire shape as `paddle_server`'s `/vl-parse`; each is reached by
+its own `parser` node and is opt-in through a compose profile.
+
+**`model_server_core`** — the shared skeleton of the four model hosts, described next.
+
+### Model hosts and `model_server_core`
+
+`bge_server`, `paddle_server`, `mineru_server` and `dots_ocr_server` are laid out **symmetrically**:
+everything that is not model-specific lives once in `src/model_server_core`, a model-free library
+(its only dependencies are `fastapi`, `uvicorn`, `pydantic`, `configplusplus`, `loggerplusplus`; it never
+imports torch, paddle or transformers). What each server needs from a heavy dependency is injected.
+
+What the core provides (see `src/model_server_core/README.md` for the full table):
+
+| Brick | Role |
+|---|---|
+| `ServerConfig` | env-driven configuration base (`DEV_MODE`, logging, host/port, `MAX_BODY_BYTES`, lock timeout, gzip, `DEVICE`, `NUM_THREADS`); subclassed per server as `<Name>ServerConfig`, keeping each server's historical env var names. |
+| `ModelServer` | abstract facade: builds the FastAPI app, drives the lifespan (model load at startup, unload at shutdown), mounts the error handler, gzip, `GET /health` and the server's routes. |
+| `ServerEntrypoint` | thin glue for `entrypoint.py`: logging bootstrap, the ASGI `app`, `run()`. |
+| `ModelService` | the per-server model contract: `ready`, `load()`, `unload()`. |
+| `ServerErrorHandler` | every unexpected exception becomes a typed 500 `{"detail": {"error": "Internal server error. The details were logged.", "correlation_id": "…"}}` plus an `X-Correlation-ID` header; the full exception is logged with the **same** `correlation_id`, and `str(exc)` never reaches the client. |
+| `RequestBodyGuard`, `InputValidator` | body-size cap (413) and pre-model input checks (empty or undecodable body: 422). |
+| `DeviceProbe`, `CpuFeatureProbe` | `cuda`/`cpu` from an injected chain of CUDA detectors, and an AVX-style CPU-flag probe; both torch-free. |
+| `HealthRoute`, `HealthModels` | the shared `GET /health` (503 while unhealthy). |
+
+The device chain is the one per-family difference: `mineru_server` and `dots_ocr_server` ask the NVIDIA
+driver nodes first (`NvidiaDriverDetector`) and then torch; `bge_server` and `paddle_server` ship dual
+cpu/gpu wheels, so they ask only their framework (`TorchCudaDetector`, `PaddleCudaDetector`) — a `-cpu`
+image on a GPU host must still report `cpu`.
+
+**One server = the same five pieces**, under `src/<name>_server/`:
+
+- `config_loader.py`: `<Name>ServerConfig(ServerConfig)`;
+- `backend/<name>_server.py`: `<Name>Server(ModelServer)`, which wires the device probe, the model
+  service and the routes;
+- `entrypoint.py`: about four lines, `ServerEntrypoint(<Name>Server(<Name>ServerConfig))`;
+- `libs/…`: the `ModelService` implementation (the model runtime and its CUDA detector);
+- `backend/routers/…`: route classes bound to that runtime.
+
+Packaging is symmetric too: each server's `pyproject.toml` declares `docforge-model-server-core` as a path
+source (`../model_server_core`, like `docforge-sdk` in `mcp`), so its `uv.lock` carries it as a path
+dependency (no `pyfiglet`). Its Dockerfile builds with `src/` as context, `COPY`s `model_server_core`
+before the sync, and syncs with `--no-editable` so the core is installed into the venv, not linked to a
+path the runtime stage does not have.
+
+A fifth model host is a subclass of `ServerConfig` and `ModelServer`, a `ModelService`, its routes and a
+`ServerEntrypoint` file of about four lines.
+
+Build and run notes: `bge_server` and `paddle_server` must be synced with `--extra cpu` and run with
+`uv run --no-sync`, otherwise uv re-resolves torch/paddle to the multi-GB CUDA build. The core's own
+checks run from `src/model_server_core` (`uv run --frozen pytest`, `mypy --strict model_server_core`,
+`ruff check .`).
 
 ---
 
