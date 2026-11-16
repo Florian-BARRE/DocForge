@@ -6,11 +6,13 @@
 # runs inside asyncio.to_thread so it never blocks the event loop. A caller that cannot acquire the
 # lock within lock_wait_timeout gets a TimeoutError -> HTTP 503.
 #
-# This service is PURE-ish glue: validate the PDF (client error -> 422), run the untested dots.ocr
-# engine seam (render + transformers, libs/dots_ocr/engine.py) off-thread under the lock to get
-# per-page raw outputs, then hand each to the fully-tested DotsOcrPageNormalizer to produce the shared
-# sidecar contract. Splitting the untested engine call from the tested normalization is what keeps this
-# brick verifiable offline.
+# This service is PURE-ish glue: run the untested dots.ocr engine seam (render + transformers,
+# libs/dots_ocr/engine.py) off-thread under the lock to get per-page raw outputs, then hand each to the
+# fully-tested DotsOcrPageNormalizer to produce the shared sidecar contract. Splitting the untested
+# engine call from the tested normalization is what keeps this brick verifiable offline. It is the
+# model_server_core ModelService of the dots.ocr host: the model loads LAZILY on the first parse, so
+# load() has nothing to build at startup. The PDF is validated (client error -> 422) by the route,
+# through the core InputValidator, before it gets here.
 
 # ====== Standard Library Imports ======
 from __future__ import annotations
@@ -21,21 +23,19 @@ from typing import Any
 
 # ====== Third-Party Library Imports ======
 from loggerplusplus import LoggerClass
-
-# ====== Internal Project Imports ======
-from libs.validation import InputValidator
+from model_server_core import ModelService
 
 # ====== Local Project Imports ======
 from .engine import DotsOcrEngine
 from .normalizer import DotsOcrPageNormalizer
 
 
-class DotsOcrService(LoggerClass):
+class DotsOcrService(ModelService, LoggerClass):
     """
     Manages the lifecycle of the dots.ocr VLM parse pipeline behind a serialized predict lock.
 
     The heavy transformers model is loaded lazily by the engine on the first parse_pdf() call; this
-    service only guards concurrency + validation and adapts the engine's per-page raw outputs into the
+    service only guards concurrency and adapts the engine's per-page raw outputs into the
     sidecar's `{pages, n_pages, engine}` contract.
     """
 
@@ -90,11 +90,14 @@ class DotsOcrService(LoggerClass):
     def ready(self) -> bool:
         """
         Returns:
-            bool: Always True — the model loads lazily on the first parse and this service is not part
-                of the readiness gate for model load (only the GPU gate in /health blocks readiness).
-                Kept as a property for symmetry with the sibling sidecar services.
+            bool: Always True — the model loads lazily on the first parse, so readiness is not gated
+                on the model being built (only the GPU gate of the server, `health_blocker`, blocks it).
         """
         return True
+
+    def load(self) -> None:
+        """Nothing to build at startup: dots.ocr's VLM loads lazily inside the engine on the first parse."""
+        self.logger.info(f"dots.ocr model {self.model_path} loads LAZILY on the first /parse")
 
     def unload(self) -> None:
         """Release the engine's model reference so the GC can reclaim GPU memory."""
@@ -106,25 +109,20 @@ class DotsOcrService(LoggerClass):
         Parse a PDF's bytes into the shared `{pages, n_pages, engine}` sidecar contract.
 
         Steps:
-          1. Reject an undecodable PDF as a client error (HTTP 422) before spending inference.
-          2. Acquire the shared predict lock (bounded wait -> TimeoutError -> HTTP 503).
-          3. Run the dots.ocr engine off the event loop to get per-page raw outputs + page count.
-          4. Normalize each page's raw output into the shared per-page contract.
+          1. Acquire the shared predict lock (bounded wait -> TimeoutError -> HTTP 503).
+          2. Run the dots.ocr engine off the event loop to get per-page raw outputs + page count.
+          3. Normalize each page's raw output into the shared per-page contract.
 
         Args:
-            pdf_bytes (bytes): Raw PDF content (the request body).
+            pdf_bytes (bytes): Raw PDF content (the request body), already validated as a PDF.
 
         Returns:
             dict[str, Any]: `{"pages": [...], "n_pages": int, "engine": {...}}`.
 
         Raises:
-            InvalidInputError: If the body is not a decodable PDF (a client error -> HTTP 422).
             TimeoutError: If the predict lock cannot be acquired within the configured timeout.
         """
-        # 1. Reject an undecodable PDF as a client error BEFORE spending inference.
-        InputValidator.verify_pdf(pdf_bytes)
-
-        # 2. Bounded wait on the shared predict lock — piling up behind a slow VLM parse would exhaust
+        # 1. Bounded wait on the shared predict lock — piling up behind a slow VLM parse would exhaust
         #    GPU memory; a timeout surfaces as a clear 503 instead.
         try:
             await asyncio.wait_for(self._lock.acquire(), timeout=self._lock_wait_timeout_seconds)
@@ -135,14 +133,14 @@ class DotsOcrService(LoggerClass):
             ) from exc
 
         try:
-            # 3. Run the (heavy, GPU-only) render + transformers engine off the event loop.
+            # 2. Run the (heavy, GPU-only) render + transformers engine off the event loop.
             t0 = time.perf_counter()
             page_outputs, n_pages = await asyncio.to_thread(self._engine.analyze, pdf_bytes)
             elapsed = time.perf_counter() - t0
         finally:
             self._lock.release()
 
-        # 4. Normalize each page's raw model output into the shared per-page contract (pure, tested).
+        # 3. Normalize each page's raw model output into the shared per-page contract (pure, tested).
         pages = [
             DotsOcrPageNormalizer.to_page(
                 page_index=item["page_index"],

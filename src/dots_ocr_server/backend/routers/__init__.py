@@ -1,11 +1,7 @@
-# ------------------- Health ------------------- #
-from .health.router import router as health_router
-
 # ------------------- Parse ------------------- #
-from .parse.router import router as parse_router
+from .parse.router import ParseRoutes
 
 # ------------------- Public API ------------------- #
 __all__ = [
-    "health_router",
-    "parse_router",
+    "ParseRoutes",
 ]
