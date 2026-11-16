@@ -55,6 +55,44 @@ Public repository.
   `# ====== Internal Project Imports ======`, `# ====== Local Project Imports ======` (relative
   imports). Match the file you edit.
 - Google-style docstrings and type hints (`src/docforge` has no mypy).
+- Object-oriented by default: classes, abstract classes for contracts, inheritance for variants,
+  composition through the constructor; a free function is a justified exception. Where a language has
+  no classes (Bash, SQL, YAML), write reusable library bricks, never simulated objects. Match the
+  paradigm already in place in the area you edit.
+- Families are SYMMETRIC: the units of a family are laid out identically. The four model servers sit
+  on `src/model_server_core` (`docs/architecture.md` §2); the SDK's sync modules are generated from
+  their async twins by `src/docforge_sdk/scripts/generate_sync.py` (never edited by hand).
+- Thin entry points, injected configuration: only an entry point or composition root reads the
+  process config (`RUNTIME_CONFIG`); every other module receives its settings as parameters.
+- One short facade per package or layer, collaborators behind it: the `Database` façade over the
+  stores, which routers and worker jobs use instead of a store client.
+- Explicit contracts and data: an abstract class or typed model per family, enums for closed sets,
+  named constants. Fail fast with a named error and a precise cause; a catch-all only at a boundary,
+  and it logs. One logger per unit (`loggerplusplus`), narrated as `START`/`END` with key=value, no
+  debugging `print`, no secret in a log.
+- One unit, one responsibility, at most 400 lines per file (Python, TypeScript and TSX).
+
+## Structural ratchets (anti-drift)
+
+Mechanical tests that forbid a regression; their allowlists hold today's accepted exceptions and only
+shrink: lower or drop an entry when you fix one, never add one without a deliberate decision. Python,
+under `src/docforge/tests/units/coherence/`:
+
+- `test_node_purity_ratchet.py`: no store, process-env or global-config use in a pipeline node (its
+  `_ALLOWED` set is empty).
+- `test_layer_ratchet.py`: routers reach the stores through the façade only, the app and the worker
+  never import each other, `shared/` never imports either (`_ROUTER_STORE_EDGES` lists three
+  exceptions). `characterization/pipelines/test_import_graph.py` pins the edges inside `shared/libs`.
+- `test_config_reads_ratchet.py`: `RUNTIME_CONFIG` reads per file, ceilings in
+  `config_reads_allowlist.json`.
+- `test_file_size_ratchet.py`: the 400-line budget, ceilings in `file_size_allowlist.json`.
+- `test_ir_canonical_ratchet.py`: the IR classes are defined once, only the explorer endpoint calls the
+  view generators, no new stored-view column.
+
+Frontend, under `src/docforge/app/frontend/src/`: `layering.structure.test.ts` (imports flow
+`features` → `shell` → `components` → `hooks`/`utils`/`api`, never to the left) and
+`navigation.structure.test.ts` (navigation through `useNavigate()`; the `onNavigate` prop only in its
+allowlisted route-table files), with `routes.test.tsx` covering the route table.
 
 ## Invariants
 
@@ -76,6 +114,7 @@ Public repository.
 | a compose file | keep the `compose.*.yml` name; run `make config-check-all` (Docker, not in `aidk rules run done`) | `test_doc_coherence.py` |
 | a service in `compose/compose.base.yml` or `compose/overlays/compose.dev.yml` | `compose/overlays/compose.worktree.yml` (container name, ports, profile) | `test_worktree_compose_overlay.py` |
 | a model server's structure (`src/bge_server`, `src/paddle_server`, `src/mineru_server`, `src/dots_ocr_server`) or the `src/model_server_core` contract | the four servers stay SYMMETRIC (config, `<Name>Server(ModelServer)`, thin entrypoint, `ModelService`, Dockerfile, `uv.lock` path dependency), `docs/architecture.md` §2 | review |
+| a ratchet allowlist (`config_reads_allowlist.json`, `file_size_allowlist.json`, a `_ALLOWED` set) | only lower or drop an entry, with the code change that earns it | the ratchet's own test |
 | the version | `scripts/set_version.sh X.Y.Z` (docforge, mcp and SDK in lockstep; bge and paddle version on their own) | `test_version_alignment.py` |
 
 These tests live under `src/docforge/tests/units/` (`coherence/` for the first ones).
