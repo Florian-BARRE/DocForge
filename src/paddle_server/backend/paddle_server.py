@@ -7,13 +7,7 @@
 
 # ====== Third-Party Library Imports ======
 from fastapi import FastAPI
-from model_server_core import (
-    CpuFeatureProbe,
-    DeviceProbe,
-    ModelServer,
-    ModelService,
-    NvidiaDriverDetector,
-)
+from model_server_core import CpuFeatureProbe, DeviceProbe, ModelServer, ModelService
 
 # ====== Internal Project Imports ======
 from config_loader import PaddleServerConfig
@@ -32,18 +26,16 @@ class PaddleServer(ModelServer[PaddleServerConfig]):
     image in, a single reading out (PaddleOCR).
 
     Assembling it is cheap and paddle-free: the heavy paddleocr/paddlex import is deferred to the
-    pipelines' `load()`, run by the core lifespan on startup. The device is probed through the NVIDIA
-    driver nodes first, then through PaddlePaddle's own runtime check (the library the pipelines run
-    on, not torch).
+    pipelines' `load()`, run by the core lifespan on startup. The device is probed through
+    PaddlePaddle's own runtime check only (the library the pipelines run on, not torch): the -cpu image
+    on a host that exposes the NVIDIA driver still reports "cpu", as the inference runs on the CPU wheel.
 
     Args:
         config (type[PaddleServerConfig]): The injected configuration.
     """
 
     def __init__(self, config: type[PaddleServerConfig]) -> None:
-        super().__init__(
-            config, device_probe=DeviceProbe([NvidiaDriverDetector(), PaddleCudaDetector()])
-        )
+        super().__init__(config, device_probe=DeviceProbe([PaddleCudaDetector()]))
         self.cpu_features = CpuFeatureProbe()
         # The three pipelines are NOT built here: the core lifespan loads them (PP-StructureV3 and
         # PaddleOCR at startup, PaddleOCR-VL lazily on its first request). The model cache and source

@@ -1,8 +1,8 @@
 # ====== Code Summary ======
-# PaddleCudaDetector: the PaddlePaddle fallback of the Paddle host's "is a CUDA GPU visible?" check.
-# The core DeviceProbe asks the torch-free NvidiaDriverDetector first (the NVIDIA driver's /proc and
-# /dev nodes), then this detector, which asks Paddle's own runtime (the library the pipelines run on,
-# NOT torch): a CUDA-compiled wheel WITH at least one visible device. It implements the
+# PaddleCudaDetector: the Paddle host's "is a CUDA GPU visible?" check. It is the ONLY detector of the
+# core DeviceProbe here (no NVIDIA driver node check: the -cpu image on a GPU host must report "cpu").
+# It asks Paddle's own runtime (the library the pipelines run on, NOT torch): a CUDA-compiled wheel
+# WITH at least one visible device. It implements the
 # model_server_core CudaDetector contract. A paddle that cannot be imported raises: the probe treats
 # any exception as "no GPU" and reports "cpu", the safe and honest answer.
 

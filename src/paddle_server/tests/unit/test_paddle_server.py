@@ -2,7 +2,7 @@
 # Unit tests for the model_server_core adoption (R-27 step 4b): the PaddleServer lifecycle (the core
 # lifespan validates the config, then drives the aggregate ModelService load/unload — the two eager
 # pipelines are built at startup, the VL one lazily), the PaddleModelsService contract, the paddle
-# detector injected into the core DeviceProbe (after the NVIDIA driver one), the historical PADDLE_*
+# detector injected alone into the core DeviceProbe (no NVIDIA driver node check), the historical PADDLE_*
 # env var names kept on the shared config fields, the real-bool DEV_MODE parsing, and the thin
 # entrypoint. PaddlePaddle-free: paddle is stubbed in sys.modules, the pipelines are fakes.
 
@@ -16,7 +16,7 @@ from typing import Any
 # ====== Third-Party Library Imports ======
 import pytest
 from fastapi.testclient import TestClient
-from model_server_core import CpuFeatureProbe, DeviceProbe, ModelService, NvidiaDriverDetector
+from model_server_core import CpuFeatureProbe, DeviceProbe, ModelService
 
 # ====== Internal Project Imports ======
 from backend import PaddleServer
@@ -167,9 +167,9 @@ def test_paddle_detector_degrades_to_cpu_when_paddle_is_not_importable(
     assert DeviceProbe([PaddleCudaDetector()]).device().value == "cpu"
 
 
-def test_server_asks_the_driver_first_then_paddle() -> None:
+def test_server_asks_paddle_only() -> None:
     detectors = PaddleServer(PaddleServerConfig).device_probe._detectors
-    assert [type(d) for d in detectors] == [NvidiaDriverDetector, PaddleCudaDetector]
+    assert [type(d) for d in detectors] == [PaddleCudaDetector]
 
 
 def test_server_probes_the_cpu_for_avx() -> None:
