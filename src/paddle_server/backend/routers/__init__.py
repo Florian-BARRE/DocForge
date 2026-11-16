@@ -1,19 +1,15 @@
-# ------------------- Health ------------------- #
-from .health.router import router as health_router
-
 # ------------------- Layout Parsing ------------------- #
-from .layout_parsing.router import router as layout_parsing_router
+from .layout_parsing.router import LayoutParsingRoutes
 
 # ------------------- OCR ------------------- #
-from .ocr.router import router as ocr_router
+from .ocr.router import OcrRoutes
 
 # ------------------- VL Parsing ------------------- #
-from .vl_parsing.router import router as vl_parsing_router
+from .vl_parsing.router import VlParsingRoutes
 
 # ------------------- Public API ------------------- #
 __all__ = [
-    "health_router",
-    "layout_parsing_router",
-    "vl_parsing_router",
-    "ocr_router",
+    "LayoutParsingRoutes",
+    "OcrRoutes",
+    "VlParsingRoutes",
 ]

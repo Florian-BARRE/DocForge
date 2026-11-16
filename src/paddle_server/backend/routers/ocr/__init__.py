@@ -1,7 +1,7 @@
-# ------------------- OCR ------------------- #
-from .router import router as ocr_router
+# ------------------- Router ------------------- #
+from .router import OcrRoutes
 
 # ------------------- Public API ------------------- #
 __all__ = [
-    "ocr_router",
+    "OcrRoutes",
 ]

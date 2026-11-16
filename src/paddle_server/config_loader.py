@@ -1,41 +1,20 @@
 # ====== Code Summary ======
-# Defines PaddleServerConfig (env-based settings) and configures the loggerplusplus sinks for
-# the PP-StructureV3 layout-parsing micro-service. This file is imported FIRST in entrypoint.py
-# so that the class body registers the app root on sys.path before any `libs.*` or `backend.*`
-# import is resolved.
+# PaddleServerConfig: the env-based settings of the PP-StructureV3 / PaddleOCR / PaddleOCR-VL
+# layout-parsing micro-service. It extends the shared model_server_core ServerConfig (logging,
+# host/port, DEV_MODE, gzip floor, request ceiling, lock-wait timeout), re-declaring the base fields
+# the service has always read under a PADDLE_* name, and adds the Paddle-specific knobs (model cache,
+# sub-pipeline toggles, OCR language). The logging sinks are applied by the core's ServerEntrypoint,
+# not at import time.
 #
-# Single runtime config, no YAML — using the flat config_loader.py exception from python.md (same
-# pattern as the sibling src/bge_server/config_loader.py). No .env file is required at runtime;
-# the service receives env vars directly from docker compose.
-
-# ====== Standard Library Imports ======
-import pathlib
-import sys
+# Single runtime config, no YAML. No .env file is required at runtime; the service receives env vars
+# directly from docker compose.
 
 # ====== Third-Party Library Imports ======
-from configplusplus import EnvConfigLoader, env
-from loggerplusplus import formats as lpp_formats
-from loggerplusplus import loggerplusplus
-
-# ─── Reset logger before anything else ───
-loggerplusplus.remove()
-
-# ─── Optional DEV_MODE early logger ───
-# DEV_MODE is read directly from os.environ (not via env()) because it must activate a temporary
-# debug sink BEFORE the PaddleServerConfig class is evaluated. This sink is removed immediately
-# after and replaced by the real sinks below.
-import os as _os
-
-if _os.environ.get("DEV_MODE"):
-    loggerplusplus.add(sink=sys.stdout, level="DEBUG", format=lpp_formats.ShortFormat())
-    _dev_logger = loggerplusplus.bind(identifier="DEV")
-    _dev_logger.warning(f"DEV MODE is activated !")
-    loggerplusplus.remove()
-
-del _os
+from configplusplus import env
+from model_server_core import ServerConfig
 
 
-class PaddleServerConfig(EnvConfigLoader):
+class PaddleServerConfig(ServerConfig):
     """
     Environment-driven configuration for the PP-StructureV3 layout-parsing micro-service.
 
@@ -43,21 +22,6 @@ class PaddleServerConfig(EnvConfigLoader):
     object-store credentials are needed — this service is a pure model host. All env vars have
     safe defaults so the container starts out-of-the-box without any .env file.
     """
-
-    # ───── Paths & dirs ─────
-    # Root of the paddle_server application (this file's directory, i.e. src/paddle_server/).
-    PATH_ROOT_DIR: pathlib.Path = pathlib.Path(__file__).resolve().parent
-
-    # Register the app root on sys.path so `from libs.*` and `from backend.*` resolve regardless
-    # of how the entry point is invoked (uvicorn entrypoint:app, pytest, direct run).
-    sys.path.append(str(PATH_ROOT_DIR))
-
-    # ───── Logging (mandatory 5 — drive the logging setup) ─────
-    LOGGING_CONSOLE_LEVEL: str = env("LOGGING_CONSOLE_LEVEL", default="INFO")
-    LOGGING_FILE_LEVEL: str = env("LOGGING_FILE_LEVEL", default="DEBUG")
-    LOGGING_ENABLE_CONSOLE: bool = env("LOGGING_ENABLE_CONSOLE", cast=bool, default="true")
-    LOGGING_ENABLE_FILE: bool = env("LOGGING_ENABLE_FILE", cast=bool, default="false")
-    LOGGING_LPP_FORMAT: str = env("LOGGING_LPP_FORMAT", default="ShortFormat")
 
     # ───── Model cache ─────
     # PaddleX resolves every inference model (layout/OCR/table/formula/seal) to a tarball fetched
@@ -72,13 +36,13 @@ class PaddleServerConfig(EnvConfigLoader):
     # PaddleX itself reads the env var directly (paddlex.utils.flags.MODEL_SOURCE).
     PADDLE_PDX_MODEL_SOURCE: str = env("PADDLE_PDX_MODEL_SOURCE", default="huggingface")
 
-    # ───── Request limits ─────
-    # Hard ceiling (BYTES) on a request body the /ocr and /layout-parsing routes will buffer. Both
+    # ───── Request limits (the core's MAX_BODY_BYTES, kept under its historical variable name) ─────
+    # Hard ceiling (BYTES) on a request body the /ocr, /layout-parsing and /vl-parse routes will buffer. Both
     # read the whole body into memory (the body IS the image/PDF), so without a cap a multi-GB upload
     # OOMs this container (whose memory ceiling exists for model spikes, not attacker payloads). A
     # declared Content-Length over the cap is rejected 413 before a byte is read; the streamed read is
     # capped too, so a lying/absent length can't bypass it. 100 MiB is generous for real scans/PDFs.
-    PADDLE_MAX_BODY_BYTES: int = env("PADDLE_MAX_BODY_BYTES", cast=int, default=104_857_600)
+    MAX_BODY_BYTES: int = env("PADDLE_MAX_BODY_BYTES", cast=int, default="104857600")
 
     # ───── PP-StructureV3 sub-pipeline toggles (lean default) ─────
     # Mandatory sub-pipelines (layout detection + general OCR) are always on — PaddleX has no
@@ -114,54 +78,11 @@ class PaddleServerConfig(EnvConfigLoader):
         "PADDLE_OCR_USE_TEXTLINE_ORIENTATION", cast=bool, default="false"
     )
 
-    # ───── Concurrency ─────
+    # ───── Concurrency (the core's LOCK_WAIT_TIMEOUT_SECONDS, kept under its historical name) ─────
     # PaddlePaddle inference is not thread-safe; every /layout-parsing call is serialized behind
     # a single asyncio.Lock (libs/ppstructure/service.py). This is the max time a request waits
     # to acquire that lock before the router returns HTTP 503 (back-pressure, same shape as
     # bge_server's queue-full 503) instead of piling up unbounded.
-    PADDLE_LOCK_WAIT_TIMEOUT_SECONDS: float = env(
+    LOCK_WAIT_TIMEOUT_SECONDS: float = env(
         "PADDLE_LOCK_WAIT_TIMEOUT_SECONDS", cast=float, default="290"
-    )
-
-    @classmethod
-    def validate(cls) -> None:
-        """
-        Validate env-derived config values beyond simple type casting.
-
-        Raises:
-            ValueError: When PADDLE_LOCK_WAIT_TIMEOUT_SECONDS is not strictly positive.
-        """
-        super().validate()
-        if cls.PADDLE_LOCK_WAIT_TIMEOUT_SECONDS <= 0:
-            raise ValueError(
-                f"PADDLE_LOCK_WAIT_TIMEOUT_SECONDS must be > 0, got "
-                f"{cls.PADDLE_LOCK_WAIT_TIMEOUT_SECONDS}"
-            )
-
-
-# ─── Apply logging configuration AFTER class definition ───
-_lpp_format_cls = getattr(
-    lpp_formats, PaddleServerConfig.LOGGING_LPP_FORMAT, lpp_formats.ShortFormat
-)
-_lpp_format = _lpp_format_cls()
-
-if PaddleServerConfig.LOGGING_ENABLE_CONSOLE:
-    loggerplusplus.add(
-        sink=sys.stdout,
-        level=PaddleServerConfig.LOGGING_CONSOLE_LEVEL,
-        format=_lpp_format,
-    )
-
-if PaddleServerConfig.LOGGING_ENABLE_FILE:
-    loggerplusplus.add(
-        pathlib.Path("logs"),
-        level=PaddleServerConfig.LOGGING_FILE_LEVEL,
-        format=_lpp_format,
-        rotation="1 week",
-        retention="30 days",
-        compression="zip",
-        encoding="utf-8",
-        enqueue=True,
-        backtrace=True,
-        diagnose=False,
     )

@@ -34,8 +34,9 @@ dependencies = [
     # paddlex==3.7.2 pins pyyaml==6.0.2, so the two cannot resolve together.
     "configplusplus>=0.1.0",
     "loggerplusplus>=1.0.0",
-    # ASCII startup banner printed by the lifespan.
-    "pyfiglet>=1.0.2",
+    # Shared skeleton of the model-host micro-services (config base, app facade, /health, typed
+    # error handler, request guards, device probes). A path source, resolved from the sibling folder.
+    "docforge-model-server-core",
 ]
 
 # ── Paddle variant extras ─────────────────────────────────────────────────────────────────────
@@ -90,6 +91,7 @@ conflicts = [
 ]
 
 [tool.uv.sources]
+docforge-model-server-core = { path = "../model_server_core", editable = true }
 # Route paddlepaddle to the correct wheel index depending on the active extra.
 # paddlepaddle (cpu): plain PyPI — no special index needed for CPU wheels.
 # paddlepaddle-gpu (gpu): Paddle's own CUDA 12.6 index (matches the worker's cu12x line).
@@ -114,16 +116,6 @@ ignore = [
     "F541",   # f-string without placeholder (loggerplusplus convention)
     "E501",   # line too long (handled by formatter)
 ]
-
-[tool.ruff.lint.per-file-ignores]
-# config_loader.py reads DEV_MODE via an `import os` placed AFTER loggerplusplus.remove() so a
-# temporary debug sink exists before the config class is evaluated — a deliberate bootstrap
-# ordering (see the python.md runtime-config pattern), not a stray mid-file import.
-"config_loader.py" = ["E402"]
-# entrypoint.py MUST import PaddleServerConfig FIRST (its class body calls sys.path.append so
-# `from backend.*` / `from libs.*` resolve) — isort would reorder it after third-party and break
-# the import bootstrap, so the block-sort rule is disabled here on purpose.
-"entrypoint.py" = ["I001"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["config_loader", "libs", "backend"]

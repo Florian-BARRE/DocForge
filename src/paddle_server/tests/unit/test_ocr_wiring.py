@@ -1,86 +1,78 @@
 # ====== Code Summary ======
-# Wiring test for POST /ocr — proves the route reaches CONTEXT.paddleocr.read_image() and returns
-# its {text, confidence}, that an empty body is rejected (422), and that a lock-wait TimeoutError
-# surfaces as HTTP 503 with a Retry-After header. Uses a STUB PaddleOcrService (no paddleocr import),
-# so it runs on an AVX-less CPU where PaddlePaddle SIGILLs — this covers the route→service seam that
-# neither the normalizer suite (service-free) nor the DocForge node suite (client-side) exercises.
+# Wiring test for POST /ocr — proves OcrRoutes reaches the PaddleOcrService read_image() and returns its
+# result, and maps its expected failures to the right HTTP status: an empty body -> 422, an undecodable
+# image (client error, caught by the core InputValidator before the service) -> 422 with a clean
+# message (not a 500 leaking a raw PaddleX exception), and a lock-wait TimeoutError -> 503 with
+# Retry-After. Uses a STUB service (no paddle import), so it runs on an AVX-less CPU where PaddlePaddle
+# SIGILLs. The 413 guard and the typed 500 are covered for the three routes in test_route_guards.py.
 
 # ====== Standard Library Imports ======
 from typing import Any
+from unittest.mock import AsyncMock, MagicMock
 
 # ====== Third-Party Library Imports ======
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from model_server_core import InputValidator, RequestBodyGuard, ServerErrorHandler
 
 # ====== Internal Project Imports ======
-from backend.context import CONTEXT
-from backend.routers import ocr_router
+from backend.routers import OcrRoutes
+from tests.support.paddle_app import MAX_BODY_BYTES, SmallLimitsConfig, valid_png_bytes
+
+RESULT: dict[str, Any] = {"text": "FACTURE 1500", "confidence": 0.91}
 
 
-class _StubOcrService:
-    """A no-paddle stand-in for PaddleOcrService — build/unload are no-ops, read_image is canned."""
-
-    def __init__(
-        self,
-        *,
-        reading: dict[str, Any] | None = None,
-        raise_timeout: bool = False,
-        raise_invalid: bool = False,
-    ) -> None:
-        self.ready = True
-        self._reading = reading or {"text": "FACTURE 1500", "confidence": 0.91}
-        self._raise_timeout = raise_timeout
-        self._raise_invalid = raise_invalid
-
-    async def read_image(self, image_bytes: bytes) -> dict[str, Any]:
-        """Return the canned reading, or raise to simulate a bad image / a saturated predict lock."""
-        if self._raise_invalid:
-            from libs.validation import InvalidInputError  # noqa: PLC0415
-
-            raise InvalidInputError("request body is not a decodable image")
-        if self._raise_timeout:
-            raise TimeoutError("busy")
-        return self._reading
+@pytest.fixture
+def service() -> MagicMock:
+    stub = MagicMock()
+    stub.read_image = AsyncMock(return_value=RESULT)
+    return stub
 
 
-def _client() -> TestClient:
-    """A TestClient over a bare app with only the OCR router (no lifespan → no real build)."""
-    from config_loader import PaddleServerConfig  # noqa: PLC0415
-
-    # The route now reads CONTEXT.CONFIG.PADDLE_MAX_BODY_BYTES for its body-size cap; the lifespan
-    # that normally injects it never runs here, so wire the real config in.
-    CONTEXT.CONFIG = PaddleServerConfig  # type: ignore[assignment]
+@pytest.fixture
+def client(service: MagicMock) -> TestClient:
+    """The route alone, wired like PaddleServer does, with the core handlers installed."""
     app = FastAPI()
-    app.include_router(ocr_router)
-    return TestClient(app)
+    ServerErrorHandler().install(app)
+    routes = OcrRoutes(
+        service,
+        RequestBodyGuard(max_bytes=MAX_BODY_BYTES),
+        InputValidator.from_config(SmallLimitsConfig),
+    )
+    app.include_router(routes.router)
+    return TestClient(app, raise_server_exceptions=False)
 
 
-def test_ocr_route_reaches_the_service_and_returns_text_and_confidence() -> None:
-    CONTEXT.paddleocr = _StubOcrService()  # type: ignore[assignment]
-    response = _client().post("/ocr", content=b"\x89PNG...", headers={"Content-Type": "image/png"})
+def test_ocr_route_reaches_the_service_and_returns_its_result(
+    client: TestClient, service: MagicMock
+) -> None:
+    response = client.post("/ocr", content=valid_png_bytes(), headers={"Content-Type": "image/png"})
     assert response.status_code == 200
-    body = response.json()
-    assert body["text"] == "FACTURE 1500"
-    assert body["confidence"] == 0.91
+    assert response.json() == RESULT
+    service.read_image.assert_awaited_once()
+    assert service.read_image.await_args.args[0] == valid_png_bytes()
 
 
-def test_ocr_route_rejects_an_empty_body() -> None:
-    CONTEXT.paddleocr = _StubOcrService()  # type: ignore[assignment]
-    response = _client().post("/ocr", content=b"")
+def test_ocr_route_rejects_an_empty_body(client: TestClient, service: MagicMock) -> None:
+    response = client.post("/ocr", content=b"")
     assert response.status_code == 422
+    assert response.json() == {"detail": {"error": "empty request body"}}
+    service.read_image.assert_not_awaited()
 
 
-def test_ocr_route_returns_503_on_lock_timeout() -> None:
-    CONTEXT.paddleocr = _StubOcrService(raise_timeout=True)  # type: ignore[assignment]
-    response = _client().post("/ocr", content=b"png")
+def test_ocr_route_returns_503_on_lock_timeout(client: TestClient, service: MagicMock) -> None:
+    service.read_image.side_effect = TimeoutError("busy")
+    response = client.post("/ocr", content=valid_png_bytes())
     assert response.status_code == 503
     assert response.headers.get("Retry-After") == "5"
+    assert response.json() == {"detail": {"error": "server overloaded — try again shortly"}}
 
 
-def test_ocr_route_returns_422_on_undecodable_image() -> None:
-    # A malformed image is a client error: the service raises InvalidInputError and the router maps
-    # it to 422 with a clean message — NOT a 500 leaking a raw PaddleX exception string.
-    CONTEXT.paddleocr = _StubOcrService(raise_invalid=True)  # type: ignore[assignment]
-    response = _client().post("/ocr", content=b"not-an-image")
+def test_ocr_route_returns_422_on_undecodable_image(client: TestClient, service: MagicMock) -> None:
+    # A malformed upload is a client error: the core validator raises InvalidInputError before the
+    # service and the core handler maps it to 422 with a clean message — NOT a 500.
+    response = client.post("/ocr", content=b"not-a-image")
     assert response.status_code == 422
     assert response.json()["detail"]["error"] == "request body is not a decodable image"
+    service.read_image.assert_not_awaited()
