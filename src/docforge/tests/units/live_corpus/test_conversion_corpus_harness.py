@@ -126,8 +126,8 @@ def test_committed_snapshot_covers_every_corpus_document_and_fixture() -> None:
 def test_digests_are_prefixed_so_secret_scanners_do_not_flag_the_snapshot() -> None:
     from conversion_corpus.fingerprint import mark_digests
 
-    digest = "d9bf34a76bfd64379aaf5bd69eb4172273c2a0f4e2057b73ad1e88002e7a4464"
-    assert mark_digests({"a": [digest, "fr", 3], "b": {"c": "76f5023ae74510c3"}}) == {
+    digest = "ab12" * 16
+    assert mark_digests({"a": [digest, "fr", 3], "b": {"c": "ab12ab12ab12ab12"}}) == {
         "a": [f"sha:{digest}", "fr", 3],
-        "b": {"c": "sha:76f5023ae74510c3"},
+        "b": {"c": "sha:ab12ab12ab12ab12"},
     }

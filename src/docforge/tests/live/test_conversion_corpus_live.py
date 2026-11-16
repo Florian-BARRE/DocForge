@@ -58,8 +58,6 @@ def test_every_corpus_document_ingests_to_a_done_job(corpus_fingerprints) -> Non
 
 @pytest.mark.parametrize("document", CONVERSION_CORPUS, ids=lambda d: d.key)
 def test_document_fingerprint_matches_the_recorded_snapshot(corpus_fingerprints, document) -> None:
-    if RECORD:
-        pytest.skip(f"recording: snapshot written to {_store().path}")
     recorded = _store().load()
     assert document.key in recorded, f"{document.key} not in the snapshot: re-record it"
     drift = SnapshotStore.diff(recorded[document.key], corpus_fingerprints[document.key])
