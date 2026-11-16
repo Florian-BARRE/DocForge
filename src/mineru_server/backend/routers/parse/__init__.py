@@ -1,7 +1,7 @@
 # ------------------- Router ------------------- #
-from .router import router as parse_router
+from .router import ParseRoutes
 
 # ------------------- Public API ------------------- #
 __all__ = [
-    "parse_router",
+    "ParseRoutes",
 ]

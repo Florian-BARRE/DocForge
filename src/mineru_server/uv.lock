@@ -784,9 +784,9 @@ version = "1.0.2"
 source = { virtual = "." }
 dependencies = [
     { name = "configplusplus" },
+    { name = "docforge-model-server-core" },
     { name = "fastapi" },
     { name = "loggerplusplus" },
-    { name = "pyfiglet" },
     { name = "pypdfium2" },
     { name = "uvicorn", extra = ["standard"] },
 ]
@@ -817,11 +817,11 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "configplusplus", specifier = ">=0.4.0" },
+    { name = "docforge-model-server-core", editable = "../model_server_core" },
     { name = "fastapi", specifier = ">=0.162.0,<1" },
     { name = "loggerplusplus", specifier = ">=1.0.0" },
     { name = "mineru", extras = ["vlm", "pipeline", "api"], marker = "extra == 'cpu'", specifier = ">=2.5.0,<3" },
     { name = "mineru", extras = ["vlm", "pipeline", "api"], marker = "extra == 'gpu'", specifier = ">=2.5.0,<3" },
-    { name = "pyfiglet", specifier = ">=1.0.2,<2" },
     { name = "pypdfium2", specifier = ">=4.30.0" },
     { name = "torch", marker = "extra == 'cpu'", specifier = "==2.13.0", index = "https://download.pytorch.org/whl/cpu", conflict = { package = "docforge-mineru-server", extra = "cpu" } },
     { name = "torch", marker = "extra == 'gpu'", specifier = "==2.13.0", index = "https://download.pytorch.org/whl/cu126", conflict = { package = "docforge-mineru-server", extra = "gpu" } },
@@ -837,6 +837,35 @@ dev = [
     { name = "mypy", specifier = ">=1.13.0" },
     { name = "pytest", specifier = ">=8.3.0" },
     { name = "pytest-asyncio", specifier = ">=0.24.0" },
+    { name = "ruff", specifier = ">=0.17.2" },
+]
+
+[[package]]
+name = "docforge-model-server-core"
+version = "0.1.0"
+source = { editable = "../model_server_core" }
+dependencies = [
+    { name = "configplusplus" },
+    { name = "fastapi" },
+    { name = "loggerplusplus" },
+    { name = "pydantic" },
+    { name = "uvicorn" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "configplusplus", specifier = ">=0.1.0" },
+    { name = "fastapi", specifier = ">=0.162.0,<1" },
+    { name = "loggerplusplus", specifier = ">=1.2.0" },
+    { name = "pydantic", specifier = ">=2.11.0,<3" },
+    { name = "uvicorn", specifier = ">=0.54.0,<1" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "httpx", specifier = ">=0.28.0" },
+    { name = "mypy", specifier = ">=1.13.0" },
+    { name = "pytest", specifier = ">=8.3.0" },
     { name = "ruff", specifier = ">=0.17.2" },
 ]
 
@@ -2679,15 +2708,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/d0/31/21d21e0e38a8f5f7a7f0cde22820117b6d17d6bc36f348129527f915d7f4/pydantic_settings-2.16.2.tar.gz", hash = "sha256:3dc08ffabed2bbd5dc2dd55ead7b78b4e4c5cd776aecd04310db5f1224caaf46", size = 309225, upload-time = "2026-10-28T11:14:28.066Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/39/88/4131c51ff87b7cd7f82a1194d0c0a2b7ca68c72d9da04c3b7e69ab91a79f/pydantic_settings-2.16.2-py3-none-any.whl", hash = "sha256:8d523e5c129b097686bde019bd6109bff53f4c8c3f63f1ddf9933ffa42e5ab4f", size = 81994, upload-time = "2026-10-28T11:14:26.716Z" },
-]
-
-[[package]]
-name = "pyfiglet"
-version = "1.0.4"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/c8/e3/0a86276ad2c383ce08d76110a8eec2fe22e7051c4b8ba3fa163a0b08c428/pyfiglet-1.0.4.tar.gz", hash = "sha256:db9c9940ed1bf3048deff534ed52ff2dafbbc2cd7610b17bb5eca1df6d4278ef", size = 1560615, upload-time = "2025-08-15T18:32:47.302Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/9f/5c/fe9f95abd5eaedfa69f31e450f7e2768bef121dbdf25bcddee2cd3087a16/pyfiglet-1.0.4-py3-none-any.whl", hash = "sha256:65b57b7a8e1dff8a67dc8e940a117238661d5e14c3e49121032bd404d9b2b39f", size = 1806118, upload-time = "2025-08-15T18:32:45.556Z" },
 ]
 
 [[package]]
