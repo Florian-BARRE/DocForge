@@ -10,7 +10,7 @@ import { Button } from "../../../components/Button";
 import { ErrorState } from "../../../components/ErrorState";
 import { LoadingState } from "../../../components/LoadingState";
 import { theme as t } from "../../../theme";
-import { formatBytes } from "../../explorer/format";
+import { formatBytes } from "../../../utils/format";
 import { DocumentStorageTable } from "./DocumentStorageTable";
 import { StorageBar } from "./StorageBar";
 import { StorageGrandTotal } from "./StorageGrandTotal";

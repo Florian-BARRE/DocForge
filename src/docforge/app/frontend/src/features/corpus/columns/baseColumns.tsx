@@ -14,7 +14,7 @@ import { Chip } from "../../../components/Chip";
 import { theme } from "../../../theme";
 import { CorpusEnabledToggle } from "../CorpusEnabledToggle";
 import { CorpusStatusChip } from "../CorpusStatusChip";
-import { formatBytes, formatDateTime } from "../format";
+import { formatBytes, formatDateTime } from "../../../utils/format";
 
 interface BaseColumnsArgs {
   onOpen: (documentId: string) => void;

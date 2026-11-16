@@ -14,7 +14,7 @@ import { reingestCollection } from "../../../api/collections";
 import { Button } from "../../../components/Button";
 import { useToast } from "../../../shell/toast";
 import { theme } from "../../../theme";
-import { formatBytes } from "../../explorer/format";
+import { formatBytes } from "../../../utils/format";
 import { useDeleteCollection } from "../state/useDeleteCollection";
 import { useCollectionTraceBytes } from "../trace/useCollectionTraceBytes";
 import { useCollectionTracePurge } from "../trace/useCollectionTracePurge";

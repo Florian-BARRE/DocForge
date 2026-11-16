@@ -3,7 +3,7 @@
 // with the document count it was accounted over for scale.
 
 import { theme as t } from "../../../theme";
-import { formatBytes } from "../../explorer/format";
+import { formatBytes } from "../../../utils/format";
 
 interface StorageGrandTotalProps {
   bytes: number;

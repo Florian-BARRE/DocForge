@@ -5,7 +5,7 @@
 
 import type { DocumentStorageBreakdown } from "../../../api/collections";
 import { theme as t } from "../../../theme";
-import { formatBytes } from "../../explorer/format";
+import { formatBytes } from "../../../utils/format";
 import { useNavigate } from "../../../shell/navigation";
 
 interface DocumentStorageRowProps {

@@ -9,7 +9,7 @@
 import { useState } from "react";
 import type { CollectionStorage } from "../../../api/collections";
 import { theme as t } from "../../../theme";
-import { formatBytes } from "../../explorer/format";
+import { formatBytes } from "../../../utils/format";
 import { STORAGE_STORES, storeSharePercent, storeStats } from "./storageStores";
 
 interface StorageBarProps {

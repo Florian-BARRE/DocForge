@@ -11,7 +11,7 @@ import { Chip } from "../../../components/Chip";
 import { humanizeEnumOption } from "../../../components/schema-form/fieldLabels";
 import { theme } from "../../../theme";
 import { DocumentStatusChip } from "../DocumentStatusChip";
-import { formatBytes, formatDateTime } from "../format";
+import { formatBytes, formatDateTime } from "../../../utils/format";
 import { Fact, FactLabel } from "./Fact";
 import { MetaGroup } from "./MetaGroup";
 import { summarizePageScans } from "./pageScanSummary";
