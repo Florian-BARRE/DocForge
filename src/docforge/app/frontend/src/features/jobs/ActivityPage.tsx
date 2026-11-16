@@ -35,18 +35,17 @@ export function ActivityPage({ tab, onNavigate }: ActivityPageProps) {
 
   return (
     <div className="df-rise" style={{ padding: theme.space.xl, overflowY: "auto", height: "100%", maxWidth: 1200, margin: "0 auto", width: "100%" }}>
-      <TopContentBar page="Activity" subtitle={SUBTITLE[tab]} onNavigate={onNavigate} />
+      <TopContentBar page="Activity" subtitle={SUBTITLE[tab]} />
       <div style={{ marginBottom: theme.space.l }}>
         <ActivitySectionTabs active={tab} onSelect={(next) => onNavigate({ name: "activity", tab: next })} />
       </div>
       {tab === "jobs" && (
         <ActivityJobsTab
-          onNavigate={onNavigate}
           focusRequest={focusRequest}
           onFocusConsumed={() => setFocusRequest(null)}
         />
       )}
-      {tab === "failures" && <ActivityFailuresTab onNavigate={onNavigate} onFocusJobs={focusJobs} />}
+      {tab === "failures" && <ActivityFailuresTab onFocusJobs={focusJobs} />}
       {tab === "trends" && <ActivityTrendsTab />}
     </div>
   );

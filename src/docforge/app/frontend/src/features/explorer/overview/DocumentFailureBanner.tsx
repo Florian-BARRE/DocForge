@@ -7,16 +7,16 @@
 
 import { humanizeJobError } from "../../jobs/jobErrorHumanize";
 import type { DocumentDetail } from "../../../api/explorer";
-import type { Navigate } from "../../../shell/view";
 import { theme } from "../../../theme";
+import { useNavigate } from "../../../shell/navigation";
 
 interface DocumentFailureBannerProps {
   document: DocumentDetail;
   collectionId: string;
-  onNavigate: Navigate;
 }
 
-export function DocumentFailureBanner({ document, collectionId, onNavigate }: DocumentFailureBannerProps) {
+export function DocumentFailureBanner({ document, collectionId }: DocumentFailureBannerProps) {
+  const navigate = useNavigate();
   if (document.status !== "failed" && document.status !== "cancelled") return null;
 
   const isFailed = document.status === "failed";
@@ -47,7 +47,7 @@ export function DocumentFailureBanner({ document, collectionId, onNavigate }: Do
           {isFailed ? "Ingestion failed" : "Ingestion cancelled"}
         </span>
         <button
-          onClick={() => onNavigate({ name: "collection-activity", collectionId })}
+          onClick={() => navigate({ name: "collection-activity", collectionId })}
           style={{
             background: "none", border: `1px solid ${tone.border}`, color: tone.strong,
             borderRadius: theme.radius.s, padding: "4px 10px", fontSize: theme.font.size.xs, cursor: "pointer",

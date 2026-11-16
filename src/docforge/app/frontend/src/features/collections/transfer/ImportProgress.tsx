@@ -6,18 +6,18 @@
 import { useEffect, useRef } from "react";
 import { Button } from "../../../components/Button";
 import { Chip } from "../../../components/Chip";
-import type { Navigate } from "../../../shell/view";
 import { useToast } from "../../../shell/toast";
 import { theme } from "../../../theme";
 import { TransferProgressBar } from "./TransferProgressBar";
 import { useTransfer } from "./useTransfer";
+import { useNavigate } from "../../../shell/navigation";
 
 interface ImportProgressProps {
   transferId: string;
-  onNavigate: Navigate;
 }
 
-export function ImportProgress({ transferId, onNavigate }: ImportProgressProps) {
+export function ImportProgress({ transferId }: ImportProgressProps) {
+  const navigate = useNavigate();
   const toast = useToast();
   const { transfer, error } = useTransfer(transferId);
 
@@ -56,7 +56,7 @@ export function ImportProgress({ transferId, onNavigate }: ImportProgressProps) 
           <Button
             variant="primary"
             size="sm"
-            onClick={() => onNavigate({ name: "collection", collectionId: transfer.collection_id! })}
+            onClick={() => navigate({ name: "collection", collectionId: transfer.collection_id! })}
           >
             Open “{transfer.collection_name ?? "collection"}”
           </Button>

@@ -10,7 +10,6 @@ import type { JobOrder, JobSort } from "../../api/jobs";
 import { ErrorState } from "../../components/ErrorState";
 import { EmptyState } from "../../components/EmptyState";
 import { LoadingState } from "../../components/LoadingState";
-import type { Navigate } from "../../shell/view";
 import { theme } from "../../theme";
 import { EMPTY_JOB_FILTERS, JobFilterBar, type JobFilters } from "./JobFilterBar";
 import { JobFleetList } from "./JobFleetList";
@@ -37,12 +36,11 @@ export interface JobsFocusRequest {
 }
 
 interface ActivityJobsTabProps {
-  onNavigate: Navigate;
   focusRequest: JobsFocusRequest | null;
   onFocusConsumed: () => void;
 }
 
-export function ActivityJobsTab({ onNavigate, focusRequest, onFocusConsumed }: ActivityJobsTabProps) {
+export function ActivityJobsTab({ focusRequest, onFocusConsumed }: ActivityJobsTabProps) {
   const [tab, setTab] = useState<JobFleetTab>("all");
   const [offset, setOffset] = useState(0);
   const [filters, setFilters] = useState<JobFilters>(EMPTY_JOB_FILTERS);
@@ -100,7 +98,7 @@ export function ActivityJobsTab({ onNavigate, focusRequest, onFocusConsumed }: A
           <div style={{ marginBottom: theme.space.m }}>
             <JobsPager total={page.total} limit={page.limit} offset={page.offset} onOffsetChange={setOffset} />
           </div>
-          <JobFleetList jobs={page.jobs} workerMap={workerMap} onNavigate={onNavigate} onJobUpdated={patchJob} />
+          <JobFleetList jobs={page.jobs} workerMap={workerMap} onJobUpdated={patchJob} />
         </>
       )}
     </div>

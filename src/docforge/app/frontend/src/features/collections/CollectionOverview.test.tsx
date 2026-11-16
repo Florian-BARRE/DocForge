@@ -13,6 +13,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { Collection, CollectionHealth, CollectionStorage } from "../../api/collections";
 import type { DocumentListItem } from "../../api/explorer";
 import { ToastProvider } from "../../shell/toast";
+import { NavigateProvider } from "../../shell/navigation";
 import { CollectionOverview } from "./CollectionOverview";
 
 // `useHideHeaderUpload` (CollectionShell's HideHeaderUploadContext) is a documented no-op outside
@@ -20,7 +21,7 @@ import { CollectionOverview } from "./CollectionOverview";
 // has no such default (throws by design, see shell/toast.tsx), so the tree needs a real
 // <ToastProvider> — UploadPanel (rendered on the 0-doc branch) calls it unconditionally.
 function renderWithProviders(ui: ReactElement) {
-  return render(<ToastProvider>{ui}</ToastProvider>);
+  return render(<ToastProvider><NavigateProvider navigate={vi.fn()}>{ui}</NavigateProvider></ToastProvider>);
 }
 
 vi.mock("../../api/collections", async (importOriginal) => ({

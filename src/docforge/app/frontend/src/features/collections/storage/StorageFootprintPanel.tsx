@@ -9,7 +9,6 @@ import { fetchCollectionStorage, type CollectionStorage } from "../../../api/col
 import { Button } from "../../../components/Button";
 import { ErrorState } from "../../../components/ErrorState";
 import { LoadingState } from "../../../components/LoadingState";
-import type { Navigate } from "../../../shell/view";
 import { theme as t } from "../../../theme";
 import { formatBytes } from "../../explorer/format";
 import { DocumentStorageTable } from "./DocumentStorageTable";
@@ -20,7 +19,6 @@ import { StorageStoreBreakdown } from "./StorageStoreBreakdown";
 
 interface StorageFootprintPanelProps {
   collectionId: string;
-  onNavigate: Navigate;
 }
 
 interface StoreBreakdownContent {
@@ -61,7 +59,7 @@ function storeBreakdowns(storage: CollectionStorage): Record<"s3" | "postgres" |
   };
 }
 
-export function StorageFootprintPanel({ collectionId, onNavigate }: StorageFootprintPanelProps) {
+export function StorageFootprintPanel({ collectionId }: StorageFootprintPanelProps) {
   const [storage, setStorage] = useState<CollectionStorage | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -138,7 +136,7 @@ export function StorageFootprintPanel({ collectionId, onNavigate }: StorageFootp
                 <div style={{ fontFamily: t.font.display, fontWeight: t.font.weight.semibold, fontSize: t.font.size.l, color: t.color.text, marginBottom: t.space.s }}>
                   By document
                 </div>
-                <DocumentStorageTable documents={storage.documents} collectionId={collectionId} onNavigate={onNavigate} />
+                <DocumentStorageTable documents={storage.documents} collectionId={collectionId} />
               </div>
             </div>
           )

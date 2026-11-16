@@ -9,6 +9,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { Collection, CollectionHealth } from "../../api/collections";
 import type { FailureBreakdown, JobPage, QueueDepth, WorkersLive } from "../../api/jobs";
+import { NavigateProvider } from "../../shell/navigation";
 import type { Navigate } from "../../shell/view";
 import { HomePage } from "./HomePage";
 
@@ -85,7 +86,7 @@ describe("HomePage", () => {
     vi.mocked(getSearchHealth).mockResolvedValue(emptySearchHealth);
 
     const onNavigate: Navigate = vi.fn();
-    expect(() => render(<HomePage onNavigate={onNavigate} />)).not.toThrow();
+    expect(() => render(<NavigateProvider navigate={onNavigate}><HomePage onNavigate={onNavigate} /></NavigateProvider>)).not.toThrow();
 
     await waitFor(() => expect(screen.getByText("1", { exact: true })).toBeInTheDocument());
     await waitFor(() => expect(screen.getByText("Recent failures")).toBeInTheDocument());
@@ -116,7 +117,7 @@ describe("HomePage", () => {
     });
 
     const onNavigate: Navigate = vi.fn();
-    render(<HomePage onNavigate={onNavigate} />);
+    render(<NavigateProvider navigate={onNavigate}><HomePage onNavigate={onNavigate} /></NavigateProvider>);
 
     await waitFor(() => expect(screen.getByText("All collections operational.")).toBeInTheDocument());
     await waitFor(() => expect(screen.getByText("invoice.pdf")).toBeInTheDocument());

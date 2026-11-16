@@ -23,10 +23,11 @@ import { useDocumentPage } from "./state/useDocumentPage";
 interface DocumentPageProps {
   collectionId: string;
   documentId: string;
+  /** Handed over by the route table (the pinned routed-page boundary) but unused: the children reach navigation through useNavigate(). */
   onNavigate: Navigate;
 }
 
-export function DocumentPage({ collectionId, documentId, onNavigate }: DocumentPageProps) {
+export function DocumentPage({ collectionId, documentId }: DocumentPageProps) {
   const {
     document, error, load, activeTab, setActiveTab, focusBlockId, tabs,
     jumpToBlock, handleDocumentEnabledChanged, handleMetadataSaved,
@@ -60,7 +61,6 @@ export function DocumentPage({ collectionId, documentId, onNavigate }: DocumentP
             collectionId={collectionId}
             enabled={document.enabled}
             onEnabledChanged={handleDocumentEnabledChanged}
-            onNavigate={onNavigate}
           />
         }
       />
@@ -90,7 +90,6 @@ export function DocumentPage({ collectionId, documentId, onNavigate }: DocumentP
           collectionId={collectionId}
           tabs={tabs}
           focusBlockId={focusBlockId}
-          onNavigate={onNavigate}
           onJumpToBlock={jumpToBlock}
           onMetadataSaved={handleMetadataSaved}
         />

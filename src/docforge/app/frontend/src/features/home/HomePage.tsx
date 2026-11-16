@@ -27,20 +27,19 @@ export function HomePage({ onNavigate }: HomePageProps) {
         page="Overview"
         subtitle="The fleet at a glance — every tile routes into its own canonical page for the detail."
         actions={<Button variant="primary" onClick={() => onNavigate({ name: "new-collection" })}>+ New collection</Button>}
-        onNavigate={onNavigate}
       />
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: theme.space.l, marginBottom: theme.space.l }}>
-        <CollectionsStatusTiles onNavigate={onNavigate} />
-        <WorkersStatusTile onNavigate={onNavigate} />
-        <QueueStatusTile onNavigate={onNavigate} />
-        <SearchHealthTile onNavigate={onNavigate} />
-        <RecentFailuresTile onNavigate={onNavigate} />
+        <CollectionsStatusTiles />
+        <WorkersStatusTile />
+        <QueueStatusTile />
+        <SearchHealthTile />
+        <RecentFailuresTile />
       </div>
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: theme.space.l }}>
-        <NeedsAttentionPanel onNavigate={onNavigate} />
-        <RecentActivityPanel onNavigate={onNavigate} />
+        <NeedsAttentionPanel />
+        <RecentActivityPanel />
       </div>
     </div>
   );

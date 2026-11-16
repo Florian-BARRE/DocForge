@@ -3,21 +3,16 @@
 // self-contained fetch+poll shape. Cumulative fleet-wide search stats (since process start), not a
 // per-collection metric, so it sits with its deployment-wide operational-health peers rather than
 // under any single collection. No canonical detail page exists for search health yet, so (like
-// CollectionsStatusTiles' siblings before Collections grew health presets) it stays a pure summary —
-// `onNavigate` is still accepted to keep HomePage's tile row call sites uniform.
+// CollectionsStatusTiles' siblings before Collections grew health presets) it stays a pure summary
+// (it takes no navigation at all).
 
 import { useState } from "react";
 import { getSearchHealth, type SearchHealthSummary } from "../../api/search";
 import { StatTile, type StatTileTone } from "../../components/StatTile";
-import type { Navigate } from "../../shell/view";
 import { theme } from "../../theme";
 import { usePolling } from "../../hooks/usePolling";
 
 const POLL_MS = 10000;
-
-interface SearchHealthTileProps {
-  onNavigate: Navigate;
-}
 
 /** Renders one "label value" pair inside the caption, with the value in mono per brand.md (machine
  *  values — counts, percents, timings — never prose in mono). */
@@ -49,7 +44,7 @@ function toneFor(data: SearchHealthSummary): StatTileTone {
   return "ok";
 }
 
-export function SearchHealthTile({ onNavigate: _onNavigate }: SearchHealthTileProps) {
+export function SearchHealthTile() {
   const [data, setData] = useState<SearchHealthSummary | null>(null);
 
   usePolling(

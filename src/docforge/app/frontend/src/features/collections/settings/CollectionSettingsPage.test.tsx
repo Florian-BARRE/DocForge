@@ -11,6 +11,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import * as collectionsApi from "../../../api/collections";
 import type { Collection } from "../../../api/collections";
 import { ToastProvider } from "../../../shell/toast";
+import { NavigateProvider } from "../../../shell/navigation";
 import type { CollectionSettingsSection } from "../../../shell/view";
 import { CollectionShell } from "../CollectionShell";
 import { CollectionSettingsPage } from "./CollectionSettingsPage";
@@ -36,9 +37,11 @@ function renderSection(section: CollectionSettingsSection, onNavigate = vi.fn())
   vi.spyOn(collectionsApi, "listCollections").mockResolvedValue([]);
   const ui = (
     <ToastProvider>
-      <CollectionShell collectionId="c1" onNavigate={onNavigate} settingsSection={section}>
-        <CollectionSettingsPage collectionId="c1" section={section} onNavigate={onNavigate} />
-      </CollectionShell>
+      <NavigateProvider navigate={onNavigate}>
+        <CollectionShell collectionId="c1" onNavigate={onNavigate} settingsSection={section}>
+          <CollectionSettingsPage collectionId="c1" section={section} onNavigate={onNavigate} />
+        </CollectionShell>
+      </NavigateProvider>
     </ToastProvider>
   );
   render(ui);

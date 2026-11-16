@@ -8,6 +8,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { CollectionStorage } from "../../../api/collections";
 import { StorageFootprintPanel } from "./StorageFootprintPanel";
+import { NavigateProvider } from "../../../shell/navigation";
 
 vi.mock("../../../api/collections", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../../api/collections")>()),
@@ -39,7 +40,9 @@ const storage: CollectionStorage = {
 describe("StorageFootprintPanel", () => {
   it("leads with business-facing store names and keeps the raw product name behind a closed disclosure", async () => {
     vi.mocked(fetchCollectionStorage).mockResolvedValue(storage);
-    const { container } = render(<StorageFootprintPanel collectionId="col-1" onNavigate={vi.fn()} />);
+    const { container } = render(
+      <NavigateProvider navigate={vi.fn()}><StorageFootprintPanel collectionId="col-1" /></NavigateProvider>,
+    );
 
     await waitFor(() => expect(screen.getAllByText("Source files").length).toBeGreaterThan(0));
     expect(screen.getAllByText("Metadata").length).toBeGreaterThan(0);

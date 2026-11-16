@@ -7,17 +7,14 @@
 import { useState } from "react";
 import { getFailureBreakdown, type FailureBreakdown } from "../../api/jobs";
 import { StatTile } from "../../components/StatTile";
-import type { Navigate } from "../../shell/view";
 import { usePolling } from "../../hooks/usePolling";
+import { useNavigate } from "../../shell/navigation";
 
 const POLL_MS = 15000;
 const WINDOW_HOURS = 24;
 
-interface RecentFailuresTileProps {
-  onNavigate: Navigate;
-}
-
-export function RecentFailuresTile({ onNavigate }: RecentFailuresTileProps) {
+export function RecentFailuresTile() {
+  const navigate = useNavigate();
   const [data, setData] = useState<FailureBreakdown | null>(null);
 
   usePolling(
@@ -34,7 +31,7 @@ export function RecentFailuresTile({ onNavigate }: RecentFailuresTileProps) {
       label="Recent failures"
       tone={data.total_failed > 0 ? "error" : "ok"}
       caption={`last ${data.window_hours}h — see Activity ▸ Failures`}
-      onClick={() => onNavigate({ name: "activity", tab: "failures" })}
+      onClick={() => navigate({ name: "activity", tab: "failures" })}
     />
   );
 }

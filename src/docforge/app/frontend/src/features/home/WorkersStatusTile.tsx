@@ -6,16 +6,13 @@
 import { useState } from "react";
 import { getWorkersLive, type WorkerActivity } from "../../api/jobs";
 import { StatTile } from "../../components/StatTile";
-import type { Navigate } from "../../shell/view";
 import { usePolling } from "../../hooks/usePolling";
+import { useNavigate } from "../../shell/navigation";
 
 const POLL_MS = 4000;
 
-interface WorkersStatusTileProps {
-  onNavigate: Navigate;
-}
-
-export function WorkersStatusTile({ onNavigate }: WorkersStatusTileProps) {
+export function WorkersStatusTile() {
+  const navigate = useNavigate();
   const [workers, setWorkers] = useState<WorkerActivity[] | null>(null);
 
   usePolling(
@@ -35,7 +32,7 @@ export function WorkersStatusTile({ onNavigate }: WorkersStatusTileProps) {
       label="Busy / alive workers"
       tone={busyCount > 0 ? "accent" : "neutral"}
       caption={`${workers.length - aliveCount} offline`}
-      onClick={() => onNavigate({ name: "fleet" })}
+      onClick={() => navigate({ name: "fleet" })}
     />
   );
 }

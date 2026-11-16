@@ -1,7 +1,7 @@
 // ====== Code Summary ======
 // Layers URL<->state sync on top of the existing in-memory router: pushes the URL hash whenever
 // `view` changes, and drives the same `setView` path on Back/Forward via `popstate`. Purely
-// additive — App.tsx still owns `view`/`setView`, every page still just calls `onNavigate`.
+// additive — App.tsx still owns `view`/`setView`, every component reaches `setView` through `useNavigate()`.
 
 import { useEffect, useRef } from "react";
 import type { Navigate, View } from "./view";

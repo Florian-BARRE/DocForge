@@ -9,12 +9,13 @@ import { describe, expect, it, vi } from "vitest";
 import type { JobPage, JobStatus, QueueDepth, WorkersLive } from "../../api/jobs";
 import type { Navigate } from "../../shell/view";
 import { ToastProvider } from "../../shell/toast";
+import { NavigateProvider } from "../../shell/navigation";
 import { CollectionActivityTab } from "./CollectionActivityTab";
 
 // JobRow renders JobCancelControl, which calls useToast() unconditionally — needs a real provider
 // (the ToastProvider harness gotcha).
 function renderWithProviders(ui: ReactElement) {
-  return render(<ToastProvider>{ui}</ToastProvider>);
+  return render(<ToastProvider><NavigateProvider navigate={vi.fn()}>{ui}</NavigateProvider></ToastProvider>);
 }
 
 vi.mock("../../api/jobs", async (importOriginal) => ({

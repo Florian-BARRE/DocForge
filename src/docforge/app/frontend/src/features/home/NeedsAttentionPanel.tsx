@@ -7,10 +7,10 @@
 import type { CollectionHealth } from "../../api/collections";
 import type { ChipTone } from "../../components/Chip";
 import { Chip } from "../../components/Chip";
-import type { Navigate } from "../../shell/view";
 import { theme } from "../../theme";
 import { needsAttention } from "./CollectionsStatusTiles";
 import { useCollectionsFleet, type FleetEntry } from "../collections/state/useCollectionsFleet";
+import { useNavigate } from "../../shell/navigation";
 
 const MAX_ROWS = 6;
 
@@ -27,12 +27,12 @@ const LABEL_BY_VERDICT: Record<CollectionHealth["verdict"], string> = {
 
 interface NeedsAttentionRowProps {
   entry: FleetEntry;
-  onNavigate: Navigate;
 }
 
-function NeedsAttentionRow({ entry, onNavigate }: NeedsAttentionRowProps) {
+function NeedsAttentionRow({ entry }: NeedsAttentionRowProps) {
+  const navigate = useNavigate();
   const verdict = entry.health!.verdict;
-  const go = () => onNavigate({ name: "collection", collectionId: entry.collection.id });
+  const go = () => navigate({ name: "collection", collectionId: entry.collection.id });
   return (
     <div
       role="button"
@@ -55,11 +55,8 @@ function NeedsAttentionRow({ entry, onNavigate }: NeedsAttentionRowProps) {
   );
 }
 
-interface NeedsAttentionPanelProps {
-  onNavigate: Navigate;
-}
-
-export function NeedsAttentionPanel({ onNavigate }: NeedsAttentionPanelProps) {
+export function NeedsAttentionPanel() {
+  const navigate = useNavigate();
   const { collections, visibleEntries } = useCollectionsFleet("all");
   const rows = visibleEntries.filter(needsAttention).slice(0, MAX_ROWS);
 
@@ -76,7 +73,7 @@ export function NeedsAttentionPanel({ onNavigate }: NeedsAttentionPanelProps) {
         </span>
         <button
           type="button"
-          onClick={() => onNavigate({ name: "collections", health: "attention" })}
+          onClick={() => navigate({ name: "collections", health: "attention" })}
           style={{ background: "none", border: "none", padding: 0, cursor: "pointer", color: theme.color.accentSafe, fontSize: theme.font.size.xs, textDecoration: "underline" }}
         >
           View all in Collections
@@ -88,7 +85,7 @@ export function NeedsAttentionPanel({ onNavigate }: NeedsAttentionPanelProps) {
       ) : rows.length === 0 ? (
         <span style={{ color: theme.color.okStrong, fontSize: theme.font.size.s }}>All collections operational.</span>
       ) : (
-        rows.map((entry) => <NeedsAttentionRow key={entry.collection.id} entry={entry} onNavigate={onNavigate} />)
+        rows.map((entry) => <NeedsAttentionRow key={entry.collection.id} entry={entry} />)
       )}
     </div>
   );

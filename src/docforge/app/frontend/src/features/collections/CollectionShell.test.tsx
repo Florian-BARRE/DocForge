@@ -14,10 +14,11 @@ import type { ReactElement } from "react";
 import { describe, expect, it, vi } from "vitest";
 import type { Collection } from "../../api/collections";
 import { ToastProvider } from "../../shell/toast";
+import { NavigateProvider } from "../../shell/navigation";
 import { CollectionShell } from "./CollectionShell";
 
 function renderWithProviders(ui: ReactElement) {
-  return render(<ToastProvider>{ui}</ToastProvider>);
+  return render(<ToastProvider><NavigateProvider navigate={vi.fn()}>{ui}</NavigateProvider></ToastProvider>);
 }
 
 vi.mock("../../api/collections", async (importOriginal) => ({

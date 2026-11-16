@@ -59,7 +59,6 @@ export function JobDetailPage({ jobId, collectionId, onNavigate }: JobDetailPage
               { label: "Jobs", view: { name: "collection-activity", collectionId } },
               { label: jobDisplayName(job) },
             ]}
-            onNavigate={onNavigate}
           />
         }
         title={<span>{jobDisplayName(job)}</span>}
@@ -95,7 +94,7 @@ export function JobDetailPage({ jobId, collectionId, onNavigate }: JobDetailPage
               </span>
             )}
             <JobCancelControl job={job} onUpdated={patchJob} />
-            {isIngestJob(job) && <JobRerunControl job={job} collectionId={collectionId} onNavigate={onNavigate} />}
+            {isIngestJob(job) && <JobRerunControl job={job} collectionId={collectionId} />}
           </span>
         }
       />

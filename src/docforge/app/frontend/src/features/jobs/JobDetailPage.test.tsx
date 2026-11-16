@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup } from "@testing-library/react";
 import type { JobStatus } from "../../api/jobs";
 import { ToastProvider } from "../../shell/toast";
+import { NavigateProvider } from "../../shell/navigation";
 import { JobDetailPage } from "./JobDetailPage";
 
 const mockState = vi.hoisted(() => ({ job: null as unknown }));
@@ -31,7 +32,7 @@ function jobFixture(kind: string): JobStatus {
 }
 
 function mount() {
-  return render(<ToastProvider><JobDetailPage jobId="job-1" collectionId="col-1" onNavigate={vi.fn()} /></ToastProvider>);
+  return render(<ToastProvider><NavigateProvider navigate={vi.fn()}><JobDetailPage jobId="job-1" collectionId="col-1" onNavigate={vi.fn()} /></NavigateProvider></ToastProvider>);
 }
 
 describe("JobDetailPage kind handling", () => {

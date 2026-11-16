@@ -4,21 +4,21 @@
 // (alive:true, busy:false) is shown present, not absent; a stale-heartbeat worker (alive:false) is
 // shown greyed/"offline" regardless of any job row still naming it.
 
-import type { Navigate } from "../../shell/view";
 import type { JobStatus, WorkerActivity } from "../../api/jobs";
 import { theme } from "../../theme";
 import { JobRow } from "./JobRow";
 import { WorkerResourceReadout } from "./WorkerResourceReadout";
 import { formatSince, formatUptime, liveness, LIVENESS_COLOR } from "./workerLiveness";
+import { useNavigate } from "../../shell/navigation";
 
 interface WorkerCardProps {
   activity: WorkerActivity;
-  onNavigate: Navigate;
   /** Applied to the matching job in this worker's list when a cancel/stop/force call resolves. */
   onJobUpdated: (jobId: string, patch: Partial<JobStatus>) => void;
 }
 
-export function WorkerCard({ activity, onNavigate, onJobUpdated }: WorkerCardProps) {
+export function WorkerCard({ activity, onJobUpdated }: WorkerCardProps) {
+  const navigate = useNavigate();
   const state = liveness(activity);
   const color = LIVENESS_COLOR[state];
 
@@ -91,7 +91,7 @@ export function WorkerCard({ activity, onNavigate, onJobUpdated }: WorkerCardPro
         <JobRow
           key={job.job_id}
           job={job}
-          onClick={() => onNavigate({ name: "job", collectionId: job.collection_id, jobId: job.job_id })}
+          onClick={() => navigate({ name: "job", collectionId: job.collection_id, jobId: job.job_id })}
           onUpdated={(patch) => onJobUpdated(job.job_id, patch)}
         />
       ))}

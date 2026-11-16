@@ -26,11 +26,11 @@ const SUBTITLE: Record<SettingsSection, string> = {
 export function SettingsPage({ section, onNavigate }: SettingsPageProps) {
   return (
     <div className="df-rise" style={{ padding: theme.space.xl, overflowY: "auto", height: "100%", maxWidth: 1200, margin: "0 auto", width: "100%" }}>
-      <TopContentBar page="Settings" subtitle={SUBTITLE[section]} onNavigate={onNavigate} />
+      <TopContentBar page="Settings" subtitle={SUBTITLE[section]} />
       <div style={{ marginBottom: theme.space.l }}>
         <SettingsSectionTabs active={section} onSelect={(next) => onNavigate({ name: "settings", section: next })} />
       </div>
-      {section === "keys" && <AuthKeysPage onNavigate={onNavigate} />}
+      {section === "keys" && <AuthKeysPage />}
       {section === "audit" && <AuditTab />}
       {section === "deployment" && <DeploymentTab />}
     </div>

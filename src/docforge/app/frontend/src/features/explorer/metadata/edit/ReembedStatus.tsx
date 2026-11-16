@@ -6,17 +6,17 @@
 import type { ReactElement } from "react";
 import type { MetadataUpdateResponse } from "../../../../api/documents";
 import { Chip } from "../../../../components/Chip";
-import type { Navigate } from "../../../../shell/view";
 import { theme } from "../../../../theme";
 import { useReembedJob } from "./useReembedJob";
+import { useNavigate } from "../../../../shell/navigation";
 
 interface ReembedStatusProps {
   result: MetadataUpdateResponse;
   collectionId: string;
-  onNavigate: Navigate;
 }
 
-export function ReembedStatus({ result, collectionId, onNavigate }: ReembedStatusProps) {
+export function ReembedStatus({ result, collectionId }: ReembedStatusProps) {
+  const navigate = useNavigate();
   const jobId = result.job_id ?? null;
   const job = useReembedJob(jobId);
   const status = job?.status ?? "pending";
@@ -40,7 +40,7 @@ export function ReembedStatus({ result, collectionId, onNavigate }: ReembedStatu
       {jobId && (
         <button
           type="button"
-          onClick={() => onNavigate({ name: "job", collectionId, jobId })}
+          onClick={() => navigate({ name: "job", collectionId, jobId })}
           style={{ background: "none", border: "none", padding: 0, cursor: "pointer", color: theme.color.accentSafe, fontSize: theme.font.size.xs, textDecoration: "underline" }}
         >
           View job

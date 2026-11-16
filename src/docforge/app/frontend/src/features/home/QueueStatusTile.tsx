@@ -7,16 +7,13 @@
 import { useState } from "react";
 import { getQueueDepth, type QueueDepth } from "../../api/jobs";
 import { StatTile } from "../../components/StatTile";
-import type { Navigate } from "../../shell/view";
 import { usePolling } from "../../hooks/usePolling";
+import { useNavigate } from "../../shell/navigation";
 
 const POLL_MS = 5000;
 
-interface QueueStatusTileProps {
-  onNavigate: Navigate;
-}
-
-export function QueueStatusTile({ onNavigate }: QueueStatusTileProps) {
+export function QueueStatusTile() {
+  const navigate = useNavigate();
   const [depth, setDepth] = useState<QueueDepth | null>(null);
 
   usePolling(
@@ -33,7 +30,7 @@ export function QueueStatusTile({ onNavigate }: QueueStatusTileProps) {
       label="Pending jobs"
       tone={depth.pending > 0 ? "warn" : "neutral"}
       caption={`${depth.running} running — see Fleet`}
-      onClick={() => onNavigate({ name: "fleet" })}
+      onClick={() => navigate({ name: "fleet" })}
     />
   );
 }

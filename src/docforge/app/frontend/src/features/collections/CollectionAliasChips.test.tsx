@@ -7,6 +7,7 @@ import { fireEvent, render, renderHook, screen, waitFor } from "@testing-library
 import { describe, expect, it, vi } from "vitest";
 import type { Collection } from "../../api/collections";
 import { ToastProvider } from "../../shell/toast";
+import { NavigateProvider } from "../../shell/navigation";
 import { CollectionAliasChips } from "./CollectionAliasChips";
 import { CollectionCard } from "./CollectionCard";
 import { useCollectionAliases } from "./state/useCollectionAliases";
@@ -23,7 +24,9 @@ const COLLECTION: Collection = {
 
 describe("collection alias chips", () => {
   it("renders nothing without aliases", () => {
-    const { container } = render(<CollectionAliasChips collectionId="c1" aliases={[]} onNavigate={vi.fn()} />);
+    const { container } = render(
+      <NavigateProvider navigate={vi.fn()}><CollectionAliasChips collectionId="c1" aliases={[]} /></NavigateProvider>,
+    );
     expect(container).toBeEmptyDOMElement();
   });
 
@@ -31,10 +34,10 @@ describe("collection alias chips", () => {
     const onNavigate = vi.fn();
     const onClick = vi.fn();
     render(
-      <ToastProvider><CollectionCard
+      <ToastProvider><NavigateProvider navigate={onNavigate}><CollectionCard
         collection={COLLECTION} health={null} healthError={null} docCount={null} jobRunning={false}
-        aliases={["docs-live"]} onNavigate={onNavigate} onClick={onClick} onDeleted={vi.fn()}
-      /></ToastProvider>,
+        aliases={["docs-live"]} onClick={onClick} onDeleted={vi.fn()}
+      /></NavigateProvider></ToastProvider>,
     );
     fireEvent.click(screen.getByText("docs-live"));
     expect(onNavigate).toHaveBeenCalledWith({ name: "collection-settings", collectionId: "c1", section: "aliases" });

@@ -5,7 +5,6 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { SearchHealthSummary } from "../../api/search";
-import type { Navigate } from "../../shell/view";
 import { SearchHealthTile } from "./SearchHealthTile";
 
 vi.mock("../../api/search", async (importOriginal) => ({
@@ -21,9 +20,8 @@ describe("SearchHealthTile", () => {
       total_runs: 42, error_rate: 0.02, p95_latency_ms: 962, zero_result_rate: 0.05, avg_hits: 6.4,
     };
     vi.mocked(getSearchHealth).mockResolvedValue(data);
-    const onNavigate: Navigate = vi.fn();
 
-    expect(() => render(<SearchHealthTile onNavigate={onNavigate} />)).not.toThrow();
+    expect(() => render(<SearchHealthTile />)).not.toThrow();
 
     await waitFor(() => expect(screen.getByText("42")).toBeInTheDocument());
     expect(screen.getByText("962 ms")).toBeInTheDocument();
@@ -36,9 +34,8 @@ describe("SearchHealthTile", () => {
       total_runs: 0, error_rate: 0, p95_latency_ms: null, zero_result_rate: 0, avg_hits: null,
     };
     vi.mocked(getSearchHealth).mockResolvedValue(data);
-    const onNavigate: Navigate = vi.fn();
 
-    render(<SearchHealthTile onNavigate={onNavigate} />);
+    render(<SearchHealthTile />);
 
     await waitFor(() => expect(screen.getByText("No searches yet")).toBeInTheDocument());
   });

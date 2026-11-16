@@ -10,6 +10,7 @@ import type { FieldSpec } from "../../../../api/collections";
 import type { MetadataValue } from "../../../../api/explorer";
 import { mapFieldErrors } from "./metadataDraft";
 import { MetadataSection } from "./MetadataSection";
+import { NavigateProvider } from "../../../../shell/navigation";
 
 vi.mock("../../../../api/collections", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../../../api/collections")>()),
@@ -42,7 +43,11 @@ const metadata: MetadataValue[] = [
 
 function mountWith(fields: FieldSpec[]) {
   vi.mocked(getCollection).mockResolvedValue({ fields } as never);
-  return render(<MetadataSection documentId="doc-1" collectionId="col-1" metadata={metadata} onNavigate={vi.fn()} onSaved={vi.fn()} />);
+  return render(
+    <NavigateProvider navigate={vi.fn()}>
+      <MetadataSection documentId="doc-1" collectionId="col-1" metadata={metadata} onSaved={vi.fn()} />
+    </NavigateProvider>,
+  );
 }
 
 describe("MetadataSection", () => {

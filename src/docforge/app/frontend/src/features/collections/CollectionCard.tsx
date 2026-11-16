@@ -16,7 +16,6 @@ import type { Collection, CollectionHealth } from "../../api/collections";
 import { Chip, type ChipTone } from "../../components/Chip";
 import { OverflowMenu } from "../../components/OverflowMenu";
 import { OverflowMenuItem } from "../../components/OverflowMenuItem";
-import type { Navigate } from "../../shell/view";
 import { theme as t } from "../../theme";
 import { lastIngestLabel, parserBadge, probeVerdict } from "./collectionHealth";
 import { CollectionAliasChips } from "./CollectionAliasChips";
@@ -36,7 +35,6 @@ interface CollectionCardProps {
   jobRunning: boolean;
   /** Alias names pointing at this collection — shown as muted chips linking to Settings ▸ Aliases. */
   aliases: string[];
-  onNavigate: Navigate;
   onClick: () => void;
   /** Called after this card's collection is deleted, so the parent grid can refetch and drop it. */
   onDeleted: () => void;
@@ -92,7 +90,7 @@ function LastIngestValue({ label }: { label: string }) {
   );
 }
 
-export function CollectionCard({ collection, health, healthError, docCount, jobRunning, aliases, onNavigate, onClick, onDeleted }: CollectionCardProps) {
+export function CollectionCard({ collection, health, healthError, docCount, jobRunning, aliases, onClick, onDeleted }: CollectionCardProps) {
   const [hover, setHover] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const { deleting, error: deleteError, remove } = useDeleteCollection();
@@ -151,7 +149,7 @@ export function CollectionCard({ collection, health, healthError, docCount, jobR
           </div>
           {aliases.length > 0 && (
             <div style={{ marginTop: 4 }}>
-              <CollectionAliasChips collectionId={collection.id} aliases={aliases} onNavigate={onNavigate} />
+              <CollectionAliasChips collectionId={collection.id} aliases={aliases} />
             </div>
           )}
           <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 4 }}>

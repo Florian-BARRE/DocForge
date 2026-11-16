@@ -140,7 +140,6 @@ export function Sidebar({ view, onNavigate, expanded, onToggleExpanded, onExpand
               expanded={expanded}
               active={activePage === page.key}
               softActive={false}
-              onNavigate={onNavigate}
               registerRef={roving.register}
               onItemKeyDown={roving.onKeyDown}
             />

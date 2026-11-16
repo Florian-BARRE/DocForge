@@ -5,25 +5,25 @@
 // nothing for an un-aliased collection.
 
 import type { MouseEvent } from "react";
-import type { Navigate } from "../../shell/view";
 import { theme as t } from "../../theme";
+import { useNavigate } from "../../shell/navigation";
 
 const MAX_ALIASES_SHOWN = 3;
 
 interface CollectionAliasChipsProps {
   collectionId: string;
   aliases: string[];
-  onNavigate: Navigate;
 }
 
-export function CollectionAliasChips({ collectionId, aliases, onNavigate }: CollectionAliasChipsProps) {
+export function CollectionAliasChips({ collectionId, aliases }: CollectionAliasChipsProps) {
+  const navigate = useNavigate();
   if (aliases.length === 0) return null;
 
   const shown = aliases.slice(0, MAX_ALIASES_SHOWN);
   const hidden = aliases.slice(MAX_ALIASES_SHOWN);
   const open = (event: MouseEvent) => {
     event.stopPropagation();
-    onNavigate({ name: "collection-settings", collectionId, section: "aliases" });
+    navigate({ name: "collection-settings", collectionId, section: "aliases" });
   };
 
   return (

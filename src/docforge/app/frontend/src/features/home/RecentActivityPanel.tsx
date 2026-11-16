@@ -7,9 +7,9 @@
 import { useState } from "react";
 import { jobDisplayName, listJobsPage, type JobStatus } from "../../api/jobs";
 import { JobStatusChip } from "../../components/trace/JobStatusChip";
-import type { Navigate } from "../../shell/view";
 import { theme } from "../../theme";
 import { usePolling } from "../../hooks/usePolling";
+import { useNavigate } from "../../shell/navigation";
 
 const POLL_MS = 10000;
 const MAX_ROWS = 6;
@@ -27,11 +27,11 @@ function humanizeAgo(iso: string): string {
 
 interface RecentActivityRowProps {
   job: JobStatus;
-  onNavigate: Navigate;
 }
 
-function RecentActivityRow({ job, onNavigate }: RecentActivityRowProps) {
-  const go = () => onNavigate({ name: "job", collectionId: job.collection_id, jobId: job.job_id });
+function RecentActivityRow({ job }: RecentActivityRowProps) {
+  const navigate = useNavigate();
+  const go = () => navigate({ name: "job", collectionId: job.collection_id, jobId: job.job_id });
   return (
     <div
       role="button"
@@ -56,11 +56,8 @@ function RecentActivityRow({ job, onNavigate }: RecentActivityRowProps) {
   );
 }
 
-interface RecentActivityPanelProps {
-  onNavigate: Navigate;
-}
-
-export function RecentActivityPanel({ onNavigate }: RecentActivityPanelProps) {
+export function RecentActivityPanel() {
+  const navigate = useNavigate();
   const [jobs, setJobs] = useState<JobStatus[] | null>(null);
 
   usePolling(
@@ -82,7 +79,7 @@ export function RecentActivityPanel({ onNavigate }: RecentActivityPanelProps) {
         </span>
         <button
           type="button"
-          onClick={() => onNavigate({ name: "activity", tab: "jobs" })}
+          onClick={() => navigate({ name: "activity", tab: "jobs" })}
           style={{ background: "none", border: "none", padding: 0, cursor: "pointer", color: theme.color.accentSafe, fontSize: theme.font.size.xs, textDecoration: "underline" }}
         >
           View all in Activity
@@ -94,7 +91,7 @@ export function RecentActivityPanel({ onNavigate }: RecentActivityPanelProps) {
       ) : jobs.length === 0 ? (
         <span style={{ color: theme.color.mute, fontSize: theme.font.size.s }}>No jobs have run yet.</span>
       ) : (
-        jobs.map((job) => <RecentActivityRow key={job.job_id} job={job} onNavigate={onNavigate} />)
+        jobs.map((job) => <RecentActivityRow key={job.job_id} job={job} />)
       )}
     </div>
   );

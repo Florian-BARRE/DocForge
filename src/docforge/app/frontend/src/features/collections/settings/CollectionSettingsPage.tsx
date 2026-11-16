@@ -59,7 +59,7 @@ export function CollectionSettingsPage({ collectionId, section, onNavigate }: Co
             <CollectionWizard mode="edit" collectionId={collectionId} initial={collection} onNavigate={onNavigate} />
           </SettingsSection>
           <SettingsSection title="Danger zone">
-            <DangerZone collectionId={collectionId} collectionName={collection.name} onNavigate={onNavigate} />
+            <DangerZone collectionId={collectionId} collectionName={collection.name} />
           </SettingsSection>
         </>
       )}

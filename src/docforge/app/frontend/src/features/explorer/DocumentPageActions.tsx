@@ -13,21 +13,21 @@ import { Button } from "../../components/Button";
 import { ReplayStageSelect } from "../../components/reingest/ReplayStageSelect";
 import { ReplayUnsupportedNotice } from "../../components/reingest/ReplayUnsupportedNotice";
 import { theme } from "../../theme";
-import type { Navigate } from "../../shell/view";
 import { useToast } from "../../shell/toast";
 import { DocumentEnabledToggle } from "./DocumentEnabledToggle";
+import { useNavigate } from "../../shell/navigation";
 
 interface DocumentPageActionsProps {
   documentId: string;
   collectionId: string;
   enabled: boolean;
   onEnabledChanged: (enabled: boolean) => void;
-  onNavigate: Navigate;
 }
 
 export function DocumentPageActions({
-  documentId, collectionId, enabled, onEnabledChanged, onNavigate,
+  documentId, collectionId, enabled, onEnabledChanged,
 }: DocumentPageActionsProps) {
+  const navigate = useNavigate();
   const toast = useToast();
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -39,7 +39,7 @@ export function DocumentPageActions({
     setDeleting(true);
     try {
       await deleteDocument(documentId);
-      onNavigate({ name: "collection-documents", collectionId });
+      navigate({ name: "collection-documents", collectionId });
     } catch (e) {
       // A toast, not the page's own error state — the document is already loaded and every tab is
       // still perfectly usable; this action merely failed and should not blank the whole page.
@@ -56,7 +56,7 @@ export function DocumentPageActions({
       // to the new job so its progress (and the live stage feed) is watched straight away.
       const { job_id } = await reingestDocument(documentId, { replayFrom });
       toast.success("Re-ingest started");
-      onNavigate({ name: "job", collectionId, jobId: job_id });
+      navigate({ name: "job", collectionId, jobId: job_id });
     } catch (e) {
       const refusal = readReplayUnsupported(e);
       if (refusal) setUnsupported(refusal);

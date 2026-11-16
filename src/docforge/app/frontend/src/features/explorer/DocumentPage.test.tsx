@@ -8,6 +8,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { DocumentDetail } from "../../api/explorer";
 import { ToastProvider } from "../../shell/toast";
+import { NavigateProvider } from "../../shell/navigation";
 import { DocumentPage } from "./DocumentPage";
 
 vi.mock("../../api/explorer", async (importOriginal) => ({
@@ -62,7 +63,9 @@ describe("DocumentPage — done-with-warning document", () => {
     expect(() =>
       render(
         <ToastProvider>
-          <DocumentPage collectionId="col-1" documentId="doc-1" onNavigate={vi.fn()} />
+          <NavigateProvider navigate={vi.fn()}>
+            <DocumentPage collectionId="col-1" documentId="doc-1" onNavigate={vi.fn()} />
+          </NavigateProvider>
         </ToastProvider>,
       ),
     ).not.toThrow();
@@ -96,7 +99,9 @@ describe("DocumentPage — failed document", () => {
     expect(() =>
       render(
         <ToastProvider>
-          <DocumentPage collectionId="col-1" documentId="doc-1" onNavigate={vi.fn()} />
+          <NavigateProvider navigate={vi.fn()}>
+            <DocumentPage collectionId="col-1" documentId="doc-1" onNavigate={vi.fn()} />
+          </NavigateProvider>
         </ToastProvider>,
       ),
     ).not.toThrow();

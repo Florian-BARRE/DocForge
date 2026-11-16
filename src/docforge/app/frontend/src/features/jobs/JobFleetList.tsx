@@ -6,19 +6,19 @@
 import type { JobStatus } from "../../api/jobs";
 import { InlineErrorBoundary } from "../../components/InlineErrorBoundary";
 import { JobRow } from "./JobRow";
-import type { Navigate } from "../../shell/view";
 import { theme } from "../../theme";
 import { JobDurationBadge } from "./JobDurationBadge";
 import { WorkerAttributionLine } from "./WorkerAttributionLine";
+import { useNavigate } from "../../shell/navigation";
 
 interface JobFleetListProps {
   jobs: JobStatus[];
   workerMap: Record<string, string>;
-  onNavigate: Navigate;
   onJobUpdated: (jobId: string, patch: Partial<JobStatus>) => void;
 }
 
-export function JobFleetList({ jobs, workerMap, onNavigate, onJobUpdated }: JobFleetListProps) {
+export function JobFleetList({ jobs, workerMap, onJobUpdated }: JobFleetListProps) {
+  const navigate = useNavigate();
   return (
     <InlineErrorBoundary label="the job list">
       <div style={{ display: "flex", flexDirection: "column", gap: theme.space.s }}>
@@ -26,7 +26,7 @@ export function JobFleetList({ jobs, workerMap, onNavigate, onJobUpdated }: JobF
           <JobRow
             key={job.job_id}
             job={job}
-            onClick={() => onNavigate({ name: "job", collectionId: job.collection_id, jobId: job.job_id })}
+            onClick={() => navigate({ name: "job", collectionId: job.collection_id, jobId: job.job_id })}
             onUpdated={(patch) => onJobUpdated(job.job_id, patch)}
             footer={
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: theme.space.s }}>

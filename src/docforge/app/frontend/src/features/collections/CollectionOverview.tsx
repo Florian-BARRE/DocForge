@@ -103,7 +103,7 @@ export function CollectionOverview({ collectionId, onNavigate }: Props) {
           <div style={{ marginTop: t.space.xl }}>
             <ProviderHealthBoard
               health={health} verdict={verdict} loading={healthLoading} error={healthError}
-              onRecheck={recheckHealth} fixTarget={fixTarget} onNavigate={onNavigate}
+              onRecheck={recheckHealth} fixTarget={fixTarget}
             />
           </div>
         </>
@@ -111,7 +111,7 @@ export function CollectionOverview({ collectionId, onNavigate }: Props) {
         <>
           <ProviderHealthBoard
             health={health} verdict={verdict} loading={healthLoading} error={healthError}
-            onRecheck={recheckHealth} fixTarget={fixTarget} onNavigate={onNavigate}
+            onRecheck={recheckHealth} fixTarget={fixTarget}
           />
 
           <OverviewStatStrip
@@ -121,11 +121,10 @@ export function CollectionOverview({ collectionId, onNavigate }: Props) {
             health={health}
             jobs={jobs}
             collectionId={collectionId}
-            onNavigate={onNavigate}
           />
 
           <div style={{ marginTop: t.space.xl }}>
-            <StorageFootprintPanel collectionId={collectionId} onNavigate={onNavigate} />
+            <StorageFootprintPanel collectionId={collectionId} />
           </div>
 
           <div>

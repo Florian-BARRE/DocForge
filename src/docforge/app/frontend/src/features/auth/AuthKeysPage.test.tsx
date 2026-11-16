@@ -10,10 +10,11 @@ import { describe, expect, it, vi } from "vitest";
 import type { ApiKeyInfo } from "../../api/auth";
 import type { CapabilitiesResponse } from "../../api/capabilities";
 import { ToastProvider } from "../../shell/toast";
+import { NavigateProvider } from "../../shell/navigation";
 import { AuthKeysPage } from "./AuthKeysPage";
 
 function renderWithProviders(ui: ReactElement) {
-  return render(<ToastProvider>{ui}</ToastProvider>);
+  return render(<ToastProvider><NavigateProvider navigate={vi.fn()}>{ui}</NavigateProvider></ToastProvider>);
 }
 
 vi.mock("../../api/auth", async (importOriginal) => ({
@@ -54,7 +55,7 @@ describe("AuthKeysPage — auth-off write lockdown", () => {
     vi.mocked(listKeys).mockResolvedValue([keyFixture()]);
     vi.mocked(listCollections).mockResolvedValue([]);
 
-    renderWithProviders(<AuthKeysPage onNavigate={vi.fn()} />);
+    renderWithProviders(<AuthKeysPage />);
 
     await waitFor(() => expect(screen.getByText("Authentication is disabled")).toBeInTheDocument());
     expect(screen.queryByText("+ New key")).not.toBeInTheDocument();
@@ -67,7 +68,7 @@ describe("AuthKeysPage — auth-off write lockdown", () => {
     vi.mocked(listKeys).mockResolvedValue([keyFixture({ name: "ingestion-worker" })]);
     vi.mocked(listCollections).mockResolvedValue([]);
 
-    renderWithProviders(<AuthKeysPage onNavigate={vi.fn()} />);
+    renderWithProviders(<AuthKeysPage />);
 
     await waitFor(() => expect(screen.getByText("+ New key")).toBeInTheDocument());
     expect(screen.getByText("Rotate")).toBeInTheDocument();

@@ -7,11 +7,11 @@
 import type { Collection, CollectionHealth, FieldSpec } from "../../api/collections";
 import type { DocumentListItem } from "../../api/explorer";
 import type { JobStatus } from "../../api/jobs";
-import type { Navigate } from "../../shell/view";
 import { theme as t } from "../../theme";
 import { lastIngestLabel } from "./collectionHealth";
 import { MetaLine, StatChip } from "./OverviewCardPrimitives";
 import { bytesToMb } from "./wizard/wizardTypes";
+import { useNavigate } from "../../shell/navigation";
 
 interface OverviewStatStripProps {
   collection: Collection;
@@ -23,10 +23,10 @@ interface OverviewStatStripProps {
    *  reads as informative once the backlog has drained to 0/0. */
   jobs: JobStatus[] | null;
   collectionId: string;
-  onNavigate: Navigate;
 }
 
-export function OverviewStatStrip({ collection, docs, fields, health, jobs, collectionId, onNavigate }: OverviewStatStripProps) {
+export function OverviewStatStrip({ collection, docs, fields, health, jobs, collectionId }: OverviewStatStripProps) {
+  const navigate = useNavigate();
   const enabledDocs = docs?.filter((d) => d.enabled).length ?? 0;
   const requiredFields = fields.filter((f) => f.required).length;
   const maxSizeMb = bytesToMb(collection.max_file_size_bytes);
@@ -50,43 +50,43 @@ export function OverviewStatStrip({ collection, docs, fields, health, jobs, coll
           label="Documents"
           value={docs ? docs.length : "…"}
           sub={docs ? `${enabledDocs} enabled` : undefined}
-          onClick={() => onNavigate({ name: "collection-documents", collectionId })}
+          onClick={() => navigate({ name: "collection-documents", collectionId })}
         />
         <StatChip
           label="Jobs"
           value={jobs ? jobs.length.toLocaleString() : "…"}
           sub={jobs ? `${pendingJobs} pending · ${runningJobs} running · ${doneJobs}/${jobs.length} done` : undefined}
-          onClick={() => onNavigate({ name: "collection-activity", collectionId })}
+          onClick={() => navigate({ name: "collection-activity", collectionId })}
         />
         <StatChip
           label="Metadata fields"
           value={fields.length}
           sub={`${requiredFields} required`}
-          onClick={() => onNavigate({ name: "collection-schema", collectionId })}
+          onClick={() => navigate({ name: "collection-schema", collectionId })}
         />
         <StatChip
           label="Indexed vectors"
           value={vectorCount !== undefined ? vectorCount.toLocaleString() : "…"}
           sub={docs ? `across ${enabledDocs} enabled doc${enabledDocs === 1 ? "" : "s"}` : undefined}
-          onClick={() => onNavigate({ name: "collection-search", collectionId })}
+          onClick={() => navigate({ name: "collection-search", collectionId })}
         />
         <StatChip
           label="Formats"
           value={collection.supported_formats.length}
           sub={collection.supported_formats.join(", ")}
-          onClick={() => onNavigate({ name: "collection-pipelines", collectionId })}
+          onClick={() => navigate({ name: "collection-pipelines", collectionId })}
         />
         <StatChip
           label="Max file"
           value={`${maxSizeMb} MiB`}
           sub="per upload"
-          onClick={() => onNavigate({ name: "collection-settings", collectionId })}
+          onClick={() => navigate({ name: "collection-settings", collectionId })}
         />
       </div>
       {/* A rarely-relevant technical knob — a footnote, not a stat tile, so it doesn't compete with
           the strip above for attention. Still a click-through to where it's edited. */}
       <button
-        onClick={() => onNavigate({ name: "collection-settings", collectionId })}
+        onClick={() => navigate({ name: "collection-settings", collectionId })}
         title="Whole-ingest-job wall-clock job timeout"
         style={{
           display: "inline-flex", alignItems: "baseline", gap: t.space.xs, marginBottom: t.space.xl,

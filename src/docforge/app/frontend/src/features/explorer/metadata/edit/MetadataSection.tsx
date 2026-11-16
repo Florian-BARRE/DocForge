@@ -6,7 +6,6 @@
 import type { FieldSpec } from "../../../../api/collections";
 import type { MetadataValue } from "../../../../api/explorer";
 import { Button } from "../../../../components/Button";
-import type { Navigate } from "../../../../shell/view";
 import { theme } from "../../../../theme";
 import { MetadataTable } from "../MetadataTable";
 import { MetadataEditField } from "./MetadataEditField";
@@ -18,14 +17,13 @@ interface MetadataSectionProps {
   documentId: string;
   collectionId: string;
   metadata: MetadataValue[];
-  onNavigate: Navigate;
   /** Lets the page fold the saved values back into its DocumentDetail so the table reflects them. */
   onSaved: (updated: DraftValues, specs: FieldSpec[]) => void;
 }
 
 const noteStyle: React.CSSProperties = { color: theme.color.dim, fontSize: theme.font.size.xs };
 
-export function MetadataSection({ documentId, collectionId, metadata, onNavigate, onSaved }: MetadataSectionProps) {
+export function MetadataSection({ documentId, collectionId, metadata, onSaved }: MetadataSectionProps) {
   const editor = useMetadataEditor(documentId, collectionId, metadata, onSaved);
   const canEdit = editor.loaded && editor.editable.length > 0;
 
@@ -33,7 +31,7 @@ export function MetadataSection({ documentId, collectionId, metadata, onNavigate
     <div style={{ display: "flex", flexDirection: "column", gap: theme.space.m }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: theme.space.m, flexWrap: "wrap" }}>
         {editor.result && !editor.editing ? (
-          <ReembedStatus result={editor.result} collectionId={collectionId} onNavigate={onNavigate} />
+          <ReembedStatus result={editor.result} collectionId={collectionId} />
         ) : <span />}
         {canEdit && !editor.editing && <Button size="sm" variant="secondary" onClick={editor.startEdit}>Edit values</Button>}
       </div>
