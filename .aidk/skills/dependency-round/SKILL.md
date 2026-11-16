@@ -5,7 +5,13 @@ description: Handles docforge's weekly Dependabot round (the minor/patch PRs per
 
 # The weekly dependency round
 
-Dependabot (`.github/dependabot.yml`) opens, each week, one grouped minor+patch PR per ecosystem and directory
+**Dependabot version updates are disabled** (`open-pull-requests-limit: 0` on every entry of `.github/dependabot.yml`):
+dependencies now move by hand, behind the live conversion smoke. The entries and the `ignore:` holds stay, so the
+ecosystems remain registered and Dependabot **security** updates keep firing (they need the repo-level Dependabot
+security-updates setting ON, florian's). The rest of this skill describes the round for when version updates are
+switched back on, and how to move a dependency by hand (steps 2 to 4 apply as is).
+
+When enabled, Dependabot (`.github/dependabot.yml`) opens, each week, one grouped minor+patch PR per ecosystem and directory
 (`actions-minor-patch`, `docforge-minor-patch`, `mcp-minor-patch`, ...), and each major alone. The rule from florian:
 **break nothing, docling least of all.** A minor or patch is landed without asking; a major waits for florian.
 
@@ -88,6 +94,8 @@ When in doubt, touch nothing and tell florian.
 | Hold | Where | Why | Lift when |
 |---|---|---|---|
 | docling family (`docling`, `-slim`, `-core`, `-parse`, `-ibm-models`) | `src/docforge`, `exclude-patterns` of its Dependabot group | florian: break nothing, docling least of all; every bump needs a before/after conversion check | never inside a round; its own request |
+| `docling` / `docling-slim` `>=2.149` | `src/docforge`, `ignore` in `dependabot.yml` | `docling-slim` >=2.149 decodes Markdown char-refs strictly (upstream 414d669): the converted text changes, so it needs a `CACHE_VERSION` bump and a corpus reparse (`docling-core` has its own numbering, locked at 2.106.x: no version hold) | we accept the corpus reparse |
+| `docling-parse` `>=7.26` | `src/docforge`, `ignore` in `dependabot.yml` | OCR output change: glued words on RGB scans | we accept the corpus reparse |
 | `rapidocr` on 3.9.x | `src/docforge/uv.lock` only (a transitive of docling: no pin in `pyproject.toml`, no `ignore`: a relock that is not targeted would move it) | 3.10 needs `opencv-python-headless` while `rapidocr-onnxruntime` pulls `opencv-python`: both write the same `cv2` package | one opencv distribution is left |
 | `transformers` `>=5` (and `huggingface-hub` `>=1` in `bge_server`) | `src/docforge`, `src/bge_server`, `ignore` in `dependabot.yml` | 5.x breaks docling's `AutoProcessor`, and `FlagReranker` (`prepare_for_model`) | docling, then FlagEmbedding, support 5 |
 | `transformers` in `dots_ocr_server` held below 4.57 | `src/dots_ocr_server/pyproject.toml`, `dependabot.yml` | `gpu` extra pins `transformers==4.56.2` (below 4.57): 4.57 made `video_processor` required and dots.ocr's remote processor omits it, which breaks the gpu extra | dots.ocr ships a compatible processor |
