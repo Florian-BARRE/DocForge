@@ -5,17 +5,32 @@
 # a diff is a refactor decision to review (shared-core extraction, router moves), never a test to
 # fix by regenerating blindly. The app is built without running its lifespan, so no model loads.
 #
+# R-27 step 3 (mineru adopts model_server_core): POST /parse is byte-identical; only GET /health
+# changed, because it is now the core HealthRoute (schema HealthResponse = the core model, whose field
+# descriptions are generic; operationId and summary follow the core handler). The response body on the
+# wire is unchanged (it already carried `detail`). The typed 500 is not declared in OpenAPI.
+#
 # To regenerate after a REVIEWED, intended contract change (from src/mineru_server):
-#   uv run --frozen python -c "import json; from backend.app import create_app; \
-#     print(json.dumps(create_app().openapi(), indent=2, sort_keys=True, ensure_ascii=False))" \
-#     > tests/characterization/goldens/openapi.json
+#   uv run --frozen python -c "import json; from backend import MineruServer; \
+#     from config_loader import MineruServerConfig; print(json.dumps( \
+#     MineruServer(MineruServerConfig).create_app().openapi(), indent=2, sort_keys=True, \
+#     ensure_ascii=False))" > tests/characterization/goldens/openapi.json
 
 # ====== Standard Library Imports ======
 import json
 from pathlib import Path
 
+# ====== Third-Party Library Imports ======
+from fastapi import FastAPI
+
 # ====== Internal Project Imports ======
-from backend.app import create_app
+from backend import MineruServer
+from config_loader import MineruServerConfig
+
+
+def create_app() -> FastAPI:
+    return MineruServer(MineruServerConfig).create_app()
+
 
 GOLDEN_PATH = Path(__file__).parent / "goldens" / "openapi.json"
 

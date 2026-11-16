@@ -2,7 +2,7 @@
   "components": {
     "schemas": {
       "HealthResponse": {
-        "description": "Response model for the GET /health liveness probe.\n\nAttributes:\n    status (str): \"ok\" when the host can serve MinerU inference; \"unhealthy\" when it cannot (no\n        CUDA GPU visible while MINERU_REQUIRE_GPU is set — the MinerU2.5-Pro VLM requires CUDA).\n    ready (bool): True when the host can run inference (the model itself loads lazily on the first\n        /parse, so readiness is gated on the GPU, not on the model being pre-loaded).\n    detail (str | None): Human-readable reason when not ready (diagnostics only); None on \"ok\".\n    device (str): Runtime compute device — \"cuda\" when a GPU is present, else \"cpu\". Read by the\n        DocForge app's GET /capabilities probe to decide whether this sidecar runs on a GPU.",
+        "description": "Response model of the GET /health liveness + readiness probe.\n\n`status` and `device` stay plain strings on the wire (the enumerations above give their values),\nso the OpenAPI document of a server does not change shape.\n\nAttributes:\n    status (str): \"ok\" when ready, \"loading\" during startup, \"unhealthy\" when unserviceable.\n    ready (bool): True only when the host can serve inference.\n    detail (str | None): Reason the service is not ready (diagnostics only); None on \"ok\".\n    device (str): Runtime compute device: \"cuda\" when a GPU is present, else \"cpu\".",
         "properties": {
           "detail": {
             "anyOf": [
@@ -22,12 +22,12 @@
             "type": "string"
           },
           "ready": {
-            "description": "True when the host can run MinerU inference.",
+            "description": "True when the host can serve inference.",
             "title": "Ready",
             "type": "boolean"
           },
           "status": {
-            "description": "'ok' when serviceable, 'unhealthy' when no CUDA GPU is available.",
+            "description": "'ok' when ready, 'loading' during startup, 'unhealthy' when unserviceable.",
             "title": "Status",
             "type": "string"
           }
@@ -208,8 +208,8 @@
   "paths": {
     "/health": {
       "get": {
-        "description": "Liveness + readiness probe.\n\nReturns HTTP 200 (status=\"ok\", ready=True) once the host can serve MinerU inference. Returns HTTP\n503 (status=\"unhealthy\") when MINERU_REQUIRE_GPU is set and no CUDA GPU is visible — MinerU's VLM\nbackend requires CUDA, so the container never advertises a readiness it cannot honor.\n\nArgs:\n    response (Response): FastAPI response object used to set the HTTP status code.\n\nReturns:\n    HealthResponse: Service status and readiness flag.",
-        "operationId": "health_health_get",
+        "description": "Liveness + readiness probe.\n\nArgs:\n    response (Response): FastAPI response object used to set the HTTP status code.\n\nReturns:\n    HealthResponse: 200 \"ok\" when ready; 503 \"unhealthy\" or \"loading\" otherwise.",
+        "operationId": "handle_health_get",
         "responses": {
           "200": {
             "content": {
@@ -222,7 +222,7 @@
             "description": "Successful Response"
           }
         },
-        "summary": "Health"
+        "summary": "Handle"
       }
     },
     "/parse": {

@@ -14,14 +14,37 @@ parser, OmniDocBench 95.69) and returns the **shared DocForge sidecar contract**
 
 | Route | Method | Body | Returns |
 |---|---|---|---|
-| `/health` | GET | — | `{status, ready, detail}` — 503 when no CUDA GPU is visible and `MINERU_REQUIRE_GPU`. |
+| `/health` | GET | — | `{status, ready, detail, device}` — 503 (`"status":"unhealthy"`) when no CUDA GPU is visible and `MINERU_REQUIRE_GPU`. |
 | `/parse` | POST | raw PDF bytes (`Content-Type: application/pdf`) | `{pages:[{page_index, image_width, image_height, blocks:[{label, bbox, reading_order, text?|html?|latex?}]}], n_pages, engine}` |
 
 Blocks are reading-ordered; `bbox` is in the page's `0–1000` normalization space (`image_width` /
 `image_height` = 1000). Tables arrive as HTML in `html`, formulas as LaTeX in `latex`.
 
-## How it is built (the two halves)
+The service is built on the shared `src/model_server_core` library: the core owns the app skeleton
+(config base, lifespan with fail-fast config validation, gzip, `GET /health`, typed error handler,
+request guards, device probe, logging bootstrap); this folder only holds what is MinerU's own.
 
+## Errors
+
+An unexpected exception answers **HTTP 500** with a generic typed body and a correlation id; the
+exception itself (type, message, traceback) is only in the server log, under the same id:
+
+```json
+{"detail": {"error": "Internal server error. The details were logged.", "correlation_id": "<uuid hex>"}}
+```
+
+The id is also sent as the `X-Correlation-ID` response header. The deliberate answers are unchanged:
+`413` (body over `MINERU_MAX_BODY_BYTES`), `422` (empty or undecodable PDF) and `503` + `Retry-After`
+(predict lock saturated).
+
+## How it is built
+
+- **`entrypoint.py`** — zero logic: `ServerEntrypoint(MineruServer(MineruServerConfig))`.
+- **`config_loader.py`** — `MineruServerConfig(ServerConfig)`: the `MINERU_*` env vars.
+- **`backend/mineru_server.py`** — `MineruServer(ModelServer)`: title, model service, the `/parse`
+  route, and the GPU gate behind `/health`.
+- **`backend/routers/parse/`** — `ParseRoutes`: `POST /parse`, bound to the service and the core
+  request guards.
 - **`libs/mineru/normalizer.py`** — PURE, fully unit-tested (`tests/test_normalizer.py`): converts
   MinerU's flat `content_list.json` (`type` / `bbox` 0–1000 / `page_idx` / `text_level` / `table_body`
   HTML / equation `text` LaTeX / `image_caption` / `list_items`) into the shared per-page contract. No
@@ -29,8 +52,9 @@ Blocks are reading-ordered; `bbox` is in the page's `0–1000` normalization spa
 - **`libs/mineru/engine.py`** — the ONE **GPU-only, GPU-UNTESTED** seam: calls MinerU's `do_parse`
   (backend `MINERU_BACKEND`, default `vlm-transformers`) and reads the `*_content_list.json` it writes.
   Validate on first GPU deploy (see the module docstring's checklist).
-- **`libs/mineru/service.py`** — validates the PDF (422), serializes every parse behind an
+- **`libs/mineru/service.py`** — `MineruService(ModelService)`: serializes every parse behind an
   `asyncio.Lock` (503 on lock-wait timeout), runs the engine off the event loop, normalizes the result.
+- **`libs/mineru/torch_cuda_detector.py`** — the torch GPU check injected into the core `DeviceProbe`.
 
 ## Build
 
@@ -52,4 +76,6 @@ uv run ruff check . && uv run ruff format --check .
 uv run pytest tests -q
 ```
 
-All tests are offline (the normalizer over a synthetic `content_list.json`) — no GPU required.
+All tests are offline (the normalizer over a synthetic `content_list.json`, the routes over a stubbed
+engine) — no GPU required. `tests/characterization/` pins the OpenAPI document and the `/parse` wire
+goldens.
