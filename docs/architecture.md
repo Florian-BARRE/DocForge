@@ -264,6 +264,29 @@ sample, on-disk float32 excluding the HNSW index). It returns per-store totals, 
 Overview UI renders it as a panel. It is also reachable through the typed SDK
 (`client.collections.storage(id)`) and the MCP `collection_storage_footprint` tool.
 
+### Layers and façades
+
+Dependencies point one way, and a test guards each edge (§6):
+
+- **Backend** — routers → the app's `backend/libs/` → `shared/libs/services` (the `Database` façade) →
+  the public models and ORM rows. A router reaches the stores only through the façade (three legacy
+  exceptions are listed in the ratchet), never through a store client or its raw `apis`.
+- **Zones** — `app/` and `worker/` are separate deployables and never import each other; `shared/`
+  (engine, public models, services, migrations) never imports either. Inside `shared/libs`, the public
+  models import nothing of the pipelines, and the pipelines never import the services layer (one named
+  pure exception in the preview projector).
+- **Façades** — `Database` (`shared/libs/services/db/database.py`) owns the three store clients and
+  exposes the domain façades (`db.collections`, `db.documents`, `db.jobs`, `db.search`, …) in
+  `shared/libs/services/db/facades/`; the cross-store rules (write PG first, delete Qdrant first,
+  reference-filtered blob purge) live once, inside them. The worker's job handlers
+  (`worker/backend/libs/jobs/`) and the pipeline runner persist through these façades (for example
+  `JobsFacade`); the arq entry modules read the worker context once and inject it.
+- **Frontend** — imports flow `features` → `shell` → `components` → `hooks` / `utils` / `api`; `components/`
+  and `shell/` never import a feature. Navigation goes through the typed route table (`routes.tsx`) and
+  `useNavigate()` (`shell/navigation.tsx`); the `onNavigate` prop survives only at that table's boundary.
+- **Families** are laid out identically: the four model servers over `model_server_core` (§2) and the
+  SDK, whose sync modules are generated from the async ones.
+
 ---
 
 ## 5. Retrieval
@@ -307,6 +330,22 @@ The gate covers **every package**:
 - **`bge_server`** — ruff format + lint + mypy + tests (CPU-only torch wheel).
 - **frontend** — ESLint (`react-hooks/rules-of-hooks` is an error) + `tsc --noEmit` + vitest render
   smoke tests + Vite build.
+- **Structural ratchets** — mechanical guards that forbid architectural regression; they run in the
+  `docforge` pytest suite and the frontend vitest suite. Allowlists record today's accepted exceptions and only shrink
+  (a ceiling, never a floor):
+  - `src/docforge/tests/units/coherence/test_node_purity_ratchet.py` — pipeline nodes touch no store,
+    process env or global config (empty allowlist);
+  - `test_layer_ratchet.py` (same folder) and `characterization/pipelines/test_import_graph.py` — the
+    layer edges above;
+  - `test_config_reads_ratchet.py` + `config_reads_allowlist.json` — `RUNTIME_CONFIG` is read only at
+    entry points and composition roots, plus the per-file ceilings still recorded;
+  - `test_file_size_ratchet.py` + `file_size_allowlist.json` — 400 lines per Python or frontend source
+    file, with per-file ceilings for the files still above it;
+  - `test_ir_canonical_ratchet.py` — the IR is the only source of truth: its classes are defined once,
+    only the explorer's read endpoint calls the Markdown/HTML generators, and no new column stores a
+    view;
+  - frontend: `src/docforge/app/frontend/src/layering.structure.test.ts` and
+    `navigation.structure.test.ts`, with `routes.test.tsx` for the route table.
 - **`sdk-parity`** — an **SDK↔backend OpenAPI coherence gate**: it dumps the backend's current
   OpenAPI (serviceless) and fails red if the `docforge-sdk` models or committed snapshot drift from
   it. SDK/backend drift can never merge — nor publish.
