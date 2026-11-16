@@ -153,8 +153,13 @@ to florian, who merges it.
 - The version moves with `scripts/set_version.sh X.Y.Z`. Agents never push a `v*`/`sdk-v*` tag and never
   change the release workflow without florian.
 - No `pull_request_target` workflow and no stored secret: the workflows use only `GITHUB_TOKEN`.
-- Dependabot (`.github/dependabot.yml`): minor and patch bumps grouped in weekly PRs per ecosystem, each
-  major alone; a major merges only with florian's go.
+- Dependabot (`.github/dependabot.yml`): version updates are disabled (`open-pull-requests-limit: 0` on every
+  entry); dependencies move by hand, behind the live conversion smoke, through the `dependency-round` skill
+  (holds documented there); a major still merges only with florian's go. Security updates are meant to stay
+  on (public repo, published SDK) but they depend on the repo-level Dependabot security-updates setting
+  (Settings → Code security), not on `dependabot.yml`: as of 2026-11-16 it is DISABLED
+  (`gh api repos/Florian-BARRE/DocForge/automated-security-fixes`), so no security PR is opened until
+  florian enables it.
 
 ## Dev stack (dev center: main checkout and each worktree)
 
