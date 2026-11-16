@@ -10,7 +10,7 @@
 // only path back up.
 
 import { createContext, useContext, useEffect } from "react";
-import type { BreadcrumbItem } from "../components/Breadcrumb";
+import type { BreadcrumbItem } from "./Breadcrumb";
 
 export const BreadcrumbExtraContext = createContext<((items: BreadcrumbItem[] | null) => void) | null>(null);
 

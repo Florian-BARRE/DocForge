@@ -7,8 +7,8 @@
 // shape (group children, ForEach item instances) is legible under its parent stage. `depth`/
 // `node_path` are null on legacy rows (pre-tree) — those render flat at depth 0, same as before.
 //
-// Shared under components/trace/ (not features/monitoring/) because it is consumed by two
-// feature slices — monitoring's JobDetailPage and explorer's document Trace tab — per this repo's
+// Shared under components/trace/ (not a feature folder) because it is consumed by two
+// feature slices — jobs' JobDetailPage and explorer's document Trace tab — per this repo's
 // feature-slice-isolation convention (shared cross-feature UI lives in components/, never
 // cross-imported between feature directories).
 //

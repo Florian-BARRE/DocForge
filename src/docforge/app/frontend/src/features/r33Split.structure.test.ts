@@ -8,7 +8,7 @@ import { DEFAULT_LIMIT, isFirstRunEmptyOf, showSelectAllPromptOf, sortOf } from 
 import { lastFlexColumnIndexOf, orderAfterDrop, orderAfterStep, tableWidthOf } from "./corpus/tableLayoutModel";
 import { activeIndexAt, notchPercent, scrollTopForTarget, snapIndexAt } from "./explorer/layout/scrubberModel";
 import { activeChunkIdOf, toggleSelection } from "./explorer/layout/pageGroupModel";
-import { deriveJobProgress, toMonotonicTimeline, upsertEvent } from "./monitoring/state/jobDetailModel";
+import { deriveJobProgress, toMonotonicTimeline, upsertEvent } from "./jobs/state/jobDetailModel";
 import { QUERY_ANCHOR_ID, RERANK_ANCHOR_ID, hasRailNode } from "./search-pipeline/state/searchRailModel";
 import * as searchEditor from "./search-pipeline/state/useSearchPipelineEditor";
 
@@ -23,7 +23,7 @@ const sources = import.meta.glob(
     "./corpus/{useCorpusPage,useCorpusTableLayout,corpusPageModel,tableLayoutModel}.ts",
     "./explorer/DocumentPage.tsx",
     "./explorer/state/{useDocumentPage,documentPageModel}.ts",
-    "./monitoring/state/{useJobDetail,useJobFeed,jobDetailModel}.ts",
+    "./jobs/state/{useJobDetail,useJobFeed,jobDetailModel}.ts",
   ],
   { query: "?raw", import: "default", eager: true },
 ) as Record<string, string>;

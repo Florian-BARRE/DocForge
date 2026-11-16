@@ -5,7 +5,7 @@
 // sidebar's collapsed rail (see SidebarFooter).
 
 import { theme as t } from "../theme";
-import { useTheme, type ThemeName } from "./useTheme";
+import { useTheme, type ThemeName } from "../hooks/useTheme";
 
 function Sun() {
   return (

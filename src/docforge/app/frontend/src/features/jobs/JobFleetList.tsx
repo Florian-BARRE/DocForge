@@ -5,7 +5,7 @@
 
 import type { JobStatus } from "../../api/jobs";
 import { InlineErrorBoundary } from "../../components/InlineErrorBoundary";
-import { JobRow } from "../monitoring/JobRow";
+import { JobRow } from "./JobRow";
 import type { Navigate } from "../../shell/view";
 import { theme } from "../../theme";
 import { JobDurationBadge } from "./JobDurationBadge";

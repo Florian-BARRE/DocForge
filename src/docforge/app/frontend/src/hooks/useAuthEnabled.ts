@@ -4,7 +4,7 @@
 // neither hardcodes a guess about whether the backend actually enforces API keys.
 
 import { useEffect, useState } from "react";
-import { getCapabilities } from "../../api/capabilities";
+import { getCapabilities } from "../api/capabilities";
 
 /**
  * Whether this deployment currently enforces API-key bearer auth.

@@ -8,7 +8,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { listKeys, rotateKey, type ApiKeyInfo, type CreatedApiKey } from "../../api/auth";
 import { listCollections } from "../../api/collections";
-import { Breadcrumb } from "../../components/Breadcrumb";
+import { Breadcrumb } from "../../shell/Breadcrumb";
 import { Chip } from "../../components/Chip";
 import { ErrorState } from "../../components/ErrorState";
 import { LoadingState } from "../../components/LoadingState";
@@ -23,7 +23,7 @@ import { ExpiryChip } from "./ExpiryChip";
 import { KeyDetailActions } from "./KeyDetailActions";
 import { deriveRotateInitial } from "./rotateInitial";
 import { StaleChip } from "./StaleChip";
-import { useAuthEnabled } from "./useAuthEnabled";
+import { useAuthEnabled } from "../../hooks/useAuthEnabled";
 import { humanizeAgo, humanizeUntil } from "./relativeTime";
 
 interface KeyDetailPageProps {

@@ -15,9 +15,9 @@ import { CollectionSettingsPage } from "./features/collections/settings/Collecti
 import { CollectionWizard } from "./features/collections/wizard/CollectionWizard";
 import { HomePage } from "./features/home/HomePage";
 import { ActivityPage } from "./features/jobs/ActivityPage";
-import { JobDetailPage } from "./features/monitoring/JobDetailPage";
+import { JobDetailPage } from "./features/jobs/JobDetailPage";
 import { CollectionActivityTab } from "./features/jobs/CollectionActivityTab";
-import { WorkersPanel } from "./features/monitoring/WorkersPanel";
+import { WorkersPanel } from "./features/jobs/WorkersPanel";
 import { SearchLabPage } from "./features/search/SearchLabPage";
 import { ErrorBoundary } from "./shell/ErrorBoundary";
 import { LoadingState } from "./components/LoadingState";

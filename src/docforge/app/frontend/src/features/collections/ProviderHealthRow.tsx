@@ -2,7 +2,7 @@
 // One provider row on the health board — a humanized step+provider label (the raw node id demoted to
 // a discreet mono subtext/tooltip, never the primary text), its probed endpoint host, a status
 // dot+label, and latency when present. `not_configured` rows render dashed and dimmed (same "absence
-// reads as absence" convention as `features/monitoring/WorkerCard`'s offline state), never a fourth
+// reads as absence" convention as `features/jobs/WorkerCard`'s offline state), never a fourth
 // colour. `ProviderHealthTableHeader` is the column-header twin sharing the exact same grid template —
 // small presentational primitives that are meaningless apart, co-located per the grouped-primitives
 // exception to one-component-per-file.

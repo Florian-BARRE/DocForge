@@ -16,7 +16,7 @@ import { EMPTY_JOB_FILTERS, JobFilterBar, type JobFilters } from "./JobFilterBar
 import { JobFleetList } from "./JobFleetList";
 import { JobStatusTabs, TAB_STATUS, type JobFleetTab } from "./JobStatusTabs";
 import { JobsPager } from "./JobsPager";
-import { QueueDepthTile } from "../monitoring/QueueDepthTile";
+import { QueueDepthTile } from "./QueueDepthTile";
 import { useJobsFleetPage } from "./state/useJobsFleetPage";
 import { useRunningWorkerMap } from "./state/useRunningWorkerMap";
 

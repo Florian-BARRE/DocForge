@@ -5,7 +5,7 @@
 // Fleet, Settings) use this; collection-scoped pages keep their own header (CollectionShell) for now.
 
 import type { ReactNode } from "react";
-import { Breadcrumb, type BreadcrumbItem } from "../components/Breadcrumb";
+import { Breadcrumb, type BreadcrumbItem } from "./Breadcrumb";
 import { PageHeader } from "../components/PageHeader";
 import type { Navigate } from "./view";
 

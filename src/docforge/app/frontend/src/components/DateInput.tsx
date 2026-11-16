@@ -5,7 +5,7 @@
 // itself renders dark on ink instead of a foreign white box). Value/onChange stay plain ISO
 // ("yyyy-mm-dd") strings, identical to the native element it wraps.
 
-import { useTheme } from "../shell/useTheme";
+import { useTheme } from "../hooks/useTheme";
 import { theme } from "../theme";
 import { inputStyle } from "./inputStyle";
 

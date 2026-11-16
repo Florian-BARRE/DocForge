@@ -7,7 +7,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { FieldSpec } from "../../../api/collections";
 import { getDocument, type DocumentDetail } from "../../../api/explorer";
-import type { BreadcrumbItem } from "../../../components/Breadcrumb";
+import type { BreadcrumbItem } from "../../../shell/Breadcrumb";
 import { useCollectionBreadcrumbExtra } from "../../../shell/collectionBreadcrumbExtra";
 import { documentDisplayName } from "../format";
 import { mergeSavedMetadata, type DraftValues } from "../metadata/edit/metadataDraft";
