@@ -4,13 +4,17 @@
 # the stack is not reachable. Every test in tests/live/ is marked ``live`` (see pytest.ini).
 
 # ====== Standard Library Imports ======
+import os
 import socket
 
 # ====== Third-Party Library Imports ======
 import httpx
 import pytest
 
-API_BASE_URL = "http://127.0.0.1:8000"
+# DOCFORGE_LIVE_API_URL points the suite at another stack's API (e.g. a worktree dev stack, whose
+# stores are not published on the host): only the API is probed then, it is the stores' gateway.
+API_BASE_URL = os.environ.get("DOCFORGE_LIVE_API_URL", "http://127.0.0.1:8000")
+_CUSTOM_API_URL = "DOCFORGE_LIVE_API_URL" in os.environ
 STORE_PORTS = {"postgres": 10041, "redis": 10042, "qdrant": 10043, "s3": 10044}
 
 
@@ -38,7 +42,11 @@ def pytest_collection_modifyitems(config, items) -> None:
 
 @pytest.fixture(scope="session", autouse=True)
 def _skip_if_stack_down() -> None:
-    stores_down = [name for name, port in STORE_PORTS.items() if not _tcp_open("127.0.0.1", port)]
+    stores_down = (
+        []
+        if _CUSTOM_API_URL
+        else [name for name, port in STORE_PORTS.items() if not _tcp_open("127.0.0.1", port)]
+    )
     api_up = _api_reachable()
     if stores_down or not api_up:
         pytest.skip(

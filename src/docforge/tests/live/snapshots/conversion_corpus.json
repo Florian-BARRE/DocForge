@@ -1,0 +1,1512 @@
+{
+  "documents": {
+    "docx_memo": {
+      "chunks": {
+        "boundary_hash": "76f5023ae74510c3",
+        "chunks": [
+          {
+            "blocks": [
+              0,
+              1,
+              2,
+              3
+            ],
+            "chars": 417,
+            "heading_path": [
+              "Conversion Smoke Memo"
+            ],
+            "index": 0,
+            "metadata": [],
+            "page_number": 1,
+            "role": "body",
+            "strategy": "structure_aware",
+            "text_sha": "738e3557c0349f3f",
+            "tokens": 95
+          }
+        ],
+        "count": 1,
+        "total_tokens": 95
+      },
+      "document": {
+        "chunk_count": 1,
+        "display_title": "Conversion Smoke Memo",
+        "enabled": true,
+        "failure_reason": null,
+        "file_size": 2664,
+        "format": "docx",
+        "language": "en",
+        "metadata": [],
+        "mime_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "page_count": 1,
+        "pdf_blob": "converted",
+        "pipeline_version": "2e46c20ca82814e1",
+        "searchable": true,
+        "source_hash": "62cf341cdb1539b9eb29aa4b5d566c096f32866cef930776d82d9422a9680110",
+        "source_kind": "digital_born",
+        "status": "done",
+        "title": "Conversion Smoke Memo",
+        "warning_reason": null
+      },
+      "ir": {
+        "blocks": 4,
+        "blocks_by_type": {
+          "heading": 1,
+          "paragraph": 2,
+          "table": 1
+        },
+        "enrichments": 0,
+        "figure_crop_hashes": [],
+        "figures": 0,
+        "geometry_hash": "e803aaf1cb8d08bb",
+        "keys": [
+          "blocks",
+          "enrichments",
+          "figures",
+          "tables"
+        ],
+        "structure_hash": "17ab645ac9530365",
+        "tables": 1,
+        "tables_hash": "6372199bb3b4b488",
+        "text_hash": "b29ccaeb99eb9f79"
+      },
+      "job": {
+        "attempt": 1,
+        "current_stage": "bundle",
+        "error": null,
+        "error_type": null,
+        "kind": "ingest",
+        "progress": 100,
+        "status": "done"
+      },
+      "markdown": {
+        "chars": 420,
+        "sha": "9b70beb2ed21faae"
+      },
+      "shapes": {
+        "chunks": [
+          {
+            "block_ids": [
+              "str"
+            ],
+            "chunk_index": "int",
+            "enabled": "bool",
+            "heading_path": [
+              "str"
+            ],
+            "id": "str",
+            "is_indexed": "bool",
+            "metadata": [],
+            "page": "int",
+            "page_number": "int",
+            "parent_id": "NoneType",
+            "role": "str",
+            "strategy": "str",
+            "text": "str",
+            "token_count": "int"
+          }
+        ],
+        "document": {
+          "chunk_count": "int",
+          "collection_id": "str",
+          "created_at": "str",
+          "display_title": "str",
+          "enabled": "bool",
+          "failure_reason": "NoneType",
+          "file_size": "int",
+          "filename": "str",
+          "format": "str",
+          "id": "str",
+          "language": "str",
+          "metadata": [],
+          "mime_type": "str",
+          "page_count": "int",
+          "pdf_blob_hash": "str",
+          "pipeline_version": "str",
+          "searchable": "bool",
+          "simhash": "NoneType",
+          "source_hash": "str",
+          "source_kind": "str",
+          "status": "str",
+          "title": "str",
+          "warning_reason": "NoneType"
+        },
+        "ir": {
+          "blocks": [
+            {
+              "bbox": [
+                "float"
+              ],
+              "block_type": "str",
+              "id": "str",
+              "is_boilerplate": "bool",
+              "language": "NoneType",
+              "level": "int",
+              "page": "int",
+              "page_number": "int",
+              "parent_id": "NoneType",
+              "reading_order": "int",
+              "text": "str"
+            }
+          ],
+          "enrichments": [],
+          "figures": [],
+          "tables": [
+            {
+              "block_id": "str",
+              "cells": [
+                [
+                  "str"
+                ]
+              ],
+              "has_header": "bool",
+              "linearized_md": "NoneType",
+              "n_cols": "int",
+              "n_rows": "int"
+            }
+          ]
+        },
+        "job": {
+          "attempt": "int",
+          "cancel_requested": "bool",
+          "collection_id": "str",
+          "collection_name": "str",
+          "cost_usd": "float",
+          "current_stage": "str",
+          "display_title": "str",
+          "document_filename": "str",
+          "document_id": "str",
+          "document_title": "str",
+          "duration_seconds": "float",
+          "error": "NoneType",
+          "error_type": "NoneType",
+          "failed_item_index": "NoneType",
+          "failed_node_id": "NoneType",
+          "failed_node_kind": "NoneType",
+          "finished_at": "str",
+          "items_done": "NoneType",
+          "items_total": "NoneType",
+          "job_id": "str",
+          "kind": "str",
+          "progress": "int",
+          "replay_from": "NoneType",
+          "stalled": "bool",
+          "started_at": "str",
+          "status": "str",
+          "total_completion_tokens": "int",
+          "total_prompt_tokens": "int",
+          "updated_at": "str"
+        },
+        "trace_event": [
+          {
+            "completion_tokens": "NoneType",
+            "cost_usd": "NoneType",
+            "depth": "int",
+            "detail": "str",
+            "event_id": "str",
+            "finished_at": "str",
+            "has_full_input": "bool",
+            "has_full_output": "bool",
+            "input_summary": {
+              "fields": [
+                "str"
+              ],
+              "hash": "str",
+              "item_count": {},
+              "sizes": {},
+              "type": "str"
+            },
+            "item_index": "NoneType",
+            "node_kind": "str",
+            "node_path": "str",
+            "output_summary": {
+              "fields": [
+                "str"
+              ],
+              "hash": "str",
+              "item_count": {},
+              "sizes": {},
+              "type": "str"
+            },
+            "parent_path": "NoneType",
+            "prompt_tokens": "NoneType",
+            "score": "NoneType",
+            "stage": "str",
+            "started_at": "str",
+            "status": "str"
+          }
+        ]
+      },
+      "trace": [
+        "admission:success",
+        "breadcrumb:success",
+        "bundle:success",
+        "content_address:success",
+        "doc_meta:success",
+        "docling:success",
+        "figure_render:success",
+        "format_probe:success",
+        "gotenberg:success",
+        "language:success",
+        "pdf_probe:success",
+        "structure_aware:success"
+      ]
+    },
+    "pdf_native_contract": {
+      "chunks": {
+        "boundary_hash": "9ba98d9c1a4e3eb5",
+        "chunks": [
+          {
+            "blocks": [
+              1,
+              0,
+              2,
+              3,
+              4,
+              5
+            ],
+            "chars": 2007,
+            "heading_path": [
+              "Référence CG-2026-FR-014 - exemplaire original signé en deux exemplaires"
+            ],
+            "index": 0,
+            "metadata": [],
+            "page_number": 1,
+            "role": "body",
+            "strategy": "structure_aware",
+            "text_sha": "682eee6d7298a367",
+            "tokens": 463
+          },
+          {
+            "blocks": [
+              6,
+              8
+            ],
+            "chars": 374,
+            "heading_path": [
+              "Article 1 - Objet et périmètre"
+            ],
+            "index": 1,
+            "metadata": [],
+            "page_number": 3,
+            "role": "body",
+            "strategy": "structure_aware",
+            "text_sha": "22487f238be9656b",
+            "tokens": 63
+          },
+          {
+            "blocks": [
+              9,
+              11
+            ],
+            "chars": 387,
+            "heading_path": [
+              "Article 2 - Définitions et interprétation"
+            ],
+            "index": 2,
+            "metadata": [],
+            "page_number": 3,
+            "role": "body",
+            "strategy": "structure_aware",
+            "text_sha": "4ac681af7077358d",
+            "tokens": 66
+          },
+          {
+            "blocks": [
+              12,
+              14
+            ],
+            "chars": 375,
+            "heading_path": [
+              "Article 3 - Obligations du Prestataire"
+            ],
+            "index": 3,
+            "metadata": [],
+            "page_number": 3,
+            "role": "body",
+            "strategy": "structure_aware",
+            "text_sha": "d1d7b92fd1f521a7",
+            "tokens": 66
+          },
+          {
+            "blocks": [
+              20,
+              21,
+              22
+            ],
+            "chars": 706,
+            "heading_path": [
+              "Article 4 - Obligations du Client"
+            ],
+            "index": 4,
+            "metadata": [],
+            "page_number": 3,
+            "role": "body",
+            "strategy": "structure_aware",
+            "text_sha": "ed2a502fdc61170f",
+            "tokens": 156
+          },
+          {
+            "blocks": [
+              23,
+              25
+            ],
+            "chars": 378,
+            "heading_path": [
+              "Article 5 - Conditions financières et facturation"
+            ],
+            "index": 5,
+            "metadata": [],
+            "page_number": 5,
+            "role": "body",
+            "strategy": "structure_aware",
+            "text_sha": "900b66c59d0130d2",
+            "tokens": 68
+          },
+          {
+            "blocks": [
+              26,
+              28
+            ],
+            "chars": 392,
+            "heading_path": [
+              "Article 6 - Niveaux de service et pénalités"
+            ],
+            "index": 6,
+            "metadata": [],
+            "page_number": 5,
+            "role": "body",
+            "strategy": "structure_aware",
+            "text_sha": "847d2dab187fab94",
+            "tokens": 65
+          },
+          {
+            "blocks": [
+              34,
+              36
+            ],
+            "chars": 350,
+            "heading_path": [
+              "Article 7 - Propriété intellectuelle"
+            ],
+            "index": 7,
+            "metadata": [],
+            "page_number": 5,
+            "role": "body",
+            "strategy": "structure_aware",
+            "text_sha": "2761f6534bbb211e",
+            "tokens": 55
+          },
+          {
+            "blocks": [
+              37,
+              38,
+              39
+            ],
+            "chars": 652,
+            "heading_path": [
+              "Article 8 - Confidentialité et données personnelles"
+            ],
+            "index": 8,
+            "metadata": [],
+            "page_number": 6,
+            "role": "body",
+            "strategy": "structure_aware",
+            "text_sha": "c177c12832abf7f5",
+            "tokens": 127
+          },
+          {
+            "blocks": [
+              40,
+              42
+            ],
+            "chars": 371,
+            "heading_path": [
+              "Article 9 - Responsabilité et assurances"
+            ],
+            "index": 9,
+            "metadata": [],
+            "page_number": 7,
+            "role": "body",
+            "strategy": "structure_aware",
+            "text_sha": "79f2533742304e24",
+            "tokens": 67
+          },
+          {
+            "blocks": [
+              48,
+              50
+            ],
+            "chars": 392,
+            "heading_path": [
+              "Article 10 - Durée, résiliation et réversibilité"
+            ],
+            "index": 10,
+            "metadata": [],
+            "page_number": 7,
+            "role": "body",
+            "strategy": "structure_aware",
+            "text_sha": "8cb875958ffcd425",
+            "tokens": 63
+          },
+          {
+            "blocks": [
+              51,
+              53
+            ],
+            "chars": 372,
+            "heading_path": [
+              "Article 11 - Force majeure"
+            ],
+            "index": 11,
+            "metadata": [],
+            "page_number": 7,
+            "role": "body",
+            "strategy": "structure_aware",
+            "text_sha": "ce475d32a940bd21",
+            "tokens": 66
+          },
+          {
+            "blocks": [
+              54,
+              55,
+              56,
+              63,
+              64,
+              65,
+              66,
+              67
+            ],
+            "chars": 812,
+            "heading_path": [
+              "Article 12 - Droit applicable et règlement des différends"
+            ],
+            "index": 12,
+            "metadata": [],
+            "page_number": 8,
+            "role": "body",
+            "strategy": "structure_aware",
+            "text_sha": "1a8ee9dcfc3aee18",
+            "tokens": 185
+          },
+          {
+            "blocks": [
+              68,
+              69
+            ],
+            "chars": 772,
+            "heading_path": [
+              "Tableau 1 - Engagements de niveau de service et pénalités associées"
+            ],
+            "index": 13,
+            "metadata": [],
+            "page_number": 11,
+            "role": "body",
+            "strategy": "structure_aware",
+            "text_sha": "4bc9cc6d815a5cc9",
+            "tokens": 244
+          },
+          {
+            "blocks": [
+              70,
+              71,
+              72,
+              73
+            ],
+            "chars": 362,
+            "heading_path": [
+              "Obligations du Prestataire"
+            ],
+            "index": 14,
+            "metadata": [],
+            "page_number": 12,
+            "role": "body",
+            "strategy": "structure_aware",
+            "text_sha": "762f02dc8a6210a5",
+            "tokens": 74
+          },
+          {
+            "blocks": [
+              7,
+              10,
+              13,
+              15,
+              16,
+              17,
+              18,
+              19
+            ],
+            "chars": 1258,
+            "heading_path": [],
+            "index": 15,
+            "metadata": [],
+            "page_number": 3,
+            "role": "boilerplate",
+            "strategy": "structure_aware",
+            "text_sha": "1c375b4c1defdb16",
+            "tokens": 314
+          },
+          {
+            "blocks": [
+              24,
+              27,
+              29,
+              30,
+              31,
+              32,
+              33,
+              35
+            ],
+            "chars": 1277,
+            "heading_path": [],
+            "index": 16,
+            "metadata": [],
+            "page_number": 5,
+            "role": "boilerplate",
+            "strategy": "structure_aware",
+            "text_sha": "0954e491dda808f9",
+            "tokens": 315
+          },
+          {
+            "blocks": [
+              41,
+              43,
+              44,
+              45,
+              46,
+              47,
+              49,
+              52
+            ],
+            "chars": 1263,
+            "heading_path": [],
+            "index": 17,
+            "metadata": [],
+            "page_number": 7,
+            "role": "boilerplate",
+            "strategy": "structure_aware",
+            "text_sha": "a3f8cdffb40e4d6d",
+            "tokens": 312
+          },
+          {
+            "blocks": [
+              57,
+              58,
+              59,
+              60,
+              61
+            ],
+            "chars": 419,
+            "heading_path": [
+              "Article 12 - Droit applicable et règlement des différends"
+            ],
+            "index": 18,
+            "metadata": [],
+            "page_number": 8,
+            "role": "boilerplate",
+            "strategy": "structure_aware",
+            "text_sha": "0fe3592c9a7dcd2f",
+            "tokens": 73
+          },
+          {
+            "blocks": [
+              74,
+              75,
+              76,
+              77,
+              78
+            ],
+            "chars": 388,
+            "heading_path": [
+              "Obligations du Prestataire"
+            ],
+            "index": 19,
+            "metadata": [],
+            "page_number": 12,
+            "role": "boilerplate",
+            "strategy": "structure_aware",
+            "text_sha": "692d597ad24d7333",
+            "tokens": 73
+          }
+        ],
+        "count": 20,
+        "total_tokens": 2915
+      },
+      "document": {
+        "chunk_count": 20,
+        "display_title": "Contrat-cadre de prestations de services managés",
+        "enabled": true,
+        "failure_reason": null,
+        "file_size": 79955,
+        "format": "pdf",
+        "language": "fr",
+        "metadata": [],
+        "mime_type": "application/pdf",
+        "page_count": 12,
+        "pdf_blob": "source",
+        "pipeline_version": "2e46c20ca82814e1",
+        "searchable": true,
+        "source_hash": "d9bf34a76bfd64379aaf5bd69eb4172273c2a0f4e2057b73ad1e88002e7a4464",
+        "source_kind": "digital_born",
+        "status": "done",
+        "title": "Contrat-cadre de prestations de services managés",
+        "warning_reason": null
+      },
+      "ir": {
+        "blocks": 79,
+        "blocks_by_type": {
+          "caption": 3,
+          "figure": 3,
+          "heading": 16,
+          "list_item": 28,
+          "paragraph": 28,
+          "table": 1
+        },
+        "enrichments": 0,
+        "figure_crop_hashes": [
+          "5ff469f0d7caa756b19657a308a0ca02757e51d3da64fd56f523639d455e7e31",
+          "476db2987f3f1b8440a22861c4637e3d5a577dd86bdb46d3984b78947bf1cf54",
+          "71a1aedd99b78eb051e53fd1650de7e2a86b1d5655cc8136083bf4ad971e0465"
+        ],
+        "figures": 3,
+        "geometry_hash": "a185a471f7390a0e",
+        "keys": [
+          "blocks",
+          "enrichments",
+          "figures",
+          "tables"
+        ],
+        "structure_hash": "b04e1f37bdf58f6c",
+        "tables": 1,
+        "tables_hash": "440a319a2981279e",
+        "text_hash": "61143ac2906e37e9"
+      },
+      "job": {
+        "attempt": 1,
+        "current_stage": "bundle",
+        "error": null,
+        "error_type": null,
+        "kind": "ingest",
+        "progress": 100,
+        "status": "done"
+      },
+      "markdown": {
+        "chars": 11554,
+        "sha": "d8a0ddee462868ed"
+      },
+      "shapes": {
+        "chunks": [
+          {
+            "block_ids": [
+              "str"
+            ],
+            "chunk_index": "int",
+            "enabled": "bool",
+            "heading_path": [
+              "str"
+            ],
+            "id": "str",
+            "is_indexed": "bool",
+            "metadata": [],
+            "page": "int",
+            "page_number": "int",
+            "parent_id": "NoneType",
+            "role": "str",
+            "strategy": "str",
+            "text": "str",
+            "token_count": "int"
+          }
+        ],
+        "document": {
+          "chunk_count": "int",
+          "collection_id": "str",
+          "created_at": "str",
+          "display_title": "str",
+          "enabled": "bool",
+          "failure_reason": "NoneType",
+          "file_size": "int",
+          "filename": "str",
+          "format": "str",
+          "id": "str",
+          "language": "str",
+          "metadata": [],
+          "mime_type": "str",
+          "page_count": "int",
+          "pdf_blob_hash": "str",
+          "pipeline_version": "str",
+          "searchable": "bool",
+          "simhash": "NoneType",
+          "source_hash": "str",
+          "source_kind": "str",
+          "status": "str",
+          "title": "str",
+          "warning_reason": "NoneType"
+        },
+        "ir": {
+          "blocks": [
+            {
+              "bbox": [
+                "float"
+              ],
+              "block_type": "str",
+              "id": "str",
+              "is_boilerplate": "bool",
+              "language": "NoneType",
+              "level": "int",
+              "page": "int",
+              "page_number": "int",
+              "parent_id": "NoneType",
+              "reading_order": "int",
+              "text": "str"
+            }
+          ],
+          "enrichments": [],
+          "figures": [
+            {
+              "block_id": "str",
+              "caption_block_id": "NoneType",
+              "crop_blob_hash": "str"
+            }
+          ],
+          "tables": [
+            {
+              "block_id": "str",
+              "cells": [
+                [
+                  "str"
+                ]
+              ],
+              "has_header": "bool",
+              "linearized_md": "NoneType",
+              "n_cols": "int",
+              "n_rows": "int"
+            }
+          ]
+        },
+        "job": {
+          "attempt": "int",
+          "cancel_requested": "bool",
+          "collection_id": "str",
+          "collection_name": "str",
+          "cost_usd": "float",
+          "current_stage": "str",
+          "display_title": "str",
+          "document_filename": "str",
+          "document_id": "str",
+          "document_title": "str",
+          "duration_seconds": "float",
+          "error": "NoneType",
+          "error_type": "NoneType",
+          "failed_item_index": "NoneType",
+          "failed_node_id": "NoneType",
+          "failed_node_kind": "NoneType",
+          "finished_at": "str",
+          "items_done": "NoneType",
+          "items_total": "NoneType",
+          "job_id": "str",
+          "kind": "str",
+          "progress": "int",
+          "replay_from": "NoneType",
+          "stalled": "bool",
+          "started_at": "str",
+          "status": "str",
+          "total_completion_tokens": "int",
+          "total_prompt_tokens": "int",
+          "updated_at": "str"
+        },
+        "trace_event": [
+          {
+            "completion_tokens": "NoneType",
+            "cost_usd": "NoneType",
+            "depth": "int",
+            "detail": "str",
+            "event_id": "str",
+            "finished_at": "str",
+            "has_full_input": "bool",
+            "has_full_output": "bool",
+            "input_summary": {
+              "fields": [
+                "str"
+              ],
+              "hash": "str",
+              "item_count": {},
+              "sizes": {},
+              "type": "str"
+            },
+            "item_index": "NoneType",
+            "node_kind": "str",
+            "node_path": "str",
+            "output_summary": {
+              "fields": [
+                "str"
+              ],
+              "hash": "str",
+              "item_count": {},
+              "sizes": {},
+              "type": "str"
+            },
+            "parent_path": "NoneType",
+            "prompt_tokens": "NoneType",
+            "score": "NoneType",
+            "stage": "str",
+            "started_at": "str",
+            "status": "str"
+          }
+        ]
+      },
+      "trace": [
+        "admission:success",
+        "breadcrumb:success",
+        "bundle:success",
+        "content_address:success",
+        "doc_meta:success",
+        "docling:success",
+        "figure_render:success",
+        "format_probe:success",
+        "gotenberg:success",
+        "language:success",
+        "pdf_probe:success",
+        "structure_aware:success"
+      ]
+    },
+    "pdf_scanned_image_only": {
+      "chunks": {
+        "boundary_hash": "4f53cda18c2baa0c",
+        "chunks": [],
+        "count": 0,
+        "total_tokens": 0
+      },
+      "document": {
+        "chunk_count": 0,
+        "display_title": "",
+        "enabled": true,
+        "failure_reason": null,
+        "file_size": 1663,
+        "format": "pdf",
+        "language": "",
+        "metadata": [],
+        "mime_type": "application/pdf",
+        "page_count": 2,
+        "pdf_blob": "source",
+        "pipeline_version": "2e46c20ca82814e1",
+        "searchable": false,
+        "source_hash": "e82a650ebc979fc2c8d27413e2824f744bf5a4a97d3243c8363514d161e0847d",
+        "source_kind": "digital_born",
+        "status": "done",
+        "title": "",
+        "warning_reason": "Ingestion completed but produced 0 chunks — nothing retrievable was created (the document may be empty or image-only with no extractable text)."
+      },
+      "ir": {
+        "blocks": 0,
+        "blocks_by_type": {},
+        "enrichments": 0,
+        "figure_crop_hashes": [],
+        "figures": 0,
+        "geometry_hash": "4f53cda18c2baa0c",
+        "keys": [
+          "blocks",
+          "enrichments",
+          "figures",
+          "tables"
+        ],
+        "structure_hash": "4f53cda18c2baa0c",
+        "tables": 0,
+        "tables_hash": "4f53cda18c2baa0c",
+        "text_hash": "4f53cda18c2baa0c"
+      },
+      "job": {
+        "attempt": 1,
+        "current_stage": "bundle",
+        "error": null,
+        "error_type": null,
+        "kind": "ingest",
+        "progress": 100,
+        "status": "done"
+      },
+      "markdown": {
+        "chars": 0,
+        "sha": "e3b0c44298fc1c14"
+      },
+      "shapes": {
+        "chunks": [],
+        "document": {
+          "chunk_count": "int",
+          "collection_id": "str",
+          "created_at": "str",
+          "display_title": "str",
+          "enabled": "bool",
+          "failure_reason": "NoneType",
+          "file_size": "int",
+          "filename": "str",
+          "format": "str",
+          "id": "str",
+          "language": "str",
+          "metadata": [],
+          "mime_type": "str",
+          "page_count": "int",
+          "pdf_blob_hash": "str",
+          "pipeline_version": "str",
+          "searchable": "bool",
+          "simhash": "NoneType",
+          "source_hash": "str",
+          "source_kind": "str",
+          "status": "str",
+          "title": "str",
+          "warning_reason": "str"
+        },
+        "ir": {
+          "blocks": [],
+          "enrichments": [],
+          "figures": [],
+          "tables": []
+        },
+        "job": {
+          "attempt": "int",
+          "cancel_requested": "bool",
+          "collection_id": "str",
+          "collection_name": "str",
+          "cost_usd": "float",
+          "current_stage": "str",
+          "display_title": "NoneType",
+          "document_filename": "str",
+          "document_id": "str",
+          "document_title": "NoneType",
+          "duration_seconds": "float",
+          "error": "NoneType",
+          "error_type": "NoneType",
+          "failed_item_index": "NoneType",
+          "failed_node_id": "NoneType",
+          "failed_node_kind": "NoneType",
+          "finished_at": "str",
+          "items_done": "NoneType",
+          "items_total": "NoneType",
+          "job_id": "str",
+          "kind": "str",
+          "progress": "int",
+          "replay_from": "NoneType",
+          "stalled": "bool",
+          "started_at": "str",
+          "status": "str",
+          "total_completion_tokens": "int",
+          "total_prompt_tokens": "int",
+          "updated_at": "str"
+        },
+        "trace_event": [
+          {
+            "completion_tokens": "NoneType",
+            "cost_usd": "NoneType",
+            "depth": "int",
+            "detail": "str",
+            "event_id": "str",
+            "finished_at": "str",
+            "has_full_input": "bool",
+            "has_full_output": "bool",
+            "input_summary": {
+              "fields": [
+                "str"
+              ],
+              "hash": "str",
+              "item_count": {},
+              "sizes": {},
+              "type": "str"
+            },
+            "item_index": "NoneType",
+            "node_kind": "str",
+            "node_path": "str",
+            "output_summary": {
+              "fields": [
+                "str"
+              ],
+              "hash": "str",
+              "item_count": {},
+              "sizes": {},
+              "type": "str"
+            },
+            "parent_path": "NoneType",
+            "prompt_tokens": "NoneType",
+            "score": "NoneType",
+            "stage": "str",
+            "started_at": "str",
+            "status": "str"
+          }
+        ]
+      },
+      "trace": [
+        "admission:success",
+        "breadcrumb:success",
+        "bundle:success",
+        "content_address:success",
+        "doc_meta:success",
+        "docling:success",
+        "figure_render:success",
+        "format_probe:success",
+        "gotenberg:success",
+        "language:success",
+        "pdf_probe:success",
+        "structure_aware:success"
+      ]
+    },
+    "pdf_text_layer_metadata": {
+      "chunks": {
+        "boundary_hash": "bfbd321142db255f",
+        "chunks": [
+          {
+            "blocks": [
+              0
+            ],
+            "chars": 92,
+            "heading_path": [],
+            "index": 0,
+            "metadata": [],
+            "page_number": 1,
+            "role": "body",
+            "strategy": "structure_aware",
+            "text_sha": "0840839d24422b41",
+            "tokens": 21
+          }
+        ],
+        "count": 1,
+        "total_tokens": 21
+      },
+      "document": {
+        "chunk_count": 1,
+        "display_title": "",
+        "enabled": true,
+        "failure_reason": null,
+        "file_size": 1351,
+        "format": "pdf",
+        "language": "",
+        "metadata": [],
+        "mime_type": "application/pdf",
+        "page_count": 3,
+        "pdf_blob": "source",
+        "pipeline_version": "2e46c20ca82814e1",
+        "searchable": true,
+        "source_hash": "dcb73c4294f963e07c78f575556d30187153181cc9b5a761bbed5aa10cfbb9b7",
+        "source_kind": "digital_born",
+        "status": "done",
+        "title": "",
+        "warning_reason": null
+      },
+      "ir": {
+        "blocks": 1,
+        "blocks_by_type": {
+          "paragraph": 1
+        },
+        "enrichments": 0,
+        "figure_crop_hashes": [],
+        "figures": 0,
+        "geometry_hash": "7c987515d6c88f5f",
+        "keys": [
+          "blocks",
+          "enrichments",
+          "figures",
+          "tables"
+        ],
+        "structure_hash": "91337f161fcfa095",
+        "tables": 0,
+        "tables_hash": "4f53cda18c2baa0c",
+        "text_hash": "2a9f3986706b7329"
+      },
+      "job": {
+        "attempt": 1,
+        "current_stage": "bundle",
+        "error": null,
+        "error_type": null,
+        "kind": "ingest",
+        "progress": 100,
+        "status": "done"
+      },
+      "markdown": {
+        "chars": 92,
+        "sha": "0840839d24422b41"
+      },
+      "shapes": {
+        "chunks": [
+          {
+            "block_ids": [
+              "str"
+            ],
+            "chunk_index": "int",
+            "enabled": "bool",
+            "heading_path": [],
+            "id": "str",
+            "is_indexed": "bool",
+            "metadata": [],
+            "page": "int",
+            "page_number": "int",
+            "parent_id": "NoneType",
+            "role": "str",
+            "strategy": "str",
+            "text": "str",
+            "token_count": "int"
+          }
+        ],
+        "document": {
+          "chunk_count": "int",
+          "collection_id": "str",
+          "created_at": "str",
+          "display_title": "str",
+          "enabled": "bool",
+          "failure_reason": "NoneType",
+          "file_size": "int",
+          "filename": "str",
+          "format": "str",
+          "id": "str",
+          "language": "str",
+          "metadata": [],
+          "mime_type": "str",
+          "page_count": "int",
+          "pdf_blob_hash": "str",
+          "pipeline_version": "str",
+          "searchable": "bool",
+          "simhash": "NoneType",
+          "source_hash": "str",
+          "source_kind": "str",
+          "status": "str",
+          "title": "str",
+          "warning_reason": "NoneType"
+        },
+        "ir": {
+          "blocks": [
+            {
+              "bbox": [
+                "float"
+              ],
+              "block_type": "str",
+              "id": "str",
+              "is_boilerplate": "bool",
+              "language": "NoneType",
+              "level": "NoneType",
+              "page": "int",
+              "page_number": "int",
+              "parent_id": "NoneType",
+              "reading_order": "int",
+              "text": "str"
+            }
+          ],
+          "enrichments": [],
+          "figures": [],
+          "tables": []
+        },
+        "job": {
+          "attempt": "int",
+          "cancel_requested": "bool",
+          "collection_id": "str",
+          "collection_name": "str",
+          "cost_usd": "float",
+          "current_stage": "str",
+          "display_title": "NoneType",
+          "document_filename": "str",
+          "document_id": "str",
+          "document_title": "NoneType",
+          "duration_seconds": "float",
+          "error": "NoneType",
+          "error_type": "NoneType",
+          "failed_item_index": "NoneType",
+          "failed_node_id": "NoneType",
+          "failed_node_kind": "NoneType",
+          "finished_at": "str",
+          "items_done": "NoneType",
+          "items_total": "NoneType",
+          "job_id": "str",
+          "kind": "str",
+          "progress": "int",
+          "replay_from": "NoneType",
+          "stalled": "bool",
+          "started_at": "str",
+          "status": "str",
+          "total_completion_tokens": "int",
+          "total_prompt_tokens": "int",
+          "updated_at": "str"
+        },
+        "trace_event": [
+          {
+            "completion_tokens": "NoneType",
+            "cost_usd": "NoneType",
+            "depth": "int",
+            "detail": "str",
+            "event_id": "str",
+            "finished_at": "str",
+            "has_full_input": "bool",
+            "has_full_output": "bool",
+            "input_summary": {
+              "fields": [
+                "str"
+              ],
+              "hash": "str",
+              "item_count": {},
+              "sizes": {},
+              "type": "str"
+            },
+            "item_index": "NoneType",
+            "node_kind": "str",
+            "node_path": "str",
+            "output_summary": {
+              "fields": [
+                "str"
+              ],
+              "hash": "str",
+              "item_count": {},
+              "sizes": {},
+              "type": "str"
+            },
+            "parent_path": "NoneType",
+            "prompt_tokens": "NoneType",
+            "score": "NoneType",
+            "stage": "str",
+            "started_at": "str",
+            "status": "str"
+          }
+        ]
+      },
+      "trace": [
+        "admission:success",
+        "breadcrumb:success",
+        "bundle:success",
+        "content_address:success",
+        "doc_meta:success",
+        "docling:success",
+        "figure_render:success",
+        "format_probe:success",
+        "gotenberg:success",
+        "language:success",
+        "pdf_probe:success",
+        "structure_aware:success"
+      ]
+    },
+    "png_text_image": {
+      "chunks": {
+        "boundary_hash": "2411f0bcbfd5a301",
+        "chunks": [
+          {
+            "blocks": [
+              0
+            ],
+            "chars": 58,
+            "heading_path": [
+              "DocForge image smoke Invoice 2026-001 Total due: 42.00 EUR"
+            ],
+            "index": 0,
+            "metadata": [],
+            "page_number": 1,
+            "role": "body",
+            "strategy": "structure_aware",
+            "text_sha": "2d0f4520ac1454a2",
+            "tokens": 18
+          }
+        ],
+        "count": 1,
+        "total_tokens": 18
+      },
+      "document": {
+        "chunk_count": 1,
+        "display_title": "DocForge image smoke Invoice 2026-001 Total due: 42.00 EUR",
+        "enabled": true,
+        "failure_reason": null,
+        "file_size": 10868,
+        "format": "png",
+        "language": "",
+        "metadata": [],
+        "mime_type": "image/png",
+        "page_count": 1,
+        "pdf_blob": "converted",
+        "pipeline_version": "2e46c20ca82814e1",
+        "searchable": true,
+        "source_hash": "2789f1e7479e73b7060b0d46ffff3321fb68ad4b0d2c0baf30512bc6138f812e",
+        "source_kind": "digital_born",
+        "status": "done",
+        "title": "DocForge image smoke Invoice 2026-001 Total due: 42.00 EUR",
+        "warning_reason": null
+      },
+      "ir": {
+        "blocks": 1,
+        "blocks_by_type": {
+          "heading": 1
+        },
+        "enrichments": 0,
+        "figure_crop_hashes": [],
+        "figures": 0,
+        "geometry_hash": "96f15ea1812edba9",
+        "keys": [
+          "blocks",
+          "enrichments",
+          "figures",
+          "tables"
+        ],
+        "structure_hash": "35615bd177ab6524",
+        "tables": 0,
+        "tables_hash": "4f53cda18c2baa0c",
+        "text_hash": "38085fac6e68d821"
+      },
+      "job": {
+        "attempt": 1,
+        "current_stage": "bundle",
+        "error": null,
+        "error_type": null,
+        "kind": "ingest",
+        "progress": 100,
+        "status": "done"
+      },
+      "markdown": {
+        "chars": 61,
+        "sha": "56347434bf7b0ac9"
+      },
+      "shapes": {
+        "chunks": [
+          {
+            "block_ids": [
+              "str"
+            ],
+            "chunk_index": "int",
+            "enabled": "bool",
+            "heading_path": [
+              "str"
+            ],
+            "id": "str",
+            "is_indexed": "bool",
+            "metadata": [],
+            "page": "int",
+            "page_number": "int",
+            "parent_id": "NoneType",
+            "role": "str",
+            "strategy": "str",
+            "text": "str",
+            "token_count": "int"
+          }
+        ],
+        "document": {
+          "chunk_count": "int",
+          "collection_id": "str",
+          "created_at": "str",
+          "display_title": "str",
+          "enabled": "bool",
+          "failure_reason": "NoneType",
+          "file_size": "int",
+          "filename": "str",
+          "format": "str",
+          "id": "str",
+          "language": "str",
+          "metadata": [],
+          "mime_type": "str",
+          "page_count": "int",
+          "pdf_blob_hash": "str",
+          "pipeline_version": "str",
+          "searchable": "bool",
+          "simhash": "NoneType",
+          "source_hash": "str",
+          "source_kind": "str",
+          "status": "str",
+          "title": "str",
+          "warning_reason": "NoneType"
+        },
+        "ir": {
+          "blocks": [
+            {
+              "bbox": [
+                "float"
+              ],
+              "block_type": "str",
+              "id": "str",
+              "is_boilerplate": "bool",
+              "language": "NoneType",
+              "level": "int",
+              "page": "int",
+              "page_number": "int",
+              "parent_id": "NoneType",
+              "reading_order": "int",
+              "text": "str"
+            }
+          ],
+          "enrichments": [],
+          "figures": [],
+          "tables": []
+        },
+        "job": {
+          "attempt": "int",
+          "cancel_requested": "bool",
+          "collection_id": "str",
+          "collection_name": "str",
+          "cost_usd": "float",
+          "current_stage": "str",
+          "display_title": "str",
+          "document_filename": "str",
+          "document_id": "str",
+          "document_title": "str",
+          "duration_seconds": "float",
+          "error": "NoneType",
+          "error_type": "NoneType",
+          "failed_item_index": "NoneType",
+          "failed_node_id": "NoneType",
+          "failed_node_kind": "NoneType",
+          "finished_at": "str",
+          "items_done": "NoneType",
+          "items_total": "NoneType",
+          "job_id": "str",
+          "kind": "str",
+          "progress": "int",
+          "replay_from": "NoneType",
+          "stalled": "bool",
+          "started_at": "str",
+          "status": "str",
+          "total_completion_tokens": "int",
+          "total_prompt_tokens": "int",
+          "updated_at": "str"
+        },
+        "trace_event": [
+          {
+            "completion_tokens": "NoneType",
+            "cost_usd": "NoneType",
+            "depth": "int",
+            "detail": "str",
+            "event_id": "str",
+            "finished_at": "str",
+            "has_full_input": "bool",
+            "has_full_output": "bool",
+            "input_summary": {
+              "fields": [
+                "str"
+              ],
+              "hash": "str",
+              "item_count": {},
+              "sizes": {},
+              "type": "str"
+            },
+            "item_index": "NoneType",
+            "node_kind": "str",
+            "node_path": "str",
+            "output_summary": {
+              "fields": [
+                "str"
+              ],
+              "hash": "str",
+              "item_count": {},
+              "sizes": {},
+              "type": "str"
+            },
+            "parent_path": "NoneType",
+            "prompt_tokens": "NoneType",
+            "score": "NoneType",
+            "stage": "str",
+            "started_at": "str",
+            "status": "str"
+          }
+        ]
+      },
+      "trace": [
+        "admission:success",
+        "breadcrumb:success",
+        "bundle:success",
+        "content_address:success",
+        "doc_meta:success",
+        "docling:success",
+        "figure_render:success",
+        "format_probe:success",
+        "gotenberg:success",
+        "language:success",
+        "pdf_probe:success",
+        "structure_aware:success"
+      ]
+    }
+  },
+  "format_version": 1
+}
