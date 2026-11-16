@@ -18,7 +18,7 @@ this service.
 
 | Route | Method | Body | Returns |
 |---|---|---|---|
-| `/health` | GET | — | `{status, ready, detail}` — 503 when no CUDA GPU is visible and `DOTS_OCR_REQUIRE_GPU`. |
+| `/health` | GET | — | `{status, ready, detail, device}` — 503 (`"status":"unhealthy"`) when no CUDA GPU is visible and `DOTS_OCR_REQUIRE_GPU`. |
 | `/parse` | POST | raw PDF bytes (`Content-Type: application/pdf`) | `{pages:[{page_index, image_width, image_height, blocks:[{label, bbox, reading_order, text?|html?|latex?}]}], n_pages, engine}` |
 
 Blocks are reading-ordered; `bbox` is in the **rendered page image's PIXEL space** (top-left origin),
@@ -26,8 +26,31 @@ and `image_width`/`image_height` are that rendered image's dims — the DocForge
 the other to recover `[0, 1]`. Tables arrive as HTML in `html`, formulas as LaTeX in `latex`; a
 `Picture` block carries no text (its crop is filled by the DocForge `figure_render` stage).
 
-## How it is built (the two halves)
+The service is built on the shared `src/model_server_core` library: the core owns the app skeleton
+(config base, lifespan with fail-fast config validation, gzip, `GET /health`, typed error handler,
+request guards, device probe, logging bootstrap); this folder only holds what is dots.ocr's own.
 
+## Errors
+
+An unexpected exception answers **HTTP 500** with a generic typed body and a correlation id; the
+exception itself (type, message, traceback) is only in the server log, under the same id:
+
+```json
+{"detail": {"error": "Internal server error. The details were logged.", "correlation_id": "<uuid hex>"}}
+```
+
+The id is also sent as the `X-Correlation-ID` response header. The deliberate answers are unchanged:
+`413` (body over `DOTS_OCR_MAX_BODY_BYTES`), `422` (empty or undecodable PDF) and `503` + `Retry-After`
+(predict lock saturated).
+
+## How it is built
+
+- **`entrypoint.py`** — zero logic: `ServerEntrypoint(DotsOcrServer(DotsOcrServerConfig))`.
+- **`config_loader.py`** — `DotsOcrServerConfig(ServerConfig)`: the `DOTS_OCR_*` env vars.
+- **`backend/dots_ocr_server.py`** — `DotsOcrServer(ModelServer)`: title, model service, the `/parse`
+  route, and the GPU gate behind `/health`.
+- **`backend/routers/parse/`** — `ParseRoutes`: `POST /parse`, bound to the service and the core
+  request guards.
 - **`libs/dots_ocr/normalizer.py`** — PURE, fully unit-tested (`tests/test_normalizer.py`): converts
   dots.ocr's per-page JSON output (a list of `{category, bbox pixels, text, reading_order}` elements,
   optionally fenced in ```json) into the shared per-page contract — category→label, Table→`html`,
@@ -39,8 +62,9 @@ the other to recover `[0, 1]`. Tables arrive as HTML in `html`, formulas as LaTe
   via HuggingFace `transformers` (`AutoModelForCausalLM` + `AutoProcessor` + `model.generate`, fp16 +
   SDPA), and returns each page's raw JSON string. Validate on first GPU deploy (see the module
   docstring's checklist).
-- **`libs/dots_ocr/service.py`** — validates the PDF (422), serializes every parse behind an
+- **`libs/dots_ocr/service.py`** — `DotsOcrService(ModelService)`: serializes every parse behind an
   `asyncio.Lock` (503 on lock-wait timeout), runs the engine off the event loop, normalizes the result.
+- **`libs/dots_ocr/torch_cuda_detector.py`** — the torch GPU check injected into the core `DeviceProbe`.
 
 ## Design note — why in-process transformers (self-contained)
 
@@ -72,7 +96,9 @@ uv run ruff check . && uv run ruff format --check .
 uv run pytest tests -q
 ```
 
-All tests are offline (the normalizer over a synthetic dots.ocr page output) — no GPU required.
+All tests are offline (the normalizer over a synthetic dots.ocr page output, the routes over a stubbed
+engine) — no GPU required. `tests/characterization/` pins the OpenAPI document and the `/parse` wire
+goldens.
 
 ## GPU first-deploy validation (could NOT be tested on the CPU dev VM)
 
