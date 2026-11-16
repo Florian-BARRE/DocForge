@@ -43,7 +43,7 @@
         "type": "object"
       },
       "HealthResponse": {
-        "description": "Response model for the GET /health liveness probe.\n\nAttributes:\n    status (str): \"ok\" when both pipelines are built and ready; \"loading\" during startup;\n        \"unhealthy\" when the host cannot serve inference at all (e.g. a CPU without AVX, on\n        which PaddlePaddle SIGILLs at the first inference).\n    ready (bool): True only when BOTH the PP-StructureV3 layout pipeline and the PaddleOCR\n        pipeline are built AND the host can actually run inference.\n    detail (str | None): Human-readable reason when not ready (diagnostics only); None on \"ok\".\n    device (str): Runtime compute device — \"cuda\" when a GPU is present, else \"cpu\". Read by the\n        DocForge app's GET /capabilities probe to decide whether this sidecar runs on a GPU.",
+        "description": "Response model of the GET /health liveness + readiness probe.\n\n`status` and `device` stay plain strings on the wire (the enumerations above give their values),\nso the OpenAPI document of a server does not change shape.\n\nAttributes:\n    status (str): \"ok\" when ready, \"loading\" during startup, \"unhealthy\" when unserviceable.\n    ready (bool): True only when the host can serve inference.\n    detail (str | None): Reason the service is not ready (diagnostics only); None on \"ok\".\n    device (str): Runtime compute device: \"cuda\" when a GPU is present, else \"cpu\".",
         "properties": {
           "detail": {
             "anyOf": [
@@ -63,7 +63,7 @@
             "type": "string"
           },
           "ready": {
-            "description": "True when both pipelines are built and the host can run inference.",
+            "description": "True when the host can serve inference.",
             "title": "Ready",
             "type": "boolean"
           },
@@ -283,8 +283,8 @@
   "paths": {
     "/health": {
       "get": {
-        "description": "Liveness + readiness probe.\n\nReturns HTTP 200 with status=\"ok\" and ready=True once BOTH the PP-StructureV3 layout pipeline\nand the PaddleOCR pipeline are built AND the host can actually run inference. Returns HTTP 503\nwith status=\"unhealthy\" when the CPU lacks AVX (PaddlePaddle would SIGILL on the first real\ninference — pipelines build fine, so this is the ONLY thing that stops the container advertising\na readiness it cannot honor), or status=\"loading\" while either pipeline is still starting up.\n\nArgs:\n    response (Response): FastAPI response object used to set the HTTP status code.\n\nReturns:\n    HealthResponse: Service status and readiness flag.",
-        "operationId": "health_health_get",
+        "description": "Liveness + readiness probe.\n\nArgs:\n    response (Response): FastAPI response object used to set the HTTP status code.\n\nReturns:\n    HealthResponse: 200 \"ok\" when ready; 503 \"unhealthy\" or \"loading\" otherwise.",
+        "operationId": "handle_health_get",
         "responses": {
           "200": {
             "content": {
@@ -297,7 +297,7 @@
             "description": "Successful Response"
           }
         },
-        "summary": "Health"
+        "summary": "Handle"
       }
     },
     "/layout-parsing": {

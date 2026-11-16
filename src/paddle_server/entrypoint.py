@@ -1,86 +1,19 @@
 # ====== Code Summary ======
-# Application entry point for the PP-StructureV3 layout-parsing micro-service.
+# Application entry point for the PaddleOCR micro-service (PP-StructureV3, OCR-only, PaddleOCR-VL).
 # This is the only file uvicorn targets: `uvicorn entrypoint:app` (run from /app/paddle_server).
-# Responsibilities (in strict order):
-#   1. Import PaddleServerConfig FIRST — registers sys.path and configures logging sinks.
-#   2. Inject config into CONTEXT.
-#   3. Instantiate PpStructureService + PaddleOcrService and inject into CONTEXT (unbuilt — the
-#      lifespan builds both).
-#   4. Call create_app() and assign the result to the module-level `app` variable.
-# No business logic here — only wiring and assembly.
-
-# ====== Internal Project Imports ======
-# PaddleServerConfig MUST be the very first internal import: its class body calls
-# sys.path.append() so that `from backend.*` and `from libs.*` can be resolved.
-from config_loader import PaddleServerConfig  # noqa: E402
+# Zero logic: the shared core's ServerEntrypoint applies the logging bootstrap and assembles the
+# ASGI app of the PaddleServer built from the injected PaddleServerConfig. The pipelines are built by
+# the core lifespan at startup (the VL one lazily, on its first request).
 
 # ====== Third-Party Library Imports ======
-from fastapi import FastAPI
-from loggerplusplus import loggerplusplus
+from model_server_core import ServerEntrypoint
 
 # ====== Internal Project Imports ======
-from backend import CONTEXT, create_app
-from libs.paddleocr import PaddleOcrService
-from libs.paddleocr_vl import PaddleOcrVlService
-from libs.ppstructure import PpStructureService
+from backend import PaddleServer
+from config_loader import PaddleServerConfig
 
-_logger = loggerplusplus.bind(identifier="PaddleEntrypoint")
+entrypoint = ServerEntrypoint(PaddleServer(PaddleServerConfig))
+app = entrypoint.app
 
-
-def _build_app() -> FastAPI:
-    """
-    Wire all services into CONTEXT and create the FastAPI application.
-
-    Returns:
-        FastAPI: The fully configured application instance.
-    """
-    # 1. Inject config into CONTEXT so lifespan and routes can read it
-    CONTEXT.CONFIG = PaddleServerConfig
-
-    # 2. Instantiate the pipeline service (NOT built yet — lifespan calls .build()).
-    # The heavy paddleocr/paddlex import is deferred to build(), so this wiring step is cheap.
-    CONTEXT.ppstructure = PpStructureService(
-        use_table_recognition=PaddleServerConfig.PADDLE_USE_TABLE_RECOGNITION,
-        use_formula_recognition=PaddleServerConfig.PADDLE_USE_FORMULA_RECOGNITION,
-        use_seal_recognition=PaddleServerConfig.PADDLE_USE_SEAL_RECOGNITION,
-        use_doc_orientation_classify=PaddleServerConfig.PADDLE_USE_DOC_ORIENTATION_CLASSIFY,
-        model_cache_home=PaddleServerConfig.PADDLE_PDX_CACHE_HOME,
-        model_source=PaddleServerConfig.PADDLE_PDX_MODEL_SOURCE,
-        lock_wait_timeout_seconds=PaddleServerConfig.PADDLE_LOCK_WAIT_TIMEOUT_SECONDS,
-    )
-
-    # 3. Instantiate the OCR-only service (NOT built yet — lifespan calls .build()). A SEPARATE
-    # PaddleOCR instance from ppstructure: pure text det+rec, no layout, one image → one reading.
-    CONTEXT.paddleocr = PaddleOcrService(
-        lang=PaddleServerConfig.PADDLE_OCR_LANG,
-        use_textline_orientation=PaddleServerConfig.PADDLE_OCR_USE_TEXTLINE_ORIENTATION,
-        model_cache_home=PaddleServerConfig.PADDLE_PDX_CACHE_HOME,
-        model_source=PaddleServerConfig.PADDLE_PDX_MODEL_SOURCE,
-        lock_wait_timeout_seconds=PaddleServerConfig.PADDLE_LOCK_WAIT_TIMEOUT_SECONDS,
-    )
-
-    # 4. Instantiate the PaddleOCR-VL 1.6 service (NOT built — it builds LAZILY on the first
-    # /vl-parse request so default PP-Structure deployments never pay its heavy VLM download/load).
-    # Heavy sub-pipelines default OFF; overridable per request. Reuses the shared model cache +
-    # lock-wait timeout (no new env var).
-    CONTEXT.paddleocr_vl = PaddleOcrVlService(
-        use_chart_recognition=False,
-        use_seal_recognition=False,
-        use_ocr_for_image_block=False,
-        model_cache_home=PaddleServerConfig.PADDLE_PDX_CACHE_HOME,
-        model_source=PaddleServerConfig.PADDLE_PDX_MODEL_SOURCE,
-        lock_wait_timeout_seconds=PaddleServerConfig.PADDLE_LOCK_WAIT_TIMEOUT_SECONDS,
-    )
-
-    # 5. Create the FastAPI app (lifespan registered inside create_app)
-    fastapi_app = create_app()
-    _logger.debug(
-        f"Paddle server wired: table={PaddleServerConfig.PADDLE_USE_TABLE_RECOGNITION}, "
-        f"formula={PaddleServerConfig.PADDLE_USE_FORMULA_RECOGNITION}"
-    )
-    return fastapi_app
-
-
-app: FastAPI = _build_app()
-
-__all__ = ["app"]
+if __name__ == "__main__":
+    entrypoint.run()

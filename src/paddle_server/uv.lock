@@ -684,16 +684,45 @@ wheels = [
 ]
 
 [[package]]
+name = "docforge-model-server-core"
+version = "0.1.0"
+source = { editable = "../model_server_core" }
+dependencies = [
+    { name = "configplusplus" },
+    { name = "fastapi" },
+    { name = "loggerplusplus" },
+    { name = "pydantic" },
+    { name = "uvicorn" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "configplusplus", specifier = ">=0.1.0" },
+    { name = "fastapi", specifier = ">=0.162.0,<1" },
+    { name = "loggerplusplus", specifier = ">=1.2.0" },
+    { name = "pydantic", specifier = ">=2.11.0,<3" },
+    { name = "uvicorn", specifier = ">=0.54.0,<1" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "httpx", specifier = ">=0.28.0" },
+    { name = "mypy", specifier = ">=1.13.0" },
+    { name = "pytest", specifier = ">=8.3.0" },
+    { name = "ruff", specifier = ">=0.17.2" },
+]
+
+[[package]]
 name = "docforge-paddle-server"
 version = "1.0.1"
 source = { virtual = "." }
 dependencies = [
     { name = "configplusplus" },
+    { name = "docforge-model-server-core" },
     { name = "fastapi" },
     { name = "loggerplusplus" },
     { name = "paddleocr" },
     { name = "paddlex", extra = ["ocr"] },
-    { name = "pyfiglet" },
     { name = "uvicorn", extra = ["standard"] },
 ]
 
@@ -717,13 +746,13 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "configplusplus", specifier = ">=0.1.0" },
+    { name = "docforge-model-server-core", editable = "../model_server_core" },
     { name = "fastapi", specifier = ">=0.162.0" },
     { name = "loggerplusplus", specifier = ">=1.0.0" },
     { name = "paddleocr", specifier = "==3.7.0" },
     { name = "paddlepaddle", marker = "extra == 'cpu'", specifier = "==3.3.1" },
     { name = "paddlepaddle-gpu", marker = "extra == 'gpu'", specifier = "==3.3.1", index = "https://www.paddlepaddle.org.cn/packages/stable/cu126/", conflict = { package = "docforge-paddle-server", extra = "gpu" } },
     { name = "paddlex", extras = ["ocr"], specifier = "==3.7.2" },
-    { name = "pyfiglet", specifier = ">=1.0.2" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.54.0" },
 ]
 provides-extras = ["cpu", "gpu"]
@@ -2662,15 +2691,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/3d/81/f02de95eec7794dfc7a5bc69a834f0e834b31b3009014ce6de903855f775/pydantic_core-2.50.1-graalpy312-graalpy250_312_native-macosx_11_0_arm64.whl", hash = "sha256:a51eee75939cf811ac09b278745a6cee7dc873ccfbc8b9af3cc88fe4b7ce25b5", size = 2039027, upload-time = "2026-10-11T18:35:18.07Z" },
     { url = "https://files.pythonhosted.org/packages/4d/16/227746ed3771d9bf2304568b55134849ece34e13b38b1d76de763015c77f/pydantic_core-2.50.1-graalpy312-graalpy250_312_native-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:ae28183297fb0d2b8dc46a1f01d51f5e45825fc5afe76a835a6cb7fb34821295", size = 2109009, upload-time = "2026-10-11T18:35:20.218Z" },
     { url = "https://files.pythonhosted.org/packages/e5/b9/7664d1592a0e5a74903f357cd5b28ceb7336f3473256c5a4e8c8432f1881/pydantic_core-2.50.1-graalpy312-graalpy250_312_native-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:88e492e8b9d0312e7dc13667c30222abf284dc3b79b5302b3607b41a5784ce61", size = 2269883, upload-time = "2026-10-11T18:35:22.48Z" },
-]
-
-[[package]]
-name = "pyfiglet"
-version = "1.0.4"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/c8/e3/0a86276ad2c383ce08d76110a8eec2fe22e7051c4b8ba3fa163a0b08c428/pyfiglet-1.0.4.tar.gz", hash = "sha256:db9c9940ed1bf3048deff534ed52ff2dafbbc2cd7610b17bb5eca1df6d4278ef", size = 1560615, upload-time = "2025-08-15T18:32:47.302Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/9f/5c/fe9f95abd5eaedfa69f31e450f7e2768bef121dbdf25bcddee2cd3087a16/pyfiglet-1.0.4-py3-none-any.whl", hash = "sha256:65b57b7a8e1dff8a67dc8e940a117238661d5e14c3e49121032bd404d9b2b39f", size = 1806118, upload-time = "2025-08-15T18:32:45.556Z" },
 ]
 
 [[package]]

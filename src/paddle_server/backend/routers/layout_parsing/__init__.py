@@ -1,7 +1,7 @@
 # ------------------- Router ------------------- #
-from .router import router as layout_parsing_router
+from .router import LayoutParsingRoutes
 
 # ------------------- Public API ------------------- #
 __all__ = [
-    "layout_parsing_router",
+    "LayoutParsingRoutes",
 ]

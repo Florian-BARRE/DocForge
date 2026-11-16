@@ -23,9 +23,7 @@ from typing import TYPE_CHECKING, Any
 
 # ====== Third-Party Library Imports ======
 from loggerplusplus import LoggerClass
-
-# ====== Internal Project Imports ======
-from libs.validation import InputValidator
+from model_server_core import ModelService
 
 # ====== Local Project Imports ======
 from .normalizer import PaddleOcrVlResponseNormalizer
@@ -36,7 +34,7 @@ if TYPE_CHECKING:
     from paddleocr import PaddleOCRVL
 
 
-class PaddleOcrVlService(LoggerClass):
+class PaddleOcrVlService(ModelService, LoggerClass):
     """
     Manages the lifecycle of the PaddleOCR-VL 1.6 layout-parsing pipeline.
 
@@ -100,6 +98,12 @@ class PaddleOcrVlService(LoggerClass):
 
     # ── Public methods ─────────────────────────────────────────────────────────────
 
+    def load(self) -> None:
+        """Nothing to build at startup: the pipeline is built lazily on the first /vl-parse request."""
+        self.logger.info(
+            f"PaddleOCR-VL pipeline {self.PIPELINE_VERSION} builds LAZILY on the first /vl-parse"
+        )
+
     def unload(self) -> None:
         """Release the pipeline reference so the GC can reclaim its (large) memory."""
         self._pipeline = None
@@ -116,17 +120,16 @@ class PaddleOcrVlService(LoggerClass):
         """
         Parse a PDF's bytes into the shared `{pages, n_pages, engine}` sidecar contract.
 
-        Steps mirror PpStructureService.parse_pdf, with a lazy build() up front:
+        Steps mirror PpStructureService.parse_pdf, with a lazy build up front:
           0. Lazily build the pipeline on the first call (behind the init lock).
-          1. Reject an undecodable PDF as a client error (HTTP 422) before spending inference.
-          2. Acquire the shared predict lock (bounded wait -> TimeoutError -> HTTP 503).
-          3. Write the bytes to a temp file (PaddleX predict() takes a path) and run predict() off
+          1. Acquire the shared predict lock (bounded wait -> TimeoutError -> HTTP 503).
+          2. Write the bytes to a temp file (PaddleX predict() takes a path) and run predict() off
              the event loop.
-          4. Normalize each page result via PaddleOcrVlResponseNormalizer.
-          5. Always clean up the temp file, even on failure.
+          3. Normalize each page result via PaddleOcrVlResponseNormalizer.
+          4. Always clean up the temp file, even on failure.
 
         Args:
-            pdf_bytes (bytes): Raw PDF content (the request body).
+            pdf_bytes (bytes): Raw PDF content (the request body), already validated as a PDF.
             use_chart_recognition (bool | None): Per-request override of the pipeline default.
             use_seal_recognition (bool | None): Per-request override of the pipeline default.
             use_ocr_for_image_block (bool | None): Per-request override of the pipeline default.
@@ -135,16 +138,12 @@ class PaddleOcrVlService(LoggerClass):
             dict[str, Any]: `{"pages": [...], "n_pages": int, "engine": {...}}`.
 
         Raises:
-            InvalidInputError: If the body is not a decodable PDF (a client error -> HTTP 422).
             TimeoutError: If the predict lock cannot be acquired within the configured timeout.
         """
         # 0. Lazily build the pipeline on the first request (heavy model download/load).
         await self._ensure_built()
 
-        # 1. Reject an undecodable PDF as a client error BEFORE spending inference.
-        InputValidator.verify_pdf(pdf_bytes)
-
-        # 2. Bounded wait on the shared predict lock — piling up behind a slow VLM predict() would
+        # 1. Bounded wait on the shared predict lock — piling up behind a slow VLM predict() would
         #    exhaust memory; a timeout surfaces as a clear 503 instead.
         try:
             await asyncio.wait_for(self._lock.acquire(), timeout=self._lock_wait_timeout_seconds)
@@ -155,7 +154,7 @@ class PaddleOcrVlService(LoggerClass):
             ) from exc
 
         try:
-            # 3. Materialize the PDF to a temp file for PaddleX's path-based predict() input.
+            # 2. Materialize the PDF to a temp file for PaddleX's path-based predict() input.
             fd, tmp_path = tempfile.mkstemp(suffix=".pdf")
             try:
                 with os.fdopen(fd, "wb") as f:
@@ -173,7 +172,7 @@ class PaddleOcrVlService(LoggerClass):
                 )
                 elapsed = time.perf_counter() - t0
             finally:
-                # 5. Always clean up the temp file, even on a predict() failure.
+                # 4. Always clean up the temp file, even on a predict() failure.
                 try:
                     os.remove(tmp_path)
                 except OSError:
@@ -181,7 +180,7 @@ class PaddleOcrVlService(LoggerClass):
         finally:
             self._lock.release()
 
-        # 4. Normalize every page result into the shared sidecar contract.
+        # 3. Normalize every page result into the shared sidecar contract.
         pages = [
             PaddleOcrVlResponseNormalizer.to_page(res, fallback_page_index=i)
             for i, res in enumerate(results)

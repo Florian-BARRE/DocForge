@@ -1,7 +1,7 @@
 # ------------------- Router ------------------- #
-from .router import router as vl_parsing_router
+from .router import VlParsingRoutes
 
 # ------------------- Public API ------------------- #
 __all__ = [
-    "vl_parsing_router",
+    "VlParsingRoutes",
 ]

@@ -1,9 +1,11 @@
 # ====== Code Summary ======
 # Owns the single PaddleOCR (text detection + recognition) pipeline instance — the OCR-only
 # capability, SEPARATE from PpStructureService's full layout pipeline (pure semantics: no layout,
-# no PDF-path input, one image → one reading). Built once inside `build()`, called exclusively from
-# the FastAPI lifespan — routes access it through CONTEXT. The heavy paddleocr/paddlex import is
-# deferred to `build()` so importing this module never triggers the ML stack.
+# no PDF-path input, one image → one reading). Built once inside `load()`, called exclusively from
+# the core lifespan (as a ModelService, through PaddleModelsService) — the routes get the service
+# injected. The heavy paddleocr/paddlex import is deferred to `load()` so importing this module never
+# triggers the ML stack. The image is validated (client error -> 422) by the route, through the core
+# InputValidator, before it gets here.
 #
 # Concurrency: PaddlePaddle inference is NOT thread-safe, so every `read_image()` call is serialized
 # behind a single `asyncio.Lock` — the `predict()` call itself runs inside `asyncio.to_thread` so it
@@ -21,24 +23,22 @@ from typing import TYPE_CHECKING, Any
 
 # ====== Third-Party Library Imports ======
 from loggerplusplus import LoggerClass
-
-# ====== Internal Project Imports ======
-from libs.validation import InputValidator
+from model_server_core import ModelService
 
 # ====== Local Project Imports ======
 from .normalizer import PaddleOcrResponseNormalizer
 
 # TYPE_CHECKING guard keeps the paddleocr/paddlex/paddlepaddle import out of the module's
-# top-level scope; the actual import happens inside build() at boot time.
+# top-level scope; the actual import happens inside load() at boot time.
 if TYPE_CHECKING:
     from paddleocr import PaddleOCR
 
 
-class PaddleOcrService(LoggerClass):
+class PaddleOcrService(ModelService, LoggerClass):
     """
     Manages the lifecycle of the PaddleOCR text detection+recognition pipeline (OCR-only).
 
-    The pipeline is built once during FastAPI startup (via `build()`) and torn down at shutdown
+    The pipeline is built once during FastAPI startup (via `load()`) and torn down at shutdown
     (via `unload()`). `use_doc_orientation_classify` and `use_doc_unwarping` are forced False (never
     accepted from a caller) — this is a pure per-crop OCR read, not a document preprocessor.
     """
@@ -71,7 +71,7 @@ class PaddleOcrService(LoggerClass):
 
         # Serializes every predict() call — PaddlePaddle is not thread-safe (module docstring).
         self._lock = asyncio.Lock()
-        # Typed attribute set by build(); None until the service is started.
+        # Typed attribute set by load(); None until the service is started.
         self._pipeline: PaddleOCR | None = None
 
     # ── Properties ────────────────────────────────────────────────────────────────
@@ -80,13 +80,13 @@ class PaddleOcrService(LoggerClass):
     def ready(self) -> bool:
         """
         Returns:
-            bool: True once `build()` has completed and the pipeline is usable.
+            bool: True once `load()` has completed and the pipeline is usable.
         """
         return self._pipeline is not None
 
     # ── Public methods ─────────────────────────────────────────────────────────────
 
-    def build(self) -> None:
+    def load(self) -> None:
         """
         Construct the PaddleOCR pipeline (text detection + recognition only).
 
@@ -110,7 +110,7 @@ class PaddleOcrService(LoggerClass):
             use_textline_orientation=self._use_textline_orientation,
             # Disable oneDNN/MKLDNN: PaddlePaddle 3.x's PIR executor raises
             # "ConvertPirAttribute2RuntimeAttribute not support" on the CPU oneDNN path. Forcing the
-            # native CPU kernels avoids it; harmless on GPU. Mirrors PpStructureService.build().
+            # native CPU kernels avoids it; harmless on GPU. Mirrors PpStructureService.load().
             enable_mkldnn=False,
         )
         elapsed = time.perf_counter() - t0
@@ -134,22 +134,17 @@ class PaddleOcrService(LoggerClass):
           5. Always clean up the temp file, even on failure.
 
         Args:
-            image_bytes (bytes): Raw image content (the request body).
+            image_bytes (bytes): Raw image content (the request body), already validated as an image.
 
         Returns:
             dict[str, Any]: `{"text": str, "confidence": float}`.
 
         Raises:
-            RuntimeError: If `build()` has not been called yet.
-            InvalidInputError: If the body is not a decodable image (a client error -> HTTP 422).
+            RuntimeError: If `load()` has not been called yet.
             TimeoutError: If the predict lock cannot be acquired within the configured timeout.
         """
         if self._pipeline is None:
-            raise RuntimeError(f"PaddleOcrService.build() has not been called yet.")
-
-        # Reject an undecodable image as a client error BEFORE taking the lock or spending
-        # inference — surfaces as HTTP 422, not a raw PaddleX exception leaked at HTTP 500.
-        InputValidator.verify_image(image_bytes)
+            raise RuntimeError(f"PaddleOcrService.load() has not been called yet.")
 
         # 1. Bounded wait on the shared lock — a timeout surfaces as a clear 503, not a pile-up.
         try:

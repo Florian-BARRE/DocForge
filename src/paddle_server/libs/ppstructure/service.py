@@ -1,7 +1,9 @@
 # ====== Code Summary ======
-# Owns the single PPStructureV3 pipeline instance. Built once inside `build()`, called exclusively
-# from the FastAPI lifespan — routes access it through CONTEXT. The heavy paddleocr/paddlex import
-# is deferred to `build()` so importing this module never triggers the ML stack.
+# Owns the single PPStructureV3 pipeline instance. Built once inside `load()`, called exclusively
+# from the core lifespan (as a ModelService, through PaddleModelsService) — the routes get the service
+# injected. The heavy paddleocr/paddlex import is deferred to `load()` so importing this module never
+# triggers the ML stack. The PDF is validated (client error -> 422) by the route, through the core
+# InputValidator, before it gets here.
 #
 # Concurrency: PaddlePaddle inference is NOT thread-safe, so every `parse_pdf()` call is
 # serialized behind a single `asyncio.Lock` — the sole `predict()` call itself runs inside
@@ -20,24 +22,22 @@ from typing import TYPE_CHECKING, Any
 
 # ====== Third-Party Library Imports ======
 from loggerplusplus import LoggerClass
-
-# ====== Internal Project Imports ======
-from libs.validation import InputValidator
+from model_server_core import ModelService
 
 # ====== Local Project Imports ======
 from .normalizer import PpStructureResponseNormalizer
 
 # TYPE_CHECKING guard keeps the paddleocr/paddlex/paddlepaddle import out of the module's
-# top-level scope; the actual import happens inside build() at boot time.
+# top-level scope; the actual import happens inside load() at boot time.
 if TYPE_CHECKING:
     from paddleocr import PPStructureV3
 
 
-class PpStructureService(LoggerClass):
+class PpStructureService(ModelService, LoggerClass):
     """
     Manages the lifecycle of the PP-StructureV3 layout-parsing pipeline.
 
-    The pipeline is built once during FastAPI startup (via `build()`) and torn down at shutdown
+    The pipeline is built once during FastAPI startup (via `load()`) and torn down at shutdown
     (via `unload()`). Sub-pipeline toggles set here are the PIPELINE-LEVEL defaults; a caller of
     `parse_pdf()` may override any of them per-request (PaddleX's own `predict()` call-time
     override mechanism) EXCEPT `use_doc_unwarping`, which is always forced False (never accepted
@@ -77,7 +77,7 @@ class PpStructureService(LoggerClass):
 
         # Serializes every predict() call — PaddlePaddle is not thread-safe (module docstring).
         self._lock = asyncio.Lock()
-        # Typed attribute set by build(); None until the service is started.
+        # Typed attribute set by load(); None until the service is started.
         self._pipeline: PPStructureV3 | None = None
 
     # ── Properties ────────────────────────────────────────────────────────────────
@@ -86,13 +86,13 @@ class PpStructureService(LoggerClass):
     def ready(self) -> bool:
         """
         Returns:
-            bool: True once `build()` has completed and the pipeline is usable.
+            bool: True once `load()` has completed and the pipeline is usable.
         """
         return self._pipeline is not None
 
     # ── Public methods ─────────────────────────────────────────────────────────────
 
-    def build(self) -> None:
+    def load(self) -> None:
         """
         Construct the PPStructureV3 pipeline with the configured sub-pipeline defaults.
 
@@ -153,7 +153,7 @@ class PpStructureService(LoggerClass):
           5. Always clean up the temp file, even on failure.
 
         Args:
-            pdf_bytes (bytes): Raw PDF content (the request body).
+            pdf_bytes (bytes): Raw PDF content (the request body), already validated as a PDF.
             use_table_recognition (bool | None): Per-request override of the pipeline default.
             use_formula_recognition (bool | None): Per-request override of the pipeline default.
             use_seal_recognition (bool | None): Per-request override of the pipeline default.
@@ -163,16 +163,11 @@ class PpStructureService(LoggerClass):
             dict[str, Any]: `{"pages": [...], "n_pages": int, "engine": {...}}`.
 
         Raises:
-            RuntimeError: If `build()` has not been called yet.
-            InvalidInputError: If the body is not a decodable PDF (a client error -> HTTP 422).
+            RuntimeError: If `load()` has not been called yet.
             TimeoutError: If the predict lock cannot be acquired within the configured timeout.
         """
         if self._pipeline is None:
-            raise RuntimeError(f"PpStructureService.build() has not been called yet.")
-
-        # Reject an undecodable PDF as a client error BEFORE taking the lock or spending
-        # inference — surfaces as HTTP 422, not a raw PaddleX exception leaked at HTTP 500.
-        InputValidator.verify_pdf(pdf_bytes)
+            raise RuntimeError(f"PpStructureService.load() has not been called yet.")
 
         # 1. Bounded wait on the shared lock — an unbounded wait would let requests pile up
         # forever behind one slow predict() call; a timeout surfaces as a clear 503 instead.
