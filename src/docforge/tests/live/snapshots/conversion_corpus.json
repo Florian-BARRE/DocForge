@@ -2,7 +2,7 @@
   "documents": {
     "docx_memo": {
       "chunks": {
-        "boundary_hash": "76f5023ae74510c3",
+        "boundary_hash": "sha:76f5023ae74510c3",
         "chunks": [
           {
             "blocks": [
@@ -20,7 +20,7 @@
             "page_number": 1,
             "role": "body",
             "strategy": "structure_aware",
-            "text_sha": "738e3557c0349f3f",
+            "text_sha": "sha:738e3557c0349f3f",
             "tokens": 95
           }
         ],
@@ -39,9 +39,9 @@
         "mime_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         "page_count": 1,
         "pdf_blob": "converted",
-        "pipeline_version": "2e46c20ca82814e1",
+        "pipeline_version": "sha:2e46c20ca82814e1",
         "searchable": true,
-        "source_hash": "62cf341cdb1539b9eb29aa4b5d566c096f32866cef930776d82d9422a9680110",
+        "source_hash": "sha:62cf341cdb1539b9eb29aa4b5d566c096f32866cef930776d82d9422a9680110",
         "source_kind": "digital_born",
         "status": "done",
         "title": "Conversion Smoke Memo",
@@ -57,17 +57,17 @@
         "enrichments": 0,
         "figure_crop_hashes": [],
         "figures": 0,
-        "geometry_hash": "e803aaf1cb8d08bb",
+        "geometry_hash": "sha:e803aaf1cb8d08bb",
         "keys": [
           "blocks",
           "enrichments",
           "figures",
           "tables"
         ],
-        "structure_hash": "17ab645ac9530365",
+        "structure_hash": "sha:17ab645ac9530365",
         "tables": 1,
-        "tables_hash": "6372199bb3b4b488",
-        "text_hash": "b29ccaeb99eb9f79"
+        "tables_hash": "sha:6372199bb3b4b488",
+        "text_hash": "sha:b29ccaeb99eb9f79"
       },
       "job": {
         "attempt": 1,
@@ -80,7 +80,7 @@
       },
       "markdown": {
         "chars": 420,
-        "sha": "9b70beb2ed21faae"
+        "sha": "sha:9b70beb2ed21faae"
       },
       "shapes": {
         "chunks": [
@@ -253,7 +253,7 @@
     },
     "pdf_native_contract": {
       "chunks": {
-        "boundary_hash": "9ba98d9c1a4e3eb5",
+        "boundary_hash": "sha:9ba98d9c1a4e3eb5",
         "chunks": [
           {
             "blocks": [
@@ -273,7 +273,7 @@
             "page_number": 1,
             "role": "body",
             "strategy": "structure_aware",
-            "text_sha": "682eee6d7298a367",
+            "text_sha": "sha:682eee6d7298a367",
             "tokens": 463
           },
           {
@@ -290,7 +290,7 @@
             "page_number": 3,
             "role": "body",
             "strategy": "structure_aware",
-            "text_sha": "22487f238be9656b",
+            "text_sha": "sha:22487f238be9656b",
             "tokens": 63
           },
           {
@@ -307,7 +307,7 @@
             "page_number": 3,
             "role": "body",
             "strategy": "structure_aware",
-            "text_sha": "4ac681af7077358d",
+            "text_sha": "sha:4ac681af7077358d",
             "tokens": 66
           },
           {
@@ -324,7 +324,7 @@
             "page_number": 3,
             "role": "body",
             "strategy": "structure_aware",
-            "text_sha": "d1d7b92fd1f521a7",
+            "text_sha": "sha:d1d7b92fd1f521a7",
             "tokens": 66
           },
           {
@@ -342,7 +342,7 @@
             "page_number": 3,
             "role": "body",
             "strategy": "structure_aware",
-            "text_sha": "ed2a502fdc61170f",
+            "text_sha": "sha:ed2a502fdc61170f",
             "tokens": 156
           },
           {
@@ -359,7 +359,7 @@
             "page_number": 5,
             "role": "body",
             "strategy": "structure_aware",
-            "text_sha": "900b66c59d0130d2",
+            "text_sha": "sha:900b66c59d0130d2",
             "tokens": 68
           },
           {
@@ -376,7 +376,7 @@
             "page_number": 5,
             "role": "body",
             "strategy": "structure_aware",
-            "text_sha": "847d2dab187fab94",
+            "text_sha": "sha:847d2dab187fab94",
             "tokens": 65
           },
           {
@@ -393,7 +393,7 @@
             "page_number": 5,
             "role": "body",
             "strategy": "structure_aware",
-            "text_sha": "2761f6534bbb211e",
+            "text_sha": "sha:2761f6534bbb211e",
             "tokens": 55
           },
           {
@@ -411,7 +411,7 @@
             "page_number": 6,
             "role": "body",
             "strategy": "structure_aware",
-            "text_sha": "c177c12832abf7f5",
+            "text_sha": "sha:c177c12832abf7f5",
             "tokens": 127
           },
           {
@@ -428,7 +428,7 @@
             "page_number": 7,
             "role": "body",
             "strategy": "structure_aware",
-            "text_sha": "79f2533742304e24",
+            "text_sha": "sha:79f2533742304e24",
             "tokens": 67
           },
           {
@@ -445,7 +445,7 @@
             "page_number": 7,
             "role": "body",
             "strategy": "structure_aware",
-            "text_sha": "8cb875958ffcd425",
+            "text_sha": "sha:8cb875958ffcd425",
             "tokens": 63
           },
           {
@@ -462,7 +462,7 @@
             "page_number": 7,
             "role": "body",
             "strategy": "structure_aware",
-            "text_sha": "ce475d32a940bd21",
+            "text_sha": "sha:ce475d32a940bd21",
             "tokens": 66
           },
           {
@@ -485,7 +485,7 @@
             "page_number": 8,
             "role": "body",
             "strategy": "structure_aware",
-            "text_sha": "1a8ee9dcfc3aee18",
+            "text_sha": "sha:1a8ee9dcfc3aee18",
             "tokens": 185
           },
           {
@@ -502,7 +502,7 @@
             "page_number": 11,
             "role": "body",
             "strategy": "structure_aware",
-            "text_sha": "4bc9cc6d815a5cc9",
+            "text_sha": "sha:4bc9cc6d815a5cc9",
             "tokens": 244
           },
           {
@@ -521,7 +521,7 @@
             "page_number": 12,
             "role": "body",
             "strategy": "structure_aware",
-            "text_sha": "762f02dc8a6210a5",
+            "text_sha": "sha:762f02dc8a6210a5",
             "tokens": 74
           },
           {
@@ -542,7 +542,7 @@
             "page_number": 3,
             "role": "boilerplate",
             "strategy": "structure_aware",
-            "text_sha": "1c375b4c1defdb16",
+            "text_sha": "sha:1c375b4c1defdb16",
             "tokens": 314
           },
           {
@@ -563,7 +563,7 @@
             "page_number": 5,
             "role": "boilerplate",
             "strategy": "structure_aware",
-            "text_sha": "0954e491dda808f9",
+            "text_sha": "sha:0954e491dda808f9",
             "tokens": 315
           },
           {
@@ -584,7 +584,7 @@
             "page_number": 7,
             "role": "boilerplate",
             "strategy": "structure_aware",
-            "text_sha": "a3f8cdffb40e4d6d",
+            "text_sha": "sha:a3f8cdffb40e4d6d",
             "tokens": 312
           },
           {
@@ -604,7 +604,7 @@
             "page_number": 8,
             "role": "boilerplate",
             "strategy": "structure_aware",
-            "text_sha": "0fe3592c9a7dcd2f",
+            "text_sha": "sha:0fe3592c9a7dcd2f",
             "tokens": 73
           },
           {
@@ -624,7 +624,7 @@
             "page_number": 12,
             "role": "boilerplate",
             "strategy": "structure_aware",
-            "text_sha": "692d597ad24d7333",
+            "text_sha": "sha:692d597ad24d7333",
             "tokens": 73
           }
         ],
@@ -643,9 +643,9 @@
         "mime_type": "application/pdf",
         "page_count": 12,
         "pdf_blob": "source",
-        "pipeline_version": "2e46c20ca82814e1",
+        "pipeline_version": "sha:2e46c20ca82814e1",
         "searchable": true,
-        "source_hash": "d9bf34a76bfd64379aaf5bd69eb4172273c2a0f4e2057b73ad1e88002e7a4464",
+        "source_hash": "sha:d9bf34a76bfd64379aaf5bd69eb4172273c2a0f4e2057b73ad1e88002e7a4464",
         "source_kind": "digital_born",
         "status": "done",
         "title": "Contrat-cadre de prestations de services managés",
@@ -663,22 +663,22 @@
         },
         "enrichments": 0,
         "figure_crop_hashes": [
-          "5ff469f0d7caa756b19657a308a0ca02757e51d3da64fd56f523639d455e7e31",
-          "476db2987f3f1b8440a22861c4637e3d5a577dd86bdb46d3984b78947bf1cf54",
-          "71a1aedd99b78eb051e53fd1650de7e2a86b1d5655cc8136083bf4ad971e0465"
+          "sha:5ff469f0d7caa756b19657a308a0ca02757e51d3da64fd56f523639d455e7e31",
+          "sha:476db2987f3f1b8440a22861c4637e3d5a577dd86bdb46d3984b78947bf1cf54",
+          "sha:71a1aedd99b78eb051e53fd1650de7e2a86b1d5655cc8136083bf4ad971e0465"
         ],
         "figures": 3,
-        "geometry_hash": "a185a471f7390a0e",
+        "geometry_hash": "sha:a185a471f7390a0e",
         "keys": [
           "blocks",
           "enrichments",
           "figures",
           "tables"
         ],
-        "structure_hash": "b04e1f37bdf58f6c",
+        "structure_hash": "sha:b04e1f37bdf58f6c",
         "tables": 1,
-        "tables_hash": "440a319a2981279e",
-        "text_hash": "61143ac2906e37e9"
+        "tables_hash": "sha:440a319a2981279e",
+        "text_hash": "sha:61143ac2906e37e9"
       },
       "job": {
         "attempt": 1,
@@ -691,7 +691,7 @@
       },
       "markdown": {
         "chars": 11554,
-        "sha": "d8a0ddee462868ed"
+        "sha": "sha:d8a0ddee462868ed"
       },
       "shapes": {
         "chunks": [
@@ -870,7 +870,7 @@
     },
     "pdf_scanned_image_only": {
       "chunks": {
-        "boundary_hash": "4f53cda18c2baa0c",
+        "boundary_hash": "sha:4f53cda18c2baa0c",
         "chunks": [],
         "count": 0,
         "total_tokens": 0
@@ -887,9 +887,9 @@
         "mime_type": "application/pdf",
         "page_count": 2,
         "pdf_blob": "source",
-        "pipeline_version": "2e46c20ca82814e1",
+        "pipeline_version": "sha:2e46c20ca82814e1",
         "searchable": false,
-        "source_hash": "e82a650ebc979fc2c8d27413e2824f744bf5a4a97d3243c8363514d161e0847d",
+        "source_hash": "sha:e82a650ebc979fc2c8d27413e2824f744bf5a4a97d3243c8363514d161e0847d",
         "source_kind": "digital_born",
         "status": "done",
         "title": "",
@@ -901,17 +901,17 @@
         "enrichments": 0,
         "figure_crop_hashes": [],
         "figures": 0,
-        "geometry_hash": "4f53cda18c2baa0c",
+        "geometry_hash": "sha:4f53cda18c2baa0c",
         "keys": [
           "blocks",
           "enrichments",
           "figures",
           "tables"
         ],
-        "structure_hash": "4f53cda18c2baa0c",
+        "structure_hash": "sha:4f53cda18c2baa0c",
         "tables": 0,
-        "tables_hash": "4f53cda18c2baa0c",
-        "text_hash": "4f53cda18c2baa0c"
+        "tables_hash": "sha:4f53cda18c2baa0c",
+        "text_hash": "sha:4f53cda18c2baa0c"
       },
       "job": {
         "attempt": 1,
@@ -924,7 +924,7 @@
       },
       "markdown": {
         "chars": 0,
-        "sha": "e3b0c44298fc1c14"
+        "sha": "sha:e3b0c44298fc1c14"
       },
       "shapes": {
         "chunks": [],
@@ -1047,7 +1047,7 @@
     },
     "pdf_text_layer_metadata": {
       "chunks": {
-        "boundary_hash": "bfbd321142db255f",
+        "boundary_hash": "sha:bfbd321142db255f",
         "chunks": [
           {
             "blocks": [
@@ -1060,7 +1060,7 @@
             "page_number": 1,
             "role": "body",
             "strategy": "structure_aware",
-            "text_sha": "0840839d24422b41",
+            "text_sha": "sha:0840839d24422b41",
             "tokens": 21
           }
         ],
@@ -1079,9 +1079,9 @@
         "mime_type": "application/pdf",
         "page_count": 3,
         "pdf_blob": "source",
-        "pipeline_version": "2e46c20ca82814e1",
+        "pipeline_version": "sha:2e46c20ca82814e1",
         "searchable": true,
-        "source_hash": "dcb73c4294f963e07c78f575556d30187153181cc9b5a761bbed5aa10cfbb9b7",
+        "source_hash": "sha:dcb73c4294f963e07c78f575556d30187153181cc9b5a761bbed5aa10cfbb9b7",
         "source_kind": "digital_born",
         "status": "done",
         "title": "",
@@ -1095,17 +1095,17 @@
         "enrichments": 0,
         "figure_crop_hashes": [],
         "figures": 0,
-        "geometry_hash": "7c987515d6c88f5f",
+        "geometry_hash": "sha:7c987515d6c88f5f",
         "keys": [
           "blocks",
           "enrichments",
           "figures",
           "tables"
         ],
-        "structure_hash": "91337f161fcfa095",
+        "structure_hash": "sha:91337f161fcfa095",
         "tables": 0,
-        "tables_hash": "4f53cda18c2baa0c",
-        "text_hash": "2a9f3986706b7329"
+        "tables_hash": "sha:4f53cda18c2baa0c",
+        "text_hash": "sha:2a9f3986706b7329"
       },
       "job": {
         "attempt": 1,
@@ -1118,7 +1118,7 @@
       },
       "markdown": {
         "chars": 92,
-        "sha": "0840839d24422b41"
+        "sha": "sha:0840839d24422b41"
       },
       "shapes": {
         "chunks": [
@@ -1276,7 +1276,7 @@
     },
     "png_text_image": {
       "chunks": {
-        "boundary_hash": "2411f0bcbfd5a301",
+        "boundary_hash": "sha:2411f0bcbfd5a301",
         "chunks": [
           {
             "blocks": [
@@ -1291,7 +1291,7 @@
             "page_number": 1,
             "role": "body",
             "strategy": "structure_aware",
-            "text_sha": "2d0f4520ac1454a2",
+            "text_sha": "sha:2d0f4520ac1454a2",
             "tokens": 18
           }
         ],
@@ -1310,9 +1310,9 @@
         "mime_type": "image/png",
         "page_count": 1,
         "pdf_blob": "converted",
-        "pipeline_version": "2e46c20ca82814e1",
+        "pipeline_version": "sha:2e46c20ca82814e1",
         "searchable": true,
-        "source_hash": "2789f1e7479e73b7060b0d46ffff3321fb68ad4b0d2c0baf30512bc6138f812e",
+        "source_hash": "sha:2789f1e7479e73b7060b0d46ffff3321fb68ad4b0d2c0baf30512bc6138f812e",
         "source_kind": "digital_born",
         "status": "done",
         "title": "DocForge image smoke Invoice 2026-001 Total due: 42.00 EUR",
@@ -1326,17 +1326,17 @@
         "enrichments": 0,
         "figure_crop_hashes": [],
         "figures": 0,
-        "geometry_hash": "96f15ea1812edba9",
+        "geometry_hash": "sha:96f15ea1812edba9",
         "keys": [
           "blocks",
           "enrichments",
           "figures",
           "tables"
         ],
-        "structure_hash": "35615bd177ab6524",
+        "structure_hash": "sha:35615bd177ab6524",
         "tables": 0,
-        "tables_hash": "4f53cda18c2baa0c",
-        "text_hash": "38085fac6e68d821"
+        "tables_hash": "sha:4f53cda18c2baa0c",
+        "text_hash": "sha:38085fac6e68d821"
       },
       "job": {
         "attempt": 1,
@@ -1349,7 +1349,7 @@
       },
       "markdown": {
         "chars": 61,
-        "sha": "56347434bf7b0ac9"
+        "sha": "sha:56347434bf7b0ac9"
       },
       "shapes": {
         "chunks": [
