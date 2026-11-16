@@ -16,7 +16,8 @@ import { theme } from "../../theme";
 import { DocumentPageActions } from "./DocumentPageActions";
 import { DocumentStatusChip } from "./DocumentStatusChip";
 import { DocumentTabContent } from "./DocumentTabContent";
-import { documentDisplayName, formatBytes, formatDateTime } from "./format";
+import { formatBytes, formatDateTime } from "../../utils/format";
+import { documentDisplayName } from "./format";
 import { pageMaxWidthOf, TABS } from "./state/documentPageModel";
 import { useDocumentPage } from "./state/useDocumentPage";
 

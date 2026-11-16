@@ -7,7 +7,7 @@ parallelises the paid VLM/OCR calls for image-heavy docs.
 The plumbing tests below only prove the NUMBER flows through unmutated; ``test_concurrency_is_
 enforced_at_runtime_by_the_engine`` proves the number actually BOUNDS the engine's real execution
 (a live semaphore around ``asyncio.gather``, not just a stored int) — see
-``FlowEngine.__collect_foreach_items`` in ``shared_libs/pipelines/engine/core.py``.
+``ForEachRunner._collect_items`` in ``shared_libs/pipelines/engine/foreach_runner.py``.
 """
 
 import asyncio

@@ -8,7 +8,8 @@ import type { CostEstimate } from "../../../api/collections";
 import { Chip } from "../../../components/Chip";
 import { theme as t } from "../../../theme";
 import { CostEstimateVolumeStat } from "./CostEstimateVolumeStat";
-import { formatBytes, formatUsd } from "./estimateFormat";
+import { formatBytes } from "../../../utils/format";
+import { formatUsd } from "./estimateFormat";
 
 interface CostEstimateHeadlineProps {
   estimate: CostEstimate;

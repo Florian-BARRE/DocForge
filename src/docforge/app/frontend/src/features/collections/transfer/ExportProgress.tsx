@@ -9,7 +9,7 @@ import { Button } from "../../../components/Button";
 import { Chip } from "../../../components/Chip";
 import { useToast } from "../../../shell/toast";
 import { theme } from "../../../theme";
-import { formatBytes } from "./transferFormat";
+import { formatBytes } from "../../../utils/format";
 import { TransferProgressBar } from "./TransferProgressBar";
 import { useTransfer } from "./useTransfer";
 

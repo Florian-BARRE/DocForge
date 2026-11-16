@@ -5,8 +5,7 @@
 // Caveats). A deliberate cross-feature import, not a duplicate: those three are pure `estimate in,
 // JSX out` components with zero corpus-specific coupling, and this dialog is the one place besides
 // the Overview panel that needs the exact same rendering of a `CostEstimate`. There is precedent:
-// AdvancedDisclosure/formatBytes are already cross-imported into features/collections/storage the
-// same way.
+// AdvancedDisclosure is already cross-imported into features/collections/estimate the same way.
 
 import { useEffect, useState } from "react";
 import { estimateCollectionCost, type CostEstimate, type EstimateSubset } from "../../api/collections";

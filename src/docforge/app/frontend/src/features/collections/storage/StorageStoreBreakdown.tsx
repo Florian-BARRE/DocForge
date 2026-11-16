@@ -10,7 +10,7 @@
 
 import { AdvancedDisclosure } from "../../search-pipeline/AdvancedDisclosure";
 import { theme as t } from "../../../theme";
-import { formatBytes } from "../../explorer/format";
+import { formatBytes } from "../../../utils/format";
 import { EstimatedBadge } from "./EstimatedBadge";
 import { StorageMetricRow } from "./StorageMetricRow";
 

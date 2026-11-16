@@ -7,7 +7,7 @@
 
 import { ConfirmDialog } from "../../../components/dialog/ConfirmDialog";
 import { theme } from "../../../theme";
-import { formatBytes } from "../../explorer/format";
+import { formatBytes } from "../../../utils/format";
 import { useCollectionTraceBytes } from "./useCollectionTraceBytes";
 import { useCollectionTracePurge } from "./useCollectionTracePurge";
 

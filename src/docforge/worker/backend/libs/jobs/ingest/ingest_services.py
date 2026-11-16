@@ -1,5 +1,5 @@
 # ====== Code Summary ======
-# IngestServices — the worker services one ingest run needs (database façade, S3 handle, pipeline
+# IngestServices — the worker services one ingest run needs (database façade, pipeline
 # runner, runtime config, logger, worker id, default job timeout), gathered once from the worker's
 # CONTEXT by the thin ``ingest_document`` entry and handed to IngestJob. The collaborators of the
 # ``ingest`` package receive these values through their constructors and never import the worker
@@ -16,7 +16,6 @@ class IngestServices:
 
     Attributes:
         database (Any): The worker's Database façade.
-        s3 (Any): The worker's S3 handle (``client()`` context manager + ``bucket``).
         runner (Any): The PipelineRunner executing the graph.
         config (Any): The runtime config (``CONTEXT.RUNTIME_CONFIG``).
         logger (Any): The worker logger.
@@ -25,7 +24,6 @@ class IngestServices:
     """
 
     database: Any
-    s3: Any
     runner: Any
     config: Any
     logger: Any
@@ -37,7 +35,6 @@ class IngestServices:
         """Read the services off the worker CONTEXT (the one place that touches it)."""
         return cls(
             database=context.database,
-            s3=context.s3,
             runner=context.runner,
             config=context.RUNTIME_CONFIG,
             logger=context.logger,

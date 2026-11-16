@@ -18,7 +18,6 @@ def _services(ingest, **config):
     )
     return ingest.IngestServices(
         database=SimpleNamespace(),
-        s3=None,
         runner=SimpleNamespace(run=AsyncMock(return_value=("bundle", "record"))),
         config=runtime,
         logger=MagicMock(),
@@ -32,7 +31,6 @@ def test_services_are_read_off_the_context(jobs_core) -> None:
 
     context = SimpleNamespace(
         database="db",
-        s3="s3",
         runner="runner",
         RUNTIME_CONFIG="config",
         logger="log",
